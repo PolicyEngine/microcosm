@@ -23,13 +23,16 @@ from hypothesis import strategies as st
 
 from microcosm.build import atomic_geography as geography
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.graph_atomic_geography import register_atomic_geography_kernels
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
 )
 from microcosm.build.transport.compose import (
-    _resource_param,
+    TransportGraphConfig,
+    _artifact_outputs,
+    _node,
     load_transport_spec,
     transport_resource,
 )
@@ -46,7 +49,8 @@ from microcosm.calibrate.hierarchy import (
     HierarchyGeography,
     HierarchyNode,
 )
-from microcosm.graph import ROWS_ALL
+from microcosm.graph import ROWS_ALL, KernelContext, KernelRegistry, Owned, Ownership
+from microcosm.graph.kernel import ArtifactValue, NumericScope
 from test_support.paths import paths_for
 from tools import build_nz_joint_geography as builder
 
@@ -63,8 +67,9 @@ _STRADDLING = {
 }
 # Each household column nz.geo.derive writes, and the transport support column
 # it must carry. The test states this map itself: derivation and validation both
-# follow the assignment's layers, so they agree with a layer that reads the
-# wrong support column.
+# follow the assignment's layers, and the binder checks only that a layer's
+# labels match the column it reads, so all three accept a layer that reads the
+# wrong support column with matching labels.
 _TRANSPORT_LAYER_COLUMNS = {
     "ta_code": "ta_code",
     "household_region_code": "region_code",
@@ -588,109 +593,172 @@ def _assert_layers_carry_their_support_columns(
         )
 
 
+def _artifact(payload: bytes, kind) -> ArtifactValue:
+    digest = hashlib.sha256(payload).hexdigest()
+    return ArtifactValue(
+        payload=payload,
+        type=kind,
+        key=digest,
+        producer_key=digest,
+        numerics=NumericScope(),
+    )
+
+
+_KERNELS = KernelRegistry()
+register_atomic_geography_kernels(_KERNELS)
+
+
+def _run_composed(node, frame: pd.DataFrame, support: bytes):
+    """Run a composed geography node with the graph executor's projection,
+    kernel resolution and checks on what the kernel returns.
+
+    The executor resolves the node's declared kernel through its registry and
+    refuses a kernel whose structural capability differs from the node's. It
+    gives the kernel one table per entity the node reads or owns: the entity's
+    id column and the union of the node's slices of that entity, under their
+    one row mask, so a column the node does not declare is not there. These
+    nodes must see every household, so every slice reads all rows. Each
+    artifact input receives the support payload. The executor then requires
+    the result's columns to be exactly the node's owned cells, and every
+    declared artifact output to be returned. These kernels write every
+    household, so each owned output must be produced on all rows; the columns
+    are new, so none may be a rewrite. The synthetic frame holds only the ids
+    and the geography columns, so a node may read only those.
+    """
+    entities = {table.entity for table in node.inputs}
+    entities |= {owned.entity for owned in node.outputs}
+    assert entities == {"household"}
+    assert {table.rows for table in node.inputs} <= {ROWS_ALL}
+    columns = dict.fromkeys(column for table in node.inputs for column in table.columns)
+    context = KernelContext(
+        node=node,
+        tables={"household": frame.loc[:, ["household_id", *columns]]},
+        weights={},
+        strata=pd.Series([], dtype=object),
+        params=node.params,
+        rng=np.random.default_rng(0),
+        artifacts={
+            edge.name: _artifact(support, edge.type) for edge in node.artifact_inputs
+        },
+    )
+    kernel = _KERNELS.get(node.kernel)
+    assert kernel.capabilities.structural is node.structural
+    result = kernel.run(context)
+    assert set(result.columns) == {
+        (owned.entity, owned.column) for owned in node.outputs
+    }
+    assert {output.name for output in node.artifact_outputs} <= set(result.artifacts)
+    for owned in node.outputs:
+        assert (owned.column, owned.rows, owned.ownership, owned.rewrite) == (
+            owned.column,
+            ROWS_ALL,
+            Ownership.PRODUCED,
+            False,
+        )
+    return result
+
+
 def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
-    """Run the shared assignment, derivation and validation on the committed
-    declarations that nz.geo.assign, nz.geo.derive and nz.geo.gate read, with
-    synthetic population counts, and check their outputs against the columns
-    the graph declares for those nodes.
+    """Run nz.geo.assign, nz.geo.derive and nz.geo.gate as the pipeline would,
+    with synthetic population counts: each node composed from the committed
+    declarations as compose_transport_graph composes it, and each node's own
+    declared kernel run with the executor's projection, kernel resolution and
+    output checks.
 
     The graph supplies the support definition, the support's system and the
     alias the three kernels key the support by. An assignment whose system
-    differs from that alias fails here, as the kernels refuse it. The derive
-    and gate nodes must declare as household inputs the assignment's outputs,
-    plus the derived layers for the gate.
+    differs from that alias fails here, as the kernels refuse it. So does a
+    node that omits a column its kernel reads, an input slice or row mask the
+    composer's node construction refuses, a definition or stream the kernels
+    refuse, or an owned output the executor would refuse. Each node runs the
+    kernel it declares, so a node that declares another node's kernel fails as
+    that kernel does.
 
     Each derived layer must carry the support column that
     ``_TRANSPORT_LAYER_COLUMNS`` names for it, on the drawn areas and on every
     committed area. Derivation and validation recompute the assignment's own
-    layers, so only this independent map catches a layer that reads the wrong
-    column.
+    layers, and the binder checks only that a layer's labels match the column
+    it reads, so this independent map is what checks every row of a layer that
+    reads the wrong column with matching labels.
 
     Each layer's source, vintage and relation must equal the support column it
     reads, or the shared binder refuses before any household is placed.
     """
     transport = load_transport_spec(_SPEC)
-    graph = {
-        node["id"]: node
-        for node in transport_resource(transport, "transport_graph")["nodes"]
+    declared = transport_resource(transport, "transport_graph")["nodes"]
+    # Compose the geography nodes as compose_transport_graph does: parameters
+    # resolved, input slices and artifact edges checked and typed. None of them
+    # is CREATE or selects a rules binding, so the config's values go unused.
+    types = {
+        (row["id"], output.name): output.type
+        for row in declared
+        for output in _artifact_outputs(row)
     }
-    assign = graph["nz.geo.assign"]
-    for node_id in ("nz.geo.derive", "nz.geo.gate"):
-        assert graph[node_id]["params"] == assign["params"]
-        assert graph[node_id]["artifact_inputs"] == assign["artifact_inputs"]
-    (edge,) = assign["artifact_inputs"]
-    alias, producer = edge["name"], graph[edge["producer"]]
-    assert (producer["kernel"], edge["artifact"]) == (
+    config = TransportGraphConfig(
+        engine_refs={}, create_outputs=(Owned("household", "household_id", "int64"),)
+    )
+    nodes = {
+        row["id"]: _node(transport, row, config, types)
+        for row in declared
+        if row["id"].startswith("nz.geo.")
+    }
+    assign, derive, gate = (
+        nodes[f"nz.geo.{step}"] for step in ("assign", "derive", "gate")
+    )
+    for node in (derive, gate):
+        assert node.params == assign.params
+        assert node.artifact_inputs == assign.artifact_inputs
+    (edge,) = assign.artifact_inputs
+    alias, producer = edge.name, nodes[edge.producer]
+    assert (producer.kernel, edge.artifact) == (
         "geography.support_from_facts@1",
         "support",
     )
-
-    def selected(selection: dict) -> dict:
-        # Resolve a node's resource selection as the composer does: the
-        # resource by its name or stem, then its path and encoding.
-        assert selection.get("encoding") == "json"
-        return json.loads(_resource_param(transport, selection))
-
-    definition = selected(producer["params"]["definition"])
-    specification = selected(assign["params"]["definition"])
+    definition = json.loads(producer.params["definition"])
+    specification = json.loads(assign.params["definition"])
     (system,) = specification["systems"]
     # The kernels refuse unless the support aliases are the assignment's system
     # ids, and the binder refuses unless the support's own system is too.
-    assert (system["id"], producer["params"]["system"]) == (alias, alias)
-
-    def declared(node_id: str) -> set[tuple[str, str, str]]:
-        return {
-            (output["entity"], output["column"], output["dtype"])
-            for output in graph[node_id]["outputs"]
-        }
-
-    references = _references()
-    support = geography.decode_atomic_support(
-        support_from_surface(
-            _surface(references, [1000] * len(references)),
-            definition,
-            system=producer["params"]["system"],
-        )
-    )
-    supports = {alias: support}
-    rows = {row["codes"]["area"]: row["codes"] for row in definition["rows"]}
-    outputs = specification["outputs"]
-    households = pd.DataFrame({"household_id": np.arange(len(support.arrays["area"]))})
-    placed = geography.assign_atomic(households, specification, supports)
-    assert {("household", c, "string") for c in placed} == declared("nz.geo.assign")
-    assigned = pd.concat([households, placed], axis=1)
-    derived = geography.derive_geography(assigned, specification, supports)
-    assert {("household", c, "string") for c in derived} == declared("nz.geo.derive")
-    assert set(derived) == set(_TRANSPORT_LAYER_COLUMNS)
-
-    def read_columns(node_id: str) -> set[str]:
-        # The executor gives a kernel one table per entity, holding the union
-        # of the node's slices of that entity under their one row mask. These
-        # nodes must see every household, so each slice reads all rows.
-        slices = graph[node_id]["inputs"]
-        assert {table["entity"] for table in slices} == {"household"}
-        assert {table.get("rows", ROWS_ALL) for table in slices} == {ROWS_ALL}
-        return {column for table in slices for column in table["columns"]}
-
-    # Pin each node's declared household inputs. Derive declares the three
-    # assignment outputs and reads two of them, the area and the system. The
-    # gate declares and reads those three and the four derived layers. The
-    # executor hands a kernel only the entity id and its node's declared
-    # columns, so dropping a column the kernel reads fails at run time. These
-    # expected sets hold only while the system reads no selector, constraint
-    # or observed-area column, so pin that premise too.
+    assert (system["id"], producer.params["system"]) == (alias, alias)
+    # The synthetic households carry only their ids, so pin the premise that
+    # the system reads no selector, constraint or observed-area column.
     assert (system["selector"], system["constraints"], system["observed_area"]) == (
         {},
         [],
         None,
     )
-    assert read_columns("nz.geo.derive") == set(placed)
-    assert read_columns("nz.geo.gate") == set(placed) | set(derived)
-    completed = pd.concat([assigned, derived], axis=1)
-    assert (
-        geography.validate_geography(completed, specification, supports)["outcome"]
-        == "pass"
+
+    references = _references()
+    payload = support_from_surface(
+        _surface(references, [1000] * len(references)),
+        definition,
+        system=producer.params["system"],
     )
+    support = geography.decode_atomic_support(payload)
+    supports = {alias: support}
+    rows = {row["codes"]["area"]: row["codes"] for row in definition["rows"]}
+    outputs = specification["outputs"]
+    count = len(support.arrays["area"])
+    households = pd.DataFrame(
+        {
+            "household_id": np.arange(count, dtype=np.int64),
+            "source_household_id": np.arange(count, dtype=np.int64),
+        }
+    )
+
+    def written(result) -> dict[str, np.ndarray]:
+        return {
+            column: series.to_numpy() for (_, column), series in result.columns.items()
+        }
+
+    # The kernels refuse a definition or stream that differs from the
+    # assignment's own, and the assign and derive kernels refuse outputs other
+    # than their node's declared ones. The gate refuses by raising.
+    assigned = households.assign(**written(_run_composed(assign, households, payload)))
+    derived = written(_run_composed(derive, assigned, payload))
+    assert set(derived) == set(_TRANSPORT_LAYER_COLUMNS)
+    completed = assigned.assign(**derived)
+    _run_composed(gate, completed, payload)
     _assert_layers_carry_their_support_columns(completed, outputs["area"], rows)
     # Derive every committed area too, so the check also covers areas the draw
     # never reaches.
