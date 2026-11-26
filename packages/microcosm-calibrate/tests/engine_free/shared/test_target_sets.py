@@ -13,6 +13,7 @@ from microcosm.calibrate.target_sets import (
     TargetSetDeclarationError,
     clause_predicate,
     load_target_set_declarations,
+    select_by_levels,
     select_target_set,
     target_level,
     target_set_census,
@@ -360,3 +361,222 @@ def test_census_and_undeclared_cells() -> None:
         ("tax", "country"): 1,
         ("tax", "district"): 1,
     }
+
+
+# ---------------------------------------------------------------------------
+# Level rules and selection by level (microcosm#1759)
+# ---------------------------------------------------------------------------
+
+LEVELS = ("country", "region", "la")
+
+
+def _level_declarations(**rule) -> dict:
+    return {
+        "version": 1,
+        "country": "test",
+        "level_rule": {
+            "keys": ["level", "geo"],
+            "values": list(LEVELS),
+            "conflict": "refuse",
+            "rationale": "r",
+            **rule,
+        },
+        "products": {
+            "full": {
+                "tool": "tools/full.py",
+                "option": "--levels",
+                "default_mode": "levels",
+                "modes": {
+                    "levels": {
+                        "description": "One clause for each level.",
+                        "compiled": [
+                            {
+                                "id": level,
+                                "families": "*",
+                                "levels": [level],
+                                "rationale": "r",
+                            }
+                            for level in LEVELS
+                        ],
+                    }
+                },
+            }
+        },
+    }
+
+
+def _level_mode(**rule):
+    return load_target_set_declarations(_level_declarations(**rule)).declaration(
+        "full", "levels"
+    )
+
+
+def _registry(*rows):
+    from microcosm.calibrate.registry import TargetRegistry, TargetSpec
+
+    return TargetRegistry(
+        [
+            TargetSpec(
+                name=name,
+                entity="household",
+                measure="household_weight",
+                value=1.0 + index,
+                period=2025,
+                source="test",
+                family=family,
+                metadata=metadata,
+            )
+            for index, (name, family, metadata) in enumerate(rows)
+        ],
+        country="test",
+    )
+
+
+def test_a_level_rule_reads_the_first_key_and_refuses_what_it_cannot_place() -> None:
+    rule = _level_mode().level_rule
+    assert rule.keys == ("level", "geo")
+    assert rule.values == frozenset(LEVELS)
+    assert rule.level_of(_spec("a", "tax", level="la")) == "la"
+    assert rule.level_of(_spec("b", "tax", geo="region")) == "region"
+    assert rule.level_of(_spec("c", "tax", level="la", geo="la")) == "la"
+    assert rule.level_of(_spec("d", "tax", level="", geo="country")) == "country"
+    with pytest.raises(ValueError, match="'e' has contradictory geography levels"):
+        rule.level_of(_spec("e", "tax", level="la", geo="region"))
+    with pytest.raises(ValueError, match="'f' has unsupported geography level None"):
+        rule.level_of(_spec("f", "tax"))
+    with pytest.raises(ValueError, match="unsupported geography level ''"):
+        rule.level_of(_spec("g", "tax", level=None, geo=""))
+    with pytest.raises(ValueError, match="unsupported geography level 'nation'"):
+        rule.level_of(_spec("h", "tax", geo="nation"))
+
+
+def test_an_open_rule_and_the_first_conflict_rule() -> None:
+    first = _level_mode(conflict="first").level_rule
+    assert first.level_of(_spec("a", "tax", level="la", geo="region")) == "la"
+    open_rule = _level_mode(values="*").level_rule
+    assert open_rule.values is None
+    assert open_rule.level_of(_spec("b", "tax")) == UNSPECIFIED_LEVEL
+    assert open_rule.level_of(_spec("c", "tax", geo="nation")) == "nation"
+    with pytest.raises(ValueError, match="contradictory"):
+        open_rule.level_of(_spec("d", "tax", level="la", geo="region"))
+    # The level_keys form reads exactly as target_level does.
+    keys_form = _declarations().declaration("national", "all")
+    assert keys_form.level_rule.values is None
+    assert keys_form.level_rule.conflict == "first"
+    for spec in SPECS:
+        assert keys_form.level_of(spec) == target_level(spec, ("level", "geo"))
+
+
+@pytest.mark.parametrize(
+    ("rule", "message"),
+    [
+        ({"conflict": "maybe"}, "must be one of"),
+        ({"keys": []}, "nonempty list of metadata keys"),
+        ({"keys": ["level", "level"]}, "repeats a key"),
+        ({"values": []}, "nonempty list"),
+        ({"rationale": ""}, "nonempty string"),
+        ({"extra": 1}, "unknown keys"),
+    ],
+)
+def test_a_malformed_level_rule_is_refused(rule, message) -> None:
+    with pytest.raises(TargetSetDeclarationError, match=message):
+        load_target_set_declarations(_level_declarations(**rule))
+
+
+def test_a_declaration_gives_exactly_one_level_form() -> None:
+    both = _level_declarations()
+    both["level_keys"] = ["level"]
+    with pytest.raises(TargetSetDeclarationError, match="exactly one of"):
+        load_target_set_declarations(both)
+    neither = _level_declarations()
+    del neither["level_rule"]
+    with pytest.raises(TargetSetDeclarationError, match="exactly one of"):
+        load_target_set_declarations(neither)
+
+
+def test_select_by_levels_keeps_compile_order_and_lists_every_target() -> None:
+    registry = _registry(
+        ("la_1", "tax", {"level": "la"}),
+        ("uk", "tax", {"geo": "country"}),
+        ("north", "benefit", {"level": "region", "geo": "region"}),
+        ("la_2", "benefit", {"geo": "la"}),
+    )
+    selection = select_by_levels(registry, _level_mode(), ["la", "country"])
+    assert [spec.name for spec in selection.registry.specs] == ["la_1", "uk", "la_2"]
+    receipt = selection.receipt
+    assert receipt["schema"] == "microcosm.calibrate.target-selection.v1"
+    assert receipt["selector"] == {
+        "geography_levels": ["country", "la"],
+        "explicit": True,
+    }
+    assert receipt["source_registry_version"] == registry.version
+    assert receipt["selected_registry_version"] == selection.registry.version
+    assert [(row["name"], row["reason"]) for row in receipt["included"]] == [
+        ("la_1", "geography_selected"),
+        ("uk", "geography_selected"),
+        ("la_2", "geography_selected"),
+    ]
+    assert [(row["name"], row["geography_level"]) for row in receipt["excluded"]] == [
+        ("north", "region")
+    ]
+    everything = select_by_levels(registry, _level_mode())
+    assert everything.registry.version == registry.version
+    assert everything.receipt["selector"] == {
+        "geography_levels": None,
+        "explicit": False,
+    }
+    assert {row["reason"] for row in everything.receipt["included"]} == {
+        "all_geographies"
+    }
+    assert everything.sha256 != selection.sha256
+    receipt["included"].clear()
+    assert selection.receipt["included"]
+
+
+@pytest.mark.parametrize(
+    ("levels", "message"),
+    [
+        ("la", "nonempty sequence of levels"),
+        ([], "nonempty literal names"),
+        ([" la"], "nonempty literal names"),
+        (["la", "la"], "must not repeat levels"),
+        (["region"], r"unknown geography levels \['region'\]"),
+        (["nowhere", "region"], r"unknown geography levels \['nowhere', 'region'\]"),
+    ],
+)
+def test_select_by_levels_refuses_a_bad_request(levels, message) -> None:
+    registry = _registry(("la_1", "tax", {"level": "la"}))
+    with pytest.raises(ValueError, match=message):
+        select_by_levels(registry, _level_mode(), levels)
+
+
+def test_select_by_levels_refuses_an_empty_selection_and_a_non_registry() -> None:
+    with pytest.raises(ValueError, match="nonempty selected problem"):
+        select_by_levels(_registry(), _level_mode())
+    with pytest.raises(TypeError, match="requires TargetRegistry"):
+        select_by_levels([], _level_mode())
+    with pytest.raises(ValueError, match="contradictory"):
+        select_by_levels(
+            _registry(("x", "tax", {"level": "la", "geo": "region"})), _level_mode()
+        )
+
+
+def test_select_by_levels_needs_a_level_mode() -> None:
+    registry = _registry(("la_1", "tax", {"level": "la"}))
+    with pytest.raises(TargetSetDeclarationError, match="closed set of values"):
+        select_by_levels(registry, _level_mode(values="*"))
+    family_clause = _level_declarations()
+    mode = family_clause["products"]["full"]["modes"]["levels"]
+    mode["compiled"][0]["families"] = ["tax"]
+    with pytest.raises(TargetSetDeclarationError, match="not a level clause"):
+        select_by_levels(
+            registry,
+            load_target_set_declarations(family_clause).declaration("full", "levels"),
+        )
+    missing = _level_declarations()
+    missing["products"]["full"]["modes"]["levels"]["compiled"].pop()
+    with pytest.raises(TargetSetDeclarationError, match="are not the levels"):
+        select_by_levels(
+            registry,
+            load_target_set_declarations(missing).declaration("full", "levels"),
+        )

@@ -34,6 +34,21 @@ the first truthy value of the ``level_keys`` in its metadata, else
 (``microcosm.calibrate.target_loss_rules``, microcosm#1729), so a target has
 one family and one level everywhere.
 
+A declaration can give a ``level_rule`` in place of ``level_keys``::
+
+    "level_rule": {
+      "keys": ["<metadata key>", ...],
+      "values": ["<level>", ...] or "*",
+      "conflict": "first" or "refuse",
+      "rationale": "<why>"
+    }
+
+``values`` closes the set of levels: a target whose level is not one of them,
+or that has no level, is refused. With ``"conflict": "refuse"``, a target
+whose keys hold two different levels is refused; with ``"first"``, the first
+key that has a value gives the level. ``level_keys`` is the short form of a
+rule with ``"values": "*"`` and ``"conflict": "first"``.
+
 **Compiled clauses.** A clause keeps the compiled specs that pass all of its
 tests, in compile order:
 
@@ -60,6 +75,15 @@ population marginals from a ladder). A ``built`` entry names their family and
 the level that each value of its option gives, so that the declaration states
 the whole target set. The selector does not make these rows.
 
+**Selection by level.** A mode with a closed level set and one clause for
+each level (any family, no tests, its own level) can also be selected by a
+set of levels that the caller gives at run time. :func:`select_by_levels`
+keeps the targets of those levels (all of them by default) in compile order.
+It returns them as a registry, with a receipt that lists every target, kept
+or not (schema ``microcosm.calibrate.target-selection.v1``). It refuses a
+requested level that no target has, and an empty selection. The UK full
+build selects its solve surface this way (microcosm#1759).
+
 **Rationale.** Each clause and built entry has a ``rationale``: why the
 product keeps those rows. The UK membership files give a signed rationale for
 each exclusion in the same way.
@@ -67,6 +91,7 @@ each exclusion in the same way.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -75,11 +100,17 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+from .registry import TargetRegistry
+
 __all__ = [
     "ANY",
     "DECLARATION_VERSION",
+    "LEVEL_CONFLICTS",
+    "SELECTION_RECEIPT_SCHEMA",
     "UNSPECIFIED_LEVEL",
     "BuiltRows",
+    "LevelRule",
+    "LevelSelection",
     "MetadataTest",
     "ProductDeclaration",
     "TargetSetClause",
@@ -89,6 +120,7 @@ __all__ = [
     "TargetSetSelection",
     "clause_predicate",
     "load_target_set_declarations",
+    "select_by_levels",
     "select_target_set",
     "target_level",
     "target_set_census",
@@ -98,8 +130,15 @@ __all__ = [
 ANY = "*"
 DECLARATION_VERSION = 1
 UNSPECIFIED_LEVEL = "unspecified"
+#: How a level rule treats a target whose keys hold different levels.
+LEVEL_CONFLICTS = ("first", "refuse")
+#: The receipt schema of :func:`select_by_levels`.
+SELECTION_RECEIPT_SCHEMA = "microcosm.calibrate.target-selection.v1"
 
-_TOP_KEYS = frozenset({"version", "country", "description", "level_keys", "products"})
+_TOP_KEYS = frozenset(
+    {"version", "country", "description", "level_keys", "level_rule", "products"}
+)
+_LEVEL_RULE_KEYS = frozenset({"keys", "values", "conflict", "rationale"})
 _PRODUCT_KEYS = frozenset({"tool", "option", "default_mode", "modes"})
 _MODE_KEYS = frozenset({"description", "compiled", "built"})
 _CLAUSE_KEYS = frozenset(
@@ -130,6 +169,43 @@ def target_level(spec: Any, level_keys: Sequence[str]) -> str:
         if value:
             return str(value)
     return UNSPECIFIED_LEVEL
+
+
+@dataclass(frozen=True)
+class LevelRule:
+    """How a target's level is read from its metadata (see the module docstring).
+
+    The level is the first truthy value of ``keys``. With ``conflict`` set to
+    ``"refuse"``, two keys that hold different truthy values are refused.
+    With ``values`` (a closed set), a level outside it is refused, and so is a
+    target with no level; without it (``None``), a target with no level is
+    ``"unspecified"``.
+    """
+
+    keys: tuple[str, ...]
+    values: frozenset[str] | None = None
+    conflict: str = "first"
+    rationale: str = ""
+
+    def level_of(self, spec: Any) -> str:
+        if self.values is None and self.conflict == "first":
+            return target_level(spec, self.keys)
+        held = [spec.metadata.get(key) for key in self.keys]
+        if self.conflict == "refuse":
+            present = [value for value in held if value]
+            if any(value != present[0] for value in present[1:]):
+                raise ValueError(
+                    f"Target {spec.name!r} has contradictory geography levels."
+                )
+        # The first truthy value, else the last key's value, as ``a or b`` does.
+        level = next((value for value in held if value), held[-1])
+        if self.values is None:
+            return str(level) if level else UNSPECIFIED_LEVEL
+        if level not in self.values:
+            raise ValueError(
+                f"Target {spec.name!r} has unsupported geography level {level!r}."
+            )
+        return str(level)
 
 
 @dataclass(frozen=True)
@@ -206,6 +282,8 @@ class TargetSetDeclaration:
     level_keys: tuple[str, ...]
     compiled: tuple[TargetSetClause, ...]
     built: tuple[BuiltRows, ...]
+    #: The country's level rule; ``None`` reads ``level_keys`` alone.
+    level_rule: LevelRule | None = None
 
     @property
     def clause_ids(self) -> tuple[str, ...]:
@@ -229,6 +307,8 @@ class TargetSetDeclaration:
         )
 
     def level_of(self, spec: Any) -> str:
+        if self.level_rule is not None:
+            return self.level_rule.level_of(spec)
         return target_level(spec, self.level_keys)
 
 
@@ -263,6 +343,7 @@ class TargetSetDeclarations:
     country: str
     level_keys: tuple[str, ...]
     products: Mapping[str, ProductDeclaration]
+    level_rule: LevelRule | None = None
 
     def product(self, name: str) -> ProductDeclaration:
         try:
@@ -363,6 +444,36 @@ def _clause(where: str, raw: object) -> TargetSetClause:
     )
 
 
+def _level_rule(where: str, top: Mapping[str, Any]) -> LevelRule:
+    """The declaration's level rule: ``level_rule``, or the ``level_keys`` form."""
+
+    if ("level_keys" in top) == ("level_rule" in top):
+        raise _fail(where, "give exactly one of level_keys and level_rule.")
+    if "level_keys" in top:
+        level_keys = top["level_keys"]
+        if not isinstance(level_keys, list) or not level_keys:
+            raise _fail(
+                f"{where}.level_keys", "must be a nonempty list of metadata keys."
+            )
+        return LevelRule(tuple(_text(f"{where}.level_keys", key) for key in level_keys))
+    at = f"{where}.level_rule"
+    rule = _require_keys(at, top["level_rule"], _LEVEL_RULE_KEYS, _LEVEL_RULE_KEYS)
+    keys = rule["keys"]
+    if not isinstance(keys, list) or not keys:
+        raise _fail(f"{at}.keys", "must be a nonempty list of metadata keys.")
+    keys = tuple(_text(f"{at}.keys", key) for key in keys)
+    if len(set(keys)) != len(keys):
+        raise _fail(f"{at}.keys", "repeats a key.")
+    if rule["conflict"] not in LEVEL_CONFLICTS:
+        raise _fail(f"{at}.conflict", f"must be one of {list(LEVEL_CONFLICTS)}.")
+    return LevelRule(
+        keys=keys,
+        values=_names(f"{at}.values", rule["values"]),
+        conflict=rule["conflict"],
+        rationale=_text(f"{at}.rationale", rule["rationale"]),
+    )
+
+
 def _built(where: str, raw: object) -> BuiltRows:
     built = _require_keys(
         where, raw, _BUILT_KEYS, ("id", "family", "levels", "source", "rationale")
@@ -396,16 +507,12 @@ def load_target_set_declarations(
     else:
         path = Path(source)
         raw, where = json.loads(path.read_text(encoding="utf-8")), str(path)
-    top = _require_keys(
-        where, raw, _TOP_KEYS, ("version", "country", "level_keys", "products")
-    )
+    top = _require_keys(where, raw, _TOP_KEYS, ("version", "country", "products"))
     if top["version"] != DECLARATION_VERSION:
         raise _fail(where, f"version must be {DECLARATION_VERSION}.")
     country = _text(f"{where}.country", top["country"])
-    level_keys = top["level_keys"]
-    if not isinstance(level_keys, list) or not level_keys:
-        raise _fail(f"{where}.level_keys", "must be a nonempty list of metadata keys.")
-    level_keys = tuple(_text(f"{where}.level_keys", key) for key in level_keys)
+    level_rule = _level_rule(where, top)
+    level_keys = level_rule.keys
     products_raw = top["products"]
     if not isinstance(products_raw, Mapping) or not products_raw:
         raise _fail(f"{where}.products", "must name at least one product.")
@@ -449,6 +556,7 @@ def load_target_set_declarations(
                 level_keys=level_keys,
                 compiled=compiled,
                 built=built,
+                level_rule=level_rule,
             )
         default_mode = _text(f"{at}.default_mode", product["default_mode"])
         if default_mode not in modes:
@@ -466,6 +574,7 @@ def load_target_set_declarations(
         country=country,
         level_keys=level_keys,
         products=MappingProxyType(products),
+        level_rule=level_rule,
     )
 
 
@@ -555,6 +664,135 @@ def select_target_set(
         specs=tuple(kept),
         clause_counts=MappingProxyType(counts),
         rule_receipts=MappingProxyType(receipts),
+    )
+
+
+@dataclass(frozen=True)
+class LevelSelection:
+    """Selected targets in compile order, and a receipt detached from them."""
+
+    registry: TargetRegistry
+    _receipt_json: str
+
+    @property
+    def receipt(self) -> dict[str, object]:
+        """A fresh receipt; a caller that changes it cannot change its bytes."""
+        return json.loads(self._receipt_json)
+
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.to_bytes()).hexdigest()
+
+    def to_bytes(self) -> bytes:
+        """The canonical receipt bytes."""
+        return self._receipt_json.encode("utf-8")
+
+
+def _require_level_mode(declaration: TargetSetDeclaration) -> None:
+    """Refuse a mode that is not one clause for each level of a closed set."""
+
+    at = f"{declaration.product}/{declaration.mode}"
+    rule = declaration.level_rule
+    if rule is None or rule.values is None:
+        raise TargetSetDeclarationError(
+            f"{at}: selection by level needs a level_rule with a closed set of values."
+        )
+    for clause in declaration.compiled:
+        if (
+            clause.families is not None
+            or clause.levels != frozenset({clause.clause_id})
+            or clause.metadata
+            or clause.exclude
+            or clause.rule is not None
+        ):
+            raise TargetSetDeclarationError(
+                f"{at}: clause {clause.clause_id!r} is not a level clause (any "
+                "family, levels [its own id], and no test, exclusion or rule)."
+            )
+    if set(declaration.clause_ids) != rule.values:
+        raise TargetSetDeclarationError(
+            f"{at}: the clauses {sorted(declaration.clause_ids)} are not the "
+            f"levels {sorted(rule.values)}."
+        )
+
+
+def select_by_levels(
+    registry: TargetRegistry,
+    declaration: TargetSetDeclaration,
+    levels: Sequence[str] | None = None,
+) -> LevelSelection:
+    """Keep the targets of the requested levels (all by default), in compile order.
+
+    ``declaration`` is a mode with a closed level set and one clause for each
+    level (:func:`_require_level_mode`). Each target's level comes from the
+    declared rule, which refuses a target it cannot place. The kept targets
+    are the ones the requested clauses keep (:func:`select_target_set`), in
+    the registry's order. The receipt lists every target with its level and
+    whether it was kept.
+
+    Raises:
+        TypeError: If ``registry`` is not a :class:`TargetRegistry`.
+        TargetSetDeclarationError: If ``declaration`` is not a level mode.
+        ValueError: If ``levels`` is empty, repeats a level or names one with
+            outer spaces; if a requested level has no target; if a target's
+            level cannot be read; or if nothing is kept.
+    """
+
+    if not isinstance(registry, TargetRegistry):
+        raise TypeError("Target selection requires TargetRegistry.")
+    _require_level_mode(declaration)
+    requested = None
+    if levels is not None:
+        if isinstance(levels, str | bytes):
+            raise ValueError("geography_levels must be a nonempty sequence of levels.")
+        requested = tuple(levels)
+        if not requested or any(
+            not isinstance(level, str) or not level or level != level.strip()
+            for level in requested
+        ):
+            raise ValueError("geography_levels must contain nonempty literal names.")
+        if len(set(requested)) != len(requested):
+            raise ValueError("geography_levels must not repeat levels.")
+        requested = tuple(sorted(requested))
+    resolved = [declaration.level_of(spec) for spec in registry.specs]
+    if requested is not None and (unknown := set(requested) - set(resolved)):
+        raise ValueError(
+            f"Target selector contains unknown geography levels {sorted(unknown)}."
+        )
+    kept = {
+        id(spec)
+        for spec in select_target_set(
+            declaration, registry.specs, clause_ids=requested
+        ).specs
+    }
+    selected = registry.select(predicate=lambda spec: id(spec) in kept)
+    if not selected.specs:
+        raise ValueError("Target selection requires a nonempty selected problem.")
+    included, excluded = [], []
+    for spec, level in zip(registry.specs, resolved, strict=True):
+        row = {
+            "name": spec.name,
+            "period": spec.period,
+            "geography_level": level,
+            "family": spec.family,
+            "source": spec.source,
+        }
+        if id(spec) in kept:
+            reason = "all_geographies" if requested is None else "geography_selected"
+            included.append({**row, "reason": reason})
+        else:
+            excluded.append({**row, "reason": "geography_not_selected"})
+    receipt = {
+        "schema": SELECTION_RECEIPT_SCHEMA,
+        "source_registry_version": registry.version,
+        "selected_registry_version": selected.version,
+        "selector": {"geography_levels": requested, "explicit": requested is not None},
+        "included": included,
+        "excluded": excluded,
+    }
+    return LevelSelection(
+        selected,
+        json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False),
     )
 
 
