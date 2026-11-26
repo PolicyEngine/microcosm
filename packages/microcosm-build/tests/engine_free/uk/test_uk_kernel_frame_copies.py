@@ -633,8 +633,9 @@ def test_a_change_to_table_copies_moves_the_hashes_of_the_kernels_copying_with_i
     The UK stage kernels copy their inputs through ``_minimal_frame``, and the
     population and calibration kernels through ``context_frame``; both call
     ``copy_table``. An edit to it must re-key those nodes, so a graph store
-    built before the edit cannot serve them. A kernel that builds no Frame
-    from its context keeps its hash.
+    built before the edit cannot serve them. The geography identity kernel,
+    whose own hash lists neither module, keeps its hash: the edit reaches
+    only hashes that list ``table_copies``.
     """
 
     from microcosm.build.uk_runtime import graph_calibration, graph_population
