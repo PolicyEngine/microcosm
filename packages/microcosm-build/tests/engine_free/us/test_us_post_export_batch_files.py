@@ -473,3 +473,40 @@ def test_certification_removes_an_earlier_attempts_batch_files(
     builder._place_build_for_certification(record, release_root / "releases" / "r")
     assert sorted(path.name for path in stale.iterdir()) == ["notes.txt"]
     assert kept.read_text() == "not a scorer's"
+
+
+def test_the_merged_baseline_pass_raises_a_refused_batch_file_at_once(
+    builder, tmp_path, monkeypatch, capsys
+) -> None:
+    """The merged baseline pass, one pass over every registered consumer's
+    keys, falls back to each consumer's own pass when it raises, so a key only
+    one consumer planned fails that consumer alone. A refused batch file is
+    not such a key: every pass reads the same files. The merged pass raises
+    it, having read the changed file once, and nothing falls back."""
+
+    plans = {
+        "demographics": builder._record_post_export_baseline_plan(
+            builder._demographics_consumer
+        ),
+        "ssi_social_security_holdout": builder._record_post_export_baseline_plan(
+            builder._ssi_social_security_holdout_consumer
+        ),
+    }
+    read_batch = builder._PostExportBatchFiles.__getitem__
+    positions_read: list[int] = []
+
+    def counted_read(self, position):
+        positions_read.append(position)
+        return read_batch(self, position)
+
+    monkeypatch.setattr(builder._PostExportBatchFiles, "__getitem__", counted_read)
+    scorer = _open_scorer(builder, _nested_frame(), tmp_path, baseline_plans=plans)
+    try:
+        first_file = sorted(scorer.batch_directory.iterdir())[0]
+        first_file.write_bytes(first_file.read_bytes() + b"changed")
+        with pytest.raises(builder.PostExportBatchFileError, match="SHA-256"):
+            scorer.open_consumer("demographics", plans["demographics"])
+    finally:
+        scorer.close()
+    assert positions_read == [0]
+    assert "scores its own baseline plan instead" not in capsys.readouterr().out
