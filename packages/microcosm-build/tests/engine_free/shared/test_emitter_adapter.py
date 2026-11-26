@@ -1047,6 +1047,48 @@ def test_a_required_build_s_error_for_each_failure_the_interface_reports(
     assert "continue" not in capfd.readouterr().err
 
 
+def test_a_time_limit_the_interface_refuses_is_named_instead_of_the_command(
+    monkeypatch, tmp_path
+):
+    """The interface refuses a time limit that is not more than 0 s and at
+    most a day (``invalid_arguments``) without running anything, so the
+    command is not the cause."""
+
+    starts = _record_starts(monkeypatch)
+    _install_emitter_script(monkeypatch, tmp_path / "bin", "  exit 3")
+    _answer_version_with(monkeypatch, CommandFailure("version", "invalid_arguments"))
+    monkeypatch.setenv(REQUIRED_VARIABLE, "1")
+
+    with pytest.raises(adapter.TelemetryRequiredError) as raised:
+        _start_with_a_short_limit(monkeypatch, tmp_path)
+
+    assert raised.value.reason == "version_failed"
+    message = str(raised.value)
+    assert f"its time limit of {SHORT_STARTUP_TIMEOUT_SECONDS:g} s" in message
+    assert "Check that" not in message
+    assert starts == []
+
+
+def test_bytes_that_are_not_utf_8_on_standard_error_do_not_stop_a_valid_answer(
+    monkeypatch, tmp_path
+):
+    """The interface decodes ``version``'s output with replacement characters."""
+
+    starts = _record_starts(monkeypatch)
+    _install_emitter_script(
+        monkeypatch,
+        tmp_path / "bin",
+        f"  echo '{_version_answer(adapter.MINIMUM_EMITTER_VERSION)}'\n"
+        "  printf '\\377\\n' >&2\n"
+        "  exit 0",
+    )
+    monkeypatch.setenv(REQUIRED_VARIABLE, "1")
+
+    _start_with_a_short_limit(monkeypatch, tmp_path)
+
+    assert len(starts) == 1
+
+
 def test_a_required_build_refuses_a_version_answer_without_protocol_versions(
     monkeypatch, tmp_path
 ):
