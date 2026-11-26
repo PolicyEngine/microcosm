@@ -970,6 +970,29 @@
       "notes": "The mapping-integrity record of spi_copy_areas, which draws the area and ladder of every SPI copy and income band donor with the area draw's definition (microcosm#931). On a frame without a copy neither the draw's validation nor the RFDR layer's roster check runs and the stage records not_run, so the gate accepts pass or not_run. As the area draw's gate does, it holds the record's digests to the spine's geography block and re-derives the areas of the phase's frame on the pinned supports, here over every row: the FRS households, the SPI copies and band donors, and the later copies. Evaluated at the transferred boundary: spi_copy_areas runs after the assembled boundary closes."
     },
     {
+      "id": "uk_high_value_copy_area_mapping_integrity",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "high_value_home_support",
+        "check": "atomic_mapping_integrity",
+        "evidence_record": "copy_areas",
+        "validation_scope": "atomic_geography_mapping_integrity",
+        "support_systems": [
+          "uk_ew_output_area_2021",
+          "uk_scotland_output_area_2022",
+          "uk_ni_data_zone_2021"
+        ],
+        "accepted_outcomes": [
+          "pass",
+          "not_run"
+        ]
+      },
+      "notes": "The mapping-integrity record of high_value_home_support, which since its copies take their own areas draws the area and ladder of every high-value copy with the area draw's definition, at its parent's level (microcosm#931). The stage keeps the record under copy_areas in its receipt (evidence_record), beside the split's. On a frame without a high-value copy neither the draw's validation nor the RFDR layer's roster check runs and the stage records not_run, so the gate accepts pass or not_run. As the other two mapping gates do, it holds the record's digests to the spine's geography block and re-derives the areas of the phase's frame on the pinned supports, over every row, the high-value copies among them. Evaluated at the transferred boundary: high_value_home_support runs after the assembled boundary closes."
+    },
+    {
       "id": "uk_copy_area_agreement",
       "gate": "stage_health",
       "phase": "transferred",

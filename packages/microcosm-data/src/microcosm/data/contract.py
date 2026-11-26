@@ -737,13 +737,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "98c07ec5d3b762c13b30a602d3ecfa3d9a4d145ddf0772fad1b3105275be9ca1"
+    "8c669751b7609bcd824f1c95c939d5d6704ad5264262bf1caaeba43cbcb2f361"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "dd2c228a47f19afd194736dc0bbb94f0e2b7b490e90555ff681aca068a015e6d"
+    "3d16db095eebf504005002d7fc41f5d3f703c20da79c6fdf18adb2dc71b78f95"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "2c130c179f68dea5fcd5751ae0a82508758b05285f2775dd3b0100ad8e03ce19"
+    "4ae5ca9355d77f3ebb7801d81d9c55701e546d43ae887d9a7cb3e5bc5022a1e4"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -857,6 +857,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     # The spine geography gates (microcosm#931).
     "uk_atomic_area_mapping_integrity": ("stage_health", "assembled"),
     "uk_spi_copy_area_mapping_integrity": ("stage_health", "transferred"),
+    "uk_high_value_copy_area_mapping_integrity": ("stage_health", "transferred"),
     "uk_copy_area_agreement": ("stage_health", "transferred"),
     "uk_council_tax_reduction_within_bill": ("stage_health", "transferred"),
     "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
@@ -986,6 +987,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_aps_occupation_fit",
         "uk_atomic_area_mapping_integrity",
         "uk_spi_copy_area_mapping_integrity",
+        "uk_high_value_copy_area_mapping_integrity",
         "uk_copy_area_agreement",
         "uk_council_tax_reduction_within_bill",
         "uk_stage_frs_take_up_signal",
@@ -1313,6 +1315,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_council_tax_band_domain",
             "uk_council_tax_reduction_within_bill",
             "uk_geography_ladder",
+            "uk_high_value_copy_area_mapping_integrity",
             "uk_local_authority_enum_domain",
             "uk_ons_household_type_enum_domain",
             "uk_spi_copy_area_mapping_integrity",
@@ -1413,10 +1416,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "c36f331f5c90e77c89567a76ef86a2c98fa62c1b47a48ce0479ee73820a76b8c"
+            "0746530357cfafd3fb3793fd5466c2894919de590433aba527032ce871bfd9c1"
         ),
         "policy_sha256": (
-            "ac3c00737a6c90b0c112e136e2f7cb683c7484e5130faa6515e24a9ac66d2a14"
+            "aa0e4622597dabdf00746da9d6c8edf8872828214b0bf3aff846c816f6e56443"
         ),
     },
     "calibration_seam": {

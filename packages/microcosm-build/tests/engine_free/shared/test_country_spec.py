@@ -1732,6 +1732,7 @@ class TestUKGatesManifest:
             # council-tax reductions within its bill once they are localised.
             "uk_atomic_area_mapping_integrity",
             "uk_spi_copy_area_mapping_integrity",
+            "uk_high_value_copy_area_mapping_integrity",
             "uk_copy_area_agreement",
             "uk_council_tax_reduction_within_bill",
             "uk_stage_property_purchases_fit",
@@ -1883,6 +1884,7 @@ class TestUKGatesManifest:
             "uk_stage_area_home_values_ranking",
             "uk_atomic_area_mapping_integrity",
             "uk_spi_copy_area_mapping_integrity",
+            "uk_high_value_copy_area_mapping_integrity",
             "uk_copy_area_agreement",
             "uk_council_tax_reduction_within_bill",
             "uk_stage_property_purchases_fit",

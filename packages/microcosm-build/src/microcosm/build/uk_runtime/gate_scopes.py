@@ -75,10 +75,12 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_area_home_values_ranking",
     # The spine geography gates (microcosm#931): the area draw's mapping
     # integrity at the assembled boundary, which closes after area_brma; the
-    # SPI-copy area stage's, and each later copy's agreement with its parent
-    # on the areas, at the transferred boundary, after spi_copy_areas.
+    # SPI-copy area stage's and the high-value copies', and each later copy's
+    # agreement with its parent on the areas, at the transferred boundary,
+    # after spi_copy_areas and high_value_home_support.
     "uk_atomic_area_mapping_integrity",
     "uk_spi_copy_area_mapping_integrity",
+    "uk_high_value_copy_area_mapping_integrity",
     "uk_copy_area_agreement",
     # Each household's council-tax reductions within its bill at the
     # transferred boundary, outside Northern Ireland (microcosm#931):

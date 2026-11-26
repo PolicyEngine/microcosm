@@ -5236,14 +5236,18 @@ def _atomic_mapping_integrity_gate(
     the phase's frame holds the areas and ladders that binding gives
     (microcosm#931).
 
-    The spine's area draw (``atomic_area_assign``) and its SPI-copy area stage
-    (``spi_copy_areas``) validate every ladder they draw through the shared
-    operator and refuse to finish unless it passes, recording the outcome,
-    its scope, the definition's SHA-256 and each support's. The record shows
-    only what the stage wrote, so this check holds three things:
+    The spine's area draw (``atomic_area_assign``), its SPI-copy area stage
+    (``spi_copy_areas``) and its high-value support stage
+    (``high_value_home_support``, whose copies take their own areas) validate
+    every ladder they draw through the shared operator and refuse to finish
+    unless it passes, recording the outcome, its scope, the definition's
+    SHA-256 and each support's. The first two keep the record at the top of
+    their receipt; the high-value stage keeps it under one key of its receipt,
+    beside the split's, which the gate names as ``evidence_record``. The record
+    shows only what the stage wrote, so this check holds three things:
 
     - the record: the outcome is one the gate accepts (``accepted_outcomes``,
-      by default ``pass``; the copy stage records ``not_run`` on a frame
+      by default ``pass``; the copy stages record ``not_run`` on a frame
       without a copy), and the scope is the declared ``validation_scope``;
     - the binding: the record's ``definition_sha256`` is the one
       ``geography``, the spine's geography block, gives, and its
@@ -5284,7 +5288,18 @@ def _atomic_mapping_integrity_gate(
         failures.append(f"{stage}: {check}: support_systems is not a list.")
         declared_systems = ()
     systems = sorted(declared_systems)
-    validation = evidence.get("validation")
+    record: Mapping[str, object] = evidence
+    record_key = parameters.get("evidence_record")
+    if record_key is not None:
+        nested = evidence.get(str(record_key))
+        if isinstance(nested, Mapping):
+            record = nested
+        else:
+            failures.append(
+                f"{stage}: {check}: the receipt carries no {record_key} record."
+            )
+            record = {}
+    validation = record.get("validation")
     outcome = validation.get("outcome") if isinstance(validation, Mapping) else None
     if not isinstance(validation, Mapping):
         failures.append(f"{stage}: {check}: the receipt carries no validation.")
@@ -5298,10 +5313,10 @@ def _atomic_mapping_integrity_gate(
             failures.append(
                 f"{stage}: {check}: the validation's scope is not the declared scope."
             )
-    definition = evidence.get("definition_sha256")
+    definition = record.get("definition_sha256")
     if not _is_sha256(definition):
         failures.append(f"{stage}: {check}: definition_sha256 is not a SHA-256 digest.")
-    recorded = evidence.get("support_sha256")
+    recorded = record.get("support_sha256")
     if (
         not isinstance(recorded, Mapping)
         or sorted(str(system) for system in recorded) != systems

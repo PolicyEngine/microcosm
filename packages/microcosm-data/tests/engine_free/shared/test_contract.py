@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "98c07ec5d3b762c13b30a602d3ecfa3d9a4d145ddf0772fad1b3105275be9ca1"
+    "8c669751b7609bcd824f1c95c939d5d6704ad5264262bf1caaeba43cbcb2f361"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "dd2c228a47f19afd194736dc0bbb94f0e2b7b490e90555ff681aca068a015e6d"
+    "3d16db095eebf504005002d7fc41f5d3f703c20da79c6fdf18adb2dc71b78f95"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "2c130c179f68dea5fcd5751ae0a82508758b05285f2775dd3b0100ad8e03ce19"
+    "4ae5ca9355d77f3ebb7801d81d9c55701e546d43ae887d9a7cb3e5bc5022a1e4"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "7906286f9ca7eacea56276d2f63f37746031866c6edd8e5c29adbd3749e90e52"
@@ -375,6 +375,11 @@ UK_GATE_BATTERY_ENTRIES = {
     # The spine geography gates (microcosm#931).
     "uk_atomic_area_mapping_integrity": ("stage_health", "assembled", None),
     "uk_spi_copy_area_mapping_integrity": ("stage_health", "transferred", None),
+    "uk_high_value_copy_area_mapping_integrity": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_copy_area_agreement": ("stage_health", "transferred", None),
     "uk_council_tax_reduction_within_bill": ("stage_health", "transferred", None),
     "uk_stage_frs_take_up_signal": (
@@ -1497,6 +1502,7 @@ def _gate_battery_payload(
         "uk_stage_aps_occupation_fit": "aps_occupation",
         "uk_atomic_area_mapping_integrity": "atomic_area_assign",
         "uk_spi_copy_area_mapping_integrity": "spi_copy_areas",
+        "uk_high_value_copy_area_mapping_integrity": "high_value_home_support",
         "uk_copy_area_agreement": "cgt_residential_split",
         "uk_council_tax_reduction_within_bill": "council_tax_localise",
         "uk_stage_frs_take_up_signal": "frs_take_up",

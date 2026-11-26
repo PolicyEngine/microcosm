@@ -3089,6 +3089,7 @@ def test_the_stage_health_binding_reads_the_frame_for_its_four_frame_checks_only
         "uk_atomic_area_mapping_integrity",
         "uk_copy_area_agreement",
         "uk_council_tax_reduction_within_bill",
+        "uk_high_value_copy_area_mapping_integrity",
         "uk_spi_copy_area_mapping_integrity",
         "uk_stage_spi_income_band_donors_support",
     ]
@@ -3132,6 +3133,7 @@ def test_the_copy_area_check_reads_the_phase_frame_and_the_new_keys_route() -> N
         "accepted_outcomes",
         "validation_scope",
         "support_systems",
+        "evidence_record",
         "columns_by_copy_layer",
         "regions",
         "maximum_sources_at_cap",

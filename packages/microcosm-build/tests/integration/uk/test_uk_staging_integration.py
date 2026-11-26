@@ -28,8 +28,8 @@ FIXTURE = ROOT / "packages/microcosm-graph/tests/fixtures/parity/uk_spine/source
 DRIVER = ROOT / "tools/build_uk_frs_spine.py"
 SEED = 42
 RUN_ID = "ci-uk-smoke-full-s42"
-#: The spine gates microcosm#931 registers or moves: the area draw's and the
-#: SPI-copy area stage's mapping integrity, each later copy's agreement with
+#: The spine gates microcosm#931 registers or moves: the area draw's, the
+#: SPI-copy area stage's and the high-value copies' mapping integrity, each later copy's agreement with
 #: its parent on the areas and the council tax, each household's council-tax
 #: reductions within its bill once the council tax is localised, the
 #: local-authority and BRMA engine domains, the geography ladder, the area
@@ -37,6 +37,7 @@ RUN_ID = "ci-uk-smoke-full-s42"
 _SPINE_GEOGRAPHY_GATES = (
     "uk_atomic_area_mapping_integrity",
     "uk_spi_copy_area_mapping_integrity",
+    "uk_high_value_copy_area_mapping_integrity",
     "uk_copy_area_agreement",
     "uk_council_tax_reduction_within_bill",
     "uk_local_authority_enum_domain",

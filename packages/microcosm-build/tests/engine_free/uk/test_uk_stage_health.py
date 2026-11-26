@@ -4516,12 +4516,21 @@ def _toy_area_runs(clones: int) -> dict:
         supports=payloads,
     )
     copied = copies(with_invented_support_channel(brma))
+    copy_record = copies.checkpoint_metadata()["evidence"]
     return {
         "placed": placed,
         "draw": draw.checkpoint_metadata()["evidence"],
         "brma": brma,
         "copied": copied,
-        "copies": copies.checkpoint_metadata()["evidence"],
+        "copies": copy_record,
+        # The high-value stage keeps its area record under copy_areas, beside
+        # the split's; the copy stage's record, of the same shape, stands in.
+        "high_value": {
+            "stage": "high_value_home_support",
+            "copy_areas": {
+                key: value for key, value in copy_record.items() if key != "stage"
+            },
+        },
         "supports": payloads,
         "geography": uk_spine_geography_binding(
             payloads, register=UK_SYNTHETIC_SUPPORT_REGISTER
@@ -4530,11 +4539,17 @@ def _toy_area_runs(clones: int) -> dict:
 
 
 #: Each area stage's frame and receipt in a toy run, and the parameters its
-#: gate adds: the copy stage's accepts the not_run it records on a frame
-#: without a copy.
+#: gate adds: the copy stages' accept the not_run they record on a frame
+#: without a copy, and the high-value stage's reads its record under
+#: copy_areas.
 _AREA_STAGES = {
     "atomic_area_assign": ("placed", "draw", {}),
     "spi_copy_areas": ("copied", "copies", {"accepted_outcomes": ["pass", "not_run"]}),
+    "high_value_home_support": (
+        "copied",
+        "high_value",
+        {"accepted_outcomes": ["pass", "not_run"], "evidence_record": "copy_areas"},
+    ),
 }
 
 
@@ -4825,7 +4840,11 @@ def test_the_copy_stage_may_accept_a_record_without_copies() -> None:
 
 @pytest.mark.parametrize(
     "gate_id",
-    ["uk_atomic_area_mapping_integrity", "uk_spi_copy_area_mapping_integrity"],
+    [
+        "uk_atomic_area_mapping_integrity",
+        "uk_spi_copy_area_mapping_integrity",
+        "uk_high_value_copy_area_mapping_integrity",
+    ],
 )
 def test_the_packaged_mapping_gates_read_their_binding_through_the_battery(
     gate_id,
@@ -5230,17 +5249,30 @@ def test_the_packaged_mapping_gates_read_the_area_stages_records() -> None:
     from microcosm.build.atomic_geography import ATOMIC_GEOGRAPHY_VALIDATION_SCOPE
     from microcosm.build.uk_runtime import spine_geography
     from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+    from microcosm.build.uk_runtime.high_value_home_support import (
+        HIGH_VALUE_SUPPORT_STAGE_NAME,
+    )
 
     base = _packaged_parameters("uk_atomic_area_mapping_integrity")
     copies = _packaged_parameters("uk_spi_copy_area_mapping_integrity")
+    high_value = _packaged_parameters("uk_high_value_copy_area_mapping_integrity")
     assert base["stage"] == spine_geography.ATOMIC_AREA_ASSIGN_STAGE_NAME
     assert copies["stage"] == spine_geography.SPI_COPY_AREAS_STAGE_NAME
-    for parameters in (base, copies):
+    assert high_value["stage"] == HIGH_VALUE_SUPPORT_STAGE_NAME
+    for parameters in (base, copies, high_value):
         assert parameters["check"] == "atomic_mapping_integrity"
         assert parameters["validation_scope"] == ATOMIC_GEOGRAPHY_VALIDATION_SCOPE
         assert tuple(parameters["support_systems"]) == SYSTEMS
     assert "accepted_outcomes" not in base
-    assert copies["accepted_outcomes"] == ["pass", spine_geography._CHECKS_NOT_RUN]
+    for parameters in (copies, high_value):
+        assert parameters["accepted_outcomes"] == [
+            "pass",
+            spine_geography._CHECKS_NOT_RUN,
+        ]
+    # The high-value stage alone keeps its record under one key of its receipt,
+    # the key its result writes it under.
+    assert "evidence_record" not in base and "evidence_record" not in copies
+    assert high_value["evidence_record"] == "copy_areas"
 
     # On the area draw's toy frame, with the geography block and supports.
     run = _toy_area_runs(2)
@@ -5270,6 +5302,28 @@ def test_the_packaged_mapping_gates_read_the_area_stages_records() -> None:
             "uk_atomic_area_mapping_integrity", {**run["draw"], "validation": not_run}
         )
     )
+    # The high-value gate reads the record under copy_areas: a pass or not_run
+    # there passes, and a record at the receipt's top, or none, fails closed.
+    record = run["high_value"]["copy_areas"]
+    assert _passed(
+        packaged("uk_high_value_copy_area_mapping_integrity", run["high_value"])
+    )
+    assert _passed(
+        packaged(
+            "uk_high_value_copy_area_mapping_integrity",
+            {**run["high_value"], "copy_areas": {**record, "validation": not_run}},
+        )
+    )
+    for receipt in (
+        {**record, "stage": HIGH_VALUE_SUPPORT_STAGE_NAME},
+        {"stage": HIGH_VALUE_SUPPORT_STAGE_NAME},
+    ):
+        result = packaged("uk_high_value_copy_area_mapping_integrity", receipt)
+        assert not _passed(result)
+        assert (
+            "high_value_home_support: atomic_mapping_integrity: the receipt carries "
+            "no copy_areas record."
+        ) in result.failures
 
 
 def test_the_packaged_copy_gate_holds_each_later_layer_on_the_copy_stages_columns() -> (

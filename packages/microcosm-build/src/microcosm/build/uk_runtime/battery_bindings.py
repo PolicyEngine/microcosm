@@ -2322,12 +2322,15 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # The spine geography checks (microcosm#931): the area home
                 # values' knots level, beside the ranking check's keys above;
                 # the mapping-integrity check's accepted outcomes, validation
-                # scope and support systems; and each copy layer's columns the
-                # copy area check holds to the copy's parent.
+                # scope and support systems, and the receipt key that holds a
+                # stage's area record where it is not the receipt's top (the
+                # high-value copies' copy_areas); and each copy layer's
+                # columns the copy area check holds to the copy's parent.
                 "knots_level",
                 "accepted_outcomes",
                 "validation_scope",
                 "support_systems",
+                "evidence_record",
                 "columns_by_copy_layer",
                 # The council_tax_reduction_within_bill check (microcosm#931):
                 # the bill, the household and person reduction columns it
