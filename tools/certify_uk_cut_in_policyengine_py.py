@@ -256,7 +256,11 @@ def read_published_build(
             fresh=True,
         )
     except ValueError as error:
-        raise CertifyError(str(error)) from error
+        # A listing refusal names releases.json; a parse error does not.
+        message = str(error)
+        if "releases.json" not in message:
+            message = f"releases.json at main in {BUILD_REPO}: {message}"
+        raise CertifyError(message) from error
     except Exception as error:
         # Anything but an absent record: the Hub could not be asked.
         raise CertifyError(
@@ -913,16 +917,25 @@ def fetch_regional_microdata(
     """
 
     api = hub_api() if api is None else api
+
+    def download(repo: str, file_path: str, revision: str) -> Path:
+        try:
+            return Path(
+                api.hf_hub_download(
+                    repo_id=repo,
+                    filename=file_path,
+                    repo_type="dataset",
+                    revision=revision,
+                )
+            )
+        except Exception as error:
+            raise CertifyError(
+                f"could not download {file_path} at {revision} from {repo}: {error}"
+            ) from error
+
     with timed_step("regional-microdata", timings) as record:
         manifest = json.loads(
-            Path(
-                api.hf_hub_download(
-                    repo_id=BUILD_REPO,
-                    filename=build.manifest_path,
-                    repo_type="dataset",
-                    revision=build.commit,
-                )
-            ).read_text()
+            download(BUILD_REPO, build.manifest_path, build.commit).read_text()
         )
         microdata = {
             name: artifact
@@ -939,14 +952,7 @@ def fetch_regional_microdata(
             pins[name] = artifact_pin(build, name, artifact)
         paths: dict[str, Path] = {}
         for name, (repo, file_path, revision) in pins.items():
-            path = Path(
-                api.hf_hub_download(
-                    repo_id=repo,
-                    filename=file_path,
-                    repo_type="dataset",
-                    revision=revision,
-                )
-            )
+            path = download(repo, file_path, revision)
             digest = hashlib.sha256()
             with path.open("rb") as handle:
                 for chunk in iter(lambda: handle.read(1 << 22), b""):
@@ -1446,6 +1452,9 @@ def certify(args: argparse.Namespace) -> int:
                 dense = read_published_build(
                     kept.release, kept.build, commit=kept.commit
                 )
+    # Before the regional microdata is downloaded: a refused resume must not
+    # download it first.
+    check_resumed_pins(worktree, replay_paths, national, dense)
     flags = regional_flags(args, record, dense)
     regional_summary = shlex.join(flags)
     if dense is not None:
@@ -1489,8 +1498,6 @@ def certify(args: argparse.Namespace) -> int:
         and dense.commit != national.commit
         else None
     )
-
-    check_resumed_pins(worktree, replay_paths, national, dense)
 
     plan = {
         "base_ref": base_ref,

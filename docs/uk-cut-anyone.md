@@ -408,8 +408,12 @@ which the script asks the Hub for: the last commit of the build's
 `release_manifest.json` on `main`, since a build folder never changes. To pin
 another commit that holds the folder, such as the `commit` that
 `microcosm-publish-release-build` printed, pass `--national-data-commit` or
-`--dense-data-commit` (a full 40-character commit). `--keep-regional-release`
-reads the local-area build at the folder and commit the current bundle pins.
+`--dense-data-commit`: a full 40-character commit in `main`'s history, since a
+commit on another ref may hold an edited copy of the folder.
+`--keep-regional-release` reads the local-area build at the folder and commit
+the current bundle pins. `--resume-worktree` refuses a worktree whose modified
+bundle pins other commits than this run's, because the first attempt's
+constant rewrite already moved the constants to its own.
 
 Each heavy step first checks the host. The disk floor defaults to 55 GB
 (`--min-free-gb`). There is no load limit unless you set one with
