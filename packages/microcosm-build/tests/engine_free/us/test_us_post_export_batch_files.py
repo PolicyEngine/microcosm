@@ -302,7 +302,9 @@ def test_the_merged_baseline_pass_raises_a_changed_batch_file_without_falling_ba
         capsys.readouterr()
         with pytest.raises(builder.PostExportBatchFileError, match="SHA-256"):
             scorer.open_consumer("first_consumer", _MERGED_PLANS["first_consumer"])
-        assert "merged baseline plan failed" not in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "merged baseline plan failed" not in out
+        assert "first_consumer baseline plan" not in out
         assert not scorer._merged_baseline_failed
     finally:
         scorer.close()
