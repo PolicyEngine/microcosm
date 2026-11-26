@@ -5,12 +5,12 @@ Each profiled stage gets one record in ``stage_profile.json``.
 ``entry_rss_bytes`` and ``exit_rss_bytes`` are read by ``current_rss_bytes``
 as the stage starts and ends. That is current RSS from ``/proc/self/statm``
 where it is readable, and otherwise current RSS from one ``ps`` call. Where
-running ``ps`` raises ``OSError``, exits non-zero or times out, the reading is
-the process's lifetime peak RSS from ``getrusage`` instead of its current RSS.
-That happens on Linux without ``/proc``, because ``ps`` reads ``/proc``
-there, and in sandboxes that deny ``ps``. Where no ``ps`` is on ``PATH``, or
-it prints something other than a positive number, the reading raises
-``RuntimeError``.
+``ps`` gives no usable reading, the reading is the process's lifetime peak RSS
+from ``getrusage`` instead of its current RSS. "No usable reading" means no
+``ps`` is on ``PATH``; or running it raises ``OSError``, exits non-zero or
+times out; or it prints something other than a positive number. That happens
+on Linux without ``/proc``, because ``ps`` reads ``/proc`` there, in images
+that ship without ``ps``, and in sandboxes that deny ``ps``.
 
 ``peak_rss_bytes`` is measured in one of two ways, and ``peak_rss_source``
 says which:
@@ -18,6 +18,8 @@ says which:
 - Where ``/proc/self/statm`` is readable (Linux), a background thread reads
   current RSS every ``sample_interval_seconds``. The peak is the largest of
   those samples and the entry and exit readings (``"sampled_current_rss"``).
+  Each sample is taken by ``current_rss_bytes``, so if ``/proc`` stops being
+  readable during the stage, a sample can come from ``ps`` or ``getrusage``.
   If a sample fails, sampling stops for the rest of the stage and
   ``sampling_error`` says why, so the peak covers only the samples taken
   before that.
@@ -92,9 +94,10 @@ def current_rss_bytes() -> int:
 
     Linux exposes current RSS through procfs. macOS does not, so the portable
     fallback asks ``ps`` for the current process's RSS in KiB. Both report
-    current RSS. Where running ``ps`` raises ``OSError``, exits non-zero or
-    times out, this returns the lifetime peak from ``resource.getrusage``
-    instead, which is at least the current RSS.
+    current RSS. Where ``ps`` gives no usable reading (it is not on ``PATH``;
+    running it raises ``OSError``, exits non-zero or times out; or its output
+    is not a positive number), this returns the lifetime peak from
+    ``resource.getrusage`` instead, which is at least the current RSS.
     """
 
     procfs_rss_bytes = _read_procfs_current_rss_bytes()
@@ -102,11 +105,12 @@ def current_rss_bytes() -> int:
         return procfs_rss_bytes
     try:
         return _read_ps_current_rss_bytes()
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, _PsRssUnavailableError):
         # Some sandboxed macOS workers deny process inspection even for the
-        # current PID.  Keep profiling non-fatal there; ru_maxrss is a
-        # lifetime high-water mark rather than current RSS, but remains a
-        # truthful conservative RSS observation.
+        # current PID, Linux ps fails without /proc, and slim images ship no
+        # ps at all. Keep profiling non-fatal there; ru_maxrss is a lifetime
+        # high-water mark rather than current RSS, but remains a truthful
+        # conservative RSS observation.
         return _read_resource_peak_rss_bytes()
 
 
@@ -128,10 +132,16 @@ def _read_procfs_current_rss_bytes() -> int | None:
         return None
 
 
+class _PsRssUnavailableError(RuntimeError):
+    """``ps`` is missing or printed no positive RSS."""
+
+
 def _read_ps_current_rss_bytes() -> int:
     ps_path = shutil.which("ps")
     if ps_path is None:
-        raise RuntimeError("Unable to read current RSS: ps executable not found")
+        raise _PsRssUnavailableError(
+            "Unable to read current RSS: ps executable not found"
+        )
     completed = subprocess.run(
         [ps_path, "-o", "rss=", "-p", str(os.getpid())],
         check=True,
@@ -142,11 +152,13 @@ def _read_ps_current_rss_bytes() -> int:
     try:
         rss_kib = int(completed.stdout.strip())
     except ValueError as error:
-        raise RuntimeError(
+        raise _PsRssUnavailableError(
             f"Unable to parse current RSS from ps output: {completed.stdout!r}"
         ) from error
     if rss_kib <= 0:
-        raise RuntimeError(f"ps reported non-positive current RSS: {rss_kib} KiB")
+        raise _PsRssUnavailableError(
+            f"ps reported non-positive current RSS: {rss_kib} KiB"
+        )
     return rss_kib * 1024
 
 
