@@ -10,6 +10,8 @@ exercise the two refusals that stand in for the missing ``baseline`` branch.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -413,7 +415,7 @@ def test_jct_reform_refuses_moved_behavioral_responses_on_policyengine_us(
     with pytest.raises(
         ValueError,
         match=(
-            rf"{reform_spec.measure}.* off baseline at {builder.PERIOD}: "
+            rf"{re.escape(reform_spec.measure)}.* off baseline at {builder.PERIOD}: "
             r"gov\.simulation\.labor_supply_responses\.elasticities\.income\."
         ),
     ):
@@ -454,7 +456,7 @@ def test_jct_reform_batch_refuses_a_baseline_branch_reader_on_policyengine_us(
     with pytest.raises(
         ValueError,
         match=(
-            rf"{reform_spec.measure}.*household batch 1/1 computed "
+            rf"{re.escape(reform_spec.measure)}.*household batch 1/1 computed "
             rf"medicaid_slcsp_state_denominator@{builder.PERIOD}\."
         ),
     ):
