@@ -1,16 +1,17 @@
-"""A checkpointed base run hashes its inputs and the builder's code once.
+"""A checkpointed base run hashes its input files once.
 
 ``tools/build_us_puf_support_base.py --stage all`` starts one step process
 per pipeline step, and each step process opens the checkpoint directory with
 its own run config, which holds the SHA-256 of the PUF H5, the PUF CSV and
 the builder's source files. The parent computes that run config once,
 compares it with the one locked in the checkpoint directory before any step
-process starts, and passes its digests to each step process in the
-environment variable ``MICROCOSM_US_BASE_PARENT_DIGESTS``: each file's digest
-under its resolved path, and the source digest with the repository root and
-tool file it covers. A step process uses a digest only for the same path,
-and only when the process that set the variable is its parent; it hashes
-everything else itself.
+process starts, and passes each input file's digest, under its resolved
+path, to each step process in the environment variable
+``MICROCOSM_US_BASE_PARENT_DIGESTS``. A step process uses a digest only for
+the same path, and only when the process that set the variable is its
+parent; it hashes every other file itself. It always hashes the builder's
+source files itself, so a change to them after the parent started stops the
+next step.
 
 Most of these tests replace ``subprocess.run`` with a stand-in that records
 each step command and environment, then compute each step's run config in
@@ -56,19 +57,17 @@ def builder() -> ModuleType:
 
 class _Hashing:
     """Records each file the tool's ``_sha256`` hashes, still hashing it, and
-    each ``builder_code_identity`` call.
+    counts ``builder_code_identity`` calls.
 
     Hashing inside other modules (the ladder loader, for one) is not
-    recorded.
-
-    The builder's source digest is a stand-in, ``source_sha256``, so a test
-    can change the builder's code by changing it; ``code_identity_calls``
-    holds the digest each call was given, or ``None`` when it hashed.
+    recorded. ``builder_code_identity`` is a stand-in with the real one's
+    arguments that returns ``source_sha256`` as the builder's source digest,
+    so a test can change the builder's code by changing it.
     """
 
     def __init__(self, builder: ModuleType, monkeypatch: pytest.MonkeyPatch):
         self.files: list[Path] = []
-        self.code_identity_calls: list[str | None] = []
+        self.code_identity_calls = 0
         self.source_sha256 = "c" * 64
         hash_file = builder._sha256
 
@@ -81,15 +80,12 @@ class _Hashing:
             *,
             tool_path: Path,
             distributions: tuple[str, ...],
-            source_sha256: str | None = None,
         ) -> dict[str, object]:
-            self.code_identity_calls.append(source_sha256)
+            self.code_identity_calls += 1
             return {
                 "dependency_versions": {name: "1.0" for name in distributions},
                 "python": "stand-in",
-                "source_sha256": (
-                    self.source_sha256 if source_sha256 is None else source_sha256
-                ),
+                "source_sha256": self.source_sha256,
             }
 
         monkeypatch.setattr(builder, "_sha256", recording_sha256)
@@ -99,7 +95,7 @@ class _Hashing:
 
     def clear(self) -> None:
         self.files.clear()
-        self.code_identity_calls.clear()
+        self.code_identity_calls = 0
 
 
 class _StepProcesses:
@@ -198,7 +194,7 @@ def test_each_step_process_uses_the_parent_s_digests_instead_of_hashing(
     assert sorted(hashing.files) == sorted(
         [inputs.puf_h5.resolve(), inputs.puf_csv.resolve()]
     )
-    assert hashing.code_identity_calls == [None]
+    assert hashing.code_identity_calls == 1
     locked = _locked_run_config(builder, parent)
     assert locked["puf_h5_sha256"] == _sha256(inputs.puf_h5)
     assert locked["puf_source_year_csv_sha256"] == _sha256(inputs.puf_csv)
@@ -213,11 +209,12 @@ def test_each_step_process_uses_the_parent_s_digests_instead_of_hashing(
             config = builder._stage_run_config(step)
             # The step's own resume check accepts the parent's digests.
             builder._open_stage_runtime(step)
-        # Every value of the run config is what the parent locked, and
-        # nothing was hashed again.
+        # Every value of the run config is what the parent locked, and no
+        # input file was hashed again. The builder's sources were, once for
+        # each of the two run configs.
         assert config == locked, step.stage
         assert hashing.files == [], step.stage
-        assert hashing.code_identity_calls == ["c" * 64, "c" * 64], step.stage
+        assert hashing.code_identity_calls == 2, step.stage
 
 
 def test_a_step_process_started_without_digests_hashes_its_inputs(
@@ -236,7 +233,7 @@ def test_a_step_process_started_without_digests_hashes_its_inputs(
     assert sorted(hashing.files) == sorted(
         [inputs.puf_h5.resolve(), inputs.puf_csv.resolve()]
     )
-    assert hashing.code_identity_calls == [None]
+    assert hashing.code_identity_calls == 1
     assert config["puf_h5_sha256"] == _sha256(inputs.puf_h5)
     assert config["puf_source_year_csv_sha256"] == _sha256(inputs.puf_csv)
 
@@ -261,7 +258,6 @@ def test_digests_set_by_a_process_other_than_the_parent_are_not_used(
     assert sorted(hashing.files) == sorted(
         [inputs.puf_h5.resolve(), inputs.puf_csv.resolve()]
     )
-    assert hashing.code_identity_calls == [None]
 
 
 def test_a_step_process_hashes_a_file_the_parent_gave_no_digest_for(
@@ -288,29 +284,6 @@ def test_a_step_process_hashes_a_file_the_parent_gave_no_digest_for(
     assert hashing.files == [other_puf.resolve()]
     assert config["puf_h5_sha256"] == _sha256(other_puf)
     assert config["puf_source_year_csv_sha256"] == _sha256(inputs.puf_csv)
-
-
-def test_a_source_digest_for_another_builder_file_is_not_used(
-    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    inputs = _write_inputs(tmp_path)
-    hashing = _Hashing(builder, monkeypatch)
-    steps = _StepProcesses(builder, monkeypatch)
-    builder._run_staged_all(builder._parse_args(_parent_argv(tmp_path, inputs)))
-    command, environment = steps.started[1]
-    hashing.clear()
-
-    for key, elsewhere in (
-        ("tool_path", str(tmp_path / "elsewhere" / "build.py")),
-        ("repo_root", str(tmp_path / "elsewhere")),
-    ):
-        payload = json.loads(environment[_DIGESTS_VARIABLE])
-        payload["builder_source_sha256"][key] = elsewhere
-        with _as_step_process(monkeypatch, {_DIGESTS_VARIABLE: json.dumps(payload)}):
-            builder._stage_run_config(builder._parse_args(_step_argv(command)))
-
-    assert hashing.code_identity_calls == [None, None]
-    assert hashing.files == []
 
 
 @pytest.mark.parametrize("changed", ("puf_h5", "puf_csv", "builder_source"))
@@ -346,6 +319,28 @@ def test_a_resume_after_a_changed_input_or_builder_source_is_refused(
             builder._open_stage_runtime(builder._parse_args(_step_argv(command)))
 
 
+def test_a_builder_source_change_during_the_run_stops_the_next_step(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A step process hashes the builder's sources itself, so a git pull or
+    # an edit in the checkout after the parent started is refused by the
+    # next step rather than run under the code identity locked at the start.
+    inputs = _write_inputs(tmp_path)
+    hashing = _Hashing(builder, monkeypatch)
+    steps = _StepProcesses(builder, monkeypatch)
+    builder._run_staged_all(builder._parse_args(_parent_argv(tmp_path, inputs)))
+    command, environment = steps.started[1]
+    hashing.source_sha256 = "d" * 64
+
+    with _as_step_process(monkeypatch, environment):
+        step = builder._parse_args(_step_argv(command))
+        config = builder._stage_run_config(step)
+        with pytest.raises(ValueError, match="run_config differs"):
+            builder._open_stage_runtime(step)
+
+    assert config["builder_code_identity"]["source_sha256"] == "d" * 64
+
+
 def test_the_parent_hashes_its_inputs_whatever_its_own_environment_holds(
     builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -367,7 +362,7 @@ def test_the_parent_hashes_its_inputs_whatever_its_own_environment_holds(
     assert sorted(hashing.files) == sorted(
         [inputs.puf_h5.resolve(), inputs.puf_csv.resolve()]
     )
-    assert hashing.code_identity_calls == [None]
+    assert hashing.code_identity_calls == 1
     assert _locked_run_config(builder, builder._parse_args(argv))[
         "puf_h5_sha256"
     ] == _sha256(inputs.puf_h5)
@@ -379,14 +374,13 @@ def test_the_parent_hashes_its_inputs_whatever_its_own_environment_holds(
         assert passed["parent_pid"] == os.getpid()
 
 
-#: Run in a real step process: load the builder, refuse any hashing, and
-#: print the step's run config.
+#: Run in a real step process: load the builder, refuse any input file
+#: hashing, and print the step's run config. The builder's source files are
+#: still hashed, by the real builder_code_identity.
 _STEP_PROBE = """
 import importlib.util
 import json
 import sys
-
-from microcosm.build import code_identity
 
 spec = importlib.util.spec_from_file_location("base_tool_step_probe", sys.argv[1])
 builder = importlib.util.module_from_spec(spec)
@@ -394,11 +388,10 @@ spec.loader.exec_module(builder)
 
 
 def refuse_hashing(*_args, **_kwargs):
-    raise AssertionError("the step process hashed a file")
+    raise AssertionError("the step process hashed an input file")
 
 
 builder._sha256 = refuse_hashing
-code_identity._source_sha256 = refuse_hashing
 config = builder._stage_run_config(builder._parse_args(sys.argv[2:]))
 print("RUN_CONFIG " + json.dumps(config))
 """
@@ -457,11 +450,6 @@ def _uppercase_file_digest(payload: dict, puf_path: str) -> object:
     return payload
 
 
-def _short_source_digest(payload: dict, _puf_path: str) -> object:
-    payload["builder_source_sha256"]["sha256"] = "a" * 63
-    return payload
-
-
 def _unknown_key(payload: dict, _puf_path: str) -> object:
     payload["block_ladder_sha256"] = {}
     return payload
@@ -487,7 +475,6 @@ def _a_list(_payload: dict, _puf_path: str) -> object:
         _relative_file_path,
         _short_file_digest,
         _uppercase_file_digest,
-        _short_source_digest,
         _unknown_key,
         _later_schema_version,
         _parent_pid_as_text,
