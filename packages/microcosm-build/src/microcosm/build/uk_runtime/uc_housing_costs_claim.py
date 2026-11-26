@@ -36,6 +36,14 @@ flag leaves:
 
 María signed these choices on 25 November 2026 (microcosm#1710), the day she
 ruled that only linked claims set the flag.
+
+One limit (Vahid's review of microcosm#1718): the statement covers one
+assessment period, so its zero can be temporary, for example in a gap between
+tenancies or before DWP has verified the housing costs, and the flag then
+removes the element for the whole year. That is the one way the stage can
+err, since it never adds an element. The calibration binds DWP's counts of UC
+households paid the element by tenure, so it still fits those totals, but it
+can't give the element back to a family the flag took it from.
 """
 
 from __future__ import annotations
