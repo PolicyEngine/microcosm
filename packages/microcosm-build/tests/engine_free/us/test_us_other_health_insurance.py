@@ -189,19 +189,14 @@ def test_modeled_premiums_batch_by_household_and_realign_tax_units(
     )
     frame.table("person")["person_tax_unit_id"] = person_tax_unit_ids
     calls: list[np.ndarray] = []
+    engines: list[_StandInPremiumEngine] = []
 
-    class IdPremiumEngine:
-        def materialize(
-            self,
-            batch: Frame,
-            variables: list[str],
-            *,
-            period: int,
-        ) -> dict[str, np.ndarray]:
-            assert period == 2024
-            assert variables == list(
-                module.US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES
-            )
+    class IdPremiumEngine(_StandInPremiumEngine):
+        def __init__(self) -> None:
+            super().__init__()
+            engines.append(self)
+
+        def premiums(self, batch: Frame) -> dict[str, np.ndarray]:
             tax_unit_ids = batch.table("tax_unit")["tax_unit_id"].to_numpy()
             calls.append(tax_unit_ids.copy())
             factor = tax_unit_ids.astype(np.float64) - 200.0
@@ -222,6 +217,10 @@ def test_modeled_premiums_batch_by_household_and_realign_tax_units(
 
     assert [len(call) for call in calls] == [3, 3, 3, 1]
     assert set(np.concatenate(calls)) == set(range(201, 211))
+    # One adapter for the stage; each batch engine was released.
+    (engine,) = engines
+    assert len(engine.simulations) == 4
+    assert all(simulation.populations == {} for simulation in engine.simulations)
     expected_modeled = (person_tax_unit_ids - 200.0) * 6.0
     np.testing.assert_allclose(
         result.table("person")[_OTHER],

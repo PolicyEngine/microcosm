@@ -100,10 +100,10 @@ def test_input_loop_refuses_a_batch_engine_that_computed_a_population_aggregate(
 
     message = str(refusal.value)
     assert message.startswith(f"{loop.pass_label} is not batch-invariant"), message
-    assert (
-        f"household batch {batch_label} computed "
-        f"{POPULATION_AGGREGATE_PROBE_VARIABLE}@{builder.PERIOD}"
-    ) in message
+    assert f"household batch {batch_label} computed " in message
+    # The probe's variable reads the state average cost index too, so the
+    # refusal lists both.
+    assert f"{POPULATION_AGGREGATE_PROBE_VARIABLE}@{builder.PERIOD}" in message
     # The refusal stops the first batch, after its check and its release.
     assert len(recorder.engines) == 1
     assert engine_released(recorder.engines[0])
@@ -231,11 +231,14 @@ def test_other_health_insurance_stage_writes_mains_tables(builder, monkeypatch) 
             maximum_microsim_batch_size=5,
         )
 
+    def main_premium_loop(frame, *, refuse_population_aggregates, **options):
+        # Main's loop has no refusal; the stage passes its default through.
+        assert refuse_population_aggregates is None
+        return main_baseline.main_materialize_modeled_premiums(frame, **options)
+
     actual = run_stage()
     monkeypatch.setattr(
-        other_health_insurance,
-        "_materialize_modeled_premiums",
-        main_baseline.main_materialize_modeled_premiums,
+        other_health_insurance, "_materialize_modeled_premiums", main_premium_loop
     )
     expected = run_stage()
 

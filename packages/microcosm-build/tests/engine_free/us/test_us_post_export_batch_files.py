@@ -157,8 +157,8 @@ def _expected_batches(builder, frame: Frame, batch_size: int) -> list[Frame]:
     return [
         frame
         if len(positions) == frame.n("household")
-        else builder._select_households_by_position(frame, positions)
-        for positions in builder._household_position_batches(
+        else builder.select_households_by_position(frame, positions)
+        for positions in builder.household_position_batches(
             frame.n("household"), batch_size
         )
     ]

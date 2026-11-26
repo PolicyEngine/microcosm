@@ -23,6 +23,12 @@ from score_us_release_head_to_head import (
     scored_column_contract,
 )
 
+from microcosm.build.us_runtime.household_batches import (
+    assert_group_entities_nest_in_households,
+    assert_medicaid_claiming_tax_units_local,
+    household_position_batches,
+    select_households_by_position,
+)
 from microcosm.calibrate import score_targets
 from microcosm.frame import Frame
 
@@ -47,7 +53,7 @@ def _score_chunk_household_sliced(
     n_households = base_frame.n("household")
     expected_keys = _spec_keys(chunk_specs)
     slice_batches = tuple(
-        release._household_position_batches(
+        household_position_batches(
             n_households,
             maximum_microsim_batch_size,
         )
@@ -55,8 +61,10 @@ def _score_chunk_household_sliced(
     if not slice_batches:
         raise ValueError(f"{artifact_name} has no households to score.")
     if len(slice_batches) > 1:
-        release._assert_group_entities_nest_in_households(base_frame)
-        release._assert_medicaid_claiming_tax_units_local(base_frame)
+        assert_group_entities_nest_in_households(base_frame)
+        assert_medicaid_claiming_tax_units_local(
+            base_frame, work=release.TARGET_MATERIALIZATION_PASS
+        )
     accumulated_estimates: np.ndarray | None = None
     reference_targets: np.ndarray | None = None
     reference_scales: np.ndarray | None = None
@@ -71,7 +79,7 @@ def _score_chunk_household_sliced(
         slice_frame = (
             base_frame
             if full_slice
-            else release._select_households_by_position(base_frame, positions)
+            else select_households_by_position(base_frame, positions)
         )
         slice_target_frame, slice_registry, slice_compilation = (
             release._materialize_target_frame(
