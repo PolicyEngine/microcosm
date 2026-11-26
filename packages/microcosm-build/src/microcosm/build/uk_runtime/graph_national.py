@@ -114,7 +114,6 @@ from .graph_targets import (
     register_uk_source_codecs,
     registry_from_payload,
     registry_payload,
-    target_geography,
 )
 from .local_rowwise import UKRowwiseNationalRows
 from .measure_simulation import UKMeasureResolver
@@ -134,6 +133,7 @@ from .rowwise_posture import (
     UK_ROWWISE_NATIONAL_POSTURE,
     UKRowwisePosture,
 )
+from .target_sets import uk_target_level
 from .weight_year import uk_dataset_year_frame, uk_weight_projection_factor
 
 NATIONAL_TARGET_TYPE = ArtifactType("microcosm.uk.national-target-registry", 1)
@@ -475,8 +475,9 @@ class _NationalKernel(KernelBase):
         import microcosm.calibrate.artifacts as calibrate_artifacts
         import microcosm.calibrate.matrix as calibrate_matrix
         import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
+        import microcosm.calibrate.target_sets as calibrate_target_sets
 
-        from . import receipt_counts, weighted_integrity
+        from . import receipt_counts, target_sets, weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
 
         implementation = source_hash(
@@ -497,6 +498,11 @@ class _NationalKernel(KernelBase):
             # shared rules (microcosm#1729): an edit to a shared rule must
             # re-key the national problem.
             calibrate_target_loss_rules,
+            # The national problem writes each row's level, which the
+            # declared UK level rule gives (uk/target_sets.json through the
+            # shared target sets, microcosm#1759).
+            calibrate_target_sets,
+            target_sets,
             support_floor_rules,
             # The constraint matrices and their encoding, as the dense kernels
             # hash them (microcosm#1492). Not calibrate.solve: neither the
@@ -873,7 +879,7 @@ def national_target_geography_levels(registry: TargetRegistry) -> dict[str, str]
     """
 
     declared = {
-        spec.to_target().row_name: target_geography(spec)
+        spec.to_target().row_name: uk_target_level(spec)
         for spec in registry.specs
         if spec.metadata.get("geography_level") is not None
         or spec.metadata.get("ledger_geography_level") is not None

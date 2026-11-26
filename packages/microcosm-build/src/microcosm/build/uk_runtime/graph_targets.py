@@ -17,7 +17,7 @@ import pandas as pd
 
 import microcosm.calibrate.artifacts as calibrate_artifacts
 import microcosm.calibrate.matrix as calibrate_matrix
-import microcosm.calibrate.target_selection as calibrate_target_selection
+import microcosm.calibrate.target_sets as calibrate_target_sets
 from microcosm.build import cross_grain
 from microcosm.calibrate import CalibrationHierarchy, TargetRegistry, TargetSpec
 from microcosm.calibrate.artifacts import (
@@ -28,7 +28,7 @@ from microcosm.calibrate.artifacts import (
     encode_problem,
 )
 from microcosm.calibrate.matrix import build_constraint_matrix
-from microcosm.calibrate.target_selection import select_targets
+from microcosm.calibrate.target_sets import select_by_levels
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -54,6 +54,7 @@ from . import (
     ledger_targets,
     local_doctrine,
     support_floor,
+    target_sets,
     target_weights,
 )
 from .full_measure import resolve_uk_full_national_problem
@@ -114,19 +115,14 @@ def registry_from_payload(payload: Mapping) -> TargetRegistry:
 
 
 def target_geography(spec: TargetSpec) -> str:
-    """Resolve explicit metadata without interpreting legacy registry buckets."""
+    """Resolve explicit metadata without interpreting legacy registry buckets.
 
-    metadata = spec.metadata
-    local = metadata.get("geography_level")
-    ledger = metadata.get("ledger_geography_level")
-    if local and ledger and local != ledger:
-        raise ValueError(f"Target {spec.name!r} has contradictory geography levels.")
-    level = local or ledger
-    if level not in {"country", "region", "constituency", "la", "brma"}:
-        raise ValueError(
-            f"Target {spec.name!r} has unsupported geography level {level!r}."
-        )
-    return str(level)
+    The rule is declared in ``uk/target_sets.json`` (microcosm#1759): the
+    level is ``geography_level`` or ``ledger_geography_level``, the two must
+    agree when both are set, and it must be one of the five UK grains.
+    """
+
+    return target_sets.uk_target_level(spec)
 
 
 def _surface_records(frame: pd.DataFrame) -> list[dict]:
@@ -243,8 +239,12 @@ class _TargetKernel(KernelBase):
             measure_simulation,
             support_floor,
             # The selection, the constraint matrices and their encoding, as
-            # the transport kernels hash them (microcosm#1492).
-            calibrate_target_selection,
+            # the transport kernels hash them (microcosm#1492). The selection
+            # and the level rule read uk/target_sets.json through the shared
+            # target sets (microcosm#1759); the file's bytes are in the solve
+            # fingerprint below.
+            calibrate_target_sets,
+            target_sets,
             calibrate_matrix,
             calibrate_artifacts,
             # full_targets takes its exclusion clock from here. Hashed
@@ -438,8 +438,8 @@ class UKFullTargetSelectionKernel(_TargetKernel):
             registry = registry.select(
                 predicate=lambda spec: target_geography(spec) != "brma"
             )
-        selected = select_targets(
-            registry, geography_levels=levels, geography_resolver=target_geography
+        selected = select_by_levels(
+            registry, target_sets.uk_full_level_selection(), levels
         )
         if not len(selected.registry):
             raise ValueError("Full build target selection contains no constraints.")
