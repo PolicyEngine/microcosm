@@ -169,12 +169,16 @@ GEOGRAPHY_STATE = "state"
 GEOGRAPHY_CD = "congressional_district"
 
 
-def _release_tool():
-    """The sibling release tool (``tools/`` is on ``sys.path`` via the ACS tool)."""
+def _filter_rules():
+    """The ledger filter rules the national ``irs_soi`` slice reads.
 
-    import build_us_fiscal_refresh_release as release_tool
+    They moved from ``tools/build_us_fiscal_refresh_release.py`` to the
+    package (microcosm#1728), so this module no longer imports that tool.
+    """
 
-    return release_tool
+    from microcosm.build.us_runtime import ledger_filter_rules
+
+    return ledger_filter_rules
 
 
 # ---------------------------------------------------------------------------
@@ -208,22 +212,22 @@ def soi_materializer_semantics(spec) -> tuple:
     masks.
     """
 
-    tool = _release_tool()
+    rules = _filter_rules()
     metadata = _metadata(spec)
     return (
         spec.family,
         spec.entity,
         spec.filter,
         metadata.get("source_variable", metadata.get("variable")),
-        repr(tool._as_bound(metadata["agi_lower_bound"])),
-        repr(tool._as_bound(metadata["agi_upper_bound"])),
+        repr(rules._as_bound(metadata["agi_lower_bound"])),
+        repr(rules._as_bound(metadata["agi_upper_bound"])),
         metadata.get("taxable_only") == "true",
         metadata.get("filing_status"),
-        tool._soi_eitc_child_count_filter(metadata),
-        tool._soi_requires_positive_eitc_filter(metadata),
+        rules._soi_eitc_child_count_filter(metadata),
+        rules._soi_requires_positive_eitc_filter(metadata),
         metadata.get("itemized_only") == "true",
         metadata.get("measure_mode") == "indicator_sum",
-        tool._unsupported_soi_ledger_filters(metadata),
+        rules._unsupported_soi_ledger_filters(metadata),
     )
 
 
@@ -235,14 +239,14 @@ def soi_concept_identity(spec) -> tuple[str, ...]:
     count separate the Historic Table 2 band rows from the all-income rows.
     """
 
-    tool = _release_tool()
+    rules = _filter_rules()
     metadata = _metadata(spec)
     return (
         str(metadata.get("source_measure_id")),
-        repr(tool._as_bound(metadata["agi_lower_bound"])),
-        repr(tool._as_bound(metadata["agi_upper_bound"])),
+        repr(rules._as_bound(metadata["agi_lower_bound"])),
+        repr(rules._as_bound(metadata["agi_upper_bound"])),
         str(metadata.get("filing_status", "")).lower(),
-        str(tool._soi_eitc_child_count_filter(metadata)),
+        str(rules._soi_eitc_child_count_filter(metadata)),
     )
 
 

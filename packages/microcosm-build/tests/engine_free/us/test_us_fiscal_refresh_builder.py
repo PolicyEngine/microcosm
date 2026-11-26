@@ -4095,7 +4095,9 @@ def test_restated_eitc_child_upper_bounds_are_refused_outright() -> None:
         builder._assert_supported_ledger_filter_metadata(specs[:1])
 
 
-def test_restated_eitc_child_comparison_never_guesses_an_upper_reading() -> None:
+def test_restated_eitc_child_comparison_never_guesses_an_upper_reading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Dropping ``upper`` from the refused sides must not reopen a guess.
 
     The comparison reads only lower and exact restatements. If a later edit
@@ -4105,8 +4107,14 @@ def test_restated_eitc_child_comparison_never_guesses_an_upper_reading() -> None
     compiled ``0``).
     """
 
+    from microcosm.build.us_runtime import ledger_filter_rules
+
     builder = _load_builder_module()
-    builder.RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset()
+    # The comparison reads the refused sides where the rules live
+    # (us_runtime.ledger_filter_rules, microcosm#1728), so the edit goes there.
+    monkeypatch.setattr(
+        ledger_filter_rules, "RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES", frozenset()
+    )
     metadata = _soi_band_metadata(
         ledger_filter_eitc_child_count="0",
         **{_RESTATED_EITC_CHILDREN_UPPER: "0"},
@@ -4298,7 +4306,9 @@ def _ssa_age_band_metadata(**overrides: str | None) -> dict[str, str]:
     return metadata
 
 
-def test_restated_age_bounds_pass_the_guard_only_where_they_agree() -> None:
+def test_restated_age_bounds_pass_the_guard_only_where_they_agree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A restated age bound equal to the compiled one is ignorable, so accepted.
 
     The Ledger stamp restates a fact's ``age >= a`` / ``age < b`` rows as
@@ -4348,8 +4358,10 @@ def test_restated_age_bounds_pass_the_guard_only_where_they_agree() -> None:
         assert builder._unsupported_soi_ledger_filters(spec.metadata) == ()
 
     # Non-vacuity: with the concept unnamed, the same specs get the bare-key
-    # refusal every one of them got before this rule.
-    del builder.RESTATED_LEDGER_FILTER_CONCEPTS["age"]
+    # refusal every one of them got before this rule. The rules live in
+    # us_runtime.ledger_filter_rules, which every load of the tool shares, so
+    # the entry is removed for this test only (microcosm#1728).
+    monkeypatch.delitem(builder.RESTATED_LEDGER_FILTER_CONCEPTS, "age")
     refused = builder._unsupported_ledger_filter_metadata(specs)
     assert set(refused) == {spec.name for spec in specs}
     assert refused[specs[0].name] == (_RESTATED_AGE_LOWER, _RESTATED_AGE_UPPER)

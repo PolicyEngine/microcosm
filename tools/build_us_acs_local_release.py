@@ -665,11 +665,14 @@ def soi_surface_predicate(soi_mode: str):
     )
 
 
-def _compiled_fiscal_registry(feed: str | Path):
+def _compiled_fiscal_registry(feed: str | Path, *, crosswalk=None):
     """The production compile path and its reviewed substitution records.
 
     feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
     ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44).
+    ``crosswalk`` is the congressional-district vintage crosswalk the compile
+    reads; by default the reviewed one. :func:`state_admin_surface` passes the
+    one it also gives the ``state_cd`` rule, so the tool compiles in one place.
     """
 
     from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
@@ -685,14 +688,14 @@ def _compiled_fiscal_registry(feed: str | Path):
     )
 
     artifact = load_ledger_consumer_artifact(str(feed))
+    if crosswalk is None:
+        crosswalk = load_congressional_district_vintage_crosswalk(
+            default_congressional_district_vintage_crosswalk_path()
+        )
     registry = compile_us_fiscal_target_registry(
         artifact.facts,
         target_period=PERIOD,
-        congressional_district_vintage_crosswalk=(
-            load_congressional_district_vintage_crosswalk(
-                default_congressional_district_vintage_crosswalk_path()
-            )
-        ),
+        congressional_district_vintage_crosswalk=crosswalk,
         age_targets=True,
     )
     return apply_us_medicaid_enrollment_substitutions(registry)
@@ -739,16 +742,9 @@ def state_admin_surface(
     # Refuse an unknown mode before loading the feed and compiling the registry.
     _require_soi_mode(soi_mode)
 
-    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
     from microcosm.build.us_runtime import (
         default_congressional_district_vintage_crosswalk_path,
         load_congressional_district_vintage_crosswalk,
-    )
-    from microcosm.build.us_runtime.fiscal_targets import (
-        compile_us_fiscal_target_registry,
-    )
-    from microcosm.build.us_runtime.medicaid_take_up import (
-        apply_us_medicaid_enrollment_substitutions,
     )
     from microcosm.build.us_runtime.target_sets import (
         LOCAL_PRODUCT,
@@ -758,16 +754,9 @@ def state_admin_surface(
     from microcosm.calibrate.registry import TargetRegistry
     from microcosm.calibrate.target_sets import select_target_set
 
-    artifact = load_ledger_consumer_artifact(str(feed))
     crosswalk_path = default_congressional_district_vintage_crosswalk_path()
     crosswalk = load_congressional_district_vintage_crosswalk(crosswalk_path)
-    registry = compile_us_fiscal_target_registry(
-        artifact.facts,
-        target_period=PERIOD,
-        congressional_district_vintage_crosswalk=crosswalk,
-        age_targets=True,
-    )
-    registry, ri_substitutions = apply_us_medicaid_enrollment_substitutions(registry)
+    registry, ri_substitutions = _compiled_fiscal_registry(feed, crosswalk=crosswalk)
 
     def state_cd_district_shares(candidates):
         surface = cd_surface.state_cd_soi_surface(

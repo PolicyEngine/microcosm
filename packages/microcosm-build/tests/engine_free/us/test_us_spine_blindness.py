@@ -365,6 +365,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "h5_io.py",  # US artifact I/O; no population treatment.
         "immigration.py",
         "input_mass.py",
+        # The national materializer's ledger filter rules (moved from the
+        # release tool, microcosm#1728); reads spec metadata only, no frame.
+        "ledger_filter_rules.py",
         "l0_refit_export.py",
         "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
         "medicaid_take_up.py",
