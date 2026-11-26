@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import sys
 from fractions import Fraction
 
 import numpy as np
@@ -2306,3 +2307,159 @@ def test_target_total_falls_back_to_the_exact_sum_under_the_mass_rule():
     with pytest.raises(OverflowError, match="intermediate overflow in fsum"):
         receipt_module._target_total([_HUGE, _HUGE], False)
     assert receipt_module._target_total([_HUGE, _HUGE], True) is None
+
+
+# Eight weights from an independent review: fsum of all eight is the largest
+# float. The seven adults' exact sum, 0.36 ULP above it, rounds to it too, yet
+# fsum raises on the adults: a partial sum overflows on the way.
+_NEAR_MAX_WEIGHTS = np.array(
+    [
+        float.fromhex(value)
+        for value in (
+            "0x1.5b6b7a2f4dddbp+997",
+            "0x1.1455647cb7a32p+984",
+            "0x1.7f841fa0aca2ep+984",
+            "0x1.c8aa803d47c02p+1005",
+            "0x1.85fa197ec05e2p+1018",
+            "0x1.9e7572c2e19f0p+1023",
+            "0x1.69226dbae147bp+961",
+            "0x1.556927bea121dp+1021",
+        )
+    ]
+)
+_ADULTS = np.array([True] * 6 + [False, True])
+_LARGEST = sys.float_info.max
+
+
+def _exact_or_none(values):
+    """The exact sum rounded to a float, or None when it rounds past them all."""
+    try:
+        return float(sum(map(Fraction, values), Fraction()))
+    except OverflowError:
+        return None
+
+
+def test_mass_falls_back_to_the_exact_sum_only_under_the_mass_rule():
+    weights = _NEAR_MAX_WEIGHTS
+    assert math.fsum(weights.tolist()) == _LARGEST
+    assert _exact_or_none(weights[_ADULTS].tolist()) == _LARGEST
+    with pytest.raises(OverflowError) as raised:
+        receipt_module._mass(weights, _ADULTS, assign_all=False)
+    assert str(raised.value) == "intermediate overflow in fsum"
+    assert receipt_module._mass(weights, _ADULTS, assign_all=True) == _LARGEST
+    # A sum fsum holds is the same either way.
+    for assign_all in (False, True):
+        assert (
+            receipt_module._mass(weights, ~_ADULTS, assign_all=assign_all)
+            == (weights[6])
+        )
+    # The rule must be named at every call.
+    with pytest.raises(TypeError):
+        receipt_module._mass(weights, _ADULTS)
+    with pytest.raises(TypeError):
+        receipt_module._mass(weights, _ADULTS, True)
+
+
+def test_weight_total_falls_back_to_the_exact_sum_only_under_the_mass_rule():
+    # The adults alone: fsum raises, but their exact sum rounds to a float.
+    weights = _NEAR_MAX_WEIGHTS[_ADULTS]
+    person = _people(tuple(range(20, 20 + len(weights))))
+    with pytest.raises(ValueError) as refused:
+        _assign(person, weights=weights)
+    assert str(refused.value) == "Receipt weights must have a finite sum."
+    assert type(refused.value.__cause__) is OverflowError
+    assert str(refused.value.__cause__) == "intermediate overflow in fsum"
+    out, audit = _assign(person, _declared(_contract()), weights=weights)
+    assert not out["receives_alpha"].any()
+    program = audit["programs"]["receives_alpha"]
+    assert program["eligible_mass"] == program["eligible_mass_before_exclusions"]
+    assert program["eligible_mass"] == _LARGEST
+    # An exact sum past the largest float still refuses under the rule.
+    with pytest.raises(ValueError) as refused:
+        _assign(_people((20, 21, 22)), _declared(_contract()), weights=[1e308] * 3)
+    assert str(refused.value) == "Receipt weights must have a finite sum."
+    assert str(refused.value.__cause__) == (
+        "integer division result too large for a float"
+    )
+
+
+def test_outside_strata_mass_falls_back_to_the_exact_sum_only_under_the_mass_rule():
+    # The seven people at _ADULTS, aged 70, sit outside both strata: fsum
+    # raises on their mass. The small weight is the one young person.
+    weights, small = _NEAR_MAX_WEIGHTS, float(_NEAR_MAX_WEIGHTS[6])
+    person = _people(tuple(np.where(_ADULTS, 70, 20).tolist()))
+    contract = _contract(_program(stratified=True))
+    targets = {"alpha_young": 1.0, "alpha_older": 1.0}
+    # Without the rule, the OverflowError base 9189f745 raises, from the mass
+    # outside the strata.
+    with pytest.raises(OverflowError) as raised:
+        _assign(person, copy.deepcopy(contract), weights=weights, targets=targets)
+    assert str(raised.value) == "intermediate overflow in fsum"
+    out, audit = _assign(person, _declared(contract), weights=weights, targets=targets)
+    assert not out["receives_alpha"].any()
+    program = audit["programs"]["receives_alpha"]
+    assert program["outside_strata"] == {"n_eligible": 7, "eligible_mass": _LARGEST}
+    rate = 1.0 / small
+    young = _row("alpha_young", 1.0, "young", small, small, rate, rate, rate)
+    older = {
+        **_row("alpha_older", 1.0, "older", 0.0, 0.0, None, None, 1.0),
+        "shortfall": 1.0,
+    }
+    program_audit = _program_audit(
+        "alpha",
+        2.0,
+        small,
+        small,
+        2.0 / small,
+        2.0 / small,
+        [_done(young, 0.0, 0, rate * small), _done(older, 0.0, 0, 0.0)],
+        (7, _LARGEST),
+    )
+    expected = _audit({"receives_alpha": _finished(program_audit, 0.0, 0)})
+    assert json.dumps(audit, allow_nan=False) == json.dumps(expected)
+
+
+# Finite, non-negative weights, often near the largest float.
+_PROPERTY_WEIGHT = st.one_of(
+    st.floats(min_value=0, max_value=_LARGEST),
+    st.floats(min_value=2.0**1020, max_value=_LARGEST),
+    st.sampled_from(_NEAR_MAX_WEIGHTS.tolist()),
+)
+
+
+@MASS_RULE_PROPERTY
+@given(st.lists(st.tuples(_PROPERTY_WEIGHT, st.booleans()), min_size=1, max_size=10))
+@example(rows=list(zip(_NEAR_MAX_WEIGHTS.tolist(), _ADULTS.tolist(), strict=True)))
+@example(rows=[(weight, True) for weight in _NEAR_MAX_WEIGHTS[_ADULTS].tolist()])
+# The largest float plus half a ULP ties and rounds past it; just under rounds
+# to it.
+@example(rows=[(_LARGEST, True), (2.0**970, True)])
+@example(rows=[(_LARGEST, True), (2.0**970 - 2.0**917, True), (2.0**916, False)])
+def test_property_mass_is_the_exact_sum_rounded_under_the_mass_rule(rows):
+    weights = np.array([weight for weight, _ in rows])
+    mask = np.array([chosen for _, chosen in rows])
+    total = _exact_or_none(weights.tolist())
+    masked = _exact_or_none(weights[mask].tolist())
+    # Without the rule, _mass is fsum: the exact sum rounded when it returns,
+    # else fsum's own OverflowError.
+    try:
+        expected = math.fsum(weights[mask].tolist())
+    except OverflowError as error:
+        with pytest.raises(OverflowError) as raised:
+            receipt_module._mass(weights, mask, assign_all=False)
+        assert str(raised.value) == str(error)
+    else:
+        assert receipt_module._mass(weights, mask, assign_all=False) == expected
+        assert expected == masked
+    # Under the rule, the weights pass validation exactly when their exact
+    # total rounds to a float, and then every mass is its exact sum rounded.
+    person = _people(tuple(range(20, 20 + len(rows))))
+    contract = _declared(_contract())
+    if total is None:
+        with pytest.raises(ValueError, match="finite sum"):
+            _assign(person, contract, weights=weights)
+        return
+    _, audit = _assign(person, contract, weights=weights)
+    assert audit["programs"]["receives_alpha"]["eligible_mass"] == total
+    assert receipt_module._mass(weights, mask, assign_all=True) == masked
+    assert masked is not None

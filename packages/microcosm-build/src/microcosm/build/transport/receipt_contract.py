@@ -237,8 +237,38 @@ def receipt_strata(row):
     return row.get("strata", [{"target": row.get("target"), "filter": None}])
 
 
-def _mass(weights, mask):
-    return math.fsum(weights[mask].tolist())
+def _exact_float_sum(values):
+    """Return the exact sum of finite floats, rounded to the nearest float.
+
+    Fraction converts to a float by dividing its integers, which rounds to
+    nearest and raises OverflowError when the rounded sum passes the largest
+    float.
+    """
+    return float(sum((Fraction(value) for value in values), Fraction()))
+
+
+def _mass(weights, mask, *, assign_all):
+    """Return the weighted mass of the masked people.
+
+    ``math.fsum`` can raise OverflowError on a sum that still rounds to a
+    finite float, when a partial sum overflows on the way. Without the
+    ``assign_all_eligible`` rule the error propagates, as it did before the
+    rule. Under the rule the mass is the exact sum rounded to a float.
+
+    That fallback never overflows. ``assign_receipts_v2`` accepts only finite,
+    non-negative weights whose exact total rounds to a finite float. It checks
+    the total with fsum, which, when it returns, returns the exact sum rounded
+    to nearest; under the rule, when fsum raises, it rounds the exact total
+    itself and refuses if that overflows. Every weight is non-negative, so a
+    masked sum is at most that exact total, and rounding to nearest preserves
+    order, so the masked sum rounds to a finite float too.
+    """
+    try:
+        return math.fsum(weights[mask].tolist())
+    except OverflowError:
+        if not assign_all:
+            raise
+    return _exact_float_sum(weights[mask].tolist())
 
 
 def _ratio(target, mass):
@@ -270,8 +300,10 @@ def _audit_ratio(target, mass, assign_all):
 def _target_total(values, assign_all):
     """Return a program's target total for its audit.
 
-    Each target is finite, but ``math.fsum`` raises OverflowError when their
-    sum passes the largest float, and on some sums just below it. Without the
+    Each target is finite, but ``math.fsum`` raises OverflowError on any sum
+    past what a float holds, and can raise even on a sum that still rounds to
+    a finite float: four targets in the tests total 3/8 ULP above the largest
+    float and round to it, yet fsum raises. Without the
     ``assign_all_eligible`` rule the error propagates, as it did before the
     rule. Under the rule the total is the exact sum rounded to a float, or
     None when no float holds it, and each stratum still caps on its own
@@ -283,7 +315,7 @@ def _target_total(values, assign_all):
         if not assign_all:
             raise
     try:
-        return float(sum((Fraction(value) for value in values), Fraction()))
+        return _exact_float_sum(values)
     except OverflowError:
         return None
 
@@ -342,9 +374,9 @@ def hall_diagnostics(demands, weights, *, overflow_as_none=False):
     overflow. By default that OverflowError propagates. With
     ``overflow_as_none``, which ``assign_receipts_v2`` sets under the
     ``assign_all_eligible`` rule, the violation records that target as None.
-    The reported supply never overflows once the weights' float sum is finite,
-    which ``assign_receipts_v2`` checks first: the supply sums some of those
-    weights exactly, and rounding preserves order.
+    The reported supply never overflows once the weights' exact sum rounds to
+    a finite float, which ``assign_receipts_v2`` checks first: the supply sums
+    some of those weights exactly, and rounding preserves order.
     """
     denominator, totals = 1, {}
     if demands:
@@ -550,6 +582,9 @@ def assign_receipts_v2(
     None. The rule also records as None a target total too large for a float:
     a program's total, whose two ratios are then None, and a Hall violation's
     target. Without the rule, such a total raises OverflowError as before.
+    Under the rule, the weight total and every mass are summed exactly when
+    ``math.fsum`` overflows partway, so weights whose exact total rounds to a
+    float are accepted even when fsum raises on them.
     """
     seed, rows, declared_groups = validate_receipt_v2(contract)
     # Read here, so validate_receipt_v2 keeps its three-part result.
@@ -576,7 +611,15 @@ def assign_receipts_v2(
     try:
         total_weight = math.fsum(weights.tolist())
     except OverflowError as error:
-        raise ValueError("Receipt weights must have a finite sum.") from error
+        if not assign_all:
+            raise ValueError("Receipt weights must have a finite sum.") from error
+        # fsum can raise on a sum that still rounds to a finite float. Under
+        # the rule, refuse only when the exact sum rounds past the largest
+        # float, so that every masked mass rounds to a finite float as well.
+        try:
+            total_weight = _exact_float_sum(weights.tolist())
+        except OverflowError as exact_error:
+            raise ValueError("Receipt weights must have a finite sum.") from exact_error
     if not math.isfinite(total_weight):
         raise ValueError("Receipt weights must have a finite sum.")
     tables = (
@@ -679,7 +722,7 @@ def assign_receipts_v2(
                         "programs": [left["output"], right["output"]],
                         "filter": filter_name,
                         "n_eligible": int(mask.sum()),
-                        "eligible_mass": _mass(weights, mask),
+                        "eligible_mass": _mass(weights, mask, assign_all=assign_all),
                     }
                 )
         demands = [
@@ -730,8 +773,10 @@ def assign_receipts_v2(
             [target_values[stratum["target"]] for stratum in receipt_strata(row)],
             assign_all,
         )
-        total_before = _mass(weights, before_payment[output] & covered)
-        total_remaining = _mass(weights, remaining & covered)
+        total_before = _mass(
+            weights, before_payment[output] & covered, assign_all=assign_all
+        )
+        total_remaining = _mass(weights, remaining & covered, assign_all=assign_all)
         audit["programs"][output] = {
             "program": row["program"],
             "target": total_target,
@@ -746,15 +791,19 @@ def assign_receipts_v2(
             "strata": stratum_audits,
             "outside_strata": {
                 "n_eligible": int((remaining & ~covered).sum()),
-                "eligible_mass": _mass(weights, remaining & ~covered),
+                "eligible_mass": _mass(
+                    weights, remaining & ~covered, assign_all=assign_all
+                ),
             },
         }
         for stratum in receipt_strata(row):
             name, filter_name = stratum["target"], stratum["filter"]
             mask, target = masks[name], target_values[name]
             pool = remaining & mask
-            mass = _mass(weights, pool)
-            before = _mass(weights, before_payment[output] & mask)
+            mass = _mass(weights, pool, assign_all=assign_all)
+            before = _mass(
+                weights, before_payment[output] & mask, assign_all=assign_all
+            )
             rate = _ratio(target, mass)
             detail = {
                 "target_name": name,
@@ -793,7 +842,7 @@ def assign_receipts_v2(
             expected = math.fsum([rate * mass])
             detail.update(
                 {
-                    "realized_mass": _mass(weights, chosen),
+                    "realized_mass": _mass(weights, chosen, assign_all=assign_all),
                     "n_receipts": int(chosen.sum()),
                     "numerical_check": {
                         "passed": math.isclose(
@@ -813,7 +862,9 @@ def assign_receipts_v2(
                     audit,
                     out,
                 )
-        audit["programs"][output]["realized_mass"] = _mass(weights, assigned)
+        audit["programs"][output]["realized_mass"] = _mass(
+            weights, assigned, assign_all=assign_all
+        )
         audit["programs"][output]["n_receipts"] = int(assigned.sum())
         out[output] = assigned
     return out.loc[:, [id_column, *by_output]], audit

@@ -2,7 +2,10 @@
 
 import copy
 import json
+import math
+import sys
 from dataclasses import replace
+from fractions import Fraction
 from types import SimpleNamespace
 
 import numpy as np
@@ -16,8 +19,17 @@ from microcosm.build.transport.receipt_contract import (
     receipt_dispatch_tables,
 )
 from microcosm.build.transport.target_kernels import compile_target_surface
-from microcosm.graph import ArtifactValue, KernelContext, Node, NumericScope, Owned
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.graph import (
+    ArtifactValue,
+    KernelContext,
+    Node,
+    NumericScope,
+    Owned,
+    Population,
+)
 from microcosm.graph.canonical import canonical_json
+from microcosm.graph.executor import _validate_result
 from test_support.microcosm_build.transport_graph import (
     canonical_text,
     reference_document,
@@ -260,13 +272,13 @@ def test_v2_kernel_carries_the_mass_rule_through_the_contract_document(
     canonical_json(result.receipt)
 
 
-def _huge_target_context(tmp_path, case, declared):
-    """Two count targets of 1e308 from the real target compiler.
+def _huge_target_context(tmp_path, case, declared, *, target=1e308):
+    """Two count targets, 1e308 unless given, from the real target compiler.
 
     "strata" gives one program two strata with one unit-weight adult each.
     "group" puts two programs in one exclusion group, both eligible for both
-    adults. Each target fits a float; the program total or the Hall target
-    does not.
+    adults. Each target fits a float. For the default target and the largest
+    float, the program total or the Hall target does not.
     """
     if case == "strata":
         strata = {
@@ -336,7 +348,7 @@ def _huge_target_context(tmp_path, case, declared):
     )
     facts = []
     for name, _, _ in references:
-        fact = toy_fact(name, 1e308, entity="person")
+        fact = toy_fact(name, target, entity="person")
         fact["observed_measure"]["unit"] = "count"
         facts.append(fact)
     surface, _ = compile_target_surface(
@@ -439,3 +451,248 @@ def test_v2_kernel_records_a_target_total_too_large_for_a_float_as_null(
         for name in ("receives_alpha", "receives_beta")
         for row in programs[name]["strata"]
     ] == [(1e308 - 2.0, 2), (1e308, 0)]
+
+
+# Eight weights from an independent review. The frame and the population accept
+# them, and fsum of all eight is the largest float. The seven adults' exact sum,
+# 0.36 ULP above it, rounds to it too, yet fsum raises on the adults: a partial
+# sum overflows on the way.
+_NEAR_MAX_WEIGHTS = [
+    float.fromhex(value)
+    for value in (
+        "0x1.5b6b7a2f4dddbp+997",
+        "0x1.1455647cb7a32p+984",
+        "0x1.7f841fa0aca2ep+984",
+        "0x1.c8aa803d47c02p+1005",
+        "0x1.85fa197ec05e2p+1018",
+        "0x1.9e7572c2e19f0p+1023",
+        "0x1.69226dbae147bp+961",
+        "0x1.556927bea121dp+1021",
+    )
+]
+# Six young adults, one child outside both strata, then one older adult.
+_NEAR_MAX_AGES = [20, 20, 20, 20, 20, 20, 15, 40]
+
+
+def _exact(values):
+    return float(sum(map(Fraction, values), Fraction()))
+
+
+def _near_max_frame():
+    count = len(_NEAR_MAX_AGES)
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, count + 1),
+            "person_household_id": np.ones(count, dtype=np.int64),
+            "age": _NEAR_MAX_AGES,
+            "seed": np.arange(1, count + 1) / 10,
+            "eligible": np.ones(count, dtype=np.int64),
+            "payment": np.ones(count, dtype=np.int64),
+        }
+    )
+    return Frame(
+        {"person": person, "household": pd.DataFrame({"household_id": [1]})},
+        EntitySchema(group_entities=("household",)),
+        {"person": Weights(np.array(_NEAR_MAX_WEIGHTS), WeightKind.DESIGN)},
+    )
+
+
+def _near_max_audit(target):
+    """The audit under the rule, with every mass the exact sum rounded."""
+    largest = sys.float_info.max
+    young, older = _exact(_NEAR_MAX_WEIGHTS[:6]), _NEAR_MAX_WEIGHTS[7]
+    # The largest target caps both strata; 1e300 sits within both masses.
+    capped = target > young
+    strata = []
+    for name, filter_name, mass, count in (
+        ("alpha_young", "young", young, 6),
+        ("alpha_older", "older", older, 1),
+    ):
+        ratio = target / mass
+        row = {
+            "target_name": name,
+            "target": target,
+            "filter": filter_name,
+            "eligible_mass": mass,
+            "eligible_mass_before_exclusions": mass,
+            "target_to_eligible_mass_before_exclusions": ratio,
+            "target_to_remaining_eligible_mass": ratio,
+            "rate": 1.0 if capped else ratio,
+        }
+        if capped:
+            row["shortfall"] = target - mass
+        row.update(
+            {
+                "realized_mass": mass if capped else 0.0,
+                "n_receipts": count if capped else 0,
+                "numerical_check": {
+                    "passed": True,
+                    "relative_tolerance": 1e-12,
+                    "expected_mass": mass if capped else ratio * mass,
+                },
+            }
+        )
+        strata.append(row)
+    # Two largest targets total more than a float holds, so None.
+    total = None if capped else 2 * target
+    ratio = None if capped else total / largest
+    program = {
+        "program": "alpha",
+        "target": total,
+        "eligible_mass_before_exclusions": largest,
+        "eligible_mass": largest,
+        "target_to_eligible_mass_before_exclusions": ratio,
+        "target_to_remaining_eligible_mass": ratio,
+        "strata": strata,
+        "outside_strata": {"n_eligible": 1, "eligible_mass": _NEAR_MAX_WEIGHTS[6]},
+        "realized_mass": largest if capped else 0.0,
+        "n_receipts": 7 if capped else 0,
+    }
+    return {
+        "assignment_profile": "central",
+        "exclusion_order": "declared",
+        "status": "completed",
+        "programs": {"receives_alpha": program},
+        "exclusion_groups": [],
+    }
+
+
+def _near_max_group_audit():
+    """The group's audit under the rule for the largest target.
+
+    The adults' mass rounds to the largest float, the target, so alpha's rate
+    is 1 and it takes every adult. Beta, left with none, caps, and the pair's
+    Hall target overflows.
+    """
+    largest, order = sys.float_info.max, ["receives_alpha", "receives_beta"]
+    programs = {}
+    for name, mass, ratio, count in (
+        ("alpha", largest, 1.0, 7),
+        ("beta", 0.0, None, 0),
+    ):
+        row = {
+            "target_name": f"{name}_target",
+            "target": largest,
+            "filter": "adult",
+            "eligible_mass": mass,
+            "eligible_mass_before_exclusions": largest,
+            "target_to_eligible_mass_before_exclusions": 1.0,
+            "target_to_remaining_eligible_mass": ratio,
+            "rate": 1.0,
+        }
+        if not mass:
+            row["shortfall"] = largest
+        row.update(
+            {
+                "realized_mass": mass,
+                "n_receipts": count,
+                "numerical_check": {
+                    "passed": True,
+                    "relative_tolerance": 1e-12,
+                    "expected_mass": mass,
+                },
+            }
+        )
+        programs[f"receives_{name}"] = {
+            "program": name,
+            "target": largest,
+            "eligible_mass_before_exclusions": largest,
+            "eligible_mass": mass,
+            "target_to_eligible_mass_before_exclusions": 1.0,
+            "target_to_remaining_eligible_mass": ratio,
+            "strata": [row],
+            "outside_strata": {"n_eligible": 1, "eligible_mass": _NEAR_MAX_WEIGHTS[6]},
+            "realized_mass": mass,
+            "n_receipts": count,
+        }
+    # Everyone is eligible for both programs; the adults' overlap mass is the
+    # one fsum raises on.
+    overlaps = [
+        {
+            "programs": pair,
+            "filter": filter_name,
+            "n_eligible": count,
+            "eligible_mass": largest,
+        }
+        for pair in (order, order[::-1])
+        for filter_name, count in ((None, 8), ("adult", 7))
+    ]
+    violation = {
+        "programs": order,
+        "filter": "adult",
+        "filters": ["adult", "adult"],
+        "target": None,
+        "eligible_mass": largest,
+    }
+    return {
+        "assignment_profile": "central",
+        "exclusion_order": "declared",
+        "status": "completed",
+        "programs": programs,
+        "exclusion_groups": [
+            {
+                "order": order,
+                "status": "completed",
+                "overlaps": overlaps,
+                "feasibility": {
+                    "violations": [violation],
+                    "feasible": False,
+                    "relative_tolerance": 1e-12,
+                },
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("case", "target"),
+    [
+        ("strata", sys.float_info.max),
+        ("strata", 1e300),
+        ("group", sys.float_info.max),
+    ],
+    ids=["capped", "within", "group"],
+)
+def test_v2_kernel_masses_adults_whose_fsum_overflows_under_the_mass_rule(
+    tmp_path, case, target
+):
+    weights = np.array(_NEAR_MAX_WEIGHTS)
+    adults = np.array(_NEAR_MAX_AGES) >= 18
+    # Keep the case honest: every weight passes fsum, the adults do not, and
+    # their exact sum still rounds to the largest float.
+    assert math.fsum(weights.tolist()) == sys.float_info.max
+    with pytest.raises(OverflowError, match="intermediate overflow in fsum"):
+        math.fsum(weights[adults].tolist())
+    assert _exact(weights[adults].tolist()) == sys.float_info.max
+    frame = _near_max_frame()
+    population = Population.from_frame(frame, "open")
+
+    def context(declared):
+        base = _huge_target_context(
+            tmp_path / str(declared), case, declared, target=target
+        )
+        return replace(
+            base,
+            tables={"person": frame.table("person")},
+            weights={"person": frame.weights_for("person")},
+        )
+
+    # Without the rule, the OverflowError base 9189f745 raises on these inputs:
+    # from the program's target total when capped, from the adults' mass when
+    # within, and from the adults' overlap mass in the group.
+    with pytest.raises(OverflowError) as raised:
+        TAKEUP_ASSIGN.run(context(False))
+    assert str(raised.value) == "intermediate overflow in fsum"
+    declared = context(True)
+    result = TAKEUP_ASSIGN.run(declared)
+    # The largest target gives alpha every adult; in the group, beta gets none.
+    capped = target == sys.float_info.max
+    flags = {"receives_alpha": adults.tolist() if capped else [False] * len(adults)}
+    expected = _near_max_audit(target)
+    if case == "group":
+        flags["receives_beta"] = [False] * len(adults)
+        expected = _near_max_group_audit()
+    assert {name: result.columns["person", name].tolist() for name in flags} == flags
+    canonical_json(result.receipt)
+    assert json.dumps(result.receipt, allow_nan=False) == json.dumps(expected)
+    _validate_result(declared.node, TAKEUP_ASSIGN.capabilities, result, population)
