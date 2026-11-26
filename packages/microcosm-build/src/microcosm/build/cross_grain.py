@@ -78,6 +78,17 @@ class CrossGrainRule:
     #: constituencies and authorities while a country row controls the legs no
     #: region row covers.
     control_grains: tuple[str, ...] = ()
+    #: How one control's value is divided among its lower rows. ``None`` is
+    #: the standing rule: each row times the control over the rows' numpy
+    #: sum. An allocator takes the rows' values, in surface order, and the
+    #: control's value, and returns ``(values, factor, raw_sum)``: the
+    #: reconciled rows in the same order, and the factor and the lower-row
+    #: total that the leg receipt records. A country whose sources need
+    #: another summation or a residual rule declares one (microcosm#1760);
+    #: the refusals and the closure check below apply to it unchanged.
+    allocator: Callable[[np.ndarray, float], tuple[np.ndarray, float, float]] | None = (
+        None
+    )
 
 
 @dataclass(frozen=True)
@@ -546,8 +557,15 @@ def _reconcile_cross_grain_surface_with_control_receipts(
             raw_values = reconciled.iloc[positions][columns["value"]].to_numpy(
                 dtype=np.float64
             )
-            raw_sum = float(raw_values.sum())
             parent_value = float(control["value"])
+            if rule.allocator is None:
+                allocation = None
+                raw_sum = float(raw_values.sum())
+            else:
+                allocation = _allocation(
+                    rule.allocator, raw_values, parent_value, group.inconsistency_id
+                )
+                raw_sum = allocation[2]
             if not np.isfinite(raw_sum) or not np.isfinite(parent_value):
                 raise ValueError(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
@@ -565,7 +583,10 @@ def _reconcile_cross_grain_surface_with_control_receipts(
             # Live only when the control is itself zero (the floor above is
             # vacuous there): a zero-summing leg against a zero control is a
             # no-op, where `parent_value / raw_sum` would be 0/0.
-            factor = 1.0 if raw_sum == 0.0 else parent_value / raw_sum
+            if allocation is None:
+                factor = 1.0 if raw_sum == 0.0 else parent_value / raw_sum
+            else:
+                factor = allocation[1]
             if not np.isfinite(factor):
                 raise ValueError(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
@@ -603,7 +624,7 @@ def _reconcile_cross_grain_surface_with_control_receipts(
                         "longer measure one quantity."
                     )
             reconciled.iloc[positions, reconciled.columns.get_loc(columns["value"])] = (
-                raw_values * factor
+                raw_values * factor if allocation is None else allocation[0]
             )
             already.update(positions)
             new_total = float(
@@ -639,6 +660,11 @@ def _reconcile_cross_grain_surface_with_control_receipts(
                         0.0 if raw_sum == 0.0 else (new_total - raw_sum) / raw_sum
                     ),
                     "declared_factor": factor,
+                    **(
+                        {}
+                        if rule.allocator is None
+                        else {"allocator": _allocator_name(rule.allocator)}
+                    ),
                     **(
                         {}
                         if bound is None
@@ -1319,6 +1345,35 @@ def _control_positions(
                 "control."
             )
     return positions
+
+
+def _allocation(
+    allocator: Callable[[np.ndarray, float], tuple[np.ndarray, float, float]],
+    raw_values: np.ndarray,
+    parent_value: float,
+    inconsistency_id: str,
+) -> tuple[np.ndarray, float, float]:
+    """One control's lower rows as the rule's declared allocator divides them.
+
+    Returns ``(values, factor, raw_sum)``. A result that is not one value for
+    each row is refused here; the caller's refusals (a non-finite or vanishing
+    total, a negative factor, a total off its control) then read ``factor``
+    and ``raw_sum`` as they read the standing rule's own.
+    """
+
+    values, factor, raw_sum = allocator(raw_values, parent_value)
+    values = np.asarray(values, dtype=np.float64)
+    if values.shape != raw_values.shape:
+        raise ValueError(
+            f"cross-grain inconsistency {inconsistency_id!r}: allocator "
+            f"{_allocator_name(allocator)!r} returned {values.shape} value(s) "
+            f"for {raw_values.shape} lower row(s)."
+        )
+    return values, float(factor), float(raw_sum)
+
+
+def _allocator_name(allocator: Callable[..., Any]) -> str:
+    return str(getattr(allocator, "__name__", type(allocator).__name__))
 
 
 def _controls_agree(left: float, right: float) -> bool:
