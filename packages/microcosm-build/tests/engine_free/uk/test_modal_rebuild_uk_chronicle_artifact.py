@@ -52,11 +52,11 @@ def _load_us_plan(monkeypatch):
 
 
 def _image_chain(modal_stub):
-    """Each image-definition call as (step name, arguments), in order."""
+    """Each image-definition call as (step name, arguments, options), in order."""
 
     return [
-        (call_name.rsplit(".", 1)[-1], call_args)
-        for call_name, call_args, _ in modal_stub.mock_calls
+        (call_name.rsplit(".", 1)[-1], call_args, call_options)
+        for call_name, call_args, call_options in modal_stub.mock_calls
         if call_name.startswith("Image.debian_slim")
     ]
 
@@ -64,17 +64,18 @@ def _image_chain(modal_stub):
 def test_the_rebuild_image_trusts_no_compromised_certificate_authority(monkeypatch):
     """As the US Modal image does, before anything else is downloaded.
 
-    The compromised eMudhra (emSign) roots: uv before 0.13.4 compiles them in,
-    the cached base's pip 25.3 bundles them, and the base's CA store, which
-    git's clone of Chronicle and the standard library read, holds them until
-    it is upgraded. The upload's Hub client checks the Hub's certificate
-    against certifi on the image's own Python.
+    emSign ECC Root CA - G3, the eMudhra root removed after the 2026-10-20
+    key disclosure: uv before 0.13.4 compiles it in, the cached base's pip 25.3
+    bundles it, and the base's CA store, which git's clone of Chronicle and the
+    standard library read, holds it until it is upgraded. The upload's Hub
+    client checks the Hub's certificate against certifi on the image's own
+    Python.
     """
 
     us_plan = _load_us_plan(monkeypatch)
     module, modal_stub = _load_rebuild_app(monkeypatch)
     chain = _image_chain(modal_stub)
-    assert [step_name for step_name, _ in chain] == [
+    assert [step_name for step_name, _, _ in chain] == [
         "debian_slim",
         "apt_install",
         "run_commands",
@@ -92,3 +93,6 @@ def test_the_rebuild_image_trusts_no_compromised_certificate_authority(monkeypat
     )
     # The rebuild's own Python comes from the upgraded uv.
     assert chain[4][1] == (f"uv python install {module.PYTHON_VERSION}",)
+    # No step before the environment passes options such as another index or
+    # a trusted host.
+    assert [step_options for _, _, step_options in chain[1:5]] == [{}, {}, {}, {}]
