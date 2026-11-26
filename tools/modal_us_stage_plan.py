@@ -2336,6 +2336,11 @@ def request_telemetry_token(
 ) -> TelemetryToken | None:
     """At launch, on the operator's machine: a telemetry token for the stage.
 
+    It runs the command itself, not through microcosm-emitter-interface's
+    ``telemetry_token``: this module uses only the standard library, and the
+    launch runs under the Modal client's own interpreter, which does not have
+    the interface.
+
     Runs the installed emitter's ``telemetry-token`` (``MICROCOSM_EMITTER_COMMAND``,
     then ``PATH``) with this machine's environment, so it exchanges the
     operator's Hugging Face login, for the class timeout plus
@@ -2523,6 +2528,10 @@ def undelivered_events_from_status(
     returncode: int, stdout: str, stderr: str
 ) -> UndeliveredEventsRecord:
     """What a receipt records of the image emitter's ``status`` answer.
+
+    The runner parses ``status`` here, not through microcosm-emitter-interface's
+    ``emitter_status``: it runs on the image's interpreter, which does not have
+    the interface (only the build's environment does).
 
     Exit 0 gives the runs it printed, as printed; exit 8 (no event queue
     file) an empty list. Any other exit code gives a problem naming the code

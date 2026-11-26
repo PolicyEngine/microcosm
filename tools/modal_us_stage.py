@@ -265,7 +265,10 @@ def _emitter_version() -> plan_lib.EmitterVersionAnswer | None:
     """The installed emitter's ``version`` answer, or None if it does not run.
 
     It runs without the runner's credentials or the collector token, which
-    ``version`` does not need.
+    ``version`` does not need. It runs the command itself, not through
+    microcosm-emitter-interface's ``emitter_version``: the runner runs on the
+    image's interpreter, which has only uv, huggingface_hub and certifi; the
+    build's environment, which has the interface, is separate.
     """
 
     try:
@@ -293,7 +296,8 @@ def _emitter_status(env: dict[str, str]) -> plan_lib.UndeliveredEventsRecord:
     ``--event-queue-file``, in the tool's environment ``env`` without
     credentials or the collector token, so the emitter's default path is the
     one the build computed. A failure is recorded as a problem line and
-    never raises.
+    never raises. Like ``_emitter_version``, it runs the command itself,
+    since the image's interpreter does not have microcosm-emitter-interface.
     """
 
     try:
