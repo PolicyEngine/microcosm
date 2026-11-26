@@ -61,17 +61,25 @@ def test_without_the_opt_in_no_credential_is_attached(monkeypatch):
         module.main("a" * 40, "t", run=True)
 
 
-def _git_answering(module, commit_minimum):
+def _git_answering(module, commit_minimum, *, commit_readable=True):
     """``subprocess.run`` for ``plan``: the commit is on main, and its
     ``minimum_emitter_version.json`` names ``commit_minimum`` (``None``: the
-    commit has no such file, as before microcosm#1522)."""
+    commit has no such file, as before microcosm#1522). Without
+    ``commit_readable``, git cannot read the commit's tree, and answers
+    ``ls-tree`` and ``show`` as it does then."""
 
     def run(argv, **kwargs):
+        unreadable = module.subprocess.CompletedProcess(
+            argv, 128, stdout="", stderr="fatal: not a tree object"
+        )
+        if argv[:2] == ["git", "ls-tree"]:
+            if not commit_readable:
+                return unreadable
+            listed = "" if commit_minimum is None else f"{argv[-1]}\n"
+            return module.subprocess.CompletedProcess(argv, 0, stdout=listed, stderr="")
         if argv[:2] == ["git", "show"]:
-            if commit_minimum is None:
-                return module.subprocess.CompletedProcess(
-                    argv, 128, stdout="", stderr="fatal: path does not exist"
-                )
+            if not commit_readable or commit_minimum is None:
+                return unreadable
             return module.subprocess.CompletedProcess(
                 argv,
                 0,
@@ -185,7 +193,11 @@ def test_the_image_trusts_no_compromised_certificate_authority(monkeypatch):
     ]
     assert "ca-certificates" in chain[1][1]
     assert chain[2][1] == (us_plan.image_pip_bootstrap_command(),)
-    assert chain[3][1] == (f"uv=={us_plan.IMAGE_UV_VERSION}",)
+    # certifi for the image's own Python, which Modal's client uses.
+    assert chain[3][1] == (
+        f"uv=={us_plan.IMAGE_UV_VERSION}",
+        f"certifi>={us_plan.RUNNER_CERTIFI_MINIMUM_VERSION}",
+    )
 
 
 def test_the_image_installs_the_emitter_at_the_builds_minimum_release(monkeypatch):
@@ -284,6 +296,19 @@ def test_the_plan_refuses_a_commit_that_needs_a_newer_emitter(monkeypatch):
     module, _ = _load_app(monkeypatch)
     monkeypatch.setattr(module.subprocess, "run", _git_answering(module, "99.0.0"))
     with pytest.raises(SystemExit, match=r"99\.0\.0.*checkout at or after"):
+        module.plan("a" * 40, "t")
+
+
+def test_the_plan_refuses_a_commit_whose_tree_it_cannot_read(monkeypatch):
+    """git answers a missing commit and a missing path alike (exit 128)."""
+
+    module, _ = _load_app(monkeypatch)
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        _git_answering(module, _launching_minimum(), commit_readable=False),
+    )
+    with pytest.raises(SystemExit, match="aaaaaaaaa"):
         module.plan("a" * 40, "t")
 
 
