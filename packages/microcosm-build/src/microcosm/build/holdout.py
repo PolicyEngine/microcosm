@@ -16,6 +16,14 @@ membership is a pure function of each unit's own key. A seeded permutation
 reshuffles every fold when one target is added or the surface is reordered;
 a keyed hash does not, so a holdout assigned this way stays the same set of
 units across surface revisions, and raising the fraction only adds units.
+
+Both shapes end in the same two steps (microcosm#1759). A :class:`HoldoutSplit`
+names the target rows a solve trains on and the rows it is scored on: the UK
+rowwise hold-out makes one for each rotated fold (:func:`fold_splits`), and
+the US local hold-out makes one from its hashed roles
+(:func:`microcosm.build.target_holdouts.role_split`). :func:`held_estimates`
+gives the held rows' estimates from the target matrix and the solved weights,
+in float64, for both scorers.
 """
 
 from __future__ import annotations
@@ -26,6 +34,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
+from scipy import sparse
 
 __all__ = [
     "rotated_folds",
@@ -33,6 +42,9 @@ __all__ = [
     "RotationSummary",
     "hash_holdout_uniform",
     "hash_holdout_unit",
+    "HoldoutSplit",
+    "fold_splits",
+    "held_estimates",
 ]
 
 #: Units per draw: the first 8 bytes of a SHA-256 digest, read big-endian.
@@ -153,3 +165,62 @@ def hash_holdout_unit(key: str, *, fraction: float, salt: str) -> bool:
     ):
         raise ValueError(f"holdout fraction must be in [0, 1], got {fraction!r}.")
     return hash_holdout_uniform(key, salt=salt) < float(fraction)
+
+
+@dataclass(frozen=True)
+class HoldoutSplit:
+    """One hold-out split of a target surface.
+
+    Attributes:
+        name: The split's name, for example ``"fold_0"`` or ``"roles"``.
+        train_rows: The target rows the solve trains on, as int64.
+        held_rows: The target rows the solve is scored on, as int64.
+    """
+
+    name: str
+    train_rows: np.ndarray
+    held_rows: np.ndarray
+
+
+def fold_splits(
+    n_targets: int, *, n_folds: int = 5, seed: int = 20260529
+) -> tuple[HoldoutSplit, ...]:
+    """:func:`rotated_folds` as splits: each fold is held, the others train.
+
+    The training rows are the sorted rows of no other fold
+    (``np.setdiff1d`` over ``range(n_targets)``); the arguments and refusals
+    are those of :func:`rotated_folds`.
+    """
+
+    every_row = np.arange(n_targets, dtype=np.int64)
+    return tuple(
+        HoldoutSplit(
+            name=f"fold_{index}",
+            train_rows=np.setdiff1d(every_row, held, assume_unique=True),
+            held_rows=held,
+        )
+        for index, held in enumerate(
+            rotated_folds(n_targets, n_folds=n_folds, seed=seed)
+        )
+    )
+
+
+def held_estimates(
+    matrix, rows, weights, *, columns: np.ndarray | None = None
+) -> np.ndarray:
+    """The held rows' estimates: ``matrix[rows]`` times ``weights``, in float64.
+
+    ``matrix`` is a sparse target matrix (targets by records); a dense one is
+    read as CSR. ``columns``, when given, first keeps those record columns,
+    in that order, as a solve that kept only some records needs. The matrix
+    rows and the weights are widened to float64 before the product, so the
+    result does not depend on their stored precision.
+    """
+
+    held = matrix[rows]
+    if not sparse.issparse(held):
+        held = sparse.csr_array(held)
+    if columns is not None:
+        held = held[:, columns]
+    estimates = held.astype(np.float64) @ np.asarray(weights, dtype=np.float64)
+    return np.asarray(estimates, dtype=np.float64).reshape(-1)

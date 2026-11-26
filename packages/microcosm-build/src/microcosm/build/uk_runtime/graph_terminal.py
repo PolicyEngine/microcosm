@@ -1353,6 +1353,7 @@ class UKFullHoldoutKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        import microcosm.build.holdout as shared_holdout
         import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
 
         from . import (
@@ -1379,6 +1380,9 @@ class UKFullHoldoutKernel(KernelBase):
                         # The shared rules that compute the weights the
                         # holdout re-applies (microcosm#1729).
                         calibrate_target_loss_rules,
+                        # The folds and the held rows' estimates
+                        # (fold_splits, held_estimates; microcosm#1759).
+                        shared_holdout,
                         dependencies=self.capabilities.dependencies,
                     ),
                     # The holdout repeats the solve: it keys on the solve

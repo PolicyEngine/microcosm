@@ -42,7 +42,11 @@ from typing import Any
 import numpy as np
 from scipy import sparse
 
-from microcosm.build.holdout import hash_holdout_unit
+from microcosm.build.holdout import (
+    HoldoutSplit,
+    hash_holdout_unit,
+    held_estimates,
+)
 
 __all__ = [
     "CONCEPT_FAMILY_FIELD",
@@ -67,6 +71,7 @@ __all__ = [
     "load_target_holdouts",
     "missing_population_shares",
     "pro_rata_baseline",
+    "role_split",
     "score_holdout",
     "train_rows",
     "training_target_set",
@@ -539,6 +544,20 @@ def holdout_rows(records: Sequence[Mapping]) -> list[int]:
     ]
 
 
+def role_split(records: Sequence[Mapping]) -> HoldoutSplit:
+    """The records' roles as one shared hold-out split (``"roles"``).
+
+    The same split type as the UK's rotated folds
+    (:func:`microcosm.build.holdout.fold_splits`, microcosm#1759).
+    """
+
+    return HoldoutSplit(
+        name="roles",
+        train_rows=np.asarray(train_rows(records), dtype=np.int64),
+        held_rows=np.asarray(holdout_rows(records), dtype=np.int64),
+    )
+
+
 # ---------------------------------------------------------------------------
 # The training target set
 # ---------------------------------------------------------------------------
@@ -597,8 +616,9 @@ def training_target_set(
         record["name"] for record in records
     ]:
         raise ValueError("target specs are not row-aligned with the roles.")
+    split = role_split(records)
     targets = []
-    for index in train_rows(records):
+    for index in split.train_rows.tolist():
         record = records[index]
         if record["role"] != ROLE_TRAIN:  # pragma: no cover - train_rows filters
             raise AssertionError("a held-out target reached the calibration set")
@@ -634,7 +654,7 @@ def training_target_set(
                 hierarchy=spec.hierarchy,
             )
         )
-    held = {records[index]["name"] for index in holdout_rows(records)}
+    held = {records[index]["name"] for index in split.held_rows.tolist()}
     leaked = held & {target.name for target in targets}
     if leaked:
         raise AssertionError(f"held-out targets reached the calibrator: {leaked}")
@@ -774,16 +794,15 @@ def score_holdout(
 
     rows = [
         row
-        for row in holdout_rows(records)
+        for row in role_split(records).held_rows.tolist()
         if records[row].get("geography_level") == scoring.level
     ]
     base = {"report_only": True, **dict(receipt or {}), "n_targets": len(rows)}
     if not rows:
         return base
-    held = sparse.csr_array(matrix[rows]).astype(np.float64)
     targets = np.asarray([records[index]["value"] for index in rows], dtype=np.float64)
-    final = held @ np.asarray(final_weights, dtype=np.float64)
-    design = held @ np.asarray(design_weights, dtype=np.float64)
+    final = held_estimates(matrix, rows, final_weights)
+    design = held_estimates(matrix, rows, design_weights)
     baseline = pro_rata_baseline(records, rows, scoring)
     scale = np.maximum(np.abs(targets), 1.0)
     final_error = np.abs(final - targets) / scale

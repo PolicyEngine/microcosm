@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 from scipy import sparse as sp
 
-from microcosm.build.holdout import rotated_folds, summarize_rotations
+from microcosm.build.holdout import fold_splits, held_estimates, summarize_rotations
 from microcosm.build.uk_runtime import local_target_census
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_ROW_METADATA_RULES,
@@ -2010,12 +2010,11 @@ def rotated_uk_local_holdout(
                 0 if national_rows is None else len(national_rows.targets)
             ),
         }
-    folds = rotated_folds(
+    splits = fold_splits(
         len(problem.targets),
         n_folds=UK_LOCAL_HOLDOUT_FOLDS,
         seed=UK_LOCAL_HOLDOUT_SEED,
     )
-    all_indices = np.arange(len(problem.targets), dtype=np.int64)
     # A row-metadata rule weights the held rows from their own row carrier
     # (microcosm#1124); the grain rules keep the grain-label path.
     local_rows = (
@@ -2031,12 +2030,8 @@ def rotated_uk_local_holdout(
             for family in bound_families
             if str(family).startswith("national/")
         ]
-    for fold_index, holdout_indices in enumerate(folds):
-        train_indices = np.setdiff1d(
-            all_indices,
-            holdout_indices,
-            assume_unique=True,
-        )
+    for fold_index, split in enumerate(splits):
+        train_indices, holdout_indices = split.train_rows, split.held_rows
         train_problem = _subset_rowwise_problem(problem, train_indices)
         train_families = _derive_uk_local_bound_families_from_target_frame(
             train_problem.target_frame,
@@ -2072,16 +2067,16 @@ def rotated_uk_local_holdout(
             refit_l2_basis=refit_l2_basis,
         )
         held_targets = problem.targets[holdout_indices]
-        held_estimates = np.asarray(
-            problem.matrix[holdout_indices][
-                :,
+        fold_estimates = held_estimates(
+            problem.matrix,
+            holdout_indices,
+            train_solve.weights,
+            columns=(
                 np.arange(problem.n_households)
                 if train_solve.selected_support is None
-                else train_solve.selected_support,
-            ]
-            @ train_solve.weights,
-            dtype=np.float64,
-        ).reshape(-1)
+                else train_solve.selected_support
+            ),
+        )
         if local_rows is not None:
             held_weights = uk_target_loss_weights_for_rows(
                 local_rows.take(holdout_indices), rule=target_weight_rule
@@ -2092,7 +2087,7 @@ def rotated_uk_local_holdout(
                 rule=target_weight_rule,
             )
         loss = relative_error_loss(
-            held_estimates,
+            fold_estimates,
             held_targets,
             target_loss_weights=held_weights,
             target_loss_scales=uk_family_floored_loss_scales(
