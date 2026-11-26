@@ -60,11 +60,15 @@ production's declared ACS plan draws them. These tests pin that:
   decoder sends an exact midpoint between two support points to the lower one;
 - production's plans put the fixture's targets in the fixture's order. The
   plans are the batches ``transfer_acs_inputs`` itself plans for the declared
-  ACS plan, each stacked gap-fill direction and each stacked post-PUF group.
-  Where the stacked callers pass regime-evidence targets, the plan is read
-  again at the transfer's first fit, after the widening, and must not have
-  changed. Each batch that holds two or more fixture targets then runs whole
-  under its production name, in memory and banked, with supplemental donor
+  ACS plan, for the pool builder's copy of it
+  (``pool_transfer_target_families``, which the pool builder runs with a
+  target bank and no regime-evidence targets, and through which production
+  banks declared batch 5), for each stacked gap-fill direction and for each
+  stacked post-PUF group. Where the stacked callers pass regime-evidence
+  targets, the plan is read again at the transfer's first fit, after the
+  widening, and must not have changed. Each batch that holds two or more
+  fixture targets then runs whole, once however many plans hold it, under
+  its production name, in memory and banked, with supplemental donor
   columns for its other targets: every availability pattern draws the batch
   in the plan's order, each target on the earlier raw draws, and the
   patterns together cover every recipient row. Where the batch draws the
@@ -80,12 +84,18 @@ production's declared ACS plan draws them. These tests pin that:
   last loaded from its checkpoint, draws the last on every loaded raw draw
   (among them the pension, the passive subset, the components and the year,
   on rows where the export changes them) and reproduces the cold run's
-  outputs. So does a retry of each from a mixed bank that lacks the first
-  target's checkpoint and every one after the passive subset (after the
-  year in the tax-unit family). It rebuilds the first target, loads the
-  passive subset (the year) after that miss, and draws every later target
-  (two in declared batch 5) on the loaded raw draw, on rows where the
-  export changes it;
+  outputs. So does a retry of each from a mixed bank that lacks the
+  checkpoints of the first target, of the target right before the passive
+  subset and of every target after the passive subset (around the year in
+  the tax-unit family, which draws no passive subset). It rebuilds those,
+  loads the passive subset (the year) right after a miss and after an
+  earlier one, and draws every later target (two in declared batch 5) on
+  the loaded raw draw, on rows where the export changes it. So does, in
+  each batch with two or more targets after the passive subset (declared
+  batch 5), a retry from a bank that lacks only their checkpoints, as when
+  a run stops right after writing the passive subset's: it rebuilds no
+  earlier target and draws each later target, in turn, on the loaded raw
+  passive draw, on rows where the export changes it;
 - the ACS local lane's run of the declared batch that holds
   ``partnership_income`` draws every later target on the raw partnership
   draws, in memory and banked, while the export zeroes some of them in each
@@ -134,6 +144,7 @@ from microcosm.build.us_runtime.acs_transfer import (
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
+from microcosm.build.us_runtime.multispine_pool import pool_transfer_target_families
 from microcosm.build.us_runtime.stacked_spine import (
     _stacked_post_transfer_calibration_specs,
     stacked_gap_fill_plan,
@@ -889,14 +900,18 @@ def _regime_evidence(
 def _production_batches() -> dict[str, list[_Batch]]:
     """Each production plan's batches, as the transfer plans them, in order.
 
-    The staging builder passes the declared ACS plan. Stacked gap fill passes
-    each direction's families (``stacked_gap_fill_plan``), and canonical
-    post-PUF execution passes each late-transfer group's families, each with
-    the regime-evidence targets of its calibration specs.
+    The staging builder passes the declared ACS plan, with no target bank.
+    The pool builder (``tools/build_us_multispine_pool.py``) passes its copy
+    of it (``pool_transfer_target_families``) with a target bank and no
+    regime-evidence targets. Stacked gap fill passes each direction's
+    families (``stacked_gap_fill_plan``), and canonical post-PUF execution
+    passes each late-transfer group's families, each with the regime-evidence
+    targets of its calibration specs.
     """
 
     return {
         "declared ACS plan": _active_plan(declared_acs_transfer_target_families()),
+        "pool plan": _active_plan(pool_transfer_target_families()),
         **{
             f"stacked gap-fill direction {direction.name!r}": _active_plan(
                 direction.target_families,
@@ -1127,6 +1142,25 @@ def _resume_whole_batch(
     return steps
 
 
+def _fed_unlike_export(
+    steps: list[ChainStep], loaded: str, exported: pd.DataFrame
+) -> dict[str, int]:
+    """Per rebuilt target fed ``loaded``, the rows unlike the cold run's export.
+
+    ``steps`` are a retry's ``fit_draw_next`` calls and ``exported`` is the
+    cold run's export of the batch's entity. A target fed ``loaded`` only
+    where the export kept the raw draw counts zero rows.
+    """
+
+    rows: Counter[str] = Counter()
+    for step in steps:
+        if loaded in step.priors:
+            export = exported.loc[step.index, loaded].to_numpy(dtype=np.float64)
+            fed = step.priors[loaded].to_numpy()
+            rows[step.target] += int((fed != export).sum())
+    return dict(rows)
+
+
 def _assert_resume_after_the_pension(
     batch: _Batch,
     frames: tuple[Frame, Frame],
@@ -1211,16 +1245,19 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
     # fixture's, which has every required predictor and lacks every target
     # except the pension, observed on some rows where a batch draws it ahead
     # of later targets. Every recipient row lacks a later target, so every
-    # row is eligible.
+    # row is eligible. A batch that several plans hold alike runs once.
     assert runtime_batches
     observed_runs: list[str] = []
     # Per loaded target, the rows where a last-target retry fed it to the
     # rebuilt fit with a value other than the one the cold run exported.
     loaded_unlike_export: Counter[str] = Counter()
-    # Per batch, the target a mixed retry loaded between rebuilt ones, how
-    # many rebuilt targets it fed, and on how many rows it fed them a value
-    # other than the one the cold run exported.
-    mixed_reach: dict[str, tuple[str, int, int]] = {}
+    # Per batch, the target a mixed retry loaded between rebuilt ones and,
+    # per rebuilt target it fed, the rows where it fed a value other than the
+    # one the cold run exported.
+    mixed_reach: dict[str, tuple[str, dict[str, int]]] = {}
+    # Per batch, the same rows for the retry that loads every target through
+    # the passive subset and rebuilds only the targets after it.
+    prefix_reach: dict[str, dict[str, int]] = {}
     for number, (entity, batch, targets, shared) in enumerate(sorted(runtime_batches)):
         recipient, donor = acs_raw_prior_fixture()
         observed: pd.Series | None = None
@@ -1323,40 +1360,49 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
                 unlike = int((step.priors[prior].to_numpy() != export).sum())
                 loaded_unlike_export[prior] += unlike
 
-        # A retry from a mixed bank: the copy lacks the first target's
-        # checkpoint and every one after the passive subset (after the
-        # second-to-last target where the batch draws none), as when an
-        # earlier checkpoint is torn or corrupt and the run stopped after
-        # writing the passive subset's. The retry rebuilds the first target,
-        # then loads the passive subset after that miss and feeds it to every
+        # A retry from a mixed bank: the copy lacks the checkpoints of the
+        # first target, of the target right before the passive subset and of
+        # every target after the passive subset (the same around the
+        # second-to-last target where the batch draws none), as when earlier
+        # checkpoints are torn or corrupt and the run stopped after writing
+        # the passive subset's. The retry rebuilds the first target, loads
+        # any between, rebuilds the one before the passive subset, then loads
+        # the passive subset right after that miss and feeds it to every
         # target it rebuilds later: two of them in declared batch 5.
         cut = order.index(_PASSIVE) if _PASSIVE in order else len(order) - 2
-        assert 0 < cut < len(order) - 1, order
+        assert 1 < cut < len(order) - 1, order
         between = order[cut]
         steps = _resume_whole_batch(
             (entity, batch, targets),
             frames,
             cold,
             loaded=between,
-            rebuilt=(order[0], *order[cut + 1 :]),
+            rebuilt=(order[0], order[cut - 1], *order[cut + 1 :]),
             root=tmp_path / f"mixed_{number}",
             monkeypatch=monkeypatch,
         )
-        fed = [step for step in steps if between in step.priors]
-        unlike = sum(
-            int(
-                (
-                    step.priors[between].to_numpy()
-                    != exported.loc[step.index, between].to_numpy(dtype=np.float64)
-                ).sum()
-            )
-            for step in fed
-        )
         mixed_reach[f"{entity} batch {batch!r}"] = (
             between,
-            len({step.target for step in fed}),
-            unlike,
+            _fed_unlike_export(steps, between, exported),
         )
+
+        # A retry from a bank that lacks only the checkpoints after the
+        # passive subset, as when the run stopped right after writing it: it
+        # rebuilds no earlier target and feeds the loaded passive subset to
+        # each later target in turn. Where one target follows the passive
+        # subset, the last-target retry above is this retry.
+        if _PASSIVE in order and len(order) - cut - 1 >= 2:
+            steps = _resume_whole_batch(
+                (entity, batch, targets),
+                frames,
+                cold,
+                loaded=_PASSIVE,
+                root=tmp_path / f"prefix_{number}",
+                monkeypatch=monkeypatch,
+            )
+            prefix_reach[f"{entity} batch {batch!r}"] = _fed_unlike_export(
+                steps, _PASSIVE, exported
+            )
 
     # Post-PUF batch 3 draws the pension ahead of later targets, so the
     # observed case ran, in memory, banked and resumed from the bank.
@@ -1385,33 +1431,50 @@ def test_production_draws_the_fixture_targets_in_the_fixture_order(
     # passive subset, or the tax-unit family's year) to the later rebuilt
     # fits, on some rows, with a raw draw the export changes there, and in
     # some retry the loaded passive subset reached two or more rebuilt
-    # targets. So a retry that handed on that loaded target as the export
-    # changes it, after a miss or after a fresh fit, would fail the resume
-    # check above.
-    assert all(rows for _loaded, _fits, rows in mixed_reach.values()), (
+    # targets on such rows. So a retry that handed on that loaded target as
+    # the export changes it, after a miss or after a fresh fit, would fail
+    # the resume check above.
+    assert all(sum(rows.values()) for _loaded, rows in mixed_reach.values()), (
         "a mixed retry never fed its loaded target to a rebuilt fit with a "
-        f"value the export changes; per batch (loaded, fits, rows): {mixed_reach}"
+        "value the export changes; per batch (loaded, rows per rebuilt "
+        f"target): {mixed_reach}"
     )
     assert any(
-        loaded == _PASSIVE and fits >= 2 for loaded, fits, _rows in mixed_reach.values()
+        loaded == _PASSIVE and sum(1 for count in rows.values() if count) >= 2
+        for loaded, rows in mixed_reach.values()
     ), (
         "no mixed retry fed the loaded passive subset to two or more rebuilt "
-        f"targets; per batch (loaded, fits, rows): {mixed_reach}"
+        "targets with a value the export changes; per batch (loaded, rows per "
+        f"rebuilt target): {mixed_reach}"
+    )
+    # A retry that rebuilt only the targets after the passive subset, with
+    # no earlier miss, fed the loaded passive subset to two or more of them,
+    # on some rows each, with a raw draw the export changes there. So a
+    # retry that handed it on as the export changes it only when no earlier
+    # checkpoint was missing would fail the resume check above.
+    assert any(
+        sum(1 for count in rows.values() if count) >= 2
+        for rows in prefix_reach.values()
+    ), (
+        "no retry that rebuilt only the targets after the passive subset fed "
+        "it to two or more of them with a value the export changes; per batch "
+        f"(rows per rebuilt target): {prefix_reach}"
     )
 
-    # The declared ACS plan chains each fixture family whole in one batch.
-    declared = plans["declared ACS plan"]
-    for entity, families in RAW_PRIOR_FIXTURE_FAMILIES.items():
-        for chain in families.values():
-            holding = [
-                batch
-                for batch_entity, batch, targets in declared
-                if batch_entity == entity and set(chain) <= set(targets)
-            ]
-            assert len(holding) == 1, (
-                f"the declared ACS plan no longer chains {list(chain)} in one "
-                f"{entity} batch; revisit the fixture"
-            )
+    # The declared ACS plan and the pool builder's copy of it each chain each
+    # fixture family whole in one batch.
+    for name in ("declared ACS plan", "pool plan"):
+        for entity, families in RAW_PRIOR_FIXTURE_FAMILIES.items():
+            for chain in families.values():
+                holding = [
+                    batch
+                    for batch_entity, batch, targets in plans[name]
+                    if batch_entity == entity and set(chain) <= set(targets)
+                ]
+                assert len(holding) == 1, (
+                    f"the {name} no longer chains {list(chain)} in one "
+                    f"{entity} batch; revisit the fixture"
+                )
 
 
 #: The leaf the ACS local lane keeps at zero where ACS ``SEMP`` counts it.
