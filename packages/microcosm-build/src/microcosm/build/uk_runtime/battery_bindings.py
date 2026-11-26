@@ -2171,8 +2171,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
                 # #1717 decile_fit check (report-only): the deciles held to the
-                # donor's shape of spending by income, and how far each may move.
+                # donor's shape of spending by income, the donor they are held
+                # to (as surveyed, or reweighted to the frame's household mix),
+                # and how far each may move.
                 "deciles",
+                "shape_reference",
                 "maximum_shape_deviation",
                 # #1113 consumption_basis check: the one base year of every
                 # LCFS spend column.

@@ -659,7 +659,8 @@ def test_decile_fit_sets_the_frames_spending_beside_the_donors_by_income() -> No
     """Each survey ranked on its own equivalised income, shaped on deciles 4-7.
 
     The receipt of microcosm#1717: a frame equal to the donor sits at one in
-    every decile; doubling the bottom decile's spending doubles its ratio and
+    every decile, against the donor as surveyed and reweighted to the frame's
+    mix alike; doubling the bottom decile's spending doubles its ratio and
     shape and moves no other decile; a frame resting on two source households
     is withheld everywhere.
     """
@@ -676,10 +677,20 @@ def test_decile_fit_sets_the_frames_spending_beside_the_donors_by_income() -> No
     same = decile_fit(donor, donor, weights=weights, donor=donor, sources=None)
     assert [row["decile"] for row in same["deciles"]] == list(range(1, 11))
     assert same["reference_deciles"] == [4, 5, 6, 7]
+    assert same["reweighting"]["margins"] == {
+        "household_adult_count": "1, 2, 3+",
+        "household_child_count": "0, 1, 2+",
+        "num_vehicles": "0, 1, 2+",
+        "tenure_type": "categories",
+    }
     for row in [*same["deciles"], same["all"]]:
         assert "withheld" not in row
         assert row["total"]["ratio"] == pytest.approx(1.0)
         assert row["total"]["shape"] == pytest.approx(1.0)
+        assert row["total"]["reweighted_ratio"] == pytest.approx(1.0)
+        assert row["total"]["reweighted_shape"] == pytest.approx(1.0)
+    assert all(row["reweighted_mix_met"] for row in same["deciles"])
+    assert "reweighted_mix_met" not in same["all"]
 
     rank = income_tenths(
         donor["hbai_household_net_income"], _modified_oecd_scale(donor), weights
@@ -690,9 +701,12 @@ def test_decile_fit_sets_the_frames_spending_beside_the_donors_by_income() -> No
     doubled = decile_fit(frame, frame, weights=weights, donor=donor, sources=None)
     bottom = doubled["deciles"][0]
     assert bottom["total"]["shape"] == pytest.approx(2.0)
+    assert bottom["total"]["reweighted_shape"] == pytest.approx(2.0)
     assert bottom["divisions"][divisions[0]]["ratio"] == pytest.approx(2.0)
+    assert bottom["divisions"][divisions[0]]["reweighted_ratio"] == pytest.approx(2.0)
     for row in doubled["deciles"][1:]:
         assert row["total"]["shape"] == pytest.approx(1.0)
+        assert row["total"]["reweighted_shape"] == pytest.approx(1.0)
 
     thin = decile_fit(
         frame.iloc[:40],
@@ -704,6 +718,116 @@ def test_decile_fit_sets_the_frames_spending_beside_the_donors_by_income() -> No
     for row in [*thin["deciles"], thin["all"]]:
         assert row.get("withheld") is True
         assert "total" not in row
+
+
+def test_decile_fit_reweights_the_donor_to_the_frames_household_mix() -> None:
+    """The reweighted shape sees the draw, not the two surveys' mixes.
+
+    Households come in pairs that share an income, a composition and a
+    tenure: one without a car, one with a car spending half as much again.
+    The frame is the donor with the bottom decile's car households weighted
+    up (each pair's weight kept, so no household changes decile). Its spending
+    is what the donor's households like its own spend, so the bottom decile
+    runs 12% over the donor as surveyed and sits on the reweighted donor.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        _modified_oecd_scale,
+        decile_fit,
+        income_tenths,
+    )
+
+    rng = np.random.default_rng(1717)
+    pairs = 400
+    income = np.repeat(rng.lognormal(10.0, 0.5, pairs), 2)
+    table = pd.DataFrame(
+        {
+            "hbai_household_net_income": income,
+            "household_adult_count": np.repeat(rng.integers(1, 4, pairs), 2),
+            "household_child_count": np.repeat(rng.integers(0, 3, pairs), 2),
+            "tenure_type": np.repeat(
+                rng.choice(
+                    ["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE", "RENT_PRIVATELY"], pairs
+                ),
+                2,
+            ),
+            "num_vehicles": np.tile([0, 1], pairs),
+            "household_weight": np.repeat(rng.uniform(50.0, 150.0, pairs), 2),
+        }
+    )
+    spend = 0.6 * income * np.where(table["num_vehicles"] == 1, 1.5, 1.0)
+    for column in UK_LCFS_COICOP_DIVISION_COLUMNS:
+        table[column] = spend / len(UK_LCFS_COICOP_DIVISION_COLUMNS)
+    donor_weights = table["household_weight"].to_numpy(dtype=float)
+    rank = income_tenths(income, _modified_oecd_scale(table), donor_weights)
+    car = table["num_vehicles"].to_numpy() == 1
+    frame_weights = donor_weights * np.where(rank == 1, np.where(car, 1.6, 0.4), 1.0)
+
+    fit = decile_fit(table, table, weights=frame_weights, donor=table, sources=None)
+    bottom = fit["deciles"][0]
+    assert bottom["total"]["ratio"] == pytest.approx(1.12)
+    assert bottom["total"]["shape"] == pytest.approx(1.12)
+    assert bottom["total"]["reweighted_ratio"] == pytest.approx(1.0)
+    assert bottom["total"]["reweighted_shape"] == pytest.approx(1.0)
+    assert bottom["reweighted_mix_met"] is True
+    for row in fit["deciles"][1:]:
+        assert row["total"]["shape"] == pytest.approx(1.0)
+        assert row["total"]["reweighted_shape"] == pytest.approx(1.0)
+    assert fit["all"]["total"]["ratio"] > 1.0
+    assert fit["all"]["total"]["reweighted_ratio"] == pytest.approx(1.0)
+
+
+def test_reweighting_to_the_frames_mix_joins_sparse_categories_and_bounds_factors() -> (
+    None
+):
+    """The reweighting's three guards (microcosm#1717).
+
+    A donor category the frame lacks gets no weight; a category under three
+    donor households joins the band below it, so no reweighted figure turns
+    on one or two households; and no factor leaves a fifth to five, so a mix
+    the donor cannot reach is reported as not met.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import reweighted_to_frame_mix
+
+    def mix(size: int, **columns: list) -> dict[str, np.ndarray]:
+        return {
+            "household_adult_count": np.ones(size, dtype=int),
+            "household_child_count": np.zeros(size, dtype=int),
+            "num_vehicles": np.zeros(size, dtype=int),
+            "tenure_type": np.array(["OWNED_OUTRIGHT"] * size),
+            **{name: np.asarray(values) for name, values in columns.items()},
+        }
+
+    absent, met = reweighted_to_frame_mix(
+        mix(10, tenure_type=["OWNED_OUTRIGHT"] * 5 + ["RENT_PRIVATELY"] * 5),
+        np.ones(10),
+        mix(4),
+        np.ones(4),
+    )
+    assert met is True
+    assert absent.tolist() == pytest.approx([2.0] * 5 + [0.0] * 5)
+
+    adults = np.array([1] * 5 + [2] * 5 + [3] * 2)
+    joined, met = reweighted_to_frame_mix(
+        mix(12, household_adult_count=adults),
+        np.ones(12),
+        mix(8, household_adult_count=[1] * 2 + [3] * 6),
+        np.ones(8),
+    )
+    assert met is True
+    assert joined[adults == 1] == pytest.approx([0.6] * 5)
+    assert joined[adults > 1] == pytest.approx([9.0 / 7.0] * 7)
+
+    bounded, met = reweighted_to_frame_mix(
+        mix(20, tenure_type=["OWNED_OUTRIGHT"] * 10 + ["RENT_PRIVATELY"] * 10),
+        np.ones(20),
+        mix(100, tenure_type=["OWNED_OUTRIGHT"] + ["RENT_PRIVATELY"] * 99),
+        np.ones(100),
+    )
+    assert met is False
+    assert bool(np.all((bounded >= 0.2 - 1e-12) & (bounded <= 5.0 + 1e-12)))
 
 
 def test_excise_spending_splits_each_drawn_total() -> None:

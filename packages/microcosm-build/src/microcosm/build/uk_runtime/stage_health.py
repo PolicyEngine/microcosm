@@ -3458,6 +3458,14 @@ def _division_levelling_factors(
     return factors
 
 
+#: The donors the decile_fit gate may hold the frame's shape to, each with the
+#: receipt field that carries the shape against it and its name in a failure.
+_DECILE_FIT_SHAPE_REFERENCES: Mapping[str, tuple[str, str]] = {
+    "reweighted_donor": ("reweighted_shape", "reweighted donor's"),
+    "donor": ("shape", "donor's"),
+}
+
+
 def _decile_fit_gate(
     stage: str,
     evidence: Mapping[str, object],
@@ -3467,15 +3475,25 @@ def _decile_fit_gate(
 
     Reads the lcfs ``decile_fit`` receipt: the frame's total spending per
     household over the donor's, in each decile, over the same ratio pooled
-    over the reference deciles. A decile among ``deciles`` whose shape leaves
-    1 by more than ``maximum_shape_deviation``, or that is withheld or
-    missing, fails. Decile 10 rests on incomes beyond the donor's and is
-    reported, not checked. The battery declares the gate diagnostic: it warns
-    and blocks no release.
+    over the reference deciles. ``shape_reference`` names the donor the frame
+    is held to: ``reweighted_donor``, the donor reweighted within each decile
+    to the frame's household mix, so that the two surveys' mixes move no
+    shape, or ``donor``, the donor as surveyed. A decile among ``deciles``
+    whose shape leaves 1 by more than ``maximum_shape_deviation``, or that is
+    withheld or missing, fails. Decile 10 rests on incomes beyond the donor's
+    and is reported, not checked. The battery declares the gate diagnostic:
+    it warns and blocks no release.
     """
 
     check = "decile_fit"
     receipt = _mapping(evidence.get("decile_fit"), label=f"{stage}.decile_fit")
+    reference = parameters.get("shape_reference")
+    if reference not in _DECILE_FIT_SHAPE_REFERENCES:
+        raise ValueError(
+            f"{stage}.shape_reference must be one of "
+            f"{sorted(_DECILE_FIT_SHAPE_REFERENCES)}, not {reference!r}."
+        )
+    field, named = _DECILE_FIT_SHAPE_REFERENCES[str(reference)]
     maximum = _finite_number(
         parameters.get("maximum_shape_deviation"),
         label=f"{stage}.maximum_shape_deviation",
@@ -3491,7 +3509,7 @@ def _decile_fit_gate(
     for decile in checked:
         row = rows.get(decile)
         total = None if row is None else row.get("total")
-        shape = total.get("shape") if isinstance(total, Mapping) else None
+        shape = total.get(field) if isinstance(total, Mapping) else None
         if not isinstance(shape, int | float) or not np.isfinite(float(shape)):
             failures.append(f"{stage}: decile {decile} has no spending shape.")
             continue
@@ -3499,7 +3517,7 @@ def _decile_fit_gate(
         if abs(float(shape) - 1.0) > maximum:
             failures.append(
                 f"{stage}: decile {decile}'s spending is {float(shape):.3f} of the "
-                f"donor's shape, outside 1 +/- {maximum}."
+                f"{named} shape, outside 1 +/- {maximum}."
             )
     return GateResult(
         name="stage_health",
@@ -3508,6 +3526,7 @@ def _decile_fit_gate(
         details={
             "stage": stage,
             "check": check,
+            "shape_reference": reference,
             "shapes": shapes,
             "maximum_shape_deviation": maximum,
         },

@@ -910,6 +910,23 @@ UK_LCFS_CONSUMPTION_STAGE_NAME = "lcfs_consumption"
 #: (microcosm#1717), and the deciles whose pooled ratio sets each one's shape.
 UK_LCFS_DECILE_FIT_RECEIPT = "decile_fit"
 UK_LCFS_DECILE_FIT_REFERENCE_DECILES = (4, 5, 6, 7)
+#: The household mix the receipt reweights the donor to within each decile:
+#: adults 1, 2, 3 or more; children and cars 0, 1, 2 or more (each count's
+#: first and open-ended last band); tenure by its categories (``None``).
+UK_LCFS_DECILE_FIT_MIX: Mapping[str, tuple[int, int] | None] = MappingProxyType(
+    {
+        "household_adult_count": (1, 3),
+        "household_child_count": (0, 2),
+        "num_vehicles": (0, 2),
+        "tenure_type": None,
+    }
+)
+#: How far the reweighting may move a donor household's weight, either way.
+UK_LCFS_DECILE_FIT_MAXIMUM_FACTOR = 5.0
+UK_LCFS_DECILE_FIT_RAKE_ITERATIONS = 100
+#: The largest gap from the frame's share of any mix category at which the
+#: reweighted donor counts as matching the frame's mix.
+UK_LCFS_DECILE_FIT_MIX_TOLERANCE = 1e-6
 
 
 @dataclass
@@ -1710,6 +1727,135 @@ def division_capture_or_reason(
         }
 
 
+def decile_fit_mix(table: pd.DataFrame) -> dict[str, np.ndarray]:
+    """Each household's mix category for the decile receipt (microcosm#1717).
+
+    The counts are banded as :data:`UK_LCFS_DECILE_FIT_MIX` declares, the last
+    band open-ended; tenure keeps its categories.
+    """
+
+    mix: dict[str, np.ndarray] = {}
+    for column, bands in UK_LCFS_DECILE_FIT_MIX.items():
+        if bands is None:
+            mix[column] = table[column].astype(str).to_numpy(dtype=str)
+        else:
+            counts = np.rint(_numeric(table[column]).to_numpy(dtype=float))
+            mix[column] = np.clip(counts, *bands).astype(int)
+    return mix
+
+
+def _merged_sparse_categories(
+    donor: np.ndarray, frame: np.ndarray, *, ordered: bool
+) -> tuple[np.ndarray, np.ndarray]:
+    """Join each mix category under the floor of donor households to another.
+
+    The sparsest category goes first, the later of a tie. A count band joins
+    the band below it (the lowest, the band above); a tenure joins the
+    category with the most donor households. A frame category the donor lacks
+    holds no donor household, so it always joins one. Stops at one category.
+    """
+
+    # One dtype for both sides, so a joined category's name fits either.
+    common = np.result_type(donor, frame)
+    donor, frame = donor.astype(common), frame.astype(common)
+    while True:
+        categories = sorted(set(donor.tolist()) | set(frame.tolist()))
+        if len(categories) < 2:
+            return donor, frame
+        held = {category: int(np.sum(donor == category)) for category in categories}
+        sparse = [
+            category for category in categories if held[category] < UK_DISCLOSURE_FLOOR
+        ]
+        if not sparse:
+            return donor, frame
+        merged = min(
+            sparse, key=lambda category: (held[category], -categories.index(category))
+        )
+        position = categories.index(merged)
+        if ordered:
+            into = (
+                categories[position - 1] if position > 0 else categories[position + 1]
+            )
+        else:
+            into = max(
+                (category for category in categories if category != merged),
+                key=lambda category: (held[category], category),
+            )
+        donor[donor == merged] = into
+        frame[frame == merged] = into
+
+
+def reweighted_to_frame_mix(
+    donor_mix: Mapping[str, np.ndarray],
+    donor_weights: np.ndarray,
+    frame_mix: Mapping[str, np.ndarray],
+    frame_weights: np.ndarray,
+) -> tuple[np.ndarray, bool]:
+    """The donor's weights raked to the frame's household mix (microcosm#1717).
+
+    One income decile's households on each side, holding at least three on
+    the donor's. Each margin of :data:`UK_LCFS_DECILE_FIT_MIX`, its sparse
+    categories joined first (:func:`_merged_sparse_categories`), is raked in
+    turn to the frame's weighted shares of the donor's total. A donor
+    category the frame lacks gets no weight, its weight shared out over the
+    rest, and the raking holds every other household within
+    :data:`UK_LCFS_DECILE_FIT_MAXIMUM_FACTOR` of that weight either way; the
+    weights keep the donor's total unless the bound holds a category back.
+    Returned with whether every category's share comes within
+    :data:`UK_LCFS_DECILE_FIT_MIX_TOLERANCE` of the frame's.
+    """
+
+    base = np.asarray(donor_weights, dtype=float)
+    frame_mass = np.asarray(frame_weights, dtype=float)
+    kept = base > 0
+    margins: list[tuple[np.ndarray, np.ndarray]] = []
+    for column, bands in UK_LCFS_DECILE_FIT_MIX.items():
+        donor_codes, frame_codes = _merged_sparse_categories(
+            np.asarray(donor_mix[column]),
+            np.asarray(frame_mix[column]),
+            ordered=bands is not None,
+        )
+        categories, index = np.unique(donor_codes, return_inverse=True)
+        if not bool(np.isin(frame_codes, categories).all()):
+            raise ValueError(
+                f"The donor holds too few households to reweight {column} to the frame."
+            )
+        share = (
+            np.bincount(
+                np.searchsorted(categories, frame_codes),
+                weights=frame_mass,
+                minlength=len(categories),
+            )
+            / frame_mass.sum()
+        )
+        kept &= share[index] > 0
+        margins.append((index, share))
+    if not bool(kept.any()):
+        return np.zeros_like(base), False
+    total = float(base.sum())
+    weights = np.where(kept, base * total / base[kept].sum(), 0.0)
+    low = weights / UK_LCFS_DECILE_FIT_MAXIMUM_FACTOR
+    high = weights * UK_LCFS_DECILE_FIT_MAXIMUM_FACTOR
+    for _ in range(UK_LCFS_DECILE_FIT_RAKE_ITERATIONS):
+        for index, share in margins:
+            current = np.bincount(index, weights=weights, minlength=len(share))
+            factor = np.divide(
+                share * total, current, out=np.zeros_like(share), where=current > 0
+            )
+            weights = np.clip(weights * factor[index], low, high)
+    gap = max(
+        float(
+            np.abs(
+                np.bincount(index, weights=weights, minlength=len(share))
+                / weights.sum()
+                - share
+            ).max()
+        )
+        for index, share in margins
+    )
+    return weights, gap <= UK_LCFS_DECILE_FIT_MIX_TOLERANCE
+
+
 def decile_fit(
     household_draws: pd.DataFrame,
     recipient: pd.DataFrame,
@@ -1729,9 +1875,20 @@ def decile_fit(
     weighted mean per household on each side, the weighted share spending
     anything, and the frame's mean over the donor's. Each decile's ratio over
     the pooled ratio of deciles 4 to 7 is its shape, which no choice of level
-    moves. A decile resting on fewer than three source households on either
-    side is withheld, and every decile gives both sides' support bands.
-    Aggregates only: no household's value, maximum or minimum.
+    moves.
+
+    The mean, ratio and shape are also given against the donor reweighted,
+    within each decile, to the frame's household mix of adults, children,
+    cars and tenure (:func:`reweighted_to_frame_mix`). A frame whose
+    households spend what the donor's households like them spend sits at one
+    on that shape, whatever the two surveys' mixes, so it is the draw's own.
+    The pooled figures sum each decile's reweighted donor; a decile too thin
+    to compare keeps the donor's own weights there.
+
+    A decile resting on fewer than three source households on either side is
+    withheld, as are the reweighted figures where the reweighted donor rests
+    on fewer than three, and every decile gives its support bands. Aggregates
+    only: no household's value, weight, maximum or minimum.
     """
 
     frame_weights = np.asarray(weights, dtype=float)
@@ -1752,6 +1909,31 @@ def decile_fit(
     frame_ids = (
         np.arange(len(frame_weights)) if sources is None else np.asarray(sources)
     )
+    donor_ids = np.arange(len(donor_weights))
+
+    def supported(
+        frame_mask: np.ndarray, donor_mask: np.ndarray, donor_mass: np.ndarray
+    ) -> tuple[int, int]:
+        return (
+            distinct_count(frame_ids, frame_mask, frame_weights),
+            distinct_count(donor_ids, donor_mask, donor_mass),
+        )
+
+    frame_mix = decile_fit_mix(recipient)
+    donor_mix = decile_fit_mix(donor)
+    reweighted = donor_weights.copy()
+    mix_met: dict[int, bool] = {}
+    for decile in range(1, 11):
+        frame_mask = frame_rank == decile
+        donor_mask = donor_rank == decile
+        if min(supported(frame_mask, donor_mask, donor_weights)) < UK_DISCLOSURE_FLOOR:
+            continue
+        reweighted[donor_mask], mix_met[decile] = reweighted_to_frame_mix(
+            {column: codes[donor_mask] for column, codes in donor_mix.items()},
+            donor_weights[donor_mask],
+            {column: codes[frame_mask] for column, codes in frame_mix.items()},
+            frame_weights[frame_mask],
+        )
 
     def side(values: np.ndarray, mass: np.ndarray, mask: np.ndarray) -> dict[str, Any]:
         weight = mass[mask]
@@ -1766,34 +1948,58 @@ def decile_fit(
     def compared(frame: float, donor_value: float) -> float | None:
         return float(frame / donor_value) if donor_value > 0 else None
 
-    def supported(frame_mask: np.ndarray, donor_mask: np.ndarray) -> tuple[int, int]:
-        return (
-            distinct_count(frame_ids, frame_mask, frame_weights),
-            distinct_count(np.arange(len(donor_weights)), donor_mask, donor_weights),
-        )
+    def shaped(ratio: float | None, reference: float | None) -> float | None:
+        return None if ratio is None or not reference else ratio / reference
 
-    reference_frame = np.isin(frame_rank, UK_LCFS_DECILE_FIT_REFERENCE_DECILES)
-    reference_donor = np.isin(donor_rank, UK_LCFS_DECILE_FIT_REFERENCE_DECILES)
-    reference_ratio: float | None = None
-    reference_divisions: list[float | None] = [None] * len(columns)
-    # The reference deciles carry every shape, so they meet the floor too.
-    if min(supported(reference_frame, reference_donor)) >= UK_DISCLOSURE_FLOOR:
-        reference = (
-            side(frame_values, frame_weights, reference_frame),
-            side(donor_values, donor_weights, reference_donor),
+    def pooled(donor_mass: np.ndarray) -> tuple[float | None, list[float | None]]:
+        frame_mask = np.isin(frame_rank, UK_LCFS_DECILE_FIT_REFERENCE_DECILES)
+        donor_mask = np.isin(donor_rank, UK_LCFS_DECILE_FIT_REFERENCE_DECILES) & (
+            donor_mass > 0
         )
-        reference_ratio = compared(reference[0]["mean"], reference[1]["mean"])
-        reference_divisions = [
+        # The reference deciles carry every shape, so they meet the floor too.
+        if min(supported(frame_mask, donor_mask, donor_mass)) < UK_DISCLOSURE_FLOOR:
+            return None, [None] * len(columns)
+        frame = side(frame_values, frame_weights, frame_mask)
+        donor_side = side(donor_values, donor_mass, donor_mask)
+        return compared(frame["mean"], donor_side["mean"]), [
             compared(float(f), float(d))
             for f, d in zip(
-                reference[0]["division_means"],
-                reference[1]["division_means"],
-                strict=True,
+                frame["division_means"], donor_side["division_means"], strict=True
             )
         ]
 
-    def cell(frame_mask: np.ndarray, donor_mask: np.ndarray) -> dict[str, Any]:
-        frame_support, donor_support = supported(frame_mask, donor_mask)
+    reference_ratio, reference_divisions = pooled(donor_weights)
+    reweighted_reference, reweighted_divisions = pooled(reweighted)
+
+    def figures(
+        frame_mean: float,
+        donor_mean: float,
+        frame_positive: float,
+        donor_positive: float,
+        reweighted_mean: float | None,
+        reference: float | None,
+        reference_reweighted: float | None,
+    ) -> dict[str, Any]:
+        ratio = compared(frame_mean, donor_mean)
+        reweighted_ratio = (
+            None if reweighted_mean is None else compared(frame_mean, reweighted_mean)
+        )
+        return {
+            "frame_mean": frame_mean,
+            "donor_mean": donor_mean,
+            "frame_positive_share": frame_positive,
+            "donor_positive_share": donor_positive,
+            "ratio": ratio,
+            "shape": shaped(ratio, reference),
+            "reweighted_donor_mean": reweighted_mean,
+            "reweighted_ratio": reweighted_ratio,
+            "reweighted_shape": shaped(reweighted_ratio, reference_reweighted),
+        }
+
+    def cell(
+        frame_mask: np.ndarray, donor_mask: np.ndarray, met: bool | None
+    ) -> dict[str, Any]:
+        frame_support, donor_support = supported(frame_mask, donor_mask, donor_weights)
         entry: dict[str, Any] = {
             "frame_support": support_band(frame_support),
             "donor_support": support_band(donor_support),
@@ -1801,45 +2007,52 @@ def decile_fit(
         if min(frame_support, donor_support) < UK_DISCLOSURE_FLOOR:
             entry["withheld"] = True
             return entry
+        reweighted_mask = donor_mask & (reweighted > 0)
+        reweighted_support = distinct_count(donor_ids, reweighted_mask, reweighted)
+        entry["reweighted_donor_support"] = support_band(reweighted_support)
+        if met is not None:
+            entry["reweighted_mix_met"] = met
         frame = side(frame_values, frame_weights, frame_mask)
         donor_side = side(donor_values, donor_weights, donor_mask)
-        ratio = compared(frame["mean"], donor_side["mean"])
-        entry["total"] = {
-            "frame_mean": frame["mean"],
-            "donor_mean": donor_side["mean"],
-            "frame_positive_share": frame["positive_share"],
-            "donor_positive_share": donor_side["positive_share"],
-            "ratio": ratio,
-            "shape": None
-            if ratio is None or not reference_ratio
-            else ratio / reference_ratio,
-        }
-        divisions = {}
-        for j, column in enumerate(columns):
-            division_ratio = compared(
+        matched = (
+            side(donor_values, reweighted, reweighted_mask)
+            if reweighted_support >= UK_DISCLOSURE_FLOOR
+            else None
+        )
+        entry["total"] = figures(
+            frame["mean"],
+            donor_side["mean"],
+            frame["positive_share"],
+            donor_side["positive_share"],
+            None if matched is None else matched["mean"],
+            reference_ratio,
+            reweighted_reference,
+        )
+        entry["divisions"] = {
+            column: figures(
                 float(frame["division_means"][j]),
                 float(donor_side["division_means"][j]),
+                float(frame["division_positive"][j]),
+                float(donor_side["division_positive"][j]),
+                None if matched is None else float(matched["division_means"][j]),
+                reference_divisions[j],
+                reweighted_divisions[j],
             )
-            divisions[column] = {
-                "frame_mean": float(frame["division_means"][j]),
-                "donor_mean": float(donor_side["division_means"][j]),
-                "frame_positive_share": float(frame["division_positive"][j]),
-                "donor_positive_share": float(donor_side["division_positive"][j]),
-                "ratio": division_ratio,
-                "shape": None
-                if division_ratio is None or not reference_divisions[j]
-                else division_ratio / reference_divisions[j],
-            }
-        entry["divisions"] = divisions
+            for j, column in enumerate(columns)
+        }
         return entry
 
-    deciles = []
-    for decile in range(1, 11):
-        deciles.append(
-            {"decile": decile, **cell(frame_rank == decile, donor_rank == decile)}
-        )
+    deciles = [
+        {
+            "decile": decile,
+            **cell(frame_rank == decile, donor_rank == decile, mix_met.get(decile)),
+        }
+        for decile in range(1, 11)
+    ]
     everyone = cell(
-        np.ones(len(frame_weights), dtype=bool), np.ones(len(donor_weights), dtype=bool)
+        np.ones(len(frame_weights), dtype=bool),
+        np.ones(len(donor_weights), dtype=bool),
+        None,
     )
     return {
         "ranking": "equivalised_hbai_household_net_income",
@@ -1847,6 +2060,23 @@ def decile_fit(
         "frame_weights": "stage_design_weights",
         "donor_weights": "household_weight",
         "reference_deciles": list(UK_LCFS_DECILE_FIT_REFERENCE_DECILES),
+        "reweighting": {
+            "within": "income_decile",
+            "margins": {
+                column: "categories"
+                if bands is None
+                else ", ".join(
+                    [
+                        *(str(value) for value in range(bands[0], bands[1])),
+                        f"{bands[1]}+",
+                    ]
+                )
+                for column, bands in UK_LCFS_DECILE_FIT_MIX.items()
+            },
+            "minimum_donor_households_per_category": UK_DISCLOSURE_FLOOR,
+            "maximum_factor": UK_LCFS_DECILE_FIT_MAXIMUM_FACTOR,
+            "iterations": UK_LCFS_DECILE_FIT_RAKE_ITERATIONS,
+        },
         "columns": columns,
         "deciles": deciles,
         "all": everyone,

@@ -482,9 +482,10 @@
           8,
           9
         ],
+        "shape_reference": "reweighted_donor",
         "maximum_shape_deviation": 0.1
       },
-      "notes": "Report-only stage-time check on the lcfs decile_fit receipt (microcosm#1717). Each survey is ranked on its own equivalised predictor income (the HBAI net income the draw conditions on, over the modified OECD scale from the adult and child counts) and cut into tenths of its weighted households, the frame at the stage's design weights and the donor at its own. A decile's shape is the frame's total spending per household over the donor's in that decile, over the same ratio pooled over deciles 4 to 7, so no choice of level moves it. A decile 1 to 9 whose shape leaves 1 by more than the tolerance, or that is withheld, warns; decile 10, whose incomes reach beyond the donor's, is reported only. Diagnostic: it blocks no release."
+      "notes": "Report-only stage-time check on the lcfs decile_fit receipt (microcosm#1717). Each survey is ranked on its own equivalised predictor income (the HBAI net income the draw conditions on, over the modified OECD scale from the adult and child counts) and cut into tenths of its weighted households, the frame at the stage's design weights and the donor at its own. The frame is held to the donor reweighted, within each decile, to the frame's household mix of adults, children, cars and tenure. A decile's shape is the frame's total spending per household over that reweighted donor's, over the same ratio pooled over deciles 4 to 7, so neither the level nor the two surveys' household mixes move it: it is the draw's own. The receipt also gives each shape against the donor as surveyed. A decile 1 to 9 whose shape leaves 1 by more than the tolerance, or that is withheld, warns; decile 10, whose incomes reach beyond the donor's, is reported only. Diagnostic: it blocks no release."
     },
     {
       "id": "uk_stage_etb_vat_support",
