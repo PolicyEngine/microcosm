@@ -48,6 +48,10 @@ CALIBRATION_PROGRESS_SCHEMA = "microcosm.staging.calibration-progress"
 EVENT_SCHEMA = "microcosm.staging.event"
 
 DeliveryMode = Literal["local_and_remote", "local_only", "disabled"]
+#: The status of a stage event a caller records (``stage``).
+EventStatus = Literal["started", "completed", "failed", "progress"]
+#: The longest message a document or event carries.
+MAX_MESSAGE_CHARACTERS = 500
 LifecycleStatus = Literal["running", "completed", "blocked", "failed"]
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -143,10 +147,9 @@ _MAX_REMOTE_FILE_BYTES = 5 * 1024 * 1024
 #: this, or whose files together are larger than ``EMITTER_MAX_REQUEST_BYTES``.
 EMITTER_MAX_FILE_BYTES = 32 * 1024 * 1024
 EMITTER_MAX_REQUEST_BYTES = 64 * 1024 * 1024
-#: What a run's artifacts may hold together. Every hand-over carries them all
-#: with the run's four documents, each up to ``_MAX_REMOTE_FILE_BYTES``, so
-#: this keeps a hand-over within the emitter's request limit.
-_MAX_ARTIFACT_BYTES = EMITTER_MAX_REQUEST_BYTES - 4 * _MAX_REMOTE_FILE_BYTES
+#: The documents every hand-over carries: the run manifest, the progress, the
+#: events and the calibration progress.
+_RUN_DOCUMENTS = 4
 
 
 class StagingContractError(ValueError):
@@ -306,7 +309,11 @@ _FAILURE_SCHEMA: dict[str, Any] = {
     "properties": {
         "error_code": {"type": "string", "pattern": "^[A-Z0-9_]+$"},
         "error_type": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$"},
-        "message": {"type": "string", "minLength": 1, "maxLength": 500},
+        "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": MAX_MESSAGE_CHARACTERS,
+        },
         "local_diagnostic_reference": {"type": ["string", "null"], "maxLength": 200},
     },
     "required": [
@@ -442,7 +449,10 @@ def _schemas(version: int) -> dict[str, dict[str, Any]]:
                 **run_fields,
                 "sample": _SAMPLE_SCHEMA,
                 "delivery": _DELIVERY_SCHEMA,
-                "message": {"type": ["string", "null"], "maxLength": 500},
+                "message": {
+                    "type": ["string", "null"],
+                    "maxLength": MAX_MESSAGE_CHARACTERS,
+                },
                 "details": {"type": "object"},
                 "failure": failure_schema,
                 **block,
@@ -517,7 +527,10 @@ def _schemas(version: int) -> dict[str, dict[str, Any]]:
                 "run_id": _SAFE_ID_SCHEMA,
                 "stage_id": _SAFE_ID_SCHEMA,
                 "status": {"enum": _EVENT_STATUSES[version]},
-                "message": {"type": ["string", "null"], "maxLength": 500},
+                "message": {
+                    "type": ["string", "null"],
+                    "maxLength": MAX_MESSAGE_CHARACTERS,
+                },
                 "details": {"type": "object"},
             },
             [
@@ -702,14 +715,29 @@ class StagingContentPolicy:
     most the emitter's ``EMITTER_MAX_FILE_BYTES``. Every other check still
     applies to them: no sensitive or row-level field, no individual record,
     no row collection. ``max_artifact_bytes`` is what one run's artifacts may
-    hold together.
+    hold together; by default, what is left of the emitter's request limit
+    once a hand-over's four documents, each up to ``max_file_bytes``, are in.
     """
 
     max_file_bytes: int = _MAX_REMOTE_FILE_BYTES
     aggregate_tables: Mapping[str, int] = dataclass_field(default_factory=dict)
-    max_artifact_bytes: int = _MAX_ARTIFACT_BYTES
+    max_artifact_bytes: int | None = None
 
     def __post_init__(self) -> None:
+        if self.max_artifact_bytes is None:
+            object.__setattr__(
+                self,
+                "max_artifact_bytes",
+                EMITTER_MAX_REQUEST_BYTES - _RUN_DOCUMENTS * self.max_file_bytes,
+            )
+        if (
+            isinstance(self.max_artifact_bytes, bool)
+            or not isinstance(self.max_artifact_bytes, int)
+            or self.max_artifact_bytes < 1
+        ):
+            raise StagingContractError(
+                "max_artifact_bytes must leave room for at least one artifact byte."
+            )
         tables: dict[str, int] = {}
         for logical_name, limit in dict(self.aggregate_tables).items():
             _safe_identifier(logical_name, label="aggregate table logical name")
@@ -1003,6 +1031,25 @@ class StagingRunBundleWriterV2:
     def delivery_summary(self) -> dict[str, Any]:
         return validate_staging_delivery(dict(self._delivery))
 
+    @property
+    def final_state_handed_over(self) -> bool:
+        """Whether completion, failure or a block handed the final state over."""
+        return self._final_state_handed_over
+
+    def hand_over_final_state(self) -> None:
+        """Hand a closed run's final state over again.
+
+        For a run whose closing was interrupted after its state changed but
+        before the emitter accepted it: the run keeps the state it closed
+        with, and its documents are written and handed over once more.
+        """
+        if self.status == "running":
+            raise StagingContractError(
+                "Only a completed, blocked or failed staging run has a final state."
+            )
+        self._persist_bundle()
+        self._terminal_upload()
+
     def set_sample(self, sample: Mapping[str, Any]) -> None:
         self._require_running("set sampling evidence")
         normalized = _jsonable(sample)
@@ -1021,7 +1068,7 @@ class StagingRunBundleWriterV2:
         self,
         stage_id: str,
         *,
-        event_status: Literal["started", "completed", "failed", "progress"] = "started",
+        event_status: EventStatus = "started",
         message: str | None = None,
         **details: Any,
     ) -> None:

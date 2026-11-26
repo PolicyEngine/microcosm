@@ -52,8 +52,9 @@ checks the same manifest digest. A contract change is incomplete until both
 repositories accept the new fixture manifest in their respective feature
 branches.
 
-Version 1 fixtures describe current US output and remain fixed during the UK
-implementation. Version 2 fixtures (successful spine, calibration, sanitized
+Version 1 fixtures went with the version 1 writer (microcosm#1135), since no
+build writes version 1; Calibration Diagnostics keeps its copy for the
+version 1 runs it still reads. Version 2 fixtures (successful spine, calibration, sanitized
 failure, delivery-failure, and incompatible-version cases) are frozen: the UK
 writer now emits version 3, and the version 2 bytes stay only to prove old runs
 still read. Version 3 fixtures add a `blocked` run and a failure that carries

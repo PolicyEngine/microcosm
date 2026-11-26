@@ -754,7 +754,7 @@ def test_canonical_version_2_fixture_cases_validate():
         validate_v2_document(cases["unknown_version"])
 
 
-@pytest.mark.parametrize("version", ["v1", "v2", "v3"])
+@pytest.mark.parametrize("version", ["v2", "v3"])
 def test_contract_fixture_checksums_are_pinned(version):
     fixture_dir = FIXTURE_ROOT / version
     for line in (fixture_dir / "SHA256SUMS").read_text().splitlines():

@@ -940,8 +940,9 @@ which writes the build's own files to `<out>/build/`, and records in
 directory certification places it in, `<out>/releases/microcosm-us-2024-national/`,
 the command that certifies it, `publish_command`, `promote_command` and
 `promotion`, a sentence saying that promoting makes the build the US default. The launcher runs
-neither command (`automatic_publish: false`, `makes_current: false`), and it
-forces `--no-staging`, so the build sends no staging run files.
+neither command (`automatic_publish: false`, `makes_current: false`). The
+build and its certification stage like any other US build, under the build's
+ID; the launcher's `--no-staging` passes the opt-out on.
 `publish_command` lists the build in the national release without making it
 current; until `promote_command` makes it current, it loads only by name,
 with `microcosm.data.load("us", build="<build>")`.

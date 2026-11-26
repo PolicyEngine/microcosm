@@ -104,6 +104,8 @@ from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.staging_storage import confirm_and_report_final_commit
 from microcosm.build.staging_v2 import (
     EMITTER_MAX_FILE_BYTES,
+    MAX_MESSAGE_CHARACTERS,
+    EventStatus,
     StagingContentPolicy,
     StagingRunBundleWriterV2,
     disabled_staging_delivery,
@@ -12970,12 +12972,10 @@ US_CERTIFICATION_STAGING_OPERATION = "us_fiscal_refresh_certification"
 #: The version 2 event status for each status a US build reports for a stage.
 #: Any other status (``skipped``, or a check's own verdict such as ``PASS``)
 #: becomes a completed event whose details keep it as ``stage_status``.
-_STAGING_EVENT_STATUSES: Mapping[str, str] = {
+_STAGING_EVENT_STATUSES: Mapping[str, EventStatus] = {
     "running": "started",
     "failed": "failed",
 }
-#: The longest message a version 2 event or progress document carries.
-_STAGING_MESSAGE_CHARACTERS = 500
 #: The size limit of a US result file reviewed to hold rows of aggregates
 #: (lists of objects, one per state, age band, program, reform or target),
 #: as version 2 allows a file of no rows.
@@ -13101,7 +13101,7 @@ def _close_run(error: BaseException, bundle: StagingRunBundleWriterV2) -> None:
 def _staging_message(message: str | None) -> str | None:
     if message is None:
         return None
-    return message[:_STAGING_MESSAGE_CHARACTERS]
+    return message[:MAX_MESSAGE_CHARACTERS]
 
 
 class _BuildProgress:
@@ -13109,10 +13109,13 @@ class _BuildProgress:
 
     Both receive the same calibration epochs: each solve's first and last and
     every ``epoch_every``-th epoch, the rule the UK build follows too
-    (microcosm#1292). The staging run is best-effort: an error in it (a
-    local write, the version 2 checks refusing a document or a result file)
-    prints a warning and never stops the build or its hosted telemetry,
-    which hears of every stage before the staging run does.
+    (microcosm#1292). The staging run is best-effort: once it is open, an
+    error in it (a local write, the version 2 checks refusing a document or
+    a result file) prints a warning and never stops the build or its hosted
+    telemetry, which hears of every stage before the staging run does.
+    Opening the run (``_build_progress``) checks its identity and writes its
+    first documents, so a refused ``--staging-run-id`` or an unwritable
+    staging directory stops the build at its start.
     """
 
     def __init__(
@@ -13135,12 +13138,6 @@ class _BuildProgress:
         if self.staging_bundle is None:
             return None
         return self.staging_bundle.repo_id
-
-    @property
-    def uploads_succeeded(self) -> int:
-        if self.staging_bundle is None:
-            return 0
-        return self.staging_bundle.uploads_succeeded
 
     def _staged(
         self, action: str, call: Callable[[StagingRunBundleWriterV2], object]
@@ -13222,15 +13219,21 @@ class _BuildProgress:
         # emitter down (it drops a run's events after its outcome).
         try:
             # A run the build already closed keeps its state: an error after
-            # it completed is the build's, for the hosted telemetry alone.
-            if (
-                self.staging_bundle is not None
-                and self.staging_bundle.status == "running"
-            ):
-                self._staged("record how the build ended", partial(_close_run, error))
-                confirm_and_report_final_commit(
-                    self.staging_bundle, self.emitter, error=error
-                )
+            # its final state reached the emitter is the build's, for the
+            # hosted telemetry alone. A run whose closing an interrupt stopped
+            # before the emitter accepted its final state hands it over now.
+            bundle = self.staging_bundle
+            if bundle is not None and not bundle.final_state_handed_over:
+                if bundle.status == "running":
+                    self._staged(
+                        "record how the build ended", partial(_close_run, error)
+                    )
+                else:
+                    self._staged(
+                        "hand over its final state",
+                        lambda run: run.hand_over_final_state(),
+                    )
+                confirm_and_report_final_commit(bundle, self.emitter, error=error)
         finally:
             _fail_emitter(self.emitter, error)
 

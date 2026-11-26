@@ -589,7 +589,10 @@ class TestImplementationHashes:
         # w4 adds the leaf and exactly the modules it imports that the
         # bindings did not already reach (the graph package among them).
         # microcosm#1073 adds us_runtime.scf_education_debt, which the
-        # us_runtime package imports, so the base now holds 198.
+        # us_runtime package imports, so the base held 198; microcosm#1135
+        # deletes microcosm.build.staging, which the microcosm.build package
+        # imported, and with it microcosm.build.staging_storage, which
+        # nothing else in the base imports, so the base now holds 196.
         # Modules the bindings later reach without the leaf are listed in
         # BINDING_MODULES_ADDED_AFTER_BASE.
         modules = set()
@@ -597,7 +600,7 @@ class TestImplementationHashes:
             _, digests = binding_identity.describe(binding, path=name)
             modules |= set(digests)
         assert len(modules) == (
-            198 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
+            196 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
         )
         assert BINDING_MODULES_ADDED_AFTER_BASE <= modules
         assert LEAF_ADDED_MODULES <= modules
