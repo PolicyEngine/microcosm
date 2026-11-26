@@ -1,10 +1,8 @@
 """Tests split from packages/microcosm-build/tests/test_uk_graph.py."""
 
 # ruff: noqa: F403, F405
-import hashlib
-
-from microcosm.graph import graph_schema, orrery_document
-from microcosm.graph.canonical import canonical_json
+from microcosm.graph import graph_schema
+from microcosm.graph.schema import validate_graph_schema
 from test_support.microcosm_build.uk_graph import *
 
 
@@ -386,7 +384,7 @@ def test_uk_graph_json_round_trip_is_canonical() -> None:
     assert graph_to_json(graph_from_json(serialized)) == serialized
 
 
-def test_uk_spine_exports_complete_orrery_document() -> None:
+def test_uk_spine_schema_validates_and_binds_each_materialized_expand_claim() -> None:
     compiled = compile_graph(uk_spine_graph())
     schema = graph_schema(compiled)
     materialized_claims = [
@@ -394,52 +392,22 @@ def test_uk_spine_exports_complete_orrery_document() -> None:
         for binding in schema["input_bindings"]
         if binding["kind"] == "materialized_expand_output"
     ]
-
-    document = orrery_document(compiled, title="UK spine")
-    nodes = {node["id"]: node for node in document["nodes"]}
-    materialized_reads = [
-        edge
-        for edge in document["edges"]
-        if edge["kind"] == "declared_read"
-        and edge["data"]["read_kind"] == "materialized_expand_output"
-    ]
-    expected_reads = {
-        (
-            binding["node"],
-            binding["population"],
-            binding["entity"],
-            binding["column"],
-            binding["provider"],
-            binding["declared_in"],
-            binding["rows"],
-        )
-        for binding in materialized_claims
+    # Every column an operation declares as an output, by that operation.
+    declared_outputs = {
+        (operation["id"], output["entity"], output["column"])
+        for operation in schema["graph"]["nodes"]
+        for output in operation["outputs"]
     }
-    actual_reads = {
-        (
-            nodes[edge["target"]]["label"],
-            nodes[edge["source"]]["data"]["population"],
-            nodes[edge["source"]]["data"]["entity"],
-            nodes[edge["source"]]["data"]["column"],
-            nodes[edge["source"]]["data"]["provider"],
-            nodes[edge["source"]]["data"]["declared_in"],
-            edge["data"]["rows"],
-        )
-        for edge in materialized_reads
-    }
+    operation_ids = {operation["id"] for operation in schema["graph"]["nodes"]}
 
     assert materialized_claims
-    assert actual_reads == expected_reads
-    assert document["schemaVersion"] == "graph-explorer/v1"
-    summary = document["metadata"]["microcosm"]
-    assert summary["graph_sha256"] == schema["graph_sha256"]
-    assert (
-        summary["schema_sha256"] == hashlib.sha256(canonical_json(schema)).hexdigest()
-    )
-    assert summary["counts"]["operations"] == len(schema["graph"]["nodes"])
-    assert summary["counts"]["fields"] == len(schema["fields"])
-    assert "graph" not in summary
-    assert document["metadata"]["truncated"] is False
+    assert validate_graph_schema(schema) == schema
+    for claim in materialized_claims:
+        # The claimant declares the column it reads from the EXPAND version.
+        assert claim["declared_in"] == claim["node"]
+        assert (claim["node"], claim["entity"], claim["column"]) in declared_outputs
+        assert claim["provider"] == claim["population"]
+        assert claim["population"] in operation_ids
 
 
 def test_conserve_rejects_a_mass_shift_across_household_sizes() -> None:

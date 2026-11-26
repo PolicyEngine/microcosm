@@ -336,6 +336,28 @@ CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_
 #: so parsing arguments never imports torch; a test pins them equal.
 L2_BASIS_CHOICES = ("chi_square", "record")
 MASS_PARAMETRIZATION_CHOICES = ("projection", "softmax")
+#: The kernel's ``l2_anchor`` presets (``microcosm.calibrate.calibrate``): the
+#: weights the ``--l2-lambda`` penalty pulls toward. ``initial`` is each
+#: record's own starting weight and what every solve has used; ``uniform`` is
+#: the mean starting weight. With ``--l2-anchor-weights`` the anchor is the
+#: vector in that file and ``--l2-anchor`` names it (microcosm#1729).
+L2_ANCHOR_INITIAL = "initial"
+L2_ANCHOR_PRESETS = (L2_ANCHOR_INITIAL, "uniform")
+#: What ``--max-weight-ratio`` multiplies for each household (microcosm#1729):
+#: the declared reference of the weight bound. ``own`` is the household's own
+#: starting weight, the bound every solve has used. The others are shared
+#: weights (``microcosm.calibrate.weight_bound.weight_bound_reference``): the
+#: mean starting weight, or the mean starting weight of the household's state
+#: or district, so that a donor row, which starts about 27 times heavier than
+#: an ACS row, gets no larger a bound than the ACS rows beside it.
+WEIGHT_BOUND_OWN = "own"
+#: Reference name -> (shared reference kind, household column of its groups).
+WEIGHT_BOUND_REFERENCES = {
+    WEIGHT_BOUND_OWN: ("own", None),
+    "mean": ("mean", None),
+    "state_mean": ("group_mean", "state_fips"),
+    "district_mean": ("group_mean", "congressional_district_geoid"),
+}
 #: The penalty settings every solve had before they were options: a solver
 #: stamp or summary that lacks them was solved with these.
 HISTORICAL_PENALTY = {
@@ -2534,11 +2556,22 @@ SOLVER_METHOD = "adam"
 SOLVER_LEARNING_RATE = 0.02
 SOLVER_MASS = "conserve"
 
-# Starting values from microcosm#1377's county pilot. The calibrator accepts
-# only one scalar loss cap, so these apply to the joint run, not county rows
-# individually. Ordinary ACS-local builds retain their historical settings.
+# Starting values from microcosm#1377's county pilot. By default they apply to
+# the joint run, not county rows individually. Ordinary ACS-local builds
+# retain their historical settings.
 COUNTY_TARGET_LOSS_CAP = 10.0
 COUNTY_MAX_WEIGHT_RATIO = 5.0
+#: Which rows the county profile's loss cap applies to (microcosm#1729).
+#: ``run`` (default) is every row of a county run, as every county build has
+#: solved. ``county_rows`` is the county rows only: the state and district
+#: rows keep ``--target-loss-cap``, so county rows joining the solve do not
+#: change their cap. The weight ratio is a bound on records, not on targets,
+#: so it stays one number for the run under both.
+COUNTY_CAP_SCOPE_RUN = "run"
+COUNTY_CAP_SCOPE_COUNTY_ROWS = "county_rows"
+COUNTY_CAP_SCOPES = (COUNTY_CAP_SCOPE_RUN, COUNTY_CAP_SCOPE_COUNTY_ROWS)
+#: The geography level of a county row, as ``target_geography_level`` reads it.
+COUNTY_LEVEL = "county"
 
 
 def _apply_county_solver_profile(args, *, identity=None) -> None:
@@ -2559,26 +2592,36 @@ def _apply_county_solver_profile(args, *, identity=None) -> None:
     county_requested = "county" in {item.strip() for item in geographies.split(",")}
     county_requested |= soi_mode == SOI_MODE_STATE_COUNTY
     args.county_solver_profile = None
+    # Set only under the county_rows scope: the cap of the county rows, while
+    # args.target_loss_cap stays the cap of every other row.
+    args.county_rows_target_loss_cap = None
     if county_requested:
-        args.target_loss_cap = getattr(
-            args, "county_target_loss_cap", COUNTY_TARGET_LOSS_CAP
-        )
+        county_cap = getattr(args, "county_target_loss_cap", COUNTY_TARGET_LOSS_CAP)
+        scope = getattr(args, "county_target_loss_cap_scope", COUNTY_CAP_SCOPE_RUN)
+        if scope == COUNTY_CAP_SCOPE_COUNTY_ROWS:
+            args.county_rows_target_loss_cap = county_cap
+        else:
+            args.target_loss_cap = county_cap
         args.max_weight_ratio = getattr(
             args, "county_max_weight_ratio", COUNTY_MAX_WEIGHT_RATIO
         )
         args.county_solver_profile = {
-            "scope": "run",
-            "target_loss_cap": args.target_loss_cap,
+            "scope": scope,
+            "target_loss_cap": county_cap,
             "max_weight_ratio": args.max_weight_ratio,
         }
 
 
-def _solver_settings(args, target_loss: dict) -> dict:
+def _solver_settings(args, target_loss: dict, l2_anchor: dict | None = None) -> dict:
     """The calibrate-stage settings a resume or reuse must share.
 
     ``target_loss`` is the stamp :func:`release_target_loss_weights` returns,
     so weights calibrated under another loss weighting, or under none (a run
-    from before the weights), are never warm-started from.
+    from before the weights), are never warm-started from. ``l2_anchor`` holds
+    the stamps of the options a build asked for by name
+    (:func:`release_l2_anchor`, :func:`release_weight_bound`): ``None`` for
+    the defaults, which add no key, so a stamp from before the options
+    compares equal to a request for the defaults.
     """
 
     return {
@@ -2598,6 +2641,7 @@ def _solver_settings(args, target_loss: dict) -> dict:
             if getattr(args, "county_solver_profile", None) is not None
             else {}
         ),
+        **(l2_anchor or {}),
     }
 
 
@@ -2612,8 +2656,12 @@ def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
     """
 
     multipliers = dict(args.target_family_loss_multipliers)
+    default_rule = loss_weighting.US_ACS_LOCAL_TARGET_WEIGHT_RULE
+    rule = getattr(args, "target_weight_rule", default_rule)
     try:
-        weights = county_surface.target_loss_weights(train_specs, multipliers)
+        weights = county_surface.target_loss_weights(
+            train_specs, multipliers, rule=rule
+        )
     except ValueError as error:
         raise SystemExit(f"Target loss weights: {error}") from error
     stamp = {
@@ -2628,7 +2676,212 @@ def release_target_loss_weights(args, train_specs) -> tuple[np.ndarray, dict]:
             [loss_weighting.target_row_name(spec) for spec in train_specs], weights
         ),
     }
+    if rule != default_rule:
+        # Only a run that asks for another declared rule records it, so the
+        # default stamp, and every resume that compares it, is unchanged.
+        stamp["weighting"] = rule
+        stamp["rule"] = loss_weighting.acs_local_target_weight_rule(rule).to_json()
     return weights, stamp
+
+
+def release_l2_anchor(args, household_ids) -> tuple[dict, dict | None]:
+    """The L2 anchor keywords for ``calibrate``, and the stamp describing them.
+
+    The default (``--l2-anchor initial``, no anchor weights) gives no keyword
+    and no stamp, so the solve and its settings are those of every release.
+    ``--l2-anchor uniform`` passes the preset. ``--l2-anchor-weights FILE``
+    passes the vector in FILE (``.npy``, or ``.npz`` with ``weights``), one
+    positive weight for each checkpoint household in checkpoint order, under
+    the label ``--l2-anchor`` names; an ``.npz`` that also has
+    ``household_id`` must list the checkpoint's households. The stamp digests
+    the vector, so a resume refuses weights calibrated toward another anchor.
+
+    The anchor changes only what the ``--l2-lambda`` penalty pulls toward. It
+    does not change the starting weights, the weight bound or the mass.
+    """
+
+    anchor = getattr(args, "l2_anchor", L2_ANCHOR_INITIAL)
+    path = getattr(args, "l2_anchor_weights", None)
+    if path is None:
+        if anchor == L2_ANCHOR_INITIAL:
+            return {}, None
+        return {"l2_anchor": anchor}, {"l2_anchor": anchor}
+    loaded = np.load(path, allow_pickle=False)
+    if isinstance(loaded, np.ndarray):
+        vector = loaded
+    else:
+        if "weights" not in loaded:
+            raise SystemExit(f"--l2-anchor-weights {path} has no 'weights' array.")
+        vector = loaded["weights"]
+        if "household_id" in loaded and not np.array_equal(
+            np.asarray(loaded["household_id"]), np.asarray(household_ids)
+        ):
+            raise SystemExit(
+                f"--l2-anchor-weights {path} lists other households, or another "
+                "order, than the checkpoint."
+            )
+    vector = np.asarray(vector, dtype=np.float64)
+    if vector.shape != (len(household_ids),):
+        raise SystemExit(
+            f"--l2-anchor-weights {path} has shape {vector.shape}; the checkpoint "
+            f"has {len(household_ids)} households."
+        )
+    if not np.isfinite(vector).all() or (vector <= 0).any():
+        raise SystemExit(
+            f"--l2-anchor-weights {path} must be finite and strictly positive."
+        )
+    return (
+        {"l2_anchor": anchor, "l2_anchor_weights": vector},
+        {"l2_anchor": anchor, "l2_anchor_weights_sha256": _weights_digest(vector)},
+    )
+
+
+def release_weight_bound(args, households, design_weights) -> tuple[dict, dict | None]:
+    """The weight-bound keywords for ``calibrate``, and the stamp describing them.
+
+    The default (``--weight-bound-reference own``) gives no keyword and no
+    stamp: ``--max-weight-ratio`` multiplies each household's own starting
+    weight, as in every release. Any other reference passes the shared
+    reference vector as ``max_weight_reference``, so the bound is
+    ``--max-weight-ratio`` times that reference.
+    """
+
+    name = getattr(args, "weight_bound_reference", WEIGHT_BOUND_OWN)
+    if name == WEIGHT_BOUND_OWN:
+        return {}, None
+    from microcosm.calibrate.weight_bound import weight_bound_reference
+
+    kind, column = WEIGHT_BOUND_REFERENCES[name]
+    if column is not None and column not in households.columns:
+        raise SystemExit(
+            f"--weight-bound-reference {name} needs the household column "
+            f"{column}, which the checkpoint does not have."
+        )
+    try:
+        reference = weight_bound_reference(
+            design_weights,
+            kind,
+            groups=None if column is None else households[column].to_numpy(),
+        )
+    except ValueError as error:
+        raise SystemExit(f"--weight-bound-reference {name}: {error}") from error
+    admitted = float(args.max_weight_ratio * reference.sum())
+    total = float(np.sum(design_weights))
+    if admitted < total * (1.0 - 1e-12):
+        # The solver refuses the same bounds; say so before the solve starts.
+        raise SystemExit(
+            f"--weight-bound-reference {name} with --max-weight-ratio "
+            f"{args.max_weight_ratio!r} admits a total weight of {admitted:,.0f}, "
+            f"below the {total:,.0f} the solve conserves. Raise --max-weight-ratio."
+        )
+    return {"max_weight_reference": reference}, {"weight_bound_reference": name}
+
+
+def release_target_loss_caps(args, target_set, train_specs, loss_weights):
+    """The solver's loss cap, weights and scales, and the caps it stands for.
+
+    One number for the run unless the county profile's cap applies to the
+    county rows only (``--county-target-loss-cap-scope county_rows``). Then
+    each row has its own cap, declared by level through the shared
+    ``target_loss_caps``, and the solver gets the one-cap loss that equals it
+    (``single_cap_equivalent``): the same loss value, row contributions and
+    gradient, with the cap still one number.
+
+    Returns a mapping: ``cap``, ``weights`` and ``scales`` go to
+    ``calibrate`` (``scales`` is ``None`` for the default scales); ``receipt``
+    is ``None`` unless row caps are declared. With row caps, ``row_caps`` and
+    ``row_scales`` are the declared cap and scale of each row, which
+    :func:`target_loss_caps_receipt` reads after the solve.
+    """
+
+    county_cap = getattr(args, "county_rows_target_loss_cap", None)
+    if county_cap is None:
+        return {
+            "cap": args.target_loss_cap,
+            "weights": loss_weights,
+            "scales": None,
+            "receipt": None,
+        }
+    from microcosm.calibrate import default_target_loss_scales
+    from microcosm.calibrate.target_loss_rules import (
+        single_cap_equivalent,
+        target_loss_caps,
+    )
+
+    try:
+        caps = target_loss_caps(
+            args.target_loss_cap,
+            levels=[
+                loss_weighting.target_geography_level(spec) for spec in train_specs
+            ],
+            by_level={COUNTY_LEVEL: county_cap},
+        )
+    except ValueError as error:
+        raise SystemExit(f"Target loss caps: {error}") from error
+    row_scales = default_target_loss_scales(
+        np.asarray([target.value for target in target_set], dtype=np.float64)
+    )
+    equivalent = single_cap_equivalent(caps, weights=loss_weights, scales=row_scales)
+    return {
+        "cap": equivalent.cap,
+        "weights": equivalent.weights,
+        "scales": equivalent.scales,
+        "row_caps": equivalent.caps,
+        "row_scales": row_scales,
+        "receipt": {
+            "default": float(args.target_loss_cap),
+            "by_level": {COUNTY_LEVEL: float(county_cap)},
+            **equivalent.receipt(),
+        },
+    }
+
+
+def target_loss_caps_receipt(solver_loss: dict, result) -> dict | None:
+    """What a solve under row caps records, for the summary and the diagnostics.
+
+    ``None`` when the run has one cap. Otherwise the declared caps (the
+    default, the cap of each level, the rows at each cap, and by name each row
+    that is not at the default) and the past-cap census against each row's own
+    cap (``row_cap_census``).
+
+    ``calibration_diagnostics.json`` needs this block. Its own
+    ``past_cap_census`` and the ``target_loss_scale`` and
+    ``target_loss_weight`` of each of its targets come from the solver, which
+    ran the equivalent one-cap loss: they read every row against
+    ``equivalent_cap`` on transformed scales, not against the row's own cap.
+    """
+
+    if solver_loss["receipt"] is None:
+        return None
+    from microcosm.calibrate.target_loss_rules import row_cap_census
+
+    names = [diagnostic.name for diagnostic in result.diagnostics]
+    caps = solver_loss["row_caps"]
+    default = solver_loss["receipt"]["default"]
+    return {
+        **solver_loss["receipt"],
+        "rows_not_at_default": {
+            name: float(cap)
+            for name, cap in zip(names, caps, strict=True)
+            if cap != default
+        },
+        "past_cap_census": row_cap_census(
+            names,
+            [diagnostic.target for diagnostic in result.diagnostics],
+            [diagnostic.initial_estimate for diagnostic in result.diagnostics],
+            [diagnostic.final_estimate for diagnostic in result.diagnostics],
+            scales=solver_loss["row_scales"],
+            caps=caps,
+        ),
+        "how_to_read_the_diagnostics": (
+            "The solver ran the one-cap loss that equals these row caps. In "
+            "calibration_diagnostics.json the top-level past_cap_census and "
+            "each target's target_loss_scale and target_loss_weight are the "
+            "solver's: they read every row against equivalent_cap on "
+            "transformed scales. For a row's own cap and the census against "
+            "it, read this block."
+        ),
+    }
 
 
 def _stamped_settings(settings: dict | None) -> dict | None:
@@ -2877,6 +3130,9 @@ def calibrate_surface(
     on_batch=None,
     l2_basis: str = HISTORICAL_PENALTY["l2_basis"],
     mass_parametrization: str = HISTORICAL_PENALTY["mass_parametrization"],
+    target_loss_scales: np.ndarray | None = None,
+    l2_anchor: dict | None = None,
+    weight_bound: dict | None = None,
 ):
     """Epoch-batched warm-start calibration of ``target_set``.
 
@@ -2887,10 +3143,19 @@ def calibrate_surface(
     row-aligned with ``target_set``; ``do_calibrate`` always passes the
     release weights (:func:`release_target_loss_weights`), and ``None`` (equal
     weights) is for harnesses. Returns ``(result, epochs_done)``.
+
+    An option added after the first release (``target_loss_scales``, the
+    ``l2_anchor`` keywords :func:`release_l2_anchor` returns and the
+    ``weight_bound`` keywords :func:`release_weight_bound` returns) reaches
+    ``calibrate`` only when a caller sets it, so a run that sets none makes
+    the call every release has made.
     """
 
     from microcosm.calibrate import calibrate
 
+    optional = {**(l2_anchor or {}), **(weight_bound or {})}
+    if target_loss_scales is not None:
+        optional["target_loss_scales"] = target_loss_scales
     batch = epoch_batch if epoch_batch > 0 else epochs
     result = None
     while done < epochs:
@@ -2912,6 +3177,7 @@ def calibrate_surface(
             seed=seed,
             target_loss_weights=target_loss_weights,
             warm_start_weights=warm,
+            **optional,
         )
         done += this_batch
         warm = result.weights.copy()
@@ -2953,6 +3219,7 @@ def calibration_evidence(
     target_loss_cap: float,
     checkpoint_dir: Path | None = None,
     identity: dict | None = None,
+    county_target_loss_cap: float | None = None,
 ) -> dict:
     """The sparse-surface evidence the calibration summary adds.
 
@@ -2960,7 +3227,9 @@ def calibration_evidence(
     and distinct households with household-weight share by spine, at the
     design and the calibrated weights. With the checkpoint directory and run
     identity, a county run also scores its held-out ACS validation families
-    (microcosm#922), which never reach the loss.
+    (microcosm#922), which never reach the loss. ``county_target_loss_cap``
+    is the cap the county evidence is scored at when the county rows have a
+    cap of their own; ``None`` scores it at ``target_loss_cap``.
     """
 
     origin = _origin_columns(frame)
@@ -2989,7 +3258,9 @@ def calibration_evidence(
             matrix,
             design_weights,
             weights,
-            target_loss_cap,
+            target_loss_cap
+            if county_target_loss_cap is None
+            else county_target_loss_cap,
             checkpoint_dir=checkpoint_dir,
             identity=identity,
         ),
@@ -3033,6 +3304,7 @@ def do_calibrate(args) -> None:
             "specs, so their loss weights would attach to the wrong targets."
         )
     loss_weights, target_loss = release_target_loss_weights(args, train_specs)
+    solver_loss = release_target_loss_caps(args, target_set, train_specs, loss_weights)
     loss_distribution = loss_weighting.target_loss_weight_distribution(
         train_specs,
         loss_weights,
@@ -3053,7 +3325,14 @@ def do_calibrate(args) -> None:
     )
 
     stamp = _run_identity_digest(identity)
-    settings = _solver_settings(args, target_loss)
+    l2_anchor, l2_anchor_stamp = release_l2_anchor(
+        args, frame.table("household")["household_id"].to_numpy()
+    )
+    weight_bound, weight_bound_stamp = release_weight_bound(
+        args, frame.table("household"), design_weights
+    )
+    named_options = {**(l2_anchor_stamp or {}), **(weight_bound_stamp or {})}
+    settings = _solver_settings(args, target_loss, named_options or None)
     resume_npz = args.checkpoint_dir / "weights_latest.npz"
     warm, done = None, 0
     if args.resume and resume_npz.exists():
@@ -3105,6 +3384,7 @@ def do_calibrate(args) -> None:
                 target_loss_cap=args.target_loss_cap,
                 checkpoint_dir=args.checkpoint_dir,
                 identity=identity,
+                county_target_loss_cap=args.county_rows_target_loss_cap,
             )
             stale = sorted(
                 key
@@ -3169,12 +3449,15 @@ def do_calibrate(args) -> None:
         epochs=args.epochs,
         epoch_batch=args.epoch_batch,
         max_weight_ratio=args.max_weight_ratio,
-        target_loss_cap=args.target_loss_cap,
+        target_loss_cap=solver_loss["cap"],
         l2_lambda=args.l2_lambda,
         l2_basis=args.l2_basis,
         mass_parametrization=args.mass_parametrization,
         seed=args.seed,
-        target_loss_weights=loss_weights,
+        target_loss_weights=solver_loss["weights"],
+        target_loss_scales=solver_loss["scales"],
+        l2_anchor=l2_anchor,
+        weight_bound=weight_bound,
         warm=warm,
         done=done,
         on_batch=save,
@@ -3187,6 +3470,7 @@ def do_calibrate(args) -> None:
             f"(e.g. {skipped[:5]}); the surface silently shrank. Fix the "
             "measures or the targets before shipping."
         )
+    caps_receipt = target_loss_caps_receipt(solver_loss, result)
     summary = {
         "run_identity_sha256": stamp,
         "solver_settings": settings,
@@ -3202,10 +3486,21 @@ def do_calibrate(args) -> None:
         "epochs": args.epochs,
         "epoch_batch": args.epoch_batch,
         "max_weight_ratio": args.max_weight_ratio,
-        "target_loss_cap": args.target_loss_cap,
+        # The solver's cap. With a cap for each row it is the equivalent
+        # single cap, the largest value the loss can take; target_loss_caps
+        # then records the declared row caps.
+        "target_loss_cap": solver_loss["cap"],
+        **({"target_loss_caps": caps_receipt} if caps_receipt is not None else {}),
         "target_loss": {**target_loss, "distribution": loss_distribution},
         "l2_lambda": args.l2_lambda,
         "l2_basis": args.l2_basis,
+        **named_options,
+        # Only a solve under a declared reference records its bound.
+        **(
+            {"weight_bound": result.options["weight_bound"]}
+            if "weight_bound" in result.options
+            else {}
+        ),
         "mass_parametrization": args.mass_parametrization,
         "seed": args.seed,
         "initial_loss": round(result.initial_loss, 6),
@@ -3233,6 +3528,7 @@ def do_calibrate(args) -> None:
             target_loss_cap=args.target_loss_cap,
             checkpoint_dir=args.checkpoint_dir,
             identity=identity,
+            county_target_loss_cap=args.county_rows_target_loss_cap,
         ),
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
@@ -3268,7 +3564,10 @@ def do_calibrate(args) -> None:
             # release names them, plus the ACS local row mapping and digest.
             "target_loss_weighting": target_loss["weighting"],
             "target_loss_family_multipliers": target_loss["family_multipliers"] or None,
-            "target_loss_cap": args.target_loss_cap,
+            "target_loss_cap": solver_loss["cap"],
+            # Only a solve under row caps: the caps and the census against
+            # them, so that this file says how to read its own census.
+            **({"target_loss_caps": caps_receipt} if caps_receipt is not None else {}),
             "target_loss_row_mapping": target_loss["row_mapping"],
             "target_loss_weights_sha256": target_loss["weights_sha256"],
             "target_loss_distribution": loss_distribution,
@@ -3566,7 +3865,7 @@ def spine_composition(households: pd.DataFrame, persons: pd.DataFrame, weights):
                 spine_person_weight / spine_weight if spine_weight else 0.0
             ),
         }
-    ess = float(weights.sum() ** 2 / (weights**2).sum()) if len(weights) else 0.0
+    ess = cd_surface.kish_ess(weights)
     composition["_all"] = {
         "households": int(len(weights)),
         "household_weight": total_weight,
@@ -4862,6 +5161,9 @@ DISTRICT_ESS_RELATIVE_FLOOR = 0.25
 #: 18.5 penalized.
 DISTRICT_ESS_FLOOR = 15.0
 DISTRICT_ESS_GATE = "district_ess_collapse"
+#: The geography level the district gate declares to the shared area support
+#: gate (``microcosm.build.area_support``).
+DISTRICT_ESS_LEVEL = "congressional_district"
 
 
 def _district_ess(weight_summary) -> dict[str, float] | None:
@@ -4953,29 +5255,63 @@ def district_ess_collapse_gate(
             "failures": failures,
         }
 
+    # The floors, the comparisons and the verdict are the shared area support
+    # gate's (microcosm#1729): this function declares the district floors to
+    # it and lays its answer out as the release's gate entry. A floor of 0 is
+    # a floor that is not declared.
+    from microcosm.build.area_support import (
+        area_support_floor_table,
+        area_support_gate,
+    )
+
+    districts = sorted(design)
+    floors = {
+        "minimum_effective_sample_size": absolute_floor or None,
+        "minimum_effective_sample_size_ratio": relative_floor or None,
+    }
+    support = pd.DataFrame(
+        {
+            "geography_level": DISTRICT_ESS_LEVEL,
+            "area_code": districts,
+            "effective_sample_size": [calibrated[district] for district in districts],
+            "starting_effective_sample_size": [
+                design[district] for district in districts
+            ],
+        }
+    )
+    verdict = area_support_gate(
+        support,
+        area_roster={DISTRICT_ESS_LEVEL: districts},
+        geography_levels=(DISTRICT_ESS_LEVEL,),
+        **floors,
+    )
+    checked = area_support_floor_table(support, **floors)
     rows = [
         {
-            "district": district,
-            "calibrated_ess": calibrated[district],
-            "design_ess": design[district],
+            "district": row.area_code,
+            "calibrated_ess": float(row.effective_sample_size),
+            "design_ess": float(row.starting_effective_sample_size),
             "ratio": (
-                calibrated[district] / design[district]
-                if design[district] > 0
-                else None
+                None
+                if np.isnan(row.effective_sample_size_ratio)
+                else float(row.effective_sample_size_ratio)
             ),
         }
-        for district in sorted(design)
+        for row in checked.itertuples(index=False)
     ]
+
+    def flagged(floor: str) -> list[dict]:
+        column = f"below_{floor}"
+        if column not in checked.columns:
+            return []
+        return [row for row, below in zip(rows, checked[column], strict=True) if below]
+
     collapsed = sorted(
-        (
-            row
-            for row in rows
-            if row["calibrated_ess"] < relative_floor * row["design_ess"]
-        ),
+        flagged("minimum_effective_sample_size_ratio"),
         key=lambda row: (row["ratio"], row["district"]),
     )
     below_floor = sorted(
-        (row for row in rows if row["calibrated_ess"] < absolute_floor),
+        flagged("minimum_effective_sample_size"),
         key=lambda row: (row["calibrated_ess"], row["district"]),
     )
     smallest = min(rows, key=lambda row: (row["calibrated_ess"], row["district"]))
@@ -4983,7 +5319,7 @@ def district_ess_collapse_gate(
     lowest = (
         min(rated, key=lambda row: (row["ratio"], row["district"])) if rated else None
     )
-    criteria_met = not collapsed and not below_floor
+    criteria_met = verdict.passed
     return {
         **gate,
         "passed": criteria_met or not blocking,
@@ -6770,6 +7106,28 @@ def do_package(args) -> dict:
             f" --county-target-loss-cap {float(county_profile['target_loss_cap'])!r}"
             f" --county-max-weight-ratio {float(county_profile['max_weight_ratio'])!r}"
         )
+        if county_profile.get("scope", COUNTY_CAP_SCOPE_RUN) != COUNTY_CAP_SCOPE_RUN:
+            refresh_recipe["release"] += (
+                f" --county-target-loss-cap-scope {county_profile['scope']}"
+            )
+    # Options a build asked for by name are named in the recipe; a default
+    # build records none of them and its recipe is unchanged.
+    recorded_settings = diagnostics.get("solver_settings") or {}
+    if (recorded_settings.get("target_loss") or {}).get("rule") is not None:
+        refresh_recipe["release"] += (
+            f" --target-weight-rule {recorded_settings['target_loss']['weighting']}"
+        )
+    if recorded_settings.get("weight_bound_reference") is not None:
+        refresh_recipe["release"] += (
+            f" --weight-bound-reference {recorded_settings['weight_bound_reference']}"
+        )
+    if recorded_settings.get("l2_anchor") is not None:
+        refresh_recipe["release"] += f" --l2-anchor {recorded_settings['l2_anchor']}"
+        if recorded_settings.get("l2_anchor_weights_sha256") is not None:
+            refresh_recipe["release"] += (
+                " --l2-anchor-weights <anchor weights with sha256 "
+                f"{recorded_settings['l2_anchor_weights_sha256']}>"
+            )
     refresh_recipe["release"] += district_ess_refresh_flags(
         (gate_report.get("gates") or {}).get(DISTRICT_ESS_GATE)
     )
@@ -7113,6 +7471,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=800)
     parser.add_argument("--epoch-batch", type=int, default=400)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
+    parser.add_argument(
+        "--weight-bound-reference",
+        choices=sorted(WEIGHT_BOUND_REFERENCES),
+        default=WEIGHT_BOUND_OWN,
+        help=(
+            "What --max-weight-ratio multiplies for each household. 'own' "
+            "(default) is its own starting weight, as every solve has used. "
+            "'mean', 'state_mean' and 'district_mean' are one shared weight: "
+            "the mean starting weight overall, or of the household's state or "
+            "district, so a row that starts heavier gets no larger a bound. A "
+            "row that starts above the bound is pulled down to it before the "
+            "solve, which moves starting mass off the heavy rows; it changes "
+            "the weights (microcosm.calibrate.weight_bound)."
+        ),
+    )
     parser.add_argument("--target-loss-cap", type=float, default=1.0)
     parser.add_argument(
         "--county-target-loss-cap",
@@ -7121,6 +7494,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Run-level loss cap when county rows are requested (default 10); "
             "overrides --target-loss-cap only for county builds."
+        ),
+    )
+    parser.add_argument(
+        "--county-target-loss-cap-scope",
+        choices=COUNTY_CAP_SCOPES,
+        default=COUNTY_CAP_SCOPE_RUN,
+        help=(
+            "Which rows --county-target-loss-cap applies to in a county build. "
+            "'run' (default) is every row, as every county build has solved. "
+            "'county_rows' is the county rows only: state and district rows "
+            "keep --target-loss-cap. It changes the weights of a county build."
         ),
     )
     parser.add_argument(
@@ -7145,6 +7529,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "calibration summary and the diagnostics."
         ),
     )
+    parser.add_argument(
+        "--target-weight-rule",
+        choices=sorted(loss_weighting.US_ACS_LOCAL_TARGET_WEIGHT_RULES),
+        default=loss_weighting.US_ACS_LOCAL_TARGET_WEIGHT_RULE,
+        help=(
+            "The declared target loss-weight rule (microcosm.calibrate."
+            "target_loss_rules). 'concept_budget' (default) is the national "
+            "release's formula, which every build has used. "
+            "'level_family_equal_sqrt_count' gives each geography level one "
+            "equal share of the loss and each family one equal share of its "
+            "level; it changes the weights. Recorded in the solver settings "
+            "when it is not the default."
+        ),
+    )
     parser.add_argument("--l2-lambda", type=float, default=0.0)
     parser.add_argument(
         "--l2-basis",
@@ -7156,6 +7554,30 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "'chi_square' is GREG's design-weighted chi-square distance "
             "sum(d * (w / d - 1) ** 2) / sum(d), which pulls toward the "
             "design weights d themselves."
+        ),
+    )
+    parser.add_argument(
+        "--l2-anchor",
+        default=L2_ANCHOR_INITIAL,
+        help=(
+            "What the --l2-lambda penalty pulls toward (microcosm.calibrate "
+            "l2_anchor). 'initial' (default) is each record's own starting "
+            "weight; 'uniform' is the mean starting weight. With "
+            "--l2-anchor-weights it is the name of that vector, for the "
+            "record (for example 'household_proportional'). It has no effect "
+            "at --l2-lambda 0."
+        ),
+    )
+    parser.add_argument(
+        "--l2-anchor-weights",
+        type=Path,
+        default=None,
+        help=(
+            "A declared anchor for the --l2-lambda penalty: a .npy vector, or "
+            "a .npz with 'weights' (and optionally 'household_id'), one "
+            "positive weight per checkpoint household in checkpoint order. "
+            "The penalty then pulls toward this design; the starting weights "
+            "and the weight bound do not change. Needs a name in --l2-anchor."
         ),
     )
     parser.add_argument(
@@ -7304,6 +7726,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error(
             "--cd-holdout-fraction must be in "
             f"[0, {cd_surface.MAX_CD_HOLDOUT_FRACTION}]."
+        )
+    if args.l2_anchor_weights is None and args.l2_anchor not in L2_ANCHOR_PRESETS:
+        parser.error(
+            f"--l2-anchor must be one of {L2_ANCHOR_PRESETS} unless "
+            "--l2-anchor-weights gives the vector it names."
+        )
+    if args.l2_anchor_weights is not None and (
+        args.l2_anchor in L2_ANCHOR_PRESETS or not args.l2_anchor.strip()
+    ):
+        parser.error(
+            "--l2-anchor-weights needs a name for the vector in --l2-anchor "
+            f"(not one of {L2_ANCHOR_PRESETS})."
         )
     if not 0.0 <= args.district_ess_relative_floor <= 1.0:
         parser.error("--district-ess-relative-floor must be in [0, 1].")

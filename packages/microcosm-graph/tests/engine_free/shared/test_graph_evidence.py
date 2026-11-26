@@ -1,10 +1,8 @@
-"""Country-neutral binding, phase history and existing Orrery surfaces."""
+"""Country-neutral run binding, phase history, saved evidence and presentation."""
 
 import ast
-import copy
 import importlib.util
 import json
-import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -12,12 +10,11 @@ from pathlib import Path
 import pytest
 
 from microcosm.graph import (
+    ContentStore,
     checkpoint_references,
     collect_execution_evidence,
     graph_schema,
     load_run_evidence,
-    orrery_document,
-    orrery_json,
     publish_run_evidence,
     record_run_binding,
     save_graph_schema,
@@ -25,8 +22,11 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.evidence import sha256
-from microcosm.graph.orrery import main
-from microcosm.graph.presentation import PRESENTATION_EXTENSION, PRESENTATION_PROTOCOL
+from microcosm.graph.presentation import (
+    PRESENTATION_EXTENSION,
+    PRESENTATION_PROTOCOL,
+    validate_presentation,
+)
 from microcosm.graph.store import StoreCorrupt, StoreMiss
 from test_support.paths import paths_for
 
@@ -84,67 +84,62 @@ def test_fresh_and_cache_phases_keep_same_ids_and_independent_states(fresh, tmp_
         fresh.compiled,
         extensions={PRESENTATION_EXTENSION: presentation(fresh.compiled)},
     )
+    assert validate_presentation(schema) == presentation(fresh.compiled)
+    before = toy.total_calls(fresh.registry)
     evidence = collect_execution_evidence(
         schema, runs=[first, second], store=fresh.store
     )
-    before = toy.total_calls(fresh.registry)
-    document = orrery_document(
-        fresh.compiled, extensions=schema["extensions"], execution=evidence
-    )
+    # Collecting the overlay reads recorded files and store metadata only.
     assert toy.total_calls(fresh.registry) == before
-    static = orrery_document(fresh.compiled)
-    assert {node["id"] for node in static["nodes"]} <= {
-        node["id"] for node in document["nodes"]
+    assert evidence == collect_execution_evidence(
+        schema, runs=[first, second], store=fresh.store
+    )
+    # The overlay holds selected facts per phase, never the raw receipts.
+    assert set(evidence) == {
+        "protocol",
+        "graph_sha256",
+        "phases",
+        "summaries",
+        "verification",
+        "history",
     }
-    assert static["edges"] == document["edges"]
-    operation = next(node for node in document["nodes"] if node["label"] == "survey")
-    assert operation["parentId"] == '["group","work"]'
-    history = operation["data"]["execution_history"]
-    assert [record["cache"] for record in history] == ["miss", "hit"]
-    assert {record["execution"] for record in history} == {"completed"}
-    assert {record["kernel_role"] for record in history} == {"compute"}
-    assert history[0]["artifacts"]
-    # Cards show two badges: the execution state and an attempt-level cache
-    # summary that names the computing phase before counting replays.
-    assert [badge["label"] for badge in operation["statuses"]] == [
-        "Execution: completed",
-        "Computed: numerical · reused 1×",
-    ]
-    gate = next(node for node in document["nodes"] if node["label"] == "gate_tax")
-    assert [badge["label"] for badge in gate["statuses"]][:2] == [
-        "Gate: pass",
-        "Execution: completed",
-    ]
-    assert not any(
-        badge["label"].startswith("Gate:")
-        for node in document["nodes"]
-        if node["kind"] == "operation" and node["label"] != "gate_tax"
-        for badge in node["statuses"]
+    assert evidence["graph_sha256"] == schema["graph_sha256"]
+    numerical, final = evidence["phases"]
+    assert (numerical["phase"], final["phase"]) == ("numerical", "final")
+    assert numerical["manifest_key"] == final["manifest_key"]
+    assert numerical["manifest_sha256"] != final["manifest_sha256"]
+    for phase in evidence["phases"]:
+        assert set(phase["operations"]) == set(fresh.compiled.order)
+        # Only gate_tax, whose kernel role is "gate", records a validation-check
+        # outcome; every other operation records "not_applicable".
+        assert {
+            node_id
+            for node_id, record in phase["operations"].items()
+            if record["kernel_role"] == "gate"
+        } == {"gate_tax"}
+        assert all(
+            record["gate"] == "not_applicable"
+            for node_id, record in phase["operations"].items()
+            if node_id != "gate_tax"
+        )
+    assert {
+        record["kernel_ref"]
+        for phase in evidence["phases"]
+        for record in phase["operations"].values()
+    } == {node.kernel for node in fresh.compiled.graph.nodes}
+    survey = [phase["operations"]["survey"] for phase in evidence["phases"]]
+    assert [record["cache"] for record in survey] == ["miss", "hit"]
+    assert {record["execution"] for record in survey} == {"completed"}
+    assert {record["kernel_role"] for record in survey} == {"compute"}
+    assert survey[0]["node_key"] == survey[1]["node_key"]
+    # The computing phase lists the store objects the survey operation produced.
+    assert any(
+        producer["node"] == "survey"
+        for artifact in numerical["artifacts"]
+        for producer in artifact["producers"]
     )
-    for node in document["nodes"]:
-        if node["kind"] == "field":
-            assert json.loads(node["parentId"])[0] == "operation"
-        if node["kind"] == "operation":
-            assert "sources" not in node
-    assert len(document["activities"]) == 2 * len(fresh.compiled.order)
-    assert {activity["agent"]["name"] for activity in document["activities"]} == {
-        node.kernel for node in fresh.compiled.graph.nodes
-    }
-    assert document["artifacts"]
-    labels = [artifact["label"] for artifact in document["artifacts"]]
-    assert all(label.endswith(("file)", "files)")) for label in labels)
-    assert len(document["artifacts"]) == len(
-        {
-            artifact["key"]
-            for phase in evidence["phases"]
-            for artifact in phase["artifacts"]
-        }
-    )
-    assert "receipts" not in document
-    assert document == orrery_document(
-        fresh.compiled, extensions=schema["extensions"], execution=evidence
-    )
-    assert all(node["revision"] for node in document["nodes"])
+    check = final["operations"]["gate_tax"]
+    assert (check["gate"], check["execution"]) == ("pass", "completed")
 
 
 def test_gate_failure_is_separate_from_successful_execution(tmp_path):
@@ -234,7 +229,9 @@ def test_incomplete_history_is_explicit_and_raw_receipts_are_excluded(fresh):
     assert "private_household_ids" not in json.dumps(evidence)
 
 
-def test_saved_evidence_roundtrip_and_cli(fresh, tmp_path):
+def test_saved_evidence_round_trips_into_an_overlay_without_writing_the_store(
+    fresh, tmp_path
+):
     directory = tmp_path / "evidence"
     index = save_run_evidence(
         fresh.compiled,
@@ -251,61 +248,36 @@ def test_saved_evidence_roundtrip_and_cli(fresh, tmp_path):
         fresh.compiled,
         extensions={PRESENTATION_EXTENSION: presentation(fresh.compiled)},
     )
-    schema_path = tmp_path / "schema.json"
-    schema_path.write_text(json.dumps(schema))
-    output = tmp_path / "orrery.json"
-    # Read-only export must not recreate a writer's temporary directory.
+    # Reading saved evidence through a store opened read-only must not
+    # recreate a writer's temporary directory.
     (fresh.store.root / "tmp").rmdir()
+    read_only_store = ContentStore(fresh.store.root, create=False)
     before = toy.total_calls(fresh.registry)
-    assert (
-        main(
-            [
-                "--schema",
-                str(schema_path),
-                "--evidence",
-                str(index),
-                "--store",
-                str(fresh.store.root),
-                "--output",
-                str(output),
-            ]
-        )
-        == 0
+    overlay = collect_execution_evidence(
+        schema,
+        runs=load_run_evidence(index, store=read_only_store),
+        store=read_only_store,
     )
     assert toy.total_calls(fresh.registry) == before
     assert not (fresh.store.root / "tmp").exists()
-    document = json.loads(output.read_text())
-    assert document["activities"]
-    run_files = [artifact for artifact in document["artifacts"] if artifact.get("uri")]
-    assert {artifact["label"] for artifact in run_files} == {
+    (phase,) = overlay["phases"]
+    assert set(phase["operations"]) == set(fresh.compiled.order)
+    # Each saved file of the phase is referenced by a digest-bound link.
+    references = phase["references"]
+    assert set(references) == {"graph", "manifest", "binding", "summaries"}
+    assert {reference["label"] for reference in references.values()} == {
         f"p: {name}" for name in ("graph", "manifest", "binding", "summaries")
     }
-    assert all(len(artifact["sha256"]) == 64 for artifact in run_files)
+    assert all(len(reference["sha256"]) == 64 for reference in references.values())
+    # Every store object lists the byte digest of each of its files.
+    assert phase["artifacts"]
     assert all(
-        {artifact["id"] for artifact in run_files} <= set(activity["artifactIds"])
-        for activity in document["activities"]
-    )
-    # A multi-file store object has no single byte digest to declare; its
-    # per-file digests stay in metadata.execution.phases[].artifacts.
-    for artifact in document["artifacts"]:
-        if artifact["label"].endswith("files)"):
-            assert "sha256" not in artifact
-    assert all(
-        {payload["sha256"] for payload in artifact["payloads"].values()}
-        for phase in document["metadata"]["execution"]["phases"]
+        artifact["payloads"]
+        and all(
+            len(payload["sha256"]) == 64 for payload in artifact["payloads"].values()
+        )
         for artifact in phase["artifacts"]
     )
-    with pytest.raises(SystemExit):
-        main(
-            [
-                "--schema",
-                str(schema_path),
-                "--evidence",
-                str(index),
-                "--output",
-                str(output),
-            ]
-        )
 
 
 def test_corrupt_evidence_and_store_payloads_fail_closed(fresh, tmp_path):
@@ -383,7 +355,7 @@ def test_artifact_producer_metadata_must_match_the_receipt(fresh):
         )
 
 
-def test_missing_required_store_artifact_is_actionable(fresh, tmp_path, capsys):
+def test_missing_required_store_artifact_is_actionable(fresh, tmp_path):
     index = save_run_evidence(
         fresh.compiled,
         fresh.manifest,
@@ -401,30 +373,15 @@ def test_missing_required_store_artifact_is_actionable(fresh, tmp_path, capsys):
         collect_execution_evidence(
             graph_schema(fresh.compiled), runs=[binding], store=fresh.store
         )
-    schema_path = tmp_path / "schema.json"
-    schema_path.write_text(json.dumps(graph_schema(fresh.compiled)))
-    output = tmp_path / "missing.orrery.json"
-    with pytest.raises(SystemExit) as error:
-        main(
-            [
-                "--schema",
-                str(schema_path),
-                "--evidence",
-                str(index),
-                "--store",
-                str(fresh.store.root),
-                "--output",
-                str(output),
-            ]
-        )
-    assert error.value.code == 2
-    assert key in capsys.readouterr().err
-    assert not output.exists()
+    # Loading the saved evidence checks the manifest's objects in the store,
+    # so it names the missing object too.
+    with pytest.raises(StoreMiss, match=key):
+        load_run_evidence(index, store=fresh.store)
 
 
 def test_shared_contract_modules_have_no_country_dispatch_or_imports():
     directory = _PATHS.package / "src" / "microcosm" / "graph"
-    for name in ("orrery.py", "evidence.py", "presentation.py", "orrery_evidence.py"):
+    for name in ("evidence.py", "presentation.py"):
         tree = ast.parse((directory / name).read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
@@ -454,33 +411,9 @@ def test_invalid_presentation_contracts_fail(fresh, change):
         contract["scope"]["boundaries"] = [
             {"operation": "survey", "kind": "checkpoint"}
         ]
+    schema = graph_schema(fresh.compiled, extensions={PRESENTATION_EXTENSION: contract})
     with pytest.raises(ValueError):
-        orrery_document(fresh.compiled, extensions={PRESENTATION_EXTENSION: contract})
-
-
-def test_execution_overlay_graph_binding_is_checked(fresh):
-    run = record_run_binding(fresh.compiled, fresh.manifest, attempt_id="a", phase="p")
-    evidence = collect_execution_evidence(
-        graph_schema(fresh.compiled), runs=[run], store=fresh.store
-    )
-    changed = copy.deepcopy(evidence)
-    changed["graph_sha256"] = "0" * 64
-    with pytest.raises(ValueError, match="overlay graph binding mismatch"):
-        orrery_document(fresh.compiled, execution=changed)
-
-
-def test_public_orrery_parser_accepts_groups_and_execution(fresh):
-    run = record_run_binding(fresh.compiled, fresh.manifest, attempt_id="a", phase="p")
-    extension = {PRESENTATION_EXTENSION: presentation(fresh.compiled)}
-    evidence = collect_execution_evidence(
-        graph_schema(fresh.compiled), runs=[run], store=fresh.store
-    )
-    payload = orrery_json(fresh.compiled, extensions=extension, execution=evidence)
-    script = _PATHS.repository / "tools" / "orrery-contract" / "verify-execution.mjs"
-    result = subprocess.run(
-        ["node", str(script)], input=payload, text=True, capture_output=True, check=True
-    )
-    assert "accepted" in result.stdout
+        validate_presentation(schema)
 
 
 def test_publish_run_evidence_merges_attempts_and_refuses_corrupt_files(
@@ -530,9 +463,6 @@ def test_publish_run_evidence_merges_attempts_and_refuses_corrupt_files(
         "miss",
         "hit",
     ]
-    document = orrery_document(fresh.compiled, execution=overlay)
-    survey = next(node for node in document["nodes"] if node["label"] == "survey")
-    assert survey["statuses"][1]["label"] == "Computed: numerical · reused 1×"
     # Republishing the same attempt replaces its entry instead of duplicating it.
     publish_run_evidence(second, out)
     assert len(json.loads(published.read_bytes())["runs"]) == 2
@@ -634,8 +564,9 @@ def test_save_graph_schema_copies_upstream_bytes_and_relinks(fresh, tmp_path):
 def test_malformed_composite_metadata_is_refused(fresh, composite):
     contract = presentation(fresh.compiled)
     contract["operations"]["survey"]["composite"] = composite
+    schema = graph_schema(fresh.compiled, extensions={PRESENTATION_EXTENSION: contract})
     with pytest.raises(ValueError, match="composite"):
-        orrery_document(fresh.compiled, extensions={PRESENTATION_EXTENSION: contract})
+        validate_presentation(schema)
 
 
 def test_item_heavy_native_evidence_is_read_hashed_and_copied(fresh, tmp_path):

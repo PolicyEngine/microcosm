@@ -13,7 +13,6 @@ import h5py
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.staging_v2 import validate_v2_bundle
 from microcosm.graph import ContentStore, collect_execution_evidence, load_run_evidence
-from microcosm.graph.orrery import orrery_document_from_schema
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -93,15 +92,18 @@ def test_uk_staging_smoke_command_runs_every_spine_stage(tmp_path: Path) -> None
     runs = load_run_evidence(
         output.parent / sidecar["graph_execution_evidence"]["path"], store=store
     )
-    document = orrery_document_from_schema(
-        schema, execution=collect_execution_evidence(schema, runs=runs, store=store)
+    # The recorded run validates against the saved schema and covers every
+    # operation it declares.
+    evidence = collect_execution_evidence(schema, runs=runs, store=store)
+    schema_operations = {operation["id"] for operation in schema["graph"]["nodes"]}
+    assert evidence["phases"]
+    assert all(
+        set(phase["operations"]) == schema_operations for phase in evidence["phases"]
     )
-    operations = [node for node in document["nodes"] if node["kind"] == "operation"]
-    assert len(operations) == len(schema["graph"]["nodes"])
     # These are the full executable gate contracts, not shortened display labels.
     assert any(
-        len(node["data"]["declaration"]["params"].get("gate_manifest", "")) > 16_384
-        for node in operations
+        len(operation["params"].get("gate_manifest", "")) > 16_384
+        for operation in schema["graph"]["nodes"]
     )
 
     bundle = validate_v2_bundle(tmp_path / "staging", RUN_ID)

@@ -1,4 +1,4 @@
-"""Declaration-only Orrery publications for UK builds from before run bindings.
+"""Declaration-only graph schemas for UK builds from before run bindings.
 
 Fixtures replay the files a UK dense or national build wrote before
 microcosm#1144, in the order that era's ``full_build_cli`` wrote them: the
@@ -13,7 +13,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -26,13 +25,11 @@ from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_gr
 from microcosm.build.uk_runtime.graph_calibration import UKGraphCalibrationConfig
 from microcosm.build.uk_runtime.graph_evidence import add_uk_spine_gate_nodes
 from microcosm.build.uk_runtime.graph_terminal import append_uk_full_gate_nodes
-from microcosm.build.uk_runtime.orrery_publication import INVENTORY_NAME
 from microcosm.build.uk_runtime.orrery_reconstruction import (
-    GRAPH_NAME,
     REPORT_NAME,
     SCHEMA_NAME,
     main,
-    reconstruct_uk_publication,
+    reconstruct_uk_schema,
 )
 from microcosm.build.uk_runtime.rowwise_cli import MANIFEST_FILENAME, json_text
 from microcosm.graph import Graph, Node, Owned, SourceRef, StructuralDelta
@@ -43,15 +40,7 @@ from microcosm.graph.reconstruction import (
 )
 from microcosm.graph.schema import validate_graph_schema
 from microcosm.graph.serialize import graph_to_json
-from test_support.microcosm_build.emitter import fake_publication_inventory
-from test_support.paths import paths_for
 
-_RECONSTRUCTION_VERIFY = (
-    paths_for("microcosm-build").repository
-    / "tools"
-    / "orrery-contract"
-    / "verify-reconstruction.mjs"
-)
 RECORDED_COMMIT = "4bf7af406a1b2c3d4e5f60718293a4b5c6d7e8f9"
 OTHER_COMMIT = "7f235941c0000000000000000000000000000000"
 NATIONAL_BUILD_ID = "uk-national-20260930T120000Z-s42"
@@ -248,54 +237,41 @@ def inputs_by_name(marker: dict) -> dict[str, dict]:
     return {item["name"]: item for item in marker["inputs"]}
 
 
-def test_dense_build_reconstructs_the_normal_publication_layout(tmp_path):
+def test_dense_build_reconstructs_only_a_marked_schema_and_its_report(tmp_path):
+    """The collector makes the Orrery document from the reconstructed schema,
+    so the tool writes no document and no publication inventory."""
     build = write_pre_1144_build(tmp_path / "build")
-    output = tmp_path / "publication"
+    output = tmp_path / "reconstruction"
 
-    reconstruct_uk_publication(build, output)
+    report = reconstruct_uk_schema(build, output)
 
     assert sorted(path.name for path in output.iterdir()) == sorted(
-        [GRAPH_NAME, SCHEMA_NAME, INVENTORY_NAME, REPORT_NAME]
-    )
-    inventory = read_json(output / INVENTORY_NAME)
-    # The emitter recomputes the inventory before it queues a directory; the
-    # reconstructed one must be exactly what it would compute: each named
-    # file's role, size and SHA-256, in name order.
-    assert inventory == fake_publication_inventory(
-        output,
-        {GRAPH_NAME: "graph", SCHEMA_NAME: "schema"},
-        publication_id=inventory["publication_id"],
+        [SCHEMA_NAME, REPORT_NAME]
     )
     schema = validate_graph_schema(read_json(output / SCHEMA_NAME))
     assert (output / SCHEMA_NAME).read_bytes() == canonical_json(schema)
-    document = read_json(output / GRAPH_NAME)
-    assert document["schemaVersion"] == "graph-explorer/v1"
-    assert document["metadata"]["microcosm"]["graph_sha256"] == sha256_hex(
-        (build / "graph.json").read_bytes()
-    )
-    assert "reconstructed declaration" in document["title"]
-    assert not {"activities", "artifacts"} & document.keys()
-    assert all("statuses" not in node for node in document["nodes"])
-    # Nothing from the build other than the declaration's projection is copied.
-    assert not {path.name for path in build.iterdir()} & {
-        path.name for path in output.iterdir()
-    }
+    marker = validate_reconstruction(schema)
+    assert marker is not None
+    assert (marker["reconstructed"], marker["basis"]) == (True, "declaration_only")
+    assert marker["source_revision"]["git_commit"] == RECORDED_COMMIT
+    assert report == read_json(output / REPORT_NAME)
+    assert report["protocol"] == "microcosm.uk.orrery-reconstruction-report.v2"
+    assert report["files"] == [SCHEMA_NAME]
+    assert not {"publication_id", "published_files"} & report.keys()
 
 
 def test_marker_names_the_recorded_revision_and_every_input_digest(tmp_path):
     build = write_pre_1144_build(tmp_path / "build")
     output = tmp_path / "publication"
 
-    reconstruct_uk_publication(build, output)
+    reconstruct_uk_schema(build, output)
 
     schema = read_json(output / SCHEMA_NAME)
     marker = validate_reconstruction(schema)
     assert marker is not None
-    document = read_json(output / GRAPH_NAME)
-    assert (
-        document["metadata"]["microcosm"]["extensions"][RECONSTRUCTION_EXTENSION]
-        == marker
-    )
+    # The marker is in the schema's producer extensions, which the collector's
+    # projection copies into the document's metadata.
+    assert schema["extensions"][RECONSTRUCTION_EXTENSION] == marker
     assert marker["source_revision"] == {
         "git_commit": RECORDED_COMMIT,
         "git_dirty": False,
@@ -330,7 +306,7 @@ def test_marker_records_the_code_that_ran_the_reconstruction_beside_the_source(
     monkeypatch.setattr(orrery_reconstruction, "code_revision", reconstructing_checkout)
     build = write_pre_1144_build(tmp_path / "build")
 
-    report = reconstruct_uk_publication(build, tmp_path / "publication")
+    report = reconstruct_uk_schema(build, tmp_path / "publication")
 
     marker = validate_reconstruction(read_json(tmp_path / "publication" / SCHEMA_NAME))
     # The revision is looked up from the reconstructing module's own file, not
@@ -385,7 +361,7 @@ def test_candidate_manifest_disagreeing_with_a_refreshed_build_record_is_refused
     with pytest.raises(
         ValueError, match="does not match the digest recorded in build.json"
     ):
-        reconstruct_uk_publication(build, tmp_path / "publication")
+        reconstruct_uk_schema(build, tmp_path / "publication")
     assert not (tmp_path / "publication").exists()
 
 
@@ -398,7 +374,7 @@ def test_only_the_staging_receipts_note_marks_a_completion_digest_as_stale(tmp_p
     with pytest.raises(
         ValueError, match="does not match the digest recorded in build.json"
     ):
-        reconstruct_uk_publication(build, tmp_path / "publication")
+        reconstruct_uk_schema(build, tmp_path / "publication")
 
 
 @pytest.mark.parametrize("layout", [DENSE_REFRESHED_COMPLETION, DENSE_STALE_COMPLETION])
@@ -410,7 +386,7 @@ def test_candidate_manifest_disagreeing_with_sha256sums_is_refused(tmp_path, lay
     with pytest.raises(
         ValueError, match="does not match the digest recorded in sha256sums.txt"
     ):
-        reconstruct_uk_publication(build, tmp_path / "publication")
+        reconstruct_uk_schema(build, tmp_path / "publication")
     assert not (tmp_path / "publication").exists()
 
 
@@ -424,7 +400,7 @@ def test_dense_build_closed_before_the_completion_refresh_is_checked_against_the
     assert stale_entry["note"] == STAGING_RECEIPTS_NOTE
     assert stale_entry["sha256"] != sha256_hex((build / MANIFEST_FILENAME).read_bytes())
 
-    report = reconstruct_uk_publication(build, tmp_path / "publication")
+    report = reconstruct_uk_schema(build, tmp_path / "publication")
 
     marker = validate_reconstruction(read_json(tmp_path / "publication" / SCHEMA_NAME))
     assert marker["source_revision"]["git_commit"] == RECORDED_COMMIT
@@ -456,7 +432,7 @@ def test_stale_completion_digest_without_a_digest_list_leaves_the_manifest_unche
         tmp_path / "build", layout=DENSE_STALE_COMPLETION, staged=False
     )
 
-    report = reconstruct_uk_publication(build, tmp_path / "publication")
+    report = reconstruct_uk_schema(build, tmp_path / "publication")
 
     marker = validate_reconstruction(read_json(tmp_path / "publication" / SCHEMA_NAME))
     manifest_input = inputs_by_name(marker)[MANIFEST_FILENAME]
@@ -478,7 +454,7 @@ def test_national_build_reconstructs_from_its_completion_record(tmp_path):
         (build / "build_record.json").read_bytes()
     )
 
-    report = reconstruct_uk_publication(build, tmp_path / "publication")
+    report = reconstruct_uk_schema(build, tmp_path / "publication")
 
     marker = validate_reconstruction(read_json(tmp_path / "publication" / SCHEMA_NAME))
     inputs = inputs_by_name(marker)
@@ -506,8 +482,10 @@ def test_build_with_recorded_orrery_evidence_is_refused(tmp_path, recorded_file)
     build = write_pre_1144_build(tmp_path / "build")
     (build / recorded_file).write_text("{}")
 
-    with pytest.raises(ValueError, match="python -m microcosm.graph.orrery"):
-        reconstruct_uk_publication(build, tmp_path / "publication")
+    with pytest.raises(
+        ValueError, match="python -m microcosm.build.uk_runtime.orrery_inputs"
+    ):
+        reconstruct_uk_schema(build, tmp_path / "reconstruction")
 
 
 def test_staged_bundle_without_a_declaration_is_refused_naming_what_is_missing(
@@ -518,7 +496,7 @@ def test_staged_bundle_without_a_declaration_is_refused_naming_what_is_missing(
     (bundle / "graph.json").unlink()
 
     with pytest.raises(ValueError, match="graph.json") as refusal:
-        reconstruct_uk_publication(bundle, tmp_path / "publication")
+        reconstruct_uk_schema(bundle, tmp_path / "publication")
     assert MANIFEST_FILENAME in str(refusal.value)
     assert not (tmp_path / "publication").exists()
 
@@ -527,10 +505,8 @@ def test_caller_revision_must_match_the_recorded_revision(tmp_path):
     build = write_pre_1144_build(tmp_path / "build")
 
     with pytest.raises(ValueError, match="does not match the recorded revision"):
-        reconstruct_uk_publication(
-            build, tmp_path / "publication", revision=OTHER_COMMIT
-        )
-    reconstruct_uk_publication(build, tmp_path / "confirmed", revision=RECORDED_COMMIT)
+        reconstruct_uk_schema(build, tmp_path / "publication", revision=OTHER_COMMIT)
+    reconstruct_uk_schema(build, tmp_path / "confirmed", revision=RECORDED_COMMIT)
     marker = validate_reconstruction(read_json(tmp_path / "confirmed" / SCHEMA_NAME))
     assert marker["source_revision"]["origin"] == "recorded"
 
@@ -538,7 +514,7 @@ def test_caller_revision_must_match_the_recorded_revision(tmp_path):
 def test_caller_revision_supplies_an_unrecorded_revision_as_asserted(tmp_path):
     build = write_pre_1144_build(tmp_path / "build", git_commit=None, git_dirty=None)
 
-    report = reconstruct_uk_publication(
+    report = reconstruct_uk_schema(
         build, tmp_path / "publication", revision=OTHER_COMMIT
     )
 
@@ -556,7 +532,7 @@ def test_malformed_caller_revision_is_refused(tmp_path, malformed_revision):
     build = write_pre_1144_build(tmp_path / "build")
 
     with pytest.raises(ValueError, match="full lowercase git commit"):
-        reconstruct_uk_publication(
+        reconstruct_uk_schema(
             build, tmp_path / "publication", revision=malformed_revision
         )
 
@@ -567,7 +543,7 @@ def test_build_without_any_revision_is_refused(tmp_path):
     (build / "build.json").unlink()
 
     with pytest.raises(ValueError, match="pass --revision"):
-        reconstruct_uk_publication(build, tmp_path / "publication")
+        reconstruct_uk_schema(build, tmp_path / "publication")
 
 
 def test_summary_reports_unused_evidence_missing_files_and_warnings(tmp_path):
@@ -575,7 +551,7 @@ def test_summary_reports_unused_evidence_missing_files_and_warnings(tmp_path):
         tmp_path / "build", git_dirty=True, layout=NATIONAL_COMPLETION, staged=False
     )
 
-    report = reconstruct_uk_publication(build, tmp_path / "publication")
+    report = reconstruct_uk_schema(build, tmp_path / "publication")
 
     assert report == read_json(tmp_path / "publication" / REPORT_NAME)
     assert report["status"] == "reconstructed"
@@ -594,20 +570,16 @@ def test_summary_reports_unused_evidence_missing_files_and_warnings(tmp_path):
     assert all(item["reason"] for item in report["missing"] + report["unused_evidence"])
     assert any("uncommitted changes" in warning for warning in report["warnings"])
     assert any("graph.json" in warning for warning in report["warnings"])
-    published = {
-        item["name"]
-        for item in read_json(tmp_path / "publication" / INVENTORY_NAME)["files"]
-    }
-    assert REPORT_NAME not in published
+    assert report["files"] == [SCHEMA_NAME]
 
 
 def test_reconstruction_is_deterministic(tmp_path):
     build = write_pre_1144_build(tmp_path / "build")
 
-    reconstruct_uk_publication(build, tmp_path / "first")
-    reconstruct_uk_publication(build, tmp_path / "second")
+    reconstruct_uk_schema(build, tmp_path / "first")
+    reconstruct_uk_schema(build, tmp_path / "second")
 
-    for name in (GRAPH_NAME, SCHEMA_NAME, INVENTORY_NAME, REPORT_NAME):
+    for name in (SCHEMA_NAME, REPORT_NAME):
         assert (tmp_path / "first" / name).read_bytes() == (
             tmp_path / "second" / name
         ).read_bytes()
@@ -621,7 +593,7 @@ def test_existing_output_is_refused_and_failure_leaves_no_partial_output(
     existing.mkdir()
 
     with pytest.raises(ValueError, match="already exists"):
-        reconstruct_uk_publication(build, existing)
+        reconstruct_uk_schema(build, existing)
     assert list(existing.iterdir()) == []
 
     def interrupted_rename(source, destination):
@@ -630,7 +602,7 @@ def test_existing_output_is_refused_and_failure_leaves_no_partial_output(
     # Every file is written, then the move into place fails: nothing remains.
     monkeypatch.setattr(os, "rename", interrupted_rename)
     with pytest.raises(OSError, match="interrupted"):
-        reconstruct_uk_publication(build, tmp_path / "publication")
+        reconstruct_uk_schema(build, tmp_path / "publication")
     assert sorted(path.name for path in tmp_path.iterdir()) == ["build", "existing"]
 
 
@@ -651,7 +623,7 @@ def test_output_inside_the_build_directory_is_refused(tmp_path, output_parts):
     listing = sorted(path.name for path in build.iterdir())
 
     with pytest.raises(ValueError, match="inside the build directory"):
-        reconstruct_uk_publication(build, tmp_path.joinpath(*output_parts))
+        reconstruct_uk_schema(build, tmp_path.joinpath(*output_parts))
 
     # The build is only read: nothing was written into it, not even staging.
     assert sorted(path.name for path in build.iterdir()) == listing
@@ -685,13 +657,13 @@ def test_output_leaving_a_missing_folder_inside_the_build_creates_nothing_there(
             pytest.skip("root ignores directory permissions")
         build.chmod(0o555)
     try:
-        reconstruct_uk_publication(build, output)
+        reconstruct_uk_schema(build, output)
     finally:
         build.chmod(original_mode)
 
     assert _tree_snapshot(build) == before
     assert sorted(path.name for path in (tmp_path / "publication").iterdir()) == (
-        sorted([GRAPH_NAME, SCHEMA_NAME, INVENTORY_NAME, REPORT_NAME])
+        sorted([SCHEMA_NAME, REPORT_NAME])
     )
 
 
@@ -708,7 +680,7 @@ def test_output_named_by_a_dangling_link_leading_outside_the_build_is_refused(
     dangling_link.symlink_to(link_target, target_is_directory=True)
 
     with pytest.raises(ValueError, match="already exists"):
-        reconstruct_uk_publication(build, dangling_link)
+        reconstruct_uk_schema(build, dangling_link)
 
     assert dangling_link.is_symlink()
     assert not os.path.lexists(link_target)
@@ -722,10 +694,10 @@ def test_declaration_behind_a_symbolic_link_is_refused(tmp_path):
     (build / "graph.json").symlink_to(elsewhere)
 
     with pytest.raises(ValueError, match="regular file"):
-        reconstruct_uk_publication(build, tmp_path / "publication")
+        reconstruct_uk_schema(build, tmp_path / "publication")
 
 
-def test_cli_writes_the_publication_and_prints_a_summary(tmp_path, capsys):
+def test_cli_writes_the_schema_and_prints_a_summary(tmp_path, capsys):
     build = write_pre_1144_build(tmp_path / "build")
     output = tmp_path / "publication"
 
@@ -735,8 +707,10 @@ def test_cli_writes_the_publication_and_prints_a_summary(tmp_path, capsys):
     assert str(output) in printed
     assert RECORDED_COMMIT in printed
     assert "reconstructed by: " in printed
-    assert "declaration only" in printed
-    assert (output / GRAPH_NAME).is_file()
+    assert "Wrote a reconstructed graph schema (declaration only)" in printed
+    assert sorted(path.name for path in output.iterdir()) == sorted(
+        [SCHEMA_NAME, REPORT_NAME]
+    )
     with pytest.raises(SystemExit) as refusal:
         main(["--build", str(build), "--output", str(output)])
     assert refusal.value.code == 2
@@ -755,8 +729,7 @@ def test_cli_prints_the_resolved_output_path_it_wrote(tmp_path, capsys):
 
     printed = capsys.readouterr().out
     assert (
-        f"Wrote a reconstructed Orrery publication (declaration only) to "
-        f"{written_output}\n"
+        f"Wrote a reconstructed graph schema (declaration only) to {written_output}\n"
     ) in printed
     assert f"  report: {written_output / REPORT_NAME}" in printed.splitlines()
     assert str(given_output) not in printed
@@ -791,7 +764,7 @@ def test_cli_reconstructs_a_build_closed_before_the_completion_refresh(
     assert f"{MANIFEST_FILENAME} (fallback digest matched)" in printed
 
 
-def test_maintained_uk_dense_declaration_reconstructs_within_orrery_limits(tmp_path):
+def test_maintained_uk_dense_declaration_reconstructs_to_a_marked_schema(tmp_path):
     spine = add_uk_spine_gate_nodes(
         uk_spine_graph(source_mode="split"),
         spec=load_country_spec("uk"),
@@ -815,15 +788,11 @@ def test_maintained_uk_dense_declaration_reconstructs_within_orrery_limits(tmp_p
     build = write_pre_1144_build(tmp_path / "build", graph=declared)
     output = tmp_path / "publication"
 
-    report = reconstruct_uk_publication(build, output)
+    report = reconstruct_uk_schema(build, output)
 
     assert report["declaration"]["operations"] == len(declared.nodes)
-    result = subprocess.run(
-        ["node", str(_RECONSTRUCTION_VERIFY)],
-        input=(output / GRAPH_NAME).read_text(encoding="utf-8"),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == "Orrery accepted the reconstructed declaration.\n"
+    schema_bytes = (output / SCHEMA_NAME).read_bytes()
+    # Within the input bound of the collector's projection (32 MiB).
+    assert len(schema_bytes) <= 32 * 1024 * 1024
+    schema = validate_graph_schema(json.loads(schema_bytes))
+    assert validate_reconstruction(schema) is not None

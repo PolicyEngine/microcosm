@@ -5,8 +5,9 @@ Everything above the ``needs_engine`` classes runs without
 touched, the graph dtype cast is a pure function, ``axiom_engine_ref`` reads
 only bytes on disk, and materialization is exercised through a recording
 stand-in for the dense surface that returns exactly the array types the native
-extension returns (int8 judgment codes, float64 decimals, int64 integers, bool,
-and Python string lists for text and dates).
+extension returns (int8 judgment codes, int64 integers, bool, Python string
+lists for text and dates, and decimals as float64 or, when the engine keeps a
+rule's value integer-typed, as int64).
 
 The ``needs_engine`` classes run the real engine on the ``rulespec-zz``
 fixture (the existing skip pattern): a graph-typed ``simulate.rules@1`` node
@@ -259,6 +260,9 @@ _FAKE_METADATA = (
     _Metadata("person_benefit", "Person", "decimal"),
     _Metadata("family_assets_ok", "Family", "judgment"),
     _Metadata("family_assistance", "Family", "decimal"),
+    # Declared decimal, returned as int64: an if tree over whole-number
+    # parameters stays integer-typed in the per-period dense surface.
+    _Metadata("family_rate_cap", "Family", "decimal"),
     _Metadata("family_band", "Family", "integer"),
     _Metadata("family_is_large", "Family", "bool"),
     _Metadata("family_category", "Family", "text"),
@@ -292,6 +296,7 @@ class _FakeProgram:
             "person_benefit": np.full(rows, 12.5),
             "family_assets_ok": codes,
             "family_assistance": np.linspace(0.0, 70.25, rows),
+            "family_rate_cap": np.resize(np.asarray([305, 160, 70], np.int64), rows),
             "family_band": np.arange(rows, dtype=np.int64),
             "family_is_large": codes > 0,
             "family_category": ["small"] * rows,
@@ -792,6 +797,7 @@ class TestGraphOutputCast:
             ("integer", np.asarray([3, 4], dtype=np.uint16), np.int64),
             ("decimal", np.asarray([1.25, -0.5], dtype=np.float64), np.float64),
             ("decimal", np.asarray([1.25, -0.5], dtype=np.float32), np.float64),
+            ("decimal", np.asarray([1, 2], dtype=np.int64), np.float64),
             ("bool", np.asarray([True, False]), np.bool_),
         ],
     )
@@ -803,11 +809,72 @@ class TestGraphOutputCast:
         np.testing.assert_array_equal(cast, values)
 
     @pytest.mark.parametrize(
+        "values",
+        [
+            np.asarray([305, 160, 70], dtype=np.int64),
+            np.asarray([-(2**53), -1, 0, 2**53], dtype=np.int64),
+            np.asarray([7, -3], dtype=np.int8),
+            np.asarray([0, 2**53], dtype=np.uint64),
+            np.asarray([], dtype=np.int64),
+        ],
+        ids=["whole-dollars", "int64-bounds", "int8", "uint64-bound", "empty"],
+    )
+    def test_an_integer_decimal_widens_to_float64_exactly(self, values) -> None:
+        """The engine can return int64 for a declared decimal; no value moves."""
+
+        cast = _graph_output("v", "decimal", values)
+        assert cast.dtype == np.dtype(np.float64)
+        assert cast.shape == values.shape
+        assert [int(value) for value in cast] == values.tolist()
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            np.asarray([0, 2**53 + 1], dtype=np.int64),
+            np.asarray([-(2**53) - 1, 0], dtype=np.int64),
+            np.asarray([np.iinfo(np.int64).min], dtype=np.int64),
+            np.asarray([2**64 - 1], dtype=np.uint64),
+        ],
+        ids=["above", "below", "int64-min", "uint64-max"],
+    )
+    def test_an_integer_decimal_beyond_float64_precision_is_refused(
+        self, values
+    ) -> None:
+        with pytest.raises(ValueError, match=r"'v'.*outside -2\*\*53 to 2\*\*53"):
+            _graph_output("v", "decimal", values)
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        values=st.lists(
+            st.integers(
+                min_value=int(np.iinfo(np.int64).min),
+                max_value=int(np.iinfo(np.int64).max),
+            ),
+            max_size=16,
+        )
+    )
+    def test_property_an_int64_decimal_widens_exactly_or_is_refused(
+        self, values
+    ) -> None:
+        """Invariant: an int64 decimal round-trips through float64 or fails."""
+
+        native = np.asarray(values, dtype=np.int64)
+        if all(-(2**53) <= value <= 2**53 for value in values):
+            event("widened")
+            cast = _graph_output("v", "decimal", native)
+            assert cast.dtype == np.dtype(np.float64)
+            assert [int(value) for value in cast] == values
+        else:
+            event("refused")
+            with pytest.raises(ValueError, match=r"outside -2\*\*53 to 2\*\*53"):
+                _graph_output("v", "decimal", native)
+
+    @pytest.mark.parametrize(
         ("engine_dtype", "values"),
         [
             ("integer", np.asarray([1.5, 2.0])),
             ("integer", np.asarray([True, False])),
-            ("decimal", np.asarray([1, 2], dtype=np.int64)),
+            ("decimal", np.asarray([True, False])),
             ("decimal", np.asarray(["1.5"])),
             ("bool", np.asarray([0, 1], dtype=np.int8)),
             ("judgment", np.asarray([0.0, 1.0])),
@@ -862,6 +929,7 @@ class TestGraphTypedMaterialize:
             "person_benefit",
             "family_assets_ok",
             "family_assistance",
+            "family_rate_cap",
             "family_band",
             "family_is_large",
         ]
@@ -870,11 +938,20 @@ class TestGraphTypedMaterialize:
             "person_benefit": np.dtype(np.float64).str,
             "family_assets_ok": np.dtype(np.int64).str,
             "family_assistance": np.dtype(np.float64).str,
+            "family_rate_cap": np.dtype(np.float64).str,
             "family_band": np.dtype(np.int64).str,
             "family_is_large": np.dtype(np.bool_).str,
         }
         assert results["family_assets_ok"].tolist() == [1, -1, 0]
+        assert results["family_rate_cap"].tolist() == [305.0, 160.0, 70.0]
         assert results["person_benefit"].shape == (5,)
+
+    def test_native_mode_keeps_an_int64_decimal_uncast(self, monkeypatch) -> None:
+        adapter = _nz_adapter()
+        _fake_engine(adapter, monkeypatch)
+        results = adapter.materialize(_fake_frame(), ["family_rate_cap"], 2026)
+        assert results["family_rate_cap"].dtype == np.dtype(np.int64)
+        assert results["family_rate_cap"].tolist() == [305, 160, 70]
 
     @pytest.mark.parametrize("variable", ["family_category", "family_review_date"])
     def test_graph_mode_refuses_text_and_date_before_the_engine_runs(
@@ -902,12 +979,14 @@ class TestGraphTypedMaterialize:
             for name in (
                 "person_benefit",
                 "family_assets_ok",
+                "family_rate_cap",
                 "family_band",
                 "family_is_large",
             )
         } == {
             "person_benefit": "float64",
             "family_assets_ok": "int64",
+            "family_rate_cap": "float64",
             "family_band": "int64",
             "family_is_large": "bool",
         }

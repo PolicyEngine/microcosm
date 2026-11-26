@@ -1360,20 +1360,6 @@ def top_weight_share(weights: np.ndarray, fraction: float = 0.01) -> float:
     return float(np.sort(weights)[-k:].sum() / weights.sum())
 
 
-def ess_by_group(weights: np.ndarray, codes: np.ndarray) -> dict[str, float]:
-    """Kish ESS of the records in each group, keyed by the group code."""
-
-    frame = pd.DataFrame(
-        {"code": np.asarray(codes).astype(str), "w": np.asarray(weights, float)}
-    )
-    frame["w2"] = frame["w"] ** 2
-    sums = frame.groupby("code", sort=True)[["w", "w2"]].sum()
-    return {
-        str(code): float(row.w**2 / row.w2) if row.w2 > 0 else 0.0
-        for code, row in sums.iterrows()
-    }
-
-
 def _distribution(values: Mapping[str, float]) -> dict[str, float | int]:
     array = np.asarray(list(values.values()), dtype=np.float64)
     if not len(array):
@@ -1403,6 +1389,8 @@ def weight_origin_summary(
     by spine.
     """
 
+    from microcosm.build.area_support import effective_sample_size_by_group
+
     weights = np.asarray(weights, dtype=np.float64)
     summary: dict[str, object] = {
         "rows": int(len(weights)),
@@ -1412,7 +1400,7 @@ def weight_origin_summary(
     for label, codes in (("state", state), ("district", district)):
         if codes is None:
             continue
-        by_group = ess_by_group(weights, codes)
+        by_group = effective_sample_size_by_group(weights, codes)
         summary[f"effective_sample_size_by_{label}"] = by_group
         summary[f"effective_sample_size_by_{label}_distribution"] = _distribution(
             by_group

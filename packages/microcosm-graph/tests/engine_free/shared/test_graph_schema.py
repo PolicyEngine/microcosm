@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 from dataclasses import replace
 
 import pytest
 
-from microcosm.graph import GraphError, compile_graph
+from microcosm.graph import (
+    GraphError,
+    compile_graph,
+    graph_to_json,
+    save_graph_schema,
+)
+from microcosm.graph.canonical import canonical_json
 from microcosm.graph.schema import graph_schema, validate_graph_schema
 from test_support.microcosm_graph.schema import (
     compiled_default_population_graph,
@@ -52,6 +60,30 @@ def test_schema_is_derived_from_the_compiled_graph():
         ],
     }
     assert validate_graph_schema(schema) == schema
+
+
+def test_embedded_graph_keeps_descriptions_and_citations():
+    schema = graph_schema(compiled_graph())
+    operations = {operation["id"]: operation for operation in schema["graph"]["nodes"]}
+
+    assert operations["base"]["description"] == "Load the declared source tables"
+    assert operations["rewrite"]["description"] == "Replace age for selected people"
+    assert operations["rewrite"]["citation"] == "Example method"
+    assert [source["description"] for source in schema["graph"]["sources"]] == [
+        "Recorded survey tables"
+    ]
+
+
+def test_saved_schema_is_canonical_and_binds_the_graph_bytes(tmp_path):
+    compiled = compiled_graph()
+
+    saved = save_graph_schema(compiled, tmp_path)
+
+    assert saved.read_bytes() == canonical_json(graph_schema(compiled))
+    assert (
+        json.loads(saved.read_bytes())["graph_sha256"]
+        == hashlib.sha256(graph_to_json(compiled.graph).encode()).hexdigest()
+    )
 
 
 def test_fields_record_carriage_rewrites_and_nearest_declaration():
@@ -232,7 +264,9 @@ def test_omitted_population_uses_the_compiler_resolved_version():
         lambda value: value["compiled"]["predecessors"]["rewrite"].clear(),
         lambda value: value["compiled"]["owners"].clear(),
         lambda value: value["fields"][0].update(provider="rewrite"),
+        lambda value: value["fields"][0].update(provider="unknown"),
         lambda value: value["input_bindings"][0].update(provider="rewrite"),
+        lambda value: value["input_bindings"][0].update(kind="invented"),
     ],
 )
 def test_validation_recompiles_and_refuses_core_metadata_changes(mutation):
@@ -266,9 +300,7 @@ def test_extensions_are_detached_bounded_json():
         validate_graph_schema(invalid)
 
 
-def test_serialized_operation_contracts_survive_schema_and_orrery_round_trip():
-    from microcosm.graph.orrery import orrery_document_from_schema
-
+def test_serialized_operation_contracts_survive_the_schema_round_trip():
     compiled = compiled_graph()
     # Full UK gate declarations exceed 64 KiB; spine-only gates are smaller.
     contract = "x" * 70_000
@@ -282,13 +314,12 @@ def test_serialized_operation_contracts_survive_schema_and_orrery_round_trip():
     )
     schema = graph_schema(compile_graph(graph))
     assert validate_graph_schema(schema) == schema
-    document = orrery_document_from_schema(schema)
     operation = next(
-        node
-        for node in document["nodes"]
-        if node["kind"] == "operation" and node["label"] == original.id
+        operation
+        for operation in schema["graph"]["nodes"]
+        if operation["id"] == original.id
     )
-    assert operation["data"]["declaration"]["params"]["contract"] == contract
+    assert operation["params"]["contract"] == contract
 
     oversized = replace(
         graph,

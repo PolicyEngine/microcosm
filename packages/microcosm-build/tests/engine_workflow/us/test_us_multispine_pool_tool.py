@@ -373,7 +373,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # microcosm#1686's shared SIPP person-file read moves it again.
             # The SIPP 2023 donor download tag and the financial-asset cache lookup
             # move it again.
-            "spec_sha256": "5035e939cc241ca9e94b9454a94e90e4450a4724d28aadb76026ee86d2442820",
+            "spec_sha256": "4ddb20b0b6d7ec9c8b49fbe59741d342c6d8fae0ad1d695d8ef23996500abb80",
         },
     }
 
