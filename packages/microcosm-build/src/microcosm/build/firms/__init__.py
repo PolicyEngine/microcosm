@@ -13,7 +13,12 @@ first consumer.
   tax-registration count, set by a :class:`RegistrationSpec`;
 - :mod:`.rules`: the seam to a rule engine, with outputs keyed by firm id;
 - :mod:`.engine_inputs`: a rule engine's entity inputs read from source, the
-  input-status record a build keeps, and checks of an export against both.
+  input-status record a build keeps, and checks of an export against both;
+- :mod:`.receipts`: model totals beside sourced official receipts, as a
+  diagnostic table that never invents a gap.
+
+The firm-only ``Frame`` is not here yet: it needs ``EntitySchema`` to allow a
+root population with no person or group entities.
 """
 
 from __future__ import annotations
