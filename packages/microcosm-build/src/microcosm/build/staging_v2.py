@@ -714,29 +714,35 @@ class StagingContentPolicy:
     state, age band, program or target, say), up to its own size limit, at
     most the emitter's ``EMITTER_MAX_FILE_BYTES``. Every other check still
     applies to them: no sensitive or row-level field, no individual record,
-    no row collection. ``max_artifact_bytes`` is what one run's artifacts may
-    hold together; by default, what is left of the emitter's request limit
-    once a hand-over's four documents, each up to ``max_file_bytes``, are in.
+    no row collection. ``max_artifact_bytes`` sets what one run's artifacts
+    may hold together (``artifact_budget_bytes``); left unset, it is what
+    remains of the emitter's request limit once a hand-over's four documents,
+    each up to ``max_file_bytes``, are in.
     """
 
     max_file_bytes: int = _MAX_REMOTE_FILE_BYTES
     aggregate_tables: Mapping[str, int] = dataclass_field(default_factory=dict)
     max_artifact_bytes: int | None = None
 
+    @property
+    def artifact_budget_bytes(self) -> int:
+        """What one run's artifacts may hold together, in bytes."""
+        if self.max_artifact_bytes is not None:
+            return self.max_artifact_bytes
+        return EMITTER_MAX_REQUEST_BYTES - _RUN_DOCUMENTS * self.max_file_bytes
+
     def __post_init__(self) -> None:
-        if self.max_artifact_bytes is None:
-            object.__setattr__(
-                self,
-                "max_artifact_bytes",
-                EMITTER_MAX_REQUEST_BYTES - _RUN_DOCUMENTS * self.max_file_bytes,
-            )
-        if (
+        if self.max_artifact_bytes is not None and (
             isinstance(self.max_artifact_bytes, bool)
             or not isinstance(self.max_artifact_bytes, int)
             or self.max_artifact_bytes < 1
         ):
+            raise StagingContractError("max_artifact_bytes must be a positive integer.")
+        if self.artifact_budget_bytes < 1:
             raise StagingContractError(
-                "max_artifact_bytes must leave room for at least one artifact byte."
+                f"A max_file_bytes of {self.max_file_bytes} leaves no room for "
+                "artifacts within the emitter's request limit; set "
+                "max_artifact_bytes."
             )
         tables: dict[str, int] = {}
         for logical_name, limit in dict(self.aggregate_tables).items():
@@ -986,9 +992,11 @@ class StagingRunBundleWriterV2:
         self._artifact_bytes: dict[str, int] = {}
         self._events: list[dict[str, Any]] = []
         self._calibration_events: list[dict[str, Any]] = []
-        #: Whether completion, failure or a block handed the final state
-        #: over; until then there is no final commit to check.
-        self._final_state_handed_over = False
+        #: Whether closing the run (completion, failure or a block)
+        #: finished: its final state is written and, for a remote run, was
+        #: handed to the emitter, accepted or not. Until then there is no
+        #: final commit to check.
+        self._closing_finished = False
         self._delivery = {
             "contract_version": STAGING_CONTRACT_VERSION,
             "enabled": True,
@@ -1032,9 +1040,15 @@ class StagingRunBundleWriterV2:
         return validate_staging_delivery(dict(self._delivery))
 
     @property
-    def final_state_handed_over(self) -> bool:
-        """Whether completion, failure or a block handed the final state over."""
-        return self._final_state_handed_over
+    def closing_finished(self) -> bool:
+        """Whether closing the run finished.
+
+        Its final state is written and, for a remote run, was handed to the
+        emitter, whether or not the emitter accepted it. False while the run
+        is running, and for a closed run whose closing an interrupt or an
+        error stopped first.
+        """
+        return self._closing_finished
 
     def hand_over_final_state(self) -> None:
         """Hand a closed run's final state over again.
@@ -1142,11 +1156,11 @@ class StagingRunBundleWriterV2:
         artifact_bytes = len(data) + sum(
             size for name, size in self._artifact_bytes.items() if name != logical_name
         )
-        if artifact_bytes > self._content_policy.max_artifact_bytes:
+        if artifact_bytes > self._content_policy.artifact_budget_bytes:
             raise StagingContentError(
                 f"Artifact {logical_name!r} would take the run's artifacts to "
                 f"{artifact_bytes} bytes, past the "
-                f"{self._content_policy.max_artifact_bytes} bytes that keep a "
+                f"{self._content_policy.artifact_budget_bytes} bytes that keep a "
                 "hand-over within the emitter's request limit."
             )
         relative_path = f"artifacts/{logical_name}.json"
@@ -1320,7 +1334,7 @@ class StagingRunBundleWriterV2:
             raise StagingContractError(
                 "Only a completed, blocked or failed staging run has a final commit."
             )
-        if not self._final_state_handed_over:
+        if not self._closing_finished:
             # Closing the run failed before its final state was handed over
             # (its documents could not be written, say), so the emitter's
             # last commit is an earlier state of the run.
@@ -1564,10 +1578,11 @@ class StagingRunBundleWriterV2:
         """
 
         if self._hand_over is None:
+            self._closing_finished = True
             return
         self._hand_over.reopen()
         self._hand_over_run()
-        self._final_state_handed_over = True
+        self._closing_finished = True
         if self._hand_over.last_accepted is False:
             print(
                 "warning: the staging run's final state was not handed over to "

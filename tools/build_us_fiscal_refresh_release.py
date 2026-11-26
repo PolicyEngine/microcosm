@@ -13218,24 +13218,42 @@ class _BuildProgress:
         # final commit confirmed, before the telemetry outcome shuts the
         # emitter down (it drops a run's events after its outcome).
         try:
-            # A run the build already closed keeps its state: an error after
-            # its final state reached the emitter is the build's, for the
-            # hosted telemetry alone. A run whose closing an interrupt stopped
-            # before the emitter accepted its final state hands it over now.
+            # A run whose closing finished keeps its state: an error after it
+            # completed is the build's, for the hosted telemetry alone.
             bundle = self.staging_bundle
-            if bundle is not None and not bundle.final_state_handed_over:
-                if bundle.status == "running":
-                    self._staged(
-                        "record how the build ended", partial(_close_run, error)
-                    )
-                else:
-                    self._staged(
-                        "hand over its final state",
-                        lambda run: run.hand_over_final_state(),
-                    )
-                confirm_and_report_final_commit(bundle, self.emitter, error=error)
+            if bundle is not None and not bundle.closing_finished:
+                ended_by: BaseException = error
+                try:
+                    self._close_staging_run(bundle, error)
+                except KeyboardInterrupt as interrupt:
+                    # A SIGTERM or Ctrl-C ends the close only: the close-out
+                    # goes on, so the build keeps its own outcome, the run's
+                    # state as it stands is handed over once more and its
+                    # final commit is checked by receipt.
+                    ended_by = interrupt
+                    try:
+                        self._close_staging_run(bundle, error)
+                    except KeyboardInterrupt:
+                        pass
+                confirm_and_report_final_commit(bundle, self.emitter, error=ended_by)
         finally:
             _fail_emitter(self.emitter, error)
+
+    def _close_staging_run(
+        self, bundle: StagingRunBundleWriterV2, error: BaseException
+    ) -> None:
+        """Close a running run, or finish closing one an interrupt stopped.
+
+        A run whose state changed but whose final state an interrupt kept from
+        the emitter (during completion, say) keeps that state and is handed
+        over again.
+        """
+        if bundle.status == "running":
+            self._staged("record how the build ended", partial(_close_run, error))
+        elif not bundle.closing_finished:
+            self._staged(
+                "hand over its final state", lambda run: run.hand_over_final_state()
+            )
 
     def complete(self) -> None:
         # An interrupt here is not contained: the build's failure path then

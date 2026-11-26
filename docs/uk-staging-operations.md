@@ -62,8 +62,8 @@ its `failure_class`.
 
 The implementation separates versioned file serialization from country
 configuration. `microcosm.build.staging_storage` owns the hand-over of run
-files to the build's emitter and its repeated-failure policy, used by both
-version 1 and version 2, and the read access that fetches a staged dataset;
+files to the build's emitter and its repeated-failure policy, and the read
+access that fetches a staged dataset;
 `microcosm.build.staging_dataset` hands the staged dataset to the emitter.
 A writer hands a run's files to the emitter at three points only: when the
 run starts, when a result file (an artifact) is added and when the run ends.
@@ -76,9 +76,10 @@ emitter also reads a run back on request.
 `microcosm.build.staging_cli` adds and validates common command-line options
 from a supplied repository configuration. The UK repository identifier and
 environment-variable name live in `microcosm.build.uk_runtime.staging`; the
-shared modules contain no UK repository or environment defaults. The two
-serializers remain separate because version 1 and version 2 intentionally
-write different files.
+shared modules contain no UK repository or environment defaults. Since
+microcosm#1135 every country's builds, US builds among them, write version 2
+through `microcosm.build.staging_v2`; a country names the result files its
+review found to hold rows of aggregates in the content policy it passes.
 
 Regenerate and verify the canonical version 3 bytes with (the generator no
 longer writes version 2):
