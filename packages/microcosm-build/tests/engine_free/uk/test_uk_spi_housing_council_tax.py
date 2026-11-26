@@ -9,7 +9,7 @@ as the spine is to run the two.
 
 The frames are test_support's invented council-tax cases on the toy
 conditioned supports (``uk_council_tax_fixtures``) at K = 1 and K = 3, the
-support channel's copies re-placed at L3 as the SPI-copy area stage
+support channel's copies re-placed at L2 or L3 as the SPI-copy area stage
 re-places them, and the housing shell's invented tables
 (``uk_spi_housing_shell``). Each toy authority has an invented Band D, and
 every amount is invented. Each reference and bill expected here is worked
@@ -23,9 +23,10 @@ They hold:
   localisation's artifacts and Scottish verify operation, declarative, and
   the derive's formula names the statute and live stages;
 - the rows are the support channel's copies in table order, and each Great
-  Britain copy's reference is the exact expected Band D of its region by
-  households: the localisation's own reference for the row, one for each
-  system and region;
+  Britain copy's reference is the exact expected Band D of its region and
+  drawn band's cell, L2 by the band's households where the region holds
+  the band, else L3 by households: the localisation's own reference for the
+  row, one for each region and band (María's ruling of 2026-11-25);
 - the references and the bills read the region, the support channel and
   its lineage alone: they are the same with every area column, the
   geography key, the IMD decile and the band flag dropped, on the household
@@ -97,6 +98,7 @@ from microcosm.build.uk_runtime.atomic_area_conditioning import (
     UK_SPINE_AREA_COLUMNS,
     UK_SPINE_LADDER_COLUMNS,
     _system_rules,
+    uk_band_weight_map,
     uk_draw_frame,
     uk_draw_inputs,
     uk_draw_levels,
@@ -126,7 +128,7 @@ from microcosm.build.uk_runtime.local_authority_input import (
     UK_LOCAL_AUTHORITY_CODE_COLUMN,
 )
 from microcosm.build.uk_runtime.spi_housing_council_tax import (
-    UK_SPI_COPY_DRAW_LEVEL,
+    UK_SPI_COPY_DRAW_LEVELS,
     UK_SPI_HOUSING_COUNCIL_TAX_ARTIFACTS,
     UK_SPI_HOUSING_COUNCIL_TAX_CHANNEL_COLUMN,
     UK_SPI_HOUSING_COUNCIL_TAX_CHECKS,
@@ -393,6 +395,64 @@ def _region_mean(region: str, *, by_households: bool = True) -> Fraction:
     return sum((value for _, value in areas), Fraction(0)) / len(areas)
 
 
+def _band_mean(region: str, band: str) -> Fraction:
+    """The mean invented Band D of the region's toy support areas, weighted
+    by the band's households: the expectation of the region's L2 cell."""
+
+    band_d = _band_d().band_d
+    areas = [
+        (int(count), band_d[str(code)])
+        for system, support in _supports().items()
+        if band in uk_band_weight_map(system)
+        for frs_region, code, count in zip(
+            support.arrays["frs_region"],
+            support.arrays[UK_LOCAL_AUTHORITY_CODE_COLUMN],
+            support.arrays[uk_band_weight_map(system)[band]],
+            strict=True,
+        )
+        if str(frs_region) == region and int(count) > 0
+    ]
+    return sum((count * value for count, value in areas), Fraction(0)) / sum(
+        count for count, _ in areas
+    )
+
+
+def _row_references(
+    household: pd.DataFrame, inputs: UKSPIHousingCouncilTaxInputs
+) -> tuple[Fraction | None, ...]:
+    """Each copy's reference, in the inputs' order: its region and drawn
+    band's cell in Great Britain, none in Northern Ireland."""
+
+    bands = household.loc[_recipients(household), _BAND].tolist()
+    return tuple(
+        inputs.reference_band_d.get((region, band)) if flag else None
+        for region, band, flag in zip(
+            inputs.regions, bands, inputs.great_britain, strict=True
+        )
+    )
+
+
+def _bills_at(
+    references: tuple[Fraction | None, ...],
+    inputs: UKSPIHousingCouncilTaxInputs,
+    draws: _Draws,
+) -> np.ndarray:
+    """The shell's bills with each Great Britain copy priced at its own entry
+    of ``references``, one per row: a design no reference by region and band
+    can state."""
+
+    bills = draws.chained.to_numpy(dtype=np.float64).copy()
+    for position, flag in enumerate(inputs.great_britain):
+        if flag:
+            bills[position] = _statute(
+                references[position],
+                inputs.regions[position],
+                draws.bands.iloc[position],
+                draws.single_adult.iloc[position],
+            )
+    return bills
+
+
 @functools.cache
 def _references(clones: int):
     """The localisation's own references on the frame's every row."""
@@ -542,7 +602,8 @@ def test_the_constants_are_the_copy_stages_the_shells_and_the_localisations() ->
         if kind == SPI_COPY_AREAS_OPERATION_KIND
     ]
     # The level the copy stage declares its draw at, on the branch it re-places.
-    assert parameters["area_draw"]["level"] == UK_SPI_COPY_DRAW_LEVEL == "L3"
+    assert parameters["area_draw"]["levels"] == list(UK_SPI_COPY_DRAW_LEVELS)
+    assert UK_SPI_COPY_DRAW_LEVELS == ("L2", "L3")
     assert parameters["copies"]["branch"] == SUPPORT_CHANNEL_BRANCH
     branch = next(
         b for b in UK_COPY_LINEAGE.branches if b.name == SUPPORT_CHANNEL_BRANCH
@@ -669,11 +730,17 @@ def test_the_rows_are_the_support_channels_copies_in_table_order(clones) -> None
         for region in inputs.regions
     )
     assert True in inputs.great_britain and False in inputs.great_britain
+    # One reference for each Great Britain region of the copies and each band
+    # its nation prices, and none for Northern Ireland.
+    assert set(inputs.reference_band_d) == {
+        (region, band)
+        for region in set(inputs.regions)
+        if region in UK_SPI_HOUSING_COUNCIL_TAX_GREAT_BRITAIN_REGIONS
+        for band in UK_COUNCIL_TAX_BANDS_BY_NATION[UK_NATION_BY_REGION[region]]
+    }
     assert all(
-        (reference is None) is (not flag)
-        for reference, flag in zip(
-            inputs.reference_band_d, inputs.great_britain, strict=True
-        )
+        isinstance(reference, Fraction)
+        for reference in inputs.reference_band_d.values()
     )
     # The digests are keyed by the supports given, in system order.
     assert list(inputs.support_sha256) == sorted(_supports())
@@ -699,23 +766,28 @@ def test_each_reference_is_the_localisations_own_for_the_copy(clones) -> None:
     inputs = _inputs(household)
     references = _references(clones)
     rows = np.flatnonzero(_recipients(household))
-    cells: dict[tuple[str, str], set[Fraction]] = {}
+    bands = household[_BAND].to_numpy(dtype=object)
+    systems: set[str] = set()
     for position, row in enumerate(rows.tolist()):
-        mine = inputs.reference_band_d[position]
         if not inputs.great_britain[position]:
-            assert mine is None and references.expected_band_d[row] is None
+            assert references.expected_band_d[row] is None
             continue
-        region = inputs.regions[position]
+        region, band = inputs.regions[position], bands[row]
+        mine = inputs.reference_band_d[(region, band)]
         assert isinstance(mine, Fraction)
+        # The localisation recomputes the copy's cell from its drawn band.
         assert mine == references.expected_band_d[row], position
-        # Worked again: the region's toy areas' Band D, by households.
-        assert mine == _region_mean(region), position
-        cells.setdefault((str(references.systems[row]), region), set()).add(mine)
-    # One reference for each system and region, in both Great Britain systems.
-    assert all(len(values) == 1 for values in cells.values())
-    assert {system for system, _ in cells} == {EW, SCOT}
-    # Every copy is drawn at the copy stage's level.
-    assert set(references.levels[rows]) == {UK_SPI_COPY_DRAW_LEVEL}
+        # Worked again: the region's toy areas' Band D, by the band's
+        # households at L2 and by households at L3.
+        level = str(references.levels[row])
+        if level == "L2":
+            assert mine == _band_mean(region, band), position
+        else:
+            assert mine == _region_mean(region), position
+        systems.add(str(references.systems[row]))
+    assert systems == {EW, SCOT}
+    # Every copy is drawn at one of the copy stage's levels, both of them here.
+    assert set(references.levels[rows]) == set(UK_SPI_COPY_DRAW_LEVELS)
 
 
 @pytest.mark.parametrize("clones", [1, 3])
@@ -759,23 +831,30 @@ def test_the_narrow_frame_is_the_area_draws_frame_of_a_copy_at_its_level(
 ) -> None:
     household, _ = _tables(clones)
     copies = _recipients(household)
-    frame = uk_spi_copy_draw_frame(household.loc[copies])
-    assert list(frame.columns) == [
-        REGION_COLUMN,
-        DECILE_INPUT_COLUMN,
-        BAND_INPUT_COLUMN,
-    ]
-    string = pd.StringDtype(storage="python")
-    assert all(frame[column].dtype == string for column in frame.columns)
-    assert frame[DECILE_INPUT_COLUMN].isna().all()
-    assert frame[BAND_INPUT_COLUMN].isna().all()
-    # The area draw's own inputs at each copy's level, less the key.
+    unbanded = uk_spi_copy_draw_frame(household.loc[copies])
+    frame = uk_spi_copy_draw_frame(
+        household.loc[copies], bands=household.loc[copies, _BAND]
+    )
+    for narrow in (unbanded, frame):
+        assert list(narrow.columns) == [
+            REGION_COLUMN,
+            DECILE_INPUT_COLUMN,
+            BAND_INPUT_COLUMN,
+        ]
+        string = pd.StringDtype(storage="python")
+        assert all(narrow[column].dtype == string for column in narrow.columns)
+        assert narrow[DECILE_INPUT_COLUMN].isna().all()
+    assert unbanded[BAND_INPUT_COLUMN].isna().all()
+    assert frame[BAND_INPUT_COLUMN].notna().any()
+    # The area draw's own inputs at each copy's level, less the key: the
+    # band kept at L2 and dropped at L3.
     spec = validate_assignment_spec(_definition())
     draw_inputs = uk_draw_inputs(household)
     at_level = uk_draw_frame(
         draw_inputs, uk_draw_levels(draw_inputs, spec, _supports())
     )
-    pd.testing.assert_frame_equal(frame, at_level.loc[copies, list(frame.columns)])
+    mine = uk_draw_frame(frame, uk_draw_levels(frame, spec, _supports()))
+    pd.testing.assert_frame_equal(mine, at_level.loc[copies, list(frame.columns)])
 
 
 @pytest.mark.parametrize("column", [DECILE_INPUT_COLUMN, BAND_INPUT_COLUMN])
@@ -785,7 +864,11 @@ def test_a_narrow_frame_without_a_draw_input_is_refused_by_the_shared_expectatio
     household, _ = _tables(1)
     inputs = _inputs(household)
     rows = _recipients(household) & (household[_SYSTEM] == EW).to_numpy(dtype=bool)
-    frame = uk_spi_copy_draw_frame(household.loc[rows])
+    narrow = uk_spi_copy_draw_frame(
+        household.loc[rows], bands=household.loc[rows, _BAND]
+    )
+    spec = validate_assignment_spec(_definition())
+    frame = uk_draw_frame(narrow, uk_draw_levels(narrow, spec, _supports()))
     (system,) = [s for s in _definition()["systems"] if s["id"] == EW]
     weight_by, default = _system_rules(system)
 
@@ -803,8 +886,14 @@ def test_a_narrow_frame_without_a_draw_input_is_refused_by_the_shared_expectatio
         )
 
     # The whole frame gives the module's references, ...
-    positions = np.flatnonzero(rows[_recipients(household)])
-    assert expectations(frame) == [inputs.reference_band_d[p] for p in positions]
+    assert expectations(frame) == [
+        inputs.reference_band_d[(region, band)]
+        for region, band in zip(
+            household.loc[rows, REGION_COLUMN],
+            household.loc[rows, _BAND],
+            strict=True,
+        )
+    ]
     # ... and one without the input is refused, naming the column.
     with pytest.raises(ValueError, match="lack input columns") as caught:
         expectations(frame.drop(columns=[column]))
@@ -939,7 +1028,7 @@ def test_the_bills_do_not_depend_on_row_order(table) -> None:
                 zip(
                     inputs.household_ids,
                     zip(
-                        inputs.reference_band_d,
+                        _row_references(frame, inputs),
                         _bits(bills).tolist(),
                         inputs.great_britain,
                         strict=True,
@@ -1217,7 +1306,7 @@ def test_the_bills_of_each_wrong_design_are_caught(wrong) -> None:
     references = _references(1)
     if wrong == "northern_ireland_priced_by_the_statute":
         ni = np.flatnonzero(~great_britain)
-        reference = inputs.reference_band_d[int(np.flatnonzero(great_britain)[0])]
+        reference = next(iter(inputs.reference_band_d.values()))
         statute = float(
             uk_statutory_council_tax(reference, "ENGLAND", "D", single_adult=False)
         )
@@ -1263,7 +1352,7 @@ def test_the_bills_of_each_wrong_design_are_caught(wrong) -> None:
             for mine, row, flag in zip(reference, rows, great_britain, strict=True)
             if flag
         )
-        bills = _bills(replace(inputs, reference_band_d=reference), draws)
+        bills = _bills_at(reference, inputs, draws)
     # ... so its bills fail the statute check, and once localised some copy's
     # bill is not the statute at its own authority.
     wrong_written = _written(household, person, bills=bills)
@@ -1316,7 +1405,7 @@ def test_the_evidence_has_no_number_leaf(which) -> None:
     assert list(evidence) == [
         "method",
         "reference",
-        "copy_draw_level",
+        "copy_draw_levels",
         "band_d",
         "support_sha256",
         "checks",
@@ -1324,11 +1413,11 @@ def test_the_evidence_has_no_number_leaf(which) -> None:
     assert (
         evidence["method"],
         evidence["reference"],
-        evidence["copy_draw_level"],
+        evidence["copy_draw_levels"],
     ) == (
         UK_SPI_HOUSING_COUNCIL_TAX_METHOD,
         UK_SPI_HOUSING_COUNCIL_TAX_REFERENCE,
-        UK_SPI_COPY_DRAW_LEVEL,
+        list(UK_SPI_COPY_DRAW_LEVELS),
     )
     # The source commit is read from the feed as the Band D's own evidence
     # reads it.
@@ -1673,12 +1762,10 @@ _REFUSALS = [
         _EXACTLY,
         _on_every_row(
             "reference_band_d",
-            lambda inputs: tuple(
-                reference if flag else Fraction(1)
-                for reference, flag in zip(
-                    inputs.reference_band_d, inputs.great_britain, strict=True
-                )
-            ),
+            lambda inputs: {
+                **inputs.reference_band_d,
+                (_NORTHERN_IRELAND, "D"): Fraction(1),
+            },
         ),
         id="inputs_reference_on_northern_ireland",
     ),
@@ -1687,10 +1774,19 @@ _REFUSALS = [
         _EXACTLY,
         _on_every_row(
             "reference_band_d",
-            lambda inputs: tuple(
-                None if reference is None else float(reference)
-                for reference in inputs.reference_band_d
-            ),
+            lambda inputs: dict(list(inputs.reference_band_d.items())[1:]),
+        ),
+        id="inputs_reference_missing_a_band",
+    ),
+    pytest.param(
+        ValueError,
+        _EXACTLY,
+        _on_every_row(
+            "reference_band_d",
+            lambda inputs: {
+                key: float(reference)
+                for key, reference in inputs.reference_band_d.items()
+            },
         ),
         id="inputs_float_reference",
     ),

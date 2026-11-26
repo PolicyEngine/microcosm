@@ -29,6 +29,7 @@ from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.atomic_area_conditioning import (
     IDENTITY_COLUMN,
+    uk_band_weight_map,
     uk_conditioned_assignment_definition,
 )
 from microcosm.build.uk_runtime.council_tax_band_d import (
@@ -159,36 +160,46 @@ def _bits(values: object) -> np.ndarray:
     return np.ascontiguousarray(values, dtype=np.float64).view(np.int64)
 
 
-def _reference(region: str) -> Fraction:
-    """The invented Band D of the region's toy support areas, by households:
-    the expected Band D of a copy's L3 cell, worked again from the toys."""
+def _reference(region: str, band: str) -> Fraction:
+    """The invented Band D of the region's toy support areas, by the band's
+    households where the region's areas hold the band (L2) and by households
+    otherwise (L3): the expected Band D of the cell a copy of that region and
+    drawn band is drawn from, worked again from the toys (María's ruling of
+    2026-11-25)."""
 
     band_d = _band_d().band_d
-    areas = [
-        (int(households), band_d[str(code)])
-        for support in _supports().values()
-        for frs_region, code, households in zip(
-            support.arrays["frs_region"],
-            support.arrays[UK_LOCAL_AUTHORITY_CODE_COLUMN],
-            support.arrays["households"],
-            strict=True,
-        )
-        if str(frs_region) == region and int(households) > 0
-    ]
-    return sum((count * value for count, value in areas), Fraction(0)) / sum(
-        count for count, _ in areas
+
+    def areas(column_of) -> list[tuple[int, Fraction]]:
+        return [
+            (int(count), band_d[str(code)])
+            for system, support in _supports().items()
+            if column_of(system) is not None
+            for frs_region, code, count in zip(
+                support.arrays["frs_region"],
+                support.arrays[UK_LOCAL_AUTHORITY_CODE_COLUMN],
+                support.arrays[column_of(system)],
+                strict=True,
+            )
+            if str(frs_region) == region and int(count) > 0
+        ]
+
+    held = areas(lambda system: uk_band_weight_map(system).get(band))
+    if not held:
+        held = areas(lambda system: "households")
+    return sum((count * value for count, value in held), Fraction(0)) / sum(
+        count for count, _ in held
     )
 
 
 def _statutes(households: pd.DataFrame) -> np.ndarray:
-    """Each Great Britain row's 2024-25 statute bill at its region's
-    reference, for its drawn band, from the statute itself."""
+    """Each Great Britain row's 2024-25 statute bill at the reference of its
+    region and drawn band, for that band, from the statute itself."""
 
     return np.asarray(
         [
             float(
                 uk_statutory_council_tax(
-                    _reference(str(region)),
+                    _reference(str(region), str(band)),
                     UK_NATION_BY_REGION[str(region)],
                     str(band),
                     single_adult=bool(float(adults) == 1.0),

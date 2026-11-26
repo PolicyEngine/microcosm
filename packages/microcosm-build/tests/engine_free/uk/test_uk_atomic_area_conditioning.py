@@ -312,7 +312,7 @@ def test_every_decile_reads_as_its_own_code_ten_included() -> None:
     assert pd.isna(inputs[DECILE_INPUT_COLUMN].iloc[0])
 
 
-def test_support_channel_copies_draw_without_inputs(definition, supports) -> None:
+def test_support_channel_copies_draw_by_their_band_alone(definition, supports) -> None:
     copies = np.asarray([position % 2 for position in range(len(TOY_HOUSEHOLDS))])
     household = _households(
         household_support_channel=np.where(copies == 1, "spi", "frs").astype(object),
@@ -320,14 +320,18 @@ def test_support_channel_copies_draw_without_inputs(definition, supports) -> Non
     )
     assert uk_support_channel_copies(household).tolist() == (copies == 1).tolist()
     inputs = uk_draw_inputs(household)
-    assert (
-        inputs.loc[copies == 1, [DECILE_INPUT_COLUMN, BAND_INPUT_COLUMN]]
-        .isna()
-        .all()
-        .all()
-    )
+    # A copy's decile is missing by rule, and its band is the one the housing
+    # shell drew, a band A to I, whatever its flag (María's ruling of
+    # 2026-11-25), so it draws at L2 where its region holds the band, else L3.
+    assert inputs.loc[copies == 1, DECILE_INPUT_COLUMN].isna().all()
+    bands = household.loc[copies == 1, "council_tax_band"].to_numpy(dtype=object)
+    drawn = inputs.loc[copies == 1, BAND_INPUT_COLUMN].to_numpy(dtype=object)
+    assert [band if band in tuple("ABCDEFGHI") else None for band in bands] == [
+        None if pd.isna(value) else str(value) for value in drawn
+    ]
     levels = uk_draw_levels(inputs, definition, supports)
-    assert set(levels[copies == 1]) == {"L3"}
+    assert set(levels[copies == 1]) <= {"L2", "L3"}
+    assert "L2" in set(levels[copies == 1])
     assert levels[copies == 0].tolist() == [
         case.level
         for case, copy in zip(TOY_HOUSEHOLDS, copies, strict=True)

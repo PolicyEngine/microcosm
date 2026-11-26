@@ -85,6 +85,9 @@ from microcosm.build.uk_runtime.atomic_area_conditioning import (
     SUPPORT_CHANNEL_BRANCH,
     UK_ATOMIC_FALLBACK_LEVELS,
     uk_draw_cell_expectations,
+    uk_draw_frame,
+    uk_draw_levels,
+    uk_draw_systems,
     uk_support_channel_copies,
 )
 from microcosm.build.uk_runtime.council_tax_band_d import (
@@ -457,6 +460,8 @@ def uk_spi_housing_council_tax_inputs(
         )
     rows = np.flatnonzero(recipients)
     frame = uk_spi_copy_draw_frame(household.iloc[rows])
+    # Every copy's region is one a system selects, as the copy's draw needs.
+    uk_draw_systems(frame, spec)
     regions = tuple(
         str(region) for region in frame[REGION_COLUMN].to_numpy(dtype=object)
     )
@@ -466,11 +471,18 @@ def uk_spi_housing_council_tax_inputs(
     cells = sorted(_reference_keys(regions))
     references: dict[tuple[str, str], Fraction] = {}
     if cells:
-        cell_frame = uk_spi_copy_draw_frame(
+        cell_inputs = uk_spi_copy_draw_frame(
             pd.DataFrame({REGION_COLUMN: [region for region, _ in cells]}),
             bands=[band for _, band in cells],
         )
+        # Each cell at the level the draw's chooser gives a copy of that
+        # region and band, as the council-tax localisation recomputes it: L2
+        # where the region's cell has mass in the band's weight, else L3, whose
+        # frame drops the band.
         try:
+            cell_frame = uk_draw_frame(
+                cell_inputs, uk_draw_levels(cell_inputs, spec, supports)
+            )
             expected = uk_draw_cell_expectations(
                 cell_frame,
                 np.ones(len(cells), dtype=bool),

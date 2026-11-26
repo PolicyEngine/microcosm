@@ -16,7 +16,8 @@ The frames are test_support's invented council-tax cases
 (uk_council_tax_fixtures) on the toy conditioned supports, at K = 1 and
 K = 3. The spine's own steps clone and key them, and its area draw places
 them. A stand-in for the support channel copies them, and the copies are
-re-placed as the SPI-copy area stage re-places them. Each toy authority has
+re-placed as the SPI-copy area stage re-places them, by their band. Each
+toy authority has
 an invented Band D. Each expected value here is worked again from the toy
 supports, the statute's proportions restated and the invented Band D,
 never from the module's own references.
@@ -24,7 +25,8 @@ never from the module's own references.
 They hold:
 
 - each level is the area draw's, and every SPI copy and band donor is drawn
-  at L3;
+  at L2, its region by its drawn band's households, where the region holds
+  the band, else at L3 (María's ruling of 2026-11-25);
 - each reference is the exact expected Band D of the row's cell, and the
   ratio averages one over every Great Britain cell of the toys;
 - each row takes its path; ratio rows scale the bill, rebate and reduction
@@ -343,6 +345,19 @@ def _cell_weights(
     ]
 
 
+def _copy_level(system: str, region: str, band: str) -> str:
+    """A copy's level: L2 where its region's toy areas hold its band, by the
+    band's households, else L3, its region by households."""
+
+    column = f"households_band_{band.lower()}"
+    held = any(
+        weights.get(column, 0) > 0
+        for area_region, _, _, weights in _support_areas(system)
+        if area_region == region
+    )
+    return "L2" if band in "ABCDEFGHI" and len(band) == 1 and held else "L3"
+
+
 @dataclass(frozen=True)
 class _Expected:
     """One household row's localisation, worked again: its cell's exact
@@ -363,8 +378,9 @@ class _Expected:
 def _expected_rows(frame: Frame) -> list[_Expected]:
     """Every household row's localisation from the toy supports, the
     invented Band D and the statute restated, in row order. A row's level is
-    its case's stated one (each copy's L3), which the level test holds equal
-    to the area draw's."""
+    its case's stated one, a copy's L2 where its region's toy areas hold its
+    band and L3 otherwise (:func:`_copy_level`), which the level test holds
+    equal to the area draw's."""
 
     household = frame.table("household")
     reductions = _carried(household, frame.table("person"))
@@ -392,8 +408,12 @@ def _expected_rows(frame: Frame) -> list[_Expected]:
                 )
             )
             continue
-        level = "L3" if copy else case.household.level
         band = str(row["council_tax_band"])
+        level = (
+            _copy_level(str(row["atomic_area_system"]), region, band)
+            if copy
+            else case.household.level
+        )
         observed = bool(row["council_tax_band_observed"])
         cell = (
             region,
@@ -669,7 +689,24 @@ def test_each_level_is_the_area_draws_and_every_copy_draws_at_l3(clones) -> None
         household, definition=_definition(), supports=_supports()
     )
     assert np.array_equal(references.levels, np.asarray(whole.levels))
-    assert (references.levels[~frs] == "L3").all()
+    # A copy draws by its band, at L2 where its region holds the band, else at
+    # L3; both occur among the toys' copies.
+    copies = ~frs & _great_britain(household)
+    assert set(references.levels[copies]) == {"L2", "L3"}
+    assert np.array_equal(
+        references.levels[copies],
+        np.asarray(
+            [
+                _copy_level(system, region, band)
+                for system, region, band in zip(
+                    household.loc[copies, "atomic_area_system"].astype(str),
+                    household.loc[copies, "region"].astype(str),
+                    household.loc[copies, "council_tax_band"].astype(str),
+                    strict=True,
+                )
+            ]
+        ),
+    )
     # Both copy kinds, SPI copies and band donors, are among them.
     assert set(household.loc[~frs, _ORDINAL]) == {1, 2}
     stated = np.asarray(
@@ -895,14 +932,14 @@ def test_support_channel_rows_take_the_ratio_whatever_they_inherit(clones) -> No
     references = _local(clones).references
     copies = ~_frs(before) & _great_britain(before)
     # Some copies inherit a provenance the statute would price, with an
-    # observed band: they take the ratio at their L3 cell all the same.
+    # observed band: they take the ratio at their own cell all the same.
     inherited = before[FRS_COUNCIL_TAX_BILL_PROVENANCE_COLUMN].to_numpy(dtype=object)
     observed = before["council_tax_band_observed"].to_numpy(dtype=bool)
     assert (
         copies & np.isin(inherited, [FRS_COUNCIL_TAX_BILL_MISSING]) & observed
     ).any()
     assert (_local(clones).paths[copies] == "ratio_support_channel").all()
-    assert (references.levels[copies] == "L3").all()
+    assert np.isin(references.levels[copies], ("L2", "L3")).all()
     assert np.array_equal(
         _bits(household.loc[copies, "council_tax"]),
         _bits(

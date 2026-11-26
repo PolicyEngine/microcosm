@@ -225,7 +225,8 @@ def _apply_pending_roster_transformations(
     # microcosm#931 re-mint pending, part 1 (the area stages): each clone's
     # area, local authority and fuel-relief flag after its key and before the
     # draws; area_brma in frs_brma's place; the SPI copies' own areas after
-    # the band donors; the private rents after the housing shell. Part 2: the
+    # the housing shell, which draws the band they are drawn by (María's
+    # ruling of 2026-11-25); the private rents after them. Part 2: the
     # main-residence localiser runs inside was_wealth and adds no stage, and
     # regional_home_values, whose England and Wales values it replaces, retired
     # with no pending insertion above.
@@ -235,8 +236,8 @@ def _apply_pending_roster_transformations(
     take_up = roster.index("frs_take_up")
     roster[take_up:take_up] = area_stages
     roster[roster.index("frs_brma")] = "area_brma"
-    roster.insert(roster.index("spi_income_band_donors") + 1, "spi_copy_areas")
-    roster.insert(roster.index("spi_housing_shell") + 1, "private_rent")
+    roster.insert(roster.index("spi_housing_shell") + 1, "spi_copy_areas")
+    roster.insert(roster.index("spi_copy_areas") + 1, "private_rent")
     # microcosm#931 re-mint pending: the council tax at each household's local
     # authority, after the private rents and just before the WAS chain.
     assert "council_tax_localise" not in roster

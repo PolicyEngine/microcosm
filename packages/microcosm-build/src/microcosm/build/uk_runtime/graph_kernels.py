@@ -147,6 +147,8 @@ from . import (
     spi_income,
     spi_rank_transport,
     spi_support,
+    spine_council_tax,
+    spine_geography,
     stage_health,
     support_clip,
     take_up_contract,
@@ -615,13 +617,42 @@ _STAGE_HELPER_MODULES = {
     # spi_support's, and the support stratum is property_localisation's, whose
     # owners are the tenure map's (microcosm#931). spi_support draws the SPI
     # share through the keyed-draw helpers, so the stages that bind it bind
-    # them too.
+    # them too. The stage then places its copies through spine_geography's
+    # copy placement, as the SPI copies' areas are placed: each copy re-keyed
+    # as the geography identity keys a household, its area drawn with the
+    # area draw's definition, and the local authority, the BRMA (Northern
+    # Ireland's on the copies' own benefit units after one engine call) and
+    # the fuel-relief flag re-run; and it rescales their council tax through
+    # spine_council_tax at council_tax_band_d's Band D, Scotland's a vendored
+    # fact checked against the pinned feed (María's ruling of 2026-11-25).
     "high_value_home_support": (
+        *_ENGINE_STAGE_MODULES,
+        atomic_geography,
+        atomic_support_conditioning,
+        atomic_area_conditioning,
+        atomic_area_support,
+        atomic_household_identity,
+        brma_area_layer,
         cgt_support,
         copy_id_table,
+        council_tax_band_d,
+        council_tax_constants,
+        frs_area_draw_columns,
+        frs_brma,
+        frs_release,
+        geographic_identity,
+        geography_constants,
+        local_authority_input,
         property_localisation,
+        rfdr_area_layer,
+        rowwise_geography,
         spi_support,
+        spine_council_tax,
+        spine_geography,
         tenure_constants,
+        *_FEED_FACT_MODULES,
+        graph_canonical,
+        graph_randomness,
         stochastic_assignment,
     ),
     # The CGT stages read HMRC's CGT tables as vendored facts and the

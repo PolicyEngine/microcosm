@@ -257,12 +257,12 @@ _NESTING_HELD: Mapping[str, str] = {
     DONORS: _COPIES_HERE,
     **dict.fromkeys(
         (
-            "spi_copy_areas",
             "hmrc_spi_income_spine",
             "company_cars",
             "spi_employment_shell",
             "aps_occupation",
             "spi_housing_shell",
+            "spi_copy_areas",
             "private_rent",
             "council_tax_localise",
             "was_wealth",

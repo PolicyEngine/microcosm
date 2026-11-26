@@ -107,25 +107,19 @@ from test_support.microcosm_build.uk_spi_forest_release import (
 # origin/main's digests, by platform
 # ---------------------------------------------------------------------------
 
-_ORIGIN_MAIN_DIGESTS: dict[tuple[str, str], dict[str, dict[str, str]]] = {
+#: Recorded from the geography-first spine's SPI stage (microcosm#931); the
+#: receipts' digests again with the employed-income floor's receipt. Linux
+#: x86_64 is not recorded yet for its keyed draws: that needs Docker's x86_64
+#: emulation, which the machine that recorded these lacks.
+_RECORDED_DIGESTS: dict[tuple[str, str], dict[str, dict[str, str]]] = {
     ("Darwin", "arm64"): {
         "in_sample": {
-            "person": "280c69c2248b6741e6b95cf26bd2c9eeb457131283bf1906fd327401340b9c13",
-            "receipts": "1250371e2c3c3fe425c9497dbeedc09fd6046ffcf532d7f05e7f9a3e950d2280",
+            "person": "313f72f7b916b599549f2f6c6df60badac007ac58c67b03269b81146c19ef7f2",
+            "receipts": "669ce54678fc00d1bd6150df1dd3fcbd9d523438494653c7642bc29ddb0c63eb",
         },
         "cross_fitted_levels": {
-            "person": "52edfe4d85b27b421c14ed5ab3b8f7033ebf518c22a3ebee66fec80d3f8fb4e5",
-            "receipts": "8704bc3db1560d92f59da45f9482b20d82a21c300f97d4f8313b925842371264",
-        },
-    },
-    ("Linux", "x86_64"): {
-        "in_sample": {
-            "person": "5f582f65cb26446b52c5efa83abedcdcd294744b5dc0b059d9706279a1e15d39",
-            "receipts": "a6e3f464f10b7c037b908d75a39274f94e253df612b8a99eaa11bf6746cb547e",
-        },
-        "cross_fitted_levels": {
-            "person": "5c6f5ef054efa03ca36bf4166bb23a36448604b52cfe4adc4dd637496406816b",
-            "receipts": "72c45abb895e0014fadc8fc6d4a3a8252cb34f5c16563ae5e91711c50df366eb",
+            "person": "7d606fd83ea8ec045c61f7400ac0f944940d57e38cfd4812358eef6403f56741",
+            "receipts": "e1784a6082f070a9c01ccaea067412e9c76d29c0619c9cfb0dbb35dd3893c948",
         },
     },
 }

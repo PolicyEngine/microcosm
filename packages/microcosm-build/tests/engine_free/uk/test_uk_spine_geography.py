@@ -990,11 +990,13 @@ def test_the_g4_and_copy_stage_operations_are_declarative_and_agree() -> None:
     ((_, g2),) = atomic_area_assign_operation_parameters()
     assert copy["area_draw"] == {
         "definition_of": ATOMIC_AREA_ASSIGN_STAGE_NAME,
-        "level": g2["fallback_levels"][-1]["name"],
+        "levels": [level["name"] for level in g2["fallback_levels"][2:]],
         "stream": g2["stream"],
         "seed": g2["seed"],
     }
-    assert copy["area_draw"]["level"] == "L3"
+    # Its region by its drawn band's households, or by households (María's
+    # ruling of 2026-11-25).
+    assert copy["area_draw"]["levels"] == ["L2", "L3"]
     shared = set(copy["brma"]) & set(g4)
     assert shared >= {"seed", "salts", "count_resource", "cell_columns"}
     assert {key: copy["brma"][key] for key in shared} == {
@@ -1353,16 +1355,19 @@ def test_each_rewrite_keeps_its_columns_dtype(copy_runs) -> None:
     assert after[RFDR_COLUMN].dtype == np.dtype(bool)
 
 
-def test_every_copy_draws_its_area_at_l3_in_its_region(
+def test_every_copy_draws_its_area_by_its_band_in_its_region(
     copy_runs, definition, supports
 ) -> None:
+    """A copy draws at L2, its region by its band's households, where the
+    region holds the band, else at L3 (María's ruling of 2026-11-25)."""
+
     for clones in (1, 3):
         before = copy_runs[clones]["frames"]["copied"].table("household")
         after = copy_runs[clones]["frames"]["copy"].table("household")
         copies = _copies(after)
         rows = after.loc[copies]
         levels = uk_draw_levels(uk_draw_inputs(rows), definition, supports)
-        assert set(levels.tolist()) == {"L3"}
+        assert set(levels.tolist()) == {"L2", "L3"}
         for _, row in rows.iterrows():
             support = supports[row["atomic_area_system"]]
             position = int(
@@ -1722,7 +1727,7 @@ def test_the_copy_stage_counts_copies_donors_and_flags_among_clone_zero(
         assert evidence["no_flagged_copy"] == {
             system: count == 0 for system, count in flagged.items()
         }
-        assert evidence["level"] == "L3"
+        assert evidence["levels"] == ["L2", "L3"]
         assert evidence["rfdr"]["roster"] == "pass"
         assert evidence["validation"]["outcome"] == "pass"
         assert evidence["brma"]["engine_households"] == "northern_ireland_copies"

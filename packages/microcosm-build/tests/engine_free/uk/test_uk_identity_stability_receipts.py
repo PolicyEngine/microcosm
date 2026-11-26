@@ -4366,6 +4366,7 @@ class TestE4OnAFrameTheStagesBuilt:
         assert tool._E4_SCOPE_REVERSALS == (
             "salary_sacrifice",
             "spi_copy_areas",
+            "high_value_home_support",
             "childcare_copy_take_up",
         )
         scoped = tool._frame_as_draw_stages_saw(
@@ -4376,7 +4377,11 @@ class TestE4OnAFrameTheStagesBuilt:
             scoped,
             built.contract,
             engine=_LHAEngine(),
-            reversed_stages=(*tool._SCOPE_REVERSALS, "spi_copy_areas"),
+            reversed_stages=(
+                *tool._SCOPE_REVERSALS,
+                "spi_copy_areas",
+                "high_value_home_support",
+            ),
         )
         assert reported["rewritten_later"]["benunit"]["would_claim_tfc"] == [
             "childcare_copy_take_up"
@@ -4513,11 +4518,12 @@ class TestE4OnAFrameTheStagesBuilt:
         )
 
     def test_brma_is_compared_only_where_the_scope_drops_every_copy(self) -> None:
-        """E4 compares brma by taking spi_copy_areas' rewrite back, which
-        holds only where the scope dropped every row the SPI support channel
-        copied, the only rows that stage rewrites (microcosm#931). Without the
-        reversal brma is reported, not compared; a frame that keeps a copy is
-        refused, by the column alone."""
+        """E4 compares brma by taking spi_copy_areas' and
+        high_value_home_support's rewrites back, which holds only where the
+        scope dropped every row the SPI support channel copied and every
+        high-value copy, the only rows those stages rewrite (microcosm#931).
+        Without the reversals brma is reported, not compared; a frame that
+        keeps a copy is refused, by the column alone."""
 
         tool = _load_tool()
         built = _e4_chain(1)
@@ -4531,7 +4537,10 @@ class TestE4OnAFrameTheStagesBuilt:
             engine=_LHAEngine(),
             reversed_stages=tool._SCOPE_REVERSALS,
         )
-        assert kept["rewritten_later"]["household"]["brma"] == ["spi_copy_areas"]
+        assert kept["rewritten_later"]["household"]["brma"] == [
+            "spi_copy_areas",
+            "high_value_home_support",
+        ]
         assert "brma" in kept["rewritten_later_still_equal"]["household"]
 
         copies = built.final.table("household")["household_support_clone_index"]
@@ -4551,6 +4560,28 @@ class TestE4OnAFrameTheStagesBuilt:
                 "is not 0, so it is not scoped as E4's stages saw it "
                 "(_frame_as_draw_stages_saw)."
             )
+
+    def test_a_kept_high_value_copy_is_refused_by_the_column_alone(self) -> None:
+        """E4 takes high_value_home_support's rewrite of brma back only where
+        its scope dropped every high-value copy (María's ruling of
+        2026-11-25): a table keeping one is refused, naming the column; a
+        table without the copy index holds none."""
+
+        tool = _load_tool()
+        tool._require_no_high_value_copies(pd.DataFrame({"household_id": [1, 2]}))
+        tool._require_no_high_value_copies(
+            pd.DataFrame({"high_value_support_copy_index": [0, 0]})
+        )
+        with pytest.raises(ValueError) as refused:
+            tool._require_no_high_value_copies(
+                pd.DataFrame({"high_value_support_copy_index": [0, 1]})
+            )
+        assert str(refused.value) == (
+            "E4 compares area_brma's brma by taking high_value_home_support's "
+            "rewrite back, which holds only on rows that stage did not copy; the "
+            "frame keeps rows whose high_value_support_copy_index is not 0, so it "
+            "is not scoped as E4's stages saw it (_frame_as_draw_stages_saw)."
+        )
 
     def test_the_apprentice_walk_on_the_final_weights_flags_another_prefix(
         self,

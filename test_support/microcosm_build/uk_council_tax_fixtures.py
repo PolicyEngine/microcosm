@@ -274,8 +274,9 @@ def with_spi_copies_placed(frame: Frame) -> Frame:
 
     As the SPI-copy area stage does: each copy takes its own geography key
     over its copy path (``uk_spi_copy_keys``) and its area and ladder from
-    G2's draw on those keys (``draw_uk_spine_areas``), at L3, its region by
-    households. The ``local_authority``, ``brma`` and
+    G2's draw on those keys (``draw_uk_spine_areas``), at L2, its region by
+    the households of its band, where the region holds it, else at L3, its
+    region by households. The ``local_authority``, ``brma`` and
     ``in_rural_fuel_duty_relief_area`` columns, which the localisation does
     not read, are left out.
     """
@@ -291,8 +292,8 @@ def with_spi_copies_placed(frame: Frame) -> Frame:
             definition=toy_area_draw_definition(),
             supports=toy_conditioned_supports(),
         )
-        if not (np.asarray(draw.levels, dtype=object) == "L3").all():
-            raise AssertionError("every SPI copy draws at L3")
+        if not np.isin(np.asarray(draw.levels, dtype=object), ("L2", "L3")).all():
+            raise AssertionError("every SPI copy draws at L2 or L3")
         for column in UK_SPINE_AREA_COLUMNS:
             values = household[column].to_numpy(dtype=object).copy()
             values[copies] = draw.columns[column].to_numpy(dtype=object)

@@ -150,6 +150,7 @@ from microcosm.build.uk_runtime.high_value_home_support import (
     HIGH_VALUE_SUPPORT_COPIES_COLUMN,
     HIGH_VALUE_SUPPORT_COPY_ID_FIELD,
     HIGH_VALUE_SUPPORT_STAGE_NAME,
+    UK_HIGH_VALUE_SUPPORT_REWRITES,
 )
 from microcosm.build.uk_runtime.household_lineage import (
     GEOGRAPHIC_FOLD_EVIDENCE,
@@ -276,8 +277,8 @@ _HOUSING = "spi_housing_shell"
 #: owner's constituency (the area home values, G8; microcosm#931).
 _WAS = UK_WAS_WEALTH_STAGE_NAME
 #: The regional property uprating, which divides by the draw the WAS stage
-#: keeps, and the high-value support, whose copies keep their parents'
-#: values and areas (microcosm#931).
+#: keeps, and the high-value support, whose copies keep their parents' values
+#: and draw keys and areas of their own (microcosm#931).
 _UPRATING = "regional_property_uprating"
 _HIGH_VALUE = HIGH_VALUE_SUPPORT_STAGE_NAME
 #: The populations the exact checks and the area and key checks read, by
@@ -853,23 +854,36 @@ def test_clone_zero_through_area_brma_is_the_one_clone_frame(runs) -> None:
 
 def test_clone_zero_s_copies_take_the_one_clone_copies_keys_and_areas(runs) -> None:
     """spi_copy_areas keys each SPI copy over its own path, which clone 0's
-    copies share with one clone's, and draws its area on that key: clone 0's
-    households carry K = 1's key, areas, local authority, BRMA and
-    fuel-relief flag on every row, the copies' rewrites among them, and some
-    other clone's copies take other keys."""
+    copies share with one clone's, and draws its area on that key from the
+    band the housing shell drew for it (María's ruling of 2026-11-25). The
+    shell's draws on the copies nest on one clone's only to the share class,
+    so clone 0's households carry K = 1's key on every row, and K = 1's
+    areas, local authority, BRMA and fuel-relief flag on every FRS row and
+    every copy whose drawn band is K = 1's; and some other clone's copies
+    take other keys."""
 
     one, many = runs[1].frames[COPY_AREAS], runs[_CLONES].frames[COPY_AREAS]
     reference = one.table("household").set_index("household_id")
     clone_zero = _clone_zero(many, "household").set_index("household_id")
     assert set(clone_zero.index) == set(reference.index)
-    copies = reference.index[
-        reference[support_channel_column("household")].eq(SPI_SYNTHETIC_SUPPORT_CHANNEL)
-    ]
+    copied = reference[support_channel_column("household")].eq(
+        SPI_SYNTHETIC_SUPPORT_CHANNEL
+    )
+    copies = reference.index[copied]
     assert len(copies)
+    key = "geography_household_key"
+    assert clone_zero.loc[reference.index, key].equals(reference[key])
+    same_band = (
+        clone_zero.loc[copies, "council_tax_band"]
+        .astype(str)
+        .eq(reference.loc[copies, "council_tax_band"].astype(str))
+    )
+    assert same_band.any()
+    held = reference.index[~copied].append(copies[same_band.to_numpy()])
     differing = [
         column
         for column in UK_SPI_COPY_AREAS_REWRITE_COLUMNS
-        if not clone_zero.loc[reference.index, column].equals(reference[column])
+        if not clone_zero.loc[held, column].equals(reference.loc[held, column])
     ]
     assert not differing, f"Clone 0 after {COPY_AREAS} differs on {differing}."
     household = many.table("household")
@@ -1173,8 +1187,9 @@ def test_on_h2_every_spi_channel_row_takes_a_key_of_its_own(runs, clones) -> Non
     area_brma. spi_support_channel's copies and the band donors carry the key
     of the household they copy until spi_copy_areas gives every SPI-channel
     row a key of its own and leaves every other row's, so the keys are unique
-    again after it. Later stages keep each row's key and give their copies
-    keys spi_copy_areas gave, their parents' (microcosm#931)."""
+    again after it. high_value_home_support gives each of its copies a key of
+    its own too (María's ruling of 2026-11-25). Later stages keep each row's
+    key and give their copies their parents' (microcosm#931)."""
 
     run = runs[clones]
     for stage in (G1B, _LAST_DRAW):
@@ -1199,12 +1214,19 @@ def test_on_h2_every_spi_channel_row_takes_a_key_of_its_own(runs, clones) -> Non
     assert after.is_unique, f"K={clones}"
     assert not set(after.loc[ids[channel]]) & base, f"K={clones}"
     assert after.loc[ids[~channel]].equals(before.loc[ids[~channel]]), f"K={clones}"
-    # Later stages keep each row's key; their copies carry keys the copy
-    # stage gave.
+    # The high-value support keeps every earlier row's key and gives each of
+    # its copies a key of its own, so the keys stay unique.
+    high_value = _keys_by_id(run.frames[_HIGH_VALUE])
+    assert high_value.is_unique, f"K={clones}"
+    assert high_value.loc[after.index].equals(after), f"K={clones}"
+    copies = ~high_value.index.isin(after.index)
+    assert copies.any() and not set(high_value[copies]) & set(after), f"K={clones}"
+    # Later stages keep each row's key; their copies carry keys the earlier
+    # stages gave.
     final = _keys_by_id(run.frames[_FINAL])
-    earlier = final.index.isin(after.index)
-    assert final[earlier].equals(after.loc[final.index[earlier]]), f"K={clones}"
-    assert set(final[~earlier]) <= set(after), f"K={clones}"
+    earlier = final.index.isin(high_value.index)
+    assert final[earlier].equals(high_value.loc[final.index[earlier]]), f"K={clones}"
+    assert set(final[~earlier]) <= set(high_value), f"K={clones}"
 
 
 @pytest.mark.parametrize("clones", (1, _CLONES))
@@ -1613,9 +1635,11 @@ def test_on_h2_the_uprating_lands_localised_homes_and_copies_keep_them(
     owner's rank reads, within one rounding, and a home at the knots' cap to
     the cap or a few roundings below, never above; and every high-value
     support copy equals the row the copy-id table names its parent on every
-    column but its ids and the stage's own three, its value, kept draw, area
-    and geography key among them (C-19). H2 parity cannot see these laws: its
-    oracle and the graph run the same code."""
+    column but its ids, the stage's own three and the place and council tax
+    the stage draws again for it (María's ruling of 2026-11-25), its value
+    and kept draw among them (C-19), while its geography key is its own. H2
+    parity cannot see these laws: its oracle and the graph run the same
+    code."""
 
     run = runs[clones]
     resources = load_committed_area_home_values_resources()
@@ -1687,12 +1711,18 @@ def test_on_h2_the_uprating_lands_localised_homes_and_copies_keep_them(
     off = [
         column
         for column in split.columns
-        if column not in owned
+        if column not in owned | set(UK_HIGH_VALUE_SUPPORT_REWRITES)
         and not _same_column(copies[column], split.loc[parents, column])
     ]
     assert not off, (
         f"High-value support copies at K={clones} differ from their parents on {off}."
     )
+    for column in ("main_residence_value", RANK_BASIS_COLUMN):
+        assert _same_column(copies[column], split.loc[parents, column]), column
+    assert (
+        copies["geography_household_key"].to_numpy(dtype=object)
+        != split.loc[parents, "geography_household_key"].to_numpy(dtype=object)
+    ).all(), f"A high-value support copy at K={clones} keeps its parent's key."
 
 
 # --- receipts ---------------------------------------------------------------------------

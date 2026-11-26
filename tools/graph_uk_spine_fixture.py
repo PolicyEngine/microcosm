@@ -2669,8 +2669,12 @@ def _build_implementations(
         "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
             stage=stages["uc_deduction_attributes"]
         ),
+        # The high-value copies' own keys and areas on the toy supports, and
+        # their council tax at the committed Band D (microcosm#931).
         "high_value_home_support": UKHighValueHomeSupportStageTransform(
-            stage=stages["high_value_home_support"]
+            stage=stages["high_value_home_support"],
+            engine=engine,
+            supports=supports,
         ),
         "cgt_support_split": UKCGTSupportSplitStageTransform(
             stage=stages["cgt_support_split"],

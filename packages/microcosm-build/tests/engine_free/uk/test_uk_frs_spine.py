@@ -5310,7 +5310,11 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     # salts (microcosm#931).
     assert declared["cgt_support_split"] == {"cgt_support_split:wealth_tie": 0}
     assert declared["high_value_home_support"] == {
-        "high_value_home_support:value_tie": 0
+        "high_value_home_support:value_tie": 0,
+        # The copies' own areas on the area draw's stream, and Northern
+        # Ireland's copies' BRMAs under its benefit-unit salt (microcosm#931).
+        "uk-spine-atomic-area-v1": 0,
+        "brma": 0,
     }
     assert declared["property_components"] == {"allocate_property_rental_income:tie": 0}
     assert declared["spi_income_band_donors"] == {"spi_income_band_donor_draw": 3}

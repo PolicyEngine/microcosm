@@ -147,10 +147,16 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert "high_value_home_support" in compiled.predecessors["property_components"]
     assert "property_components" in compiled.predecessors["lcfs_consumption"]
     assert "spi_support_channel" in compiled.predecessors["spi_income_band_donors"]
-    # The SPI copies' areas follow the band donors, and the SPI income stage
-    # opens its own version after them (microcosm#931).
-    assert "spi_income_band_donors" in compiled.predecessors["spi_copy_areas"]
-    assert "spi_copy_areas" in compiled.predecessors["hmrc_spi_income_spine.boundary"]
+    # The SPI income stage opens its own version after the band donors; the
+    # SPI copies' areas follow the housing shell, whose drawn band they are
+    # drawn by, and the private rents open their own version after them
+    # (microcosm#931, María's ruling of 2026-11-25).
+    assert (
+        "spi_income_band_donors"
+        in compiled.predecessors["hmrc_spi_income_spine.boundary"]
+    )
+    assert "spi_housing_shell" in compiled.predecessors["spi_copy_areas"]
+    assert "spi_copy_areas" in compiled.predecessors["private_rent.boundary"]
     assert compiled.predecessors["hmrc_spi_income_spine"] == (
         "hmrc_spi_income_spine.boundary",
     )
@@ -178,8 +184,9 @@ def test_the_was_chain_reads_the_localised_council_tax_and_private_rent_the_shel
     """microcosm#931: was_wealth and was_lisa bind the council-tax
     localisation's bill, rebate and person reduction and the paid bill it
     keeps, council_tax_frs_bill, for their predictors; private_rent, before
-    it, binds the housing shell's person council tax reduction as its shape
-    anchor, and no council-tax cell of the localisation."""
+    it, binds no council-tax cell: since spi_copy_areas runs between the
+    housing shell and the private rents (María's ruling of 2026-11-25), its
+    person shape anchor is no longer the shell's reduction."""
 
     graph = uk_spine_graph()
     compiled = compile_graph(graph)
@@ -206,9 +213,7 @@ def test_the_was_chain_reads_the_localised_council_tax_and_private_rent_the_shel
         assert providers(reader) == dict.fromkeys(
             council_tax_cells, "council_tax_localise"
         ), reader
-    assert providers("private_rent") == {
-        ("person", "council_tax_benefit_reported"): "spi_housing_shell"
-    }
+    assert providers("private_rent") == {}
 
 
 def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> None:
@@ -249,15 +254,16 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
     }
     assert {source.codec for source in graph.sources} == {"csv-tables", "raw-bytes-v1"}
     # The area draw, the fuel-relief flag's roster, the SPI copies' own draw,
-    # the council-tax localisation's draw cells and the housing shell's
-    # reference Band D for SPI copies read them, in the systems' order; no
-    # other node does.
+    # the council-tax localisation's draw cells, the housing shell's
+    # reference Band D for SPI copies and the high-value support copies' own
+    # draw read them, in the systems' order; no other node does.
     support_readers = (
         "atomic_area_assign",
         "rfdr",
         "spi_copy_areas",
         "spi_housing_shell",
         "council_tax_localise",
+        "high_value_home_support",
     )
     for stage in support_readers:
         assert graph.node(stage).sources == (

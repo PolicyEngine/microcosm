@@ -86,9 +86,6 @@ AREA_STAGE_NAMES = [
 E7_STAGE_NAMES = [
     "spi_support_channel",
     "spi_income_band_donors",
-    # microcosm#931: the support channel's copies take keys and areas of their
-    # own right after the stages that make them.
-    "spi_copy_areas",
     "hmrc_spi_income_spine",
     # The company cars carve their benefits out of SPI-channel pay right after
     # the income stage writes it, so every later stage reads pay without them
@@ -102,6 +99,12 @@ E7_STAGE_NAMES = [
 ]
 HOUSING_SHELL_STAGE_NAMES = [
     "spi_housing_shell",
+]
+#: microcosm#931: the support channel's copies take keys and areas of their
+#: own right after the housing shell draws their band, by which they are
+#: drawn, as FRS rows are by theirs (María's ruling of 2026-11-25).
+SPI_COPY_AREAS_STAGE_NAMES = [
+    "spi_copy_areas",
 ]
 #: microcosm#931: Great Britain private renters' rents off their BRMA's list,
 #: after the housing shell draws the SPI copies' tenure, bedrooms and rents.
@@ -200,6 +203,7 @@ UK_SOURCE_STAGE_NAMES = [
     # E5 and E6 impute onto the SPI rows from their SPI incomes.
     *E7_STAGE_NAMES,
     *HOUSING_SHELL_STAGE_NAMES,
+    *SPI_COPY_AREAS_STAGE_NAMES,
     *PRIVATE_RENT_STAGE_NAMES,
     *COUNCIL_TAX_LOCALISE_STAGE_NAMES,
     *E5_STAGE_NAMES,
@@ -264,6 +268,7 @@ class TestUKSourceStagesManifest:
         assert names[names.index("area_brma") + 1 : names.index("was_wealth")] == [
             *E7_STAGE_NAMES,
             *HOUSING_SHELL_STAGE_NAMES,
+            *SPI_COPY_AREAS_STAGE_NAMES,
             *PRIVATE_RENT_STAGE_NAMES,
             *COUNCIL_TAX_LOCALISE_STAGE_NAMES,
         ]
@@ -298,6 +303,7 @@ class TestUKSourceStagesManifest:
             names.index(E7_STAGE_NAMES[-1]) + 1 : names.index("cgt_support_split")
         ] == [
             *HOUSING_SHELL_STAGE_NAMES,
+            *SPI_COPY_AREAS_STAGE_NAMES,
             *PRIVATE_RENT_STAGE_NAMES,
             *COUNCIL_TAX_LOCALISE_STAGE_NAMES,
             *E5_STAGE_NAMES,
@@ -368,10 +374,15 @@ class TestUKSourceStagesManifest:
             assert writers(column) == [], column
         assert writers("council_tax_band") == ["spi_housing_shell"]
 
-    def test_no_stage_after_council_tax_localise_writes_its_council_tax(self) -> None:
-        # The localisation is the spine's last writer of the bill, the rebate
-        # and the reported reduction, and the only writer of the paid bill it
-        # keeps for the WAS chain's predictor (microcosm#931).
+    def test_after_council_tax_localise_only_high_value_copies_council_tax_moves(
+        self,
+    ) -> None:
+        # The localisation is the only writer of the paid bill it keeps for
+        # the WAS chain's predictor. After it, only the high-value home
+        # support rewrites the bill, the rebate and the reported reduction,
+        # rescaling its copies' to the authority each copy draws (María's
+        # ruling of 2026-11-25), and no stage writes them as outputs
+        # (microcosm#931).
         manifest = SourceManifest.from_mapping(_load_json(CANONICAL_SOURCE_STAGES))
         stages = list(manifest.stages)
         names = [stage.stage for stage in stages]
@@ -383,7 +394,13 @@ class TestUKSourceStagesManifest:
                 "council_tax_frs_bill",
             ):
                 assert column not in stage.outputs, (stage.stage, column)
-                assert column not in stage.rewrites, (stage.stage, column)
+                if (
+                    stage.stage == "high_value_home_support"
+                    and column != "council_tax_frs_bill"
+                ):
+                    assert column in stage.rewrites, (stage.stage, column)
+                else:
+                    assert column not in stage.rewrites, (stage.stage, column)
 
     def test_age_tail_runs_immediately_after_frs_spine(self) -> None:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)

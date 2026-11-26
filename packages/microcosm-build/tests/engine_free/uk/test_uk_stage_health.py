@@ -4364,8 +4364,10 @@ def test_the_assembled_gates_read_up_to_area_brma() -> None:
     the draws and after the area stages (microcosm#931), so every column an
     assembled domain gate reads is written by area_brma or an earlier stage
     and by no later one. spi_copy_areas rewrites the SPI copies' and income
-    band donors' brma and local_authority after that boundary, so both domain
-    gates sit at the transferred boundary, after their last writer."""
+    band donors' brma and local_authority after that boundary, and
+    high_value_home_support its own copies' (María's ruling of 2026-11-25),
+    so both domain gates sit at the transferred boundary, after their last
+    writer."""
     from microcosm.build import load_country_spec
     from microcosm.build.uk_runtime.graph import UK_SPINE_ASSEMBLED_FINAL_STAGE
 
@@ -4399,10 +4401,12 @@ def test_the_assembled_gates_read_up_to_area_brma() -> None:
     assert [order[position] for position in writers["brma"]] == [
         "area_brma",
         "spi_copy_areas",
+        "high_value_home_support",
     ]
     assert [order[position] for position in writers["local_authority"]] == [
         "local_authority",
         "spi_copy_areas",
+        "high_value_home_support",
     ]
 
 
@@ -5271,14 +5275,17 @@ def test_the_packaged_mapping_gates_read_the_area_stages_records() -> None:
 def test_the_packaged_copy_gate_holds_each_later_layer_on_the_copy_stages_columns() -> (
     None
 ):
-    """Every copy layer after spi_copy_areas is held on the columns that stage
-    rewrites and on the household columns the council-tax localisation
-    rewrites, beside region and the clone index, and the support channel's
-    copies on region and the clone index alone. The layers are the copy-id
-    fields from the support channel's on, and the gate's stage is the last of
-    them (C-11, C-20, microcosm#931). The later layers' copies are made after
-    council_tax_localise, so each inherits its parent's council tax; the
-    support channel's are made before it, and it localises their own."""
+    """Every copy layer after high_value_support is held on the columns
+    spi_copy_areas rewrites and on the household columns the council-tax
+    localisation rewrites, beside region and the clone index, and the support
+    channel's and the high-value support's copies on region and the clone
+    index alone. The layers are the copy-id fields from the support channel's
+    on, and the gate's stage is the last of them (C-11, C-20, microcosm#931).
+    The CGT layers' copies are made after both stages that place copies, so
+    each inherits its parent's area and council tax; the support channel's
+    are placed by spi_copy_areas and localised by council_tax_localise, and
+    the high-value support places its own and rescales their council tax
+    (María's ruling of 2026-11-25)."""
 
     from microcosm.build.uk_runtime import copy_id_table
     from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
@@ -5296,7 +5303,9 @@ def test_the_packaged_copy_gate_holds_each_later_layer_on_the_copy_stages_column
     held = ["region", ladder_clone_index_column("household")]
     assert list(layers) == ["spi_support_channel", *later]
     assert layers["spi_support_channel"] == held
-    for layer in later:
+    assert later[0] == "high_value_support"
+    assert layers["high_value_support"] == held
+    for layer in later[1:]:
         assert layers[layer] == [
             *held,
             *UK_SPI_COPY_AREAS_REWRITE_COLUMNS,
@@ -6361,11 +6370,14 @@ def test_the_packaged_council_tax_gate_holds_what_g6_rewrites() -> None:
 
 
 def test_the_council_tax_gate_reads_the_columns_after_their_last_spine_writer() -> None:
-    """council_tax_localise is the last packaged stage that writes the bill or a
-    reduction, so the transferred boundary reads them as it leaves them. The
-    support channel copies its households before it, and it localises those
-    copies' own; the copy stages of the copy area gate's later layers run
-    after it, so their copies inherit their parents' (microcosm#931)."""
+    """council_tax_localise writes the bill and the reductions at each
+    household's authority, and high_value_home_support, the last packaged
+    stage that writes them, rescales its own copies' to the authority each
+    draws (María's ruling of 2026-11-25), so the transferred boundary reads
+    them as the two leave them. The support channel copies its households
+    before the localisation, which localises those copies' own; the CGT
+    layers' copy stages run after both, so their copies inherit their
+    parents' (microcosm#931)."""
 
     from microcosm.build import load_country_spec
     from microcosm.build.uk_runtime.spine_council_tax import (
@@ -6380,16 +6392,16 @@ def test_the_council_tax_gate_reads_the_columns_after_their_last_spine_writer() 
         for stage in stages
         if set(UK_COUNCIL_TAX_LOCALISE_REWRITES) & {*stage.outputs, *stage.rewrites}
     ]
-    assert writers[-1] == COUNCIL_TAX_LOCALISE_STAGE_NAME
+    assert writers[-2:] == [COUNCIL_TAX_LOCALISE_STAGE_NAME, "high_value_home_support"]
     position = order.index(COUNCIL_TAX_LOCALISE_STAGE_NAME)
-    assert order.index("spi_support_channel") < position
+    last = order.index("high_value_home_support")
+    assert order.index("spi_support_channel") < position < last
     for copy_stage in (
-        "high_value_home_support",
         "cgt_support_split",
         "cgt_incidence_clone",
         "cgt_residential_split",
     ):
-        assert order.index(copy_stage) > position, copy_stage
+        assert order.index(copy_stage) > last, copy_stage
 
 
 @pytest.mark.parametrize("clones", [1, 3])
@@ -6572,7 +6584,6 @@ def _households_for_the_packaged_copy_gate(layer: str) -> pd.DataFrame:
 @pytest.mark.parametrize(
     "layer",
     [
-        "high_value_support",
         "cgt_support_split",
         "cgt_incidence_clone",
         "cgt_residential_split",
@@ -6633,3 +6644,57 @@ def test_the_packaged_copy_gate_holds_later_copies_to_their_parents_council_tax(
     own = household.copy()
     own.loc[1, column] += 1.0
     assert outcome(own).status is GateStatus.PASSED
+
+
+@pytest.mark.parametrize(
+    "column",
+    ["council_tax", "council_tax_rebate", "local_authority_code", "brma"],
+)
+def test_the_packaged_copy_gate_lets_a_high_value_copy_take_its_own_place(
+    column,
+) -> None:
+    """A high-value support copy draws its own key and area, and its council
+    tax is rescaled to its new authority (María's ruling of 2026-11-25), so
+    the packaged copy area gate passes one that differs from its parent on
+    any of them, and fails one moved to another region (microcosm#931)."""
+
+    from microcosm.build import load_country_spec
+    from microcosm.build.gate_battery import (
+        EvidenceContext,
+        GateStatus,
+        evaluate_phase,
+    )
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+
+    (entry,) = [
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_copy_area_agreement"
+    ]
+    stage = entry.parameters["stage"]
+
+    def outcome(household):
+        report = evaluate_phase(
+            _one_gate(entry),
+            "transferred",
+            EvidenceContext(
+                frame=_FrameStandIn(household),
+                artifacts={"stage_evidence": {stage: {"stage": stage}}},
+            ),
+            registry=UK_GATE_REGISTRY,
+        )
+        (result,) = report.outcomes
+        return result
+
+    household = _households_for_the_packaged_copy_gate("high_value_support")
+    moved = household.copy()
+    if moved[column].dtype == np.float64:
+        moved.loc[2, column] += 1.0
+    else:
+        moved.loc[2, column] = f"{column}-drawn"
+    passed = outcome(moved)
+    assert passed.status is GateStatus.PASSED, passed.result.failures
+    assert passed.result.details["layers"]["high_value_support"]["copies_checked"]
+    elsewhere = household.copy()
+    elsewhere.loc[2, "region"] = "WALES"
+    assert outcome(elsewhere).status is GateStatus.FAILED

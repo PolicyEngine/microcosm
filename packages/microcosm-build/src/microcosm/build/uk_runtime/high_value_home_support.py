@@ -639,22 +639,27 @@ def support_uk_high_value_homes(
         rfdr_layer=rfdr_layer,
         rfdr_layer_sha256=rfdr_layer_sha256,
     )
-    household = placed.frame.table("household").copy()
-    person = placed.frame.table("person").copy()
     rescaled = relocalise_uk_council_tax(
-        household,
-        person,
+        placed.frame.table("household"),
+        placed.frame.table("person"),
         rows=placed.copies,
         authorities_before=before,
         band_d=band_d,
     )
-    for column, values in (
-        (rescaled.council_tax.name, rescaled.council_tax),
-        (rescaled.council_tax_rebate.name, rescaled.council_tax_rebate),
-    ):
-        household[column] = values
-    person[rescaled.council_tax_benefit_reported.name] = (
-        rescaled.council_tax_benefit_reported
+    # Each table with its rescaled columns alone replaced; pandas shares the
+    # other columns rather than copying the tables.
+    household = placed.frame.table("household").assign(
+        **{
+            str(rescaled.council_tax.name): rescaled.council_tax,
+            str(rescaled.council_tax_rebate.name): rescaled.council_tax_rebate,
+        }
+    )
+    person = placed.frame.table("person").assign(
+        **{
+            str(rescaled.council_tax_benefit_reported.name): (
+                rescaled.council_tax_benefit_reported
+            )
+        }
     )
     result = _with_tables(placed.frame, household, person)
     sources = record_source_households(

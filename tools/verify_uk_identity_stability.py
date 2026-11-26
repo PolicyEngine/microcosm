@@ -75,6 +75,7 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 )
 from microcosm.build.uk_runtime.spine_geography import (
     AREA_BRMA_STAGE_NAME,
+    HIGH_VALUE_SUPPORT_BRANCH,
     SPI_COPY_AREAS_STAGE_NAME,
     load_committed_brma_layer,
     uk_area_brmas,
@@ -154,12 +155,14 @@ def e4_identity_receipt(
     each Northern Ireland household's is drawn on its own benefit units from
     the census count table (``count_resource``) with frs_brma's keys, seed and
     salts. A frame without the drawn area columns is refused, by the stage's
-    own text: no retired-rule path reads a spine built before them. The one
-    later stage that declares writing ``brma``, spi_copy_areas, rewrites it
-    on the rows the SPI support channel copied alone, which the scope drops,
-    so by default (``reversed_stages`` unset) its rewrite counts as taken back
-    and ``brma`` is compared bitwise; a frame that keeps a row the support
-    channel copied is then refused (``_require_no_support_channel_copies``).
+    own text: no retired-rule path reads a spine built before them. The two
+    later stages that declare writing ``brma`` rewrite it on copies alone,
+    which the scope drops: spi_copy_areas on the rows the SPI support channel
+    copied, and high_value_home_support on its own copies (María's ruling of
+    2026-11-25). So by default (``reversed_stages`` unset) both rewrites
+    count as taken back and ``brma`` is compared bitwise; a frame that keeps
+    such a copy is then refused (``_require_no_support_channel_copies``,
+    ``_require_no_high_value_copies``).
     So is childcare_copy_take_up's: it re-draws the childcare columns it
     declares on copies alone (``childcare_copy_take_up.copy_benunits``), so by
     default they are compared bitwise too, and a frame that keeps a copy is
@@ -202,6 +205,8 @@ def e4_identity_receipt(
         reversed_stages = _E4_SCOPE_REVERSALS
     if SPI_COPY_AREAS_STAGE_NAME in reversed_stages:
         _require_no_support_channel_copies(household)
+    if _HIGH_VALUE_STAGE in reversed_stages:
+        _require_no_high_value_copies(household)
     if CHILDCARE_COPY_TAKE_UP_STAGE_NAME in reversed_stages:
         _require_no_childcare_copies(benunit, household)
     # is_apprentice's rate among eligible employees reads the household
@@ -389,7 +394,8 @@ def e4_identity_receipt(
             "drawn on LHA_category materialized on the frame area_brma read as "
             "far as the artifact restores it (lha_category_scope); "
             "spi_copy_areas rewrites it on the rows the SPI support channel "
-            "copied alone, which the scope drops, so its rewrite is taken back "
+            "copied alone, and high_value_home_support on its own copies "
+            "alone, which the scope drops, so both rewrites are taken back "
             "(a scoped frame keeping such a row is refused); "
             "the childcare take-up columns: bitwise, frs_take_up's, since "
             "childcare_copy_take_up re-draws them on copies alone, which the "
@@ -3168,9 +3174,9 @@ def main() -> int:
         # engine runs clone by clone at the spine's clone count, as the
         # stages' did. The scope drops every row the SPI support channel
         # copied, the only rows spi_copy_areas rewrites, and every copy, the
-        # only rows childcare_copy_take_up re-draws, so both rewrites are
-        # taken back too and brma and the childcare columns are compared
-        # (microcosm#931).
+        # only rows high_value_home_support places again and
+        # childcare_copy_take_up re-draws, so their rewrites are taken back
+        # too and brma and the childcare columns are compared (microcosm#931).
         population_policy = uk_take_up_population_policy(uk_time_period(frame))
         receipt = e4_identity_receipt(
             _frame_as_draw_stages_saw(
@@ -3311,6 +3317,9 @@ _BRMA_STAGE = AREA_BRMA_STAGE_NAME
 #: The SPI support channel, whose prior-mass allocation E4's scope takes back
 #: (``_frame_as_draw_stages_saw``).
 _SPI_SUPPORT_STAGE = "spi_support_channel"
+#: The high-value home support stage and its branch of the copy lineage.
+_HIGH_VALUE_STAGE = "high_value_home_support"
+_HIGH_VALUE_BRANCH = HIGH_VALUE_SUPPORT_BRANCH
 _SPI_PRIOR_MASS_OPERATION = "allocate_zero_weight_prior_mass"
 #: How far, relative to the weight of a clone's people aged 21 to 24, a
 #: clone's stored is_apprentice flags may lie further from its target than
@@ -4363,12 +4372,19 @@ _SCOPE_REVERSALS = (_SALARY_SACRIFICE_STAGE,)
 #: The later stages that rewrite copies alone (microcosm#931), every one of
 #: which E4's scope drops (``_frame_as_draw_stages_saw``): spi_copy_areas,
 #: whose rewrites (brma among them) fall on the rows the SPI support channel
-#: copied, and childcare_copy_take_up, which re-draws the childcare take-up of
-#: every copy's benefit units (``childcare_copy_take_up.copy_benunits``). E4
-#: takes both rewrites back, so it compares the columns they declare, and
-#: refuses a frame that keeps a row either rewrites
-#: (``_require_no_support_channel_copies``, ``_require_no_childcare_copies``).
-_E4_COPY_ONLY_STAGES = (SPI_COPY_AREAS_STAGE_NAME, CHILDCARE_COPY_TAKE_UP_STAGE_NAME)
+#: copied; high_value_home_support, which places its own copies again, brma
+#: among their columns (María's ruling of 2026-11-25); and
+#: childcare_copy_take_up, which re-draws the childcare take-up of every
+#: copy's benefit units (``childcare_copy_take_up.copy_benunits``). E4 takes
+#: their rewrites back, so it compares the columns they declare, and refuses
+#: a frame that keeps a row one of them rewrites
+#: (``_require_no_support_channel_copies``, ``_require_no_high_value_copies``,
+#: ``_require_no_childcare_copies``).
+_E4_COPY_ONLY_STAGES = (
+    SPI_COPY_AREAS_STAGE_NAME,
+    _HIGH_VALUE_STAGE,
+    CHILDCARE_COPY_TAKE_UP_STAGE_NAME,
+)
 #: What E4 assumes of a frame it is handed scoped: the scope's reversals, and
 #: the stages that rewrite copies alone.
 _E4_SCOPE_REVERSALS = (*_SCOPE_REVERSALS, *_E4_COPY_ONLY_STAGES)
@@ -4435,6 +4451,34 @@ def _require_no_support_channel_copies(household: pd.DataFrame) -> None:
         raise ValueError(
             "E4 compares area_brma's brma by taking spi_copy_areas' rewrite back, "
             "which holds only on rows the SPI support channel did not copy; the "
+            f"frame keeps rows whose {branch.index} is not 0, so it is not scoped "
+            "as E4's stages saw it (_frame_as_draw_stages_saw)."
+        )
+
+
+def _require_no_high_value_copies(household: pd.DataFrame) -> None:
+    """Refuse a household table that keeps a high-value support copy: a
+    nonzero ordinal on the high-value branch of the copy lineage.
+
+    E4 takes high_value_home_support's rewrite back, and so compares ``brma``
+    with area_brma's, only because its scope drops every such row, the only
+    rows that stage places again (María's ruling of 2026-11-25). A table
+    without the branch's ordinal holds no copy. The refusal names the column
+    only.
+    """
+
+    (branch,) = [
+        branch
+        for branch in UK_COPY_LINEAGE.branches
+        if branch.name == _HIGH_VALUE_BRANCH
+    ]
+    if branch.index not in household.columns:
+        return
+    ordinals = pd.to_numeric(household[branch.index], errors="coerce")
+    if ordinals.isna().any() or ordinals.ne(0).any():
+        raise ValueError(
+            "E4 compares area_brma's brma by taking high_value_home_support's "
+            "rewrite back, which holds only on rows that stage did not copy; the "
             f"frame keeps rows whose {branch.index} is not 0, so it is not scoped "
             "as E4's stages saw it (_frame_as_draw_stages_saw)."
         )
