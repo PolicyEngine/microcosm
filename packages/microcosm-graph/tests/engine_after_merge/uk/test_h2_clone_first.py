@@ -234,8 +234,9 @@ COUNCIL_TAX = COUNCIL_TAX_LOCALISE_STAGE_NAME
 #: private_rent, with area_brma in frs_brma's place, less regional_home_values,
 #: whose England and Wales home values the WAS chain now reads, and
 #: council_tax_localise after private_rent; main's uc_new_claimant_draw
-#: (microcosm#1687) runs last.
-_STAGE_COUNT = 64
+#: (microcosm#1687) runs last, and its uc_housing_costs_claim (B1 of
+#: microcosm#1710) after uc_limited_capability.
+_STAGE_COUNT = 65
 #: The area stages before the draws, which key each row's area on its
 #: geography key, as G1b left it.
 _AREA_STAGES = (

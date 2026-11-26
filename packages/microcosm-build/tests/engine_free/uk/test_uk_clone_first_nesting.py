@@ -279,6 +279,8 @@ _NESTING_HELD: Mapping[str, str] = {
             "spi_benefit_coherence",
             "uc_capital_coherence",
             "uc_limited_capability",
+            # main's housing costs claim (B1 of microcosm#1710).
+            "uc_housing_costs_claim",
             "uc_take_up",
             "uc_legacy_closure_take_up",
             "pension_credit_take_up",
