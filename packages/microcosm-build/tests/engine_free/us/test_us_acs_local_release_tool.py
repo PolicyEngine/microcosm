@@ -611,6 +611,8 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     for fragment in (
         "microcosm#1720",
         "A_MARITL",
+        "surviving_spouse_eligible does not check",
+        "not as a head of household",
         "MIL == 1",
         "POCCU2 52",
         "attribute_us_se_health_premiums",
@@ -725,6 +727,7 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "floored at zero",
         "closest to the residual average",
         "microcosm#168",
+        "too few very large and very small credits",
         "reported_has_subsidized_marketplace_health_coverage_at_interview",
         "probability residual / anchored weight",
         "acs_local_aca_subsidized_anchor_keep",
