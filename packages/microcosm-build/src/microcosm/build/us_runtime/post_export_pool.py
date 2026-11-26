@@ -31,30 +31,47 @@ unpickle them however the release tool was loaded. The worker entry points
 (:func:`start_post_export_worker`, :func:`score_post_export_unit`) live here
 for the same reason; the worker finds the release tool, or loads it from its
 file, when it starts (:func:`release_tool`).
+
+:func:`plan_post_export_workers` chooses how many workers pooled scoring
+starts and the limits each runs under, from the machine and the operator's
+``MICROCOSM_POST_EXPORT_WORKERS`` (tracker decision 1.4 · 6, approved by
+Anthony on 27 November 2026, until task 2.6 · 2's planner replaces it).
 """
 
 from __future__ import annotations
 
 import builtins
 import importlib.util
+import os
 import sys
 import traceback
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from microcosm.build import host_resources
 from microcosm.build.us_runtime.post_export_requests import (
     PostExportReform,
     check_post_export_reform,
 )
+from microcosm.build.worker_pool import WorkerPoolSettings
 
 __all__ = [
+    "MEMORY_BUDGET_FRACTION",
+    "PARENT_PEAK_BYTES",
+    "POST_EXPORT_WORKERS_VARIABLE",
+    "UNITS_PER_WORKER",
+    "WORKER_PEAK_BYTES",
     "PostExportPass",
     "PostExportPassTiming",
     "PostExportPassValues",
     "PostExportUnit",
     "PostExportUnitFailure",
     "PostExportUnitResult",
+    "PostExportWorkerPlan",
+    "PostExportWorkersError",
+    "plan_post_export_workers",
     "release_tool",
     "score_post_export_unit",
     "start_post_export_worker",
@@ -370,3 +387,219 @@ def start_post_export_worker(module_name: str, path: str, *arguments: Any):
 def score_post_export_unit(worker, unit: PostExportUnit) -> PostExportUnitResult:
     """The pool's unit function: score ``unit`` (``worker.score``)."""
     return worker.score(unit)
+
+
+# ---------------------------------------------------------------------------
+# How many workers, and their limits (tracker decision 1.4 · 6)
+# ---------------------------------------------------------------------------
+
+_GIB = 2**30
+
+#: The variable an operator sets: unset, blank or ``auto`` for the formula, a
+#: positive whole number for that many pool workers, or ``serial`` to score in
+#: the certifying process alone.
+POST_EXPORT_WORKERS_VARIABLE = "MICROCOSM_POST_EXPORT_WORKERS"
+
+#: The share of the machine's memory a build may plan to use (decision 1.1 · 2).
+MEMORY_BUDGET_FRACTION = 0.75
+
+#: The certifying process's planned peak while workers score: the release
+#: tool's imports (about 1.1-1.2 GiB) and the baseline arrays it holds (up to
+#: about 1.1 GiB at national size).
+PARENT_PEAK_BYTES = 3 * _GIB
+
+#: One worker's planned peak over its replacement interval (1.4 · 6's one-batch
+#: check: about 3.5-4.7 GiB over two reform passes).
+WORKER_PEAK_BYTES = 5 * _GIB
+
+#: Units a worker runs before a fresh worker takes its place. A reform unit is
+#: one reformed simulation's passes (one pass for every shipped consumer).
+UNITS_PER_WORKER = 2
+
+
+class PostExportWorkersError(ValueError):
+    """``MICROCOSM_POST_EXPORT_WORKERS`` is not a setting, or the machine is
+    too small for one worker and the operator did not say to run anyway."""
+
+
+def _gib(count: int | float) -> str:
+    return f"{count / _GIB:.2f} GiB"
+
+
+@dataclass(frozen=True)
+class PostExportWorkerPlan:
+    """How post-export scoring runs on this machine.
+
+    Attributes:
+        serial: Score in the certifying process alone (the operator's
+            ``serial``).
+        workers: The most pool workers; ``None`` when serial. The scorer
+            starts no more than a pool run has units.
+        chosen_by: ``"formula"``, or ``MICROCOSM_POST_EXPORT_WORKERS=<value>``.
+        total_memory_bytes: The machine's or container's memory.
+        usable_cores: The cores this process may use.
+        memory_cap_bytes: Each worker's memory-footprint cap; ``None`` when
+            serial.
+        max_units_per_worker: Units a worker runs before it is replaced;
+            ``None`` when serial.
+    """
+
+    serial: bool
+    workers: int | None
+    chosen_by: str
+    total_memory_bytes: int
+    usable_cores: int
+    memory_cap_bytes: int | None
+    max_units_per_worker: int | None
+
+    @property
+    def budget_bytes(self) -> int:
+        """75% of the memory (decision 1.1 · 2), in bytes."""
+        return self.total_memory_bytes * 3 // 4
+
+    @property
+    def planned_peak_bytes(self) -> int | None:
+        """This process's planned peak plus every worker's."""
+        if self.workers is None:
+            return None
+        return PARENT_PEAK_BYTES + self.workers * WORKER_PEAK_BYTES
+
+    def pool_settings(self) -> WorkerPoolSettings | None:
+        """The shared pool's settings; ``None`` when serial. Workers inherit
+        this process's environment, thread variables included."""
+        if self.serial:
+            return None
+        return WorkerPoolSettings(
+            workers=self.workers,
+            memory_cap_bytes=self.memory_cap_bytes,
+            max_units_per_worker=self.max_units_per_worker,
+        )
+
+    def record(self) -> dict[str, object]:
+        """The plan as run metadata, for the manifests' scoring block."""
+        return {
+            "mode": "serial" if self.serial else "pooled",
+            "chosen_by": self.chosen_by,
+            "workers": self.workers,
+            "total_memory_bytes": self.total_memory_bytes,
+            "usable_cores": self.usable_cores,
+            "budget_bytes": self.budget_bytes,
+            "planned_peak_bytes": self.planned_peak_bytes,
+            "memory_cap_bytes": self.memory_cap_bytes,
+            "max_units_per_worker": self.max_units_per_worker,
+        }
+
+    def describe(self) -> str:
+        """The line certification and the export probe print."""
+        machine = (
+            f"{self.usable_cores} usable core(s), {_gib(self.total_memory_bytes)} "
+            "of memory"
+        )
+        if self.serial:
+            return (
+                f"Post-export scoring runs in this process alone ({self.chosen_by}; "
+                f"{machine})."
+            )
+        planned, budget = self.planned_peak_bytes, self.budget_bytes
+        against = "above" if planned > budget else "within"
+        return (
+            f"Post-export scoring: up to {self.workers} pool worker"
+            f"{'' if self.workers == 1 else 's'} ({self.chosen_by}; {machine}). "
+            f"Planned peak {_gib(planned)} ({_gib(PARENT_PEAK_BYTES)} for this "
+            f"process, {_gib(WORKER_PEAK_BYTES)} per worker), {against} the "
+            f"budget of {_gib(budget)} (75% of memory). Each worker is capped at "
+            f"{_gib(self.memory_cap_bytes)} and replaced after "
+            f"{self.max_units_per_worker} units."
+        )
+
+
+def _requested_workers(value: str) -> int | str | None:
+    """``None`` for the formula, ``"serial"``, or a count."""
+    if value in ("", "auto"):
+        return None
+    if value == "serial":
+        return "serial"
+    if value.isascii() and value.isdigit():
+        try:
+            count = int(value)
+        except ValueError:  # longer than int() will parse
+            count = 0
+        if count > 0:
+            return count
+    raise PostExportWorkersError(
+        f"{POST_EXPORT_WORKERS_VARIABLE} must be auto, serial or a positive whole "
+        f"number of post-export scoring workers, got {value!r}."
+    )
+
+
+def plan_post_export_workers(
+    environment: Mapping[str, str] = os.environ,
+    *,
+    total_memory_bytes: int | None = None,
+    usable_cores: int | None = None,
+) -> PostExportWorkerPlan:
+    """Choose the post-export pool's workers and limits for this machine.
+
+    - Workers: ``min(usable cores - 1, floor((0.75 * memory - 3 GiB) / 5 GiB))``,
+      at least one, unless ``MICROCOSM_POST_EXPORT_WORKERS`` names a count
+      (``1`` is one pool worker, a process of its own) or ``serial``.
+    - A memory term below one means no room for this process and one worker
+      within the budget, which is refused unless the variable names a count
+      or ``serial``.
+    - Each worker is capped at ``max(5 GiB, (0.75 * memory - 3 GiB) /
+      workers)`` of memory footprint and replaced after
+      :data:`UNITS_PER_WORKER` units; it inherits this process's thread
+      variables.
+
+    ``total_memory_bytes`` and ``usable_cores`` replace the machine's readings
+    (:mod:`microcosm.build.host_resources`), for tests.
+
+    Raises:
+        PostExportWorkersError: For a value that is not a setting, or a
+            machine too small for one worker.
+    """
+    requested = _requested_workers(environment.get(POST_EXPORT_WORKERS_VARIABLE, ""))
+    memory = int(
+        total_memory_bytes
+        if total_memory_bytes is not None
+        else host_resources.total_memory_bytes()
+    )
+    cores = int(
+        usable_cores if usable_cores is not None else host_resources.usable_cores()
+    )
+    room = memory * 3 // 4 - PARENT_PEAK_BYTES
+    if requested == "serial":
+        return PostExportWorkerPlan(
+            serial=True,
+            workers=None,
+            chosen_by=f"{POST_EXPORT_WORKERS_VARIABLE}=serial",
+            total_memory_bytes=memory,
+            usable_cores=cores,
+            memory_cap_bytes=None,
+            max_units_per_worker=None,
+        )
+    if requested is None:
+        memory_term = room // WORKER_PEAK_BYTES
+        if memory_term < 1:
+            raise PostExportWorkersError(
+                f"There is no room for post-export scoring on this machine: "
+                f"this process and one pool worker need "
+                f"{_gib(PARENT_PEAK_BYTES + WORKER_PEAK_BYTES)} within the memory "
+                f"budget, 75% of {_gib(memory)}, which is {_gib(memory * 3 // 4)}. "
+                f"Set {POST_EXPORT_WORKERS_VARIABLE} to a number of workers, or "
+                "to serial to score in this process alone, to run it anyway."
+            )
+        workers = min(max(1, cores - 1), memory_term)
+        chosen_by = "formula"
+    else:
+        workers = requested
+        chosen_by = f"{POST_EXPORT_WORKERS_VARIABLE}={requested}"
+    return PostExportWorkerPlan(
+        serial=False,
+        workers=workers,
+        chosen_by=chosen_by,
+        total_memory_bytes=memory,
+        usable_cores=cores,
+        memory_cap_bytes=max(WORKER_PEAK_BYTES, room // workers),
+        max_units_per_worker=UNITS_PER_WORKER,
+    )

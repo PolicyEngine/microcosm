@@ -36,7 +36,8 @@ every engine stage's recorded baseline plan, so one shared baseline pass, run
 when the first stage opens, serves them all; with the release tool's
 ``_PostExportPooling`` (``ExportProbe(post_export_pooling=...)``) the stages'
 recorded requests are scored in the shared worker pool, as certification
-scores them. The frame-based stages (1-3) run first,
+scores them. The command does so by default, with certification's worker
+settings, unless ``MICROCOSM_POST_EXPORT_WORKERS=serial``. The frame-based stages (1-3) run first,
 while the loaded frame is held, instead of after the scorer as in ``_main``:
 they read only the frame, so the order changes no verdict. Unlike the
 release, a stage that raises is recorded with its traceback and the next
@@ -3439,6 +3440,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         register = load_builder()._load_qrf_tail_concentration_exclusions(
             args.qrf_tail_register
         )
+    # As certification: pooled scoring unless MICROCOSM_POST_EXPORT_WORKERS
+    # says serial; a bad setting, or a machine too small for one worker,
+    # stops here, before the export is loaded.
+    post_export_pooling = load_builder()._post_export_pooling_from_environment()
     report = probe_export(
         args.export,
         args.out,
@@ -3467,6 +3472,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         min_effective_households=args.min_effective_households,
         release_id=args.release_id,
         census=args.census,
+        post_export_pooling=post_export_pooling,
     )
     summary = report["summary"]
     print(

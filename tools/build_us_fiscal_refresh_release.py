@@ -373,6 +373,8 @@ from microcosm.build.us_runtime.post_export_pool import (
     PostExportUnit,
     PostExportUnitFailure,
     PostExportUnitResult,
+    PostExportWorkersError,
+    plan_post_export_workers,
     score_post_export_unit,
     start_post_export_worker,
 )
@@ -6978,8 +6980,11 @@ class _PostExportPooling:
     replace, in every worker and for the scorer's own checks, the engine, the
     batch dataset and the reform builder; each must be importable by name in a
     spawned worker. ``None`` keeps policyengine-us's ``Microsimulation``,
-    :func:`_post_export_dataset` and ``build_post_export_reform``. (A plain
-    class, for the reason :class:`_PostExportScoringPlan` gives.)
+    :func:`_post_export_dataset` and ``build_post_export_reform``.
+    ``resources`` is the record of the plan the settings came from (the
+    machine's memory and cores, the budget and the planned peak), which the
+    execution record carries. (A plain class, for the reason
+    :class:`_PostExportScoringPlan` gives.)
     """
 
     def __init__(
@@ -6990,6 +6995,7 @@ class _PostExportPooling:
         microsimulation_cls=None,
         dataset_from_frame=None,
         reform_builder=None,
+        resources: Mapping[str, object] | None = None,
     ) -> None:
         if not isinstance(settings, WorkerPoolSettings):
             raise TypeError("Pooled post-export scoring needs WorkerPoolSettings.")
@@ -7000,6 +7006,40 @@ class _PostExportPooling:
         self.microsimulation_cls = microsimulation_cls
         self.dataset_from_frame = dataset_from_frame
         self.reform_builder = reform_builder
+        self.resources = None if resources is None else dict(resources)
+
+
+def _post_export_pooling_from_environment(
+    environment: Mapping[str, str] = os.environ,
+    *,
+    total_memory_bytes: int | None = None,
+    usable_cores: int | None = None,
+) -> _PostExportPooling | None:
+    """The post-export pool for this machine and ``MICROCOSM_POST_EXPORT_WORKERS``.
+
+    Pooled scoring is the default, with the worker count and limits of
+    ``plan_post_export_workers`` (tracker decision 1.4 · 6); ``serial`` returns
+    ``None``, which scores in this process. Prints the plan: the workers, the
+    planned peak beside the memory budget, each worker's cap. A value that is
+    not a setting, or a machine too small for one worker, stops the command,
+    which certification and the export probe do before they load the H5.
+    ``total_memory_bytes`` and ``usable_cores`` replace the machine's
+    readings, for tests.
+    """
+    try:
+        plan = plan_post_export_workers(
+            environment,
+            total_memory_bytes=total_memory_bytes,
+            usable_cores=usable_cores,
+        )
+    except PostExportWorkersError as error:
+        raise SystemExit(str(error)) from None
+    print(plan.describe(), flush=True)
+    if plan.serial:
+        return None
+    return _PostExportPooling(
+        plan.pool_settings(), chosen_by=plan.chosen_by, resources=plan.record()
+    )
 
 
 def _post_export_worker_settings(
@@ -7528,6 +7568,7 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
             "max_units_ahead": settings.max_units_ahead,
             "worker_environment_variables": sorted(settings.worker_environment or ()),
             "units": dict(self._units),
+            "resources": self._pooling.resources,
             "report": None,
         }
         if self._pool is not None:
@@ -16419,6 +16460,9 @@ def _certify_main_with_close_out(argv: Sequence[str] | None) -> None:
             + ", so its checks run on the versions its manifests name."
         )
     _refuse_reusing_a_certified_build(record.release_root)
+    # Pooled post-export scoring is the default; a bad setting, or a machine
+    # too small for one worker, stops here, before the build is placed.
+    post_export_pooling = _post_export_pooling_from_environment()
     certification = _Certification(
         evidence_release=args.evidence_release,
         owner_patterns=owner_patterns,
@@ -16454,7 +16498,12 @@ def _certify_main_with_close_out(argv: Sequence[str] | None) -> None:
             run_id=run_id,
             emitter=_ACTIVE_EMITTER,
         )
-        _certify_us_build(record, certification=certification, telemetry=telemetry)
+        _certify_us_build(
+            record,
+            certification=certification,
+            telemetry=telemetry,
+            post_export_pooling=post_export_pooling,
+        )
     except BaseException as error:
         try:
             if telemetry is not None:

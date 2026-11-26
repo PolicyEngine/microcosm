@@ -433,7 +433,9 @@ tier's `releases/<release>/`, runs only
 `microcosm-publish-release-build --preflight-only`, which checks the build
 offline, and leaves publication to Max.
 
-The US fiscal-refresh builder scores its written H5 in household batches.
+The US fiscal-refresh builder scores its written H5 in household batches,
+in the shared worker pool unless `MICROCOSM_POST_EXPORT_WORKERS=serial`
+(see [the release build rule](us-release-build-rule.md#post-export-scoring)).
 Alongside its out-of-sample reports, it writes
 `us_ssi_social_security_holdout.json`: the household-weighted share of SSI
 recipients also receiving Social Security at ages 18–64 and 65+, compared with

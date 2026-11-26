@@ -501,9 +501,32 @@ one Microsimulation over the whole file.
   Nothing records the descriptors in a file; pooled scoring (next item) and
   the guard sweep below rebuild each reform from its descriptor in the worker
   that scores it.
-- With pooled scoring (`_PooledPostExportScorer`) the scoring runs in the
-  shared worker pool (`microcosm.build.worker_pool`) and the stages run
-  afterwards in the certifying process, over the results:
+- Certification scores in the shared worker pool by default
+  (`_PooledPostExportScorer`, `microcosm.build.worker_pool`), and the stages
+  run afterwards in the certifying process, over the results. The worker
+  settings are tracker decision 1.4 · 6's, until task 2.6 · 2's planner
+  replaces them (`plan_post_export_workers` in
+  `microcosm.build.us_runtime.post_export_pool`):
+  - `MICROCOSM_POST_EXPORT_WORKERS` unset, blank or `auto`: at most
+    min(usable cores − 1, ⌊(0.75 × memory − 3 GiB) ÷ 5 GiB⌋) workers, at
+    least one. Usable cores are the CPUs the process may run on, limited by a
+    cgroup CPU quota; memory is the machine's, limited by a cgroup memory
+    limit (`microcosm.build.host_resources`). 0.75 is decision 1.1 · 2's
+    budget, 3 GiB the certifying process's planned peak and 5 GiB one
+    worker's. On a machine under about 10.7 GiB that leaves no room for one
+    worker, and certification refuses before it places the build or loads
+    the H5.
+  - A positive whole number: that many workers (`1` is one worker, a process
+    of its own), whatever the formula gives; `serial`: every pass in the
+    certifying process, as before. Anything else stops certification at the
+    same point.
+  - Each worker is replaced after 2 units and capped at
+    max(5 GiB, (0.75 × memory − 3 GiB) ÷ workers) of memory footprint; a
+    worker over its cap is killed and its unit runs again in a fresh worker.
+    No more workers start than a pool run has units.
+  - Certification prints the plan: the workers, the planned peak beside the
+    budget and each worker's cap. `tools/probe_us_post_export.py` reads the
+    same setting the same way.
   - The pool runs twice. First the shared baseline pass, split into one range
     of batches per worker. Then one unit per reformed simulation, holding all
     of that simulation's recorded passes over every batch, in the order the
@@ -542,9 +565,10 @@ one Microsimulation over the whole file.
     tool; that is the import the worker needs, so it runs once per worker
     start.
   - The manifests' `post_export_scoring` block records how scoring ran under
-    `execution`: `{"mode": "serial"}`, or the pool's settings, unit counts and
-    report (worker starts, failed attempts, peak worker memory). That record is
-    run metadata, outside every output comparison (decision 1.1 · 1).
+    `execution`: `{"mode": "serial"}`, or the pool's settings, how the worker
+    count was chosen, the plan's memory and core readings, unit counts and the
+    pool's report (worker starts, failed attempts, peak worker memory). That
+    record is run metadata, outside every output comparison (decision 1.1 · 1).
 - Each batch engine keeps policyengine-us's projection of the release year to
   its last CPI-U year (2035), because the plans request keys in later years
   (reform validation reaches past 2025). The build's own simulations hold
