@@ -29,11 +29,11 @@ from microcosm.graph import (
     Owned,
     SourceRef,
     StructuralDelta,
-    orrery_document,
+    compile_graph,
+    graph_schema,
 )
 from microcosm.graph.evidence import sha256
-from microcosm.graph.orrery import orrery_document_from_schema
-from microcosm.graph.presentation import PRESENTATION_EXTENSION
+from microcosm.graph.presentation import PRESENTATION_EXTENSION, validate_presentation
 
 
 def checkpoint_graph():
@@ -52,24 +52,40 @@ def checkpoint_graph():
     )
 
 
+def schema_with_presentation(graph, contract):
+    """The compiler schema of ``graph`` with ``contract`` as its presentation."""
+    return graph_schema(
+        compile_graph(graph), extensions={PRESENTATION_EXTENSION: contract}
+    )
+
+
+def grouped_operations(contract):
+    """Every operation the contract's groups list, once per listing."""
+    return sorted(
+        operation
+        for group in contract["groups"]
+        for operation in group.get("operations", [])
+    )
+
+
 def test_spine_groups_keep_composite_execution_boundaries():
     graph = uk_spine_graph(source_mode="split")
     contract = uk_graph_presentation(graph, scope="raw_spine")
-    document = orrery_document(graph, extensions={PRESENTATION_EXTENSION: contract})
-    was = next(node for node in document["nodes"] if node["label"] == "was_wealth")
-    assert was["data"]["composite"]["execution_unit"] == "composite"
-    assert "coupled" in was["data"]["composite"]["coupling"]
-    assert sum(node["kind"] == "operation" for node in document["nodes"]) == len(
-        graph.nodes
-    )
-    assert not any(
-        node["kind"] == "operation" and ".fit" in node["label"]
-        for node in document["nodes"]
-    )
+    validated = validate_presentation(schema_with_presentation(graph, contract))
+    assert validated == contract
+    composite = validated["operations"]["was_wealth"]["composite"]
+    assert composite["execution_unit"] == "composite"
+    assert "coupled" in composite["coupling"]
+    # Each operation is grouped exactly once, and the graph declares no
+    # separate fit operation beside a composite stage.
+    assert grouped_operations(validated) == sorted(node.id for node in graph.nodes)
+    assert not any(".fit" in node.id for node in graph.nodes)
 
 
 @pytest.mark.parametrize("households", [None, 100])
-def test_complete_dense_and_size_declarations_fit_existing_export_limits(households):
+def test_complete_dense_and_size_declarations_fit_the_schema_and_are_rostered(
+    households,
+):
     spine = add_uk_spine_gate_nodes(
         uk_spine_graph(source_mode="split"),
         spec=load_country_spec("uk"),
@@ -91,15 +107,13 @@ def test_complete_dense_and_size_declarations_fit_existing_export_limits(househo
         review_date="2026-10-08",
     )
     contract = uk_graph_presentation(graph, scope="full_dense")
-    document = orrery_document(graph, extensions={PRESENTATION_EXTENSION: contract})
-    assert sum(node["kind"] == "operation" for node in document["nodes"]) == len(
-        graph.nodes
-    )
-    assert len(document["nodes"]) < 20_000
-    assert len(document["edges"]) < 100_000
-    assert document["metadata"]["presentation_scope"]["id"] == "full_dense"
-    assert json.loads(document["id"]) == ["microcosm", "uk", "full_dense"]
-    assert document["title"] == "UK · full dense"
+    # The schema's size and string bounds admit the complete declarations, and
+    # the contract validates against them.
+    schema = schema_with_presentation(graph, contract)
+    validated = validate_presentation(schema)
+    assert validated["scope"]["id"] == "full_dense"
+    assert validated["scope"]["label"] == "full dense"
+    assert grouped_operations(validated) == sorted(node.id for node in graph.nodes)
     # Every maintained operation is explicitly rostered; nothing falls through.
     groups = {group["id"]: group for group in contract["groups"]}
     assert "other" not in groups
@@ -129,12 +143,14 @@ def test_complete_dense_and_size_declarations_fit_existing_export_limits(househo
         assert {"uk.full.size_search", "uk.full.selected"} <= set(
             groups["calibration"]["operations"]
         )
-    fields = [node for node in document["nodes"] if node["kind"] == "field"]
-    assert all(json.loads(node["parentId"])[0] == "operation" for node in fields)
+    # Each validation-check node's full `gate_manifest` parameter stays in the
+    # schema's declarations.
+    declarations = {
+        operation["id"]: operation for operation in schema["graph"]["nodes"]
+    }
     for node_id in ("uk.full.gates.preflight", "uk.full.gates.calibrated"):
-        operation = next(node for node in document["nodes"] if node["label"] == node_id)
         assert (
-            operation["data"]["declaration"]["params"]["gate_manifest"]
+            declarations[node_id]["params"]["gate_manifest"]
             == (graph.node(node_id).params["gate_manifest"])
         )
 
@@ -148,14 +164,17 @@ def test_old_checkpoint_has_an_explicit_missing_boundary(tmp_path):
     boundary = contract["scope"]["boundaries"][0]
     assert boundary["upstream"] == []
     assert boundary["missing"]
-    document = orrery_document(
-        checkpoint_graph(), extensions={PRESENTATION_EXTENSION: contract}
+    # A boundary without upstream references is valid only with its reason.
+    validated = validate_presentation(
+        schema_with_presentation(checkpoint_graph(), contract)
     )
-    node = next(node for node in document["nodes"] if node["kind"] == "operation")
-    assert node["statuses"][0]["label"] == "Upstream evidence missing"
+    assert validated["scope"]["boundaries"] == [boundary]
+    del boundary["missing"]
+    with pytest.raises(ValueError, match="missing reason"):
+        validate_presentation(schema_with_presentation(checkpoint_graph(), contract))
 
 
-def test_checkpoint_links_use_recorded_bytes_and_survive_output_relocation(tmp_path):
+def test_checkpoint_links_use_recorded_bytes_and_survive_moving_the_schema(tmp_path):
     sidecar = tmp_path / "spine.build.json"
     graph = tmp_path / "original.graph.json"
     manifest = tmp_path / "original.manifest.json"
@@ -178,25 +197,18 @@ def test_checkpoint_links_use_recorded_bytes_and_survive_output_relocation(tmp_p
     saved = save_uk_graph_schema(
         checkpoint_graph(), tmp_path / "out", scope="national", sidecar_path=sidecar
     )
+    # The recorded bytes are copied beside the schema and linked relatively,
+    # so moving the schema's directory keeps every link valid.
     relocated = tmp_path / "relocated"
     saved.parent.rename(relocated)
     saved = relocated / saved.name
-    document = orrery_document_from_schema(json.loads(saved.read_bytes()))
-    operation = next(node for node in document["nodes"] if node["kind"] == "operation")
-    assert len(operation["sources"]) == 2
-    for ref in operation["sources"]:
+    schema = json.loads(saved.read_bytes())
+    (boundary,) = validate_presentation(schema)["scope"]["boundaries"]
+    assert boundary["operation"] == "uk.full.spine_checkpoint"
+    assert len(boundary["upstream"]) == 2
+    for ref in boundary["upstream"]:
         assert sha256((saved.parent / ref["url"]).read_bytes()) == ref["sha256"]
         assert ref["url"].startswith("upstream-")
-    from microcosm.graph.orrery import main
-
-    output = tmp_path / "preview" / "graph.orrery.json"
-    assert main(["--schema", str(saved), "--output", str(output)]) == 0
-    exported = json.loads(output.read_bytes())
-    relocated_node = next(
-        node for node in exported["nodes"] if node["kind"] == "operation"
-    )
-    for ref in relocated_node["sources"]:
-        assert sha256((output.parent / ref["url"]).read_bytes()) == ref["sha256"]
     graph.write_bytes(b'{"original":false}')
     with pytest.raises(ValueError, match="digest mismatch"):
         checkpoint_references(sidecar)
@@ -263,10 +275,11 @@ def test_unavailable_checkpoint_bytes_are_named_not_linked(tmp_path):
     saved = save_uk_graph_schema(
         checkpoint_graph(), tmp_path / "out", scope="national", sidecar_path=sidecar
     )
-    document = orrery_document_from_schema(json.loads(saved.read_bytes()))
-    node = next(node for node in document["nodes"] if node["kind"] == "operation")
-    assert node["statuses"][0]["label"] == "Upstream evidence missing"
-    assert all(ref["url"].startswith("upstream-") for ref in node["sources"])
+    (saved_boundary,) = validate_presentation(json.loads(saved.read_bytes()))["scope"][
+        "boundaries"
+    ]
+    assert saved_boundary["missing"] == boundary["missing"]
+    assert all(ref["url"].startswith("upstream-") for ref in saved_boundary["upstream"])
     assert "gone.json" not in saved.read_text()
 
 

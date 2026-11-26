@@ -1,10 +1,12 @@
-"""The Orrery projection runs without the build runtime.
+"""The execution overlay file, and reading saved graph files without the runtime.
 
-A collector worker will project a saved compiler schema and execution overlay
-file without the content store or the population libraries. These tests run
-that projection in a fresh interpreter that refuses to import numpy, pandas,
-microcosm-frame or the store, and compare its bytes with the projection a
-build makes in-process.
+A build saves its compiler schema (``graph.schema.json``) and its execution
+overlay (``graph.execution.json``, written from ``execution_overlay_bytes``).
+These tests check that the overlay file reads back as the overlay that was
+written, that the reader refuses malformed files, and that a fresh interpreter
+which refuses to import numpy, pandas, microcosm-frame or the content store can
+still validate the saved schema and its presentation contract and load the
+overlay.
 """
 
 import importlib.util
@@ -23,8 +25,11 @@ from microcosm.graph import (
     record_run_binding,
 )
 from microcosm.graph.canonical import canonical_json
-from microcosm.graph.orrery import main, orrery_json_from_schema
-from microcosm.graph.presentation import PRESENTATION_EXTENSION, PRESENTATION_PROTOCOL
+from microcosm.graph.presentation import (
+    PRESENTATION_EXTENSION,
+    PRESENTATION_PROTOCOL,
+    validate_presentation,
+)
 from test_support.paths import paths_for
 
 _PATHS = paths_for("microcosm-graph")
@@ -35,7 +40,7 @@ if "_toy" not in sys.modules:
     _SPEC.loader.exec_module(_TOY)
 toy = sys.modules["_toy"]
 
-#: Modules a projection process must be able to do without.
+#: Modules a process that only reads the saved graph files must do without.
 RUNTIME_MODULES = ("numpy", "pandas", "microcosm.frame", "microcosm.graph.store")
 
 #: Installs the refusal before anything else imports, then runs the body.
@@ -52,38 +57,32 @@ def is_refused(name):
 class RefuseRuntimeImports(importlib.abc.MetaPathFinder):
     def find_spec(self, name, path=None, target=None):
         if is_refused(name):
-            raise ImportError(f"the Orrery projection imported {name}")
+            raise ImportError(f"reading the saved graph files imported {name}")
         return None
 
 
 sys.meta_path.insert(0, RefuseRuntimeImports())
 """
 
-_RESTRICTED_PROJECTION = (
+#: Validates the saved schema and its presentation contract, loads the
+#: overlay, writes all three as canonical JSON and prints any refused module
+#: that was imported.
+_RESTRICTED_READ = (
     _REFUSE_RUNTIME_IMPORTS
     + r"""
 from pathlib import Path
 
+from microcosm.graph.canonical import canonical_json
 from microcosm.graph.execution_overlay import load_execution_overlay
-from microcosm.graph.orrery import orrery_json_from_schema
+from microcosm.graph.presentation import validate_presentation
+from microcosm.graph.schema import validate_graph_schema
 
 schema_path, overlay_path, output_path = (Path(argument) for argument in sys.argv[2:5])
-schema = json.loads(schema_path.read_bytes())
+schema = validate_graph_schema(json.loads(schema_path.read_bytes()))
+presentation = validate_presentation(schema)
 overlay = load_execution_overlay(overlay_path)
-output_path.write_text(
-    orrery_json_from_schema(schema, execution=overlay), encoding="utf-8"
-)
+output_path.write_bytes(canonical_json([schema, presentation, overlay]))
 print(json.dumps(sorted(name for name in sys.modules if is_refused(name))))
-"""
-)
-
-_RESTRICTED_COMMAND = (
-    _REFUSE_RUNTIME_IMPORTS
-    + r"""
-import runpy
-
-sys.argv = ["microcosm.graph.orrery", *sys.argv[2:]]
-runpy.run_module("microcosm.graph.orrery", run_name="__main__")
 """
 )
 
@@ -139,18 +138,18 @@ def recorded(tmp_path):
     return schema, overlay
 
 
-def test_orrery_projection_runs_where_numpy_pandas_frame_and_store_cannot_import(
+def test_saved_schema_and_overlay_read_where_numpy_pandas_frame_and_store_cannot_import(
     recorded, tmp_path
 ):
     schema, overlay = recorded
     schema_path = tmp_path / "graph.schema.json"
     overlay_path = tmp_path / "graph.execution.json"
-    output_path = tmp_path / "graph.orrery.json"
+    output_path = tmp_path / "read-back.json"
     schema_path.write_bytes(canonical_json(schema))
     overlay_path.write_bytes(execution_overlay.execution_overlay_bytes(overlay))
 
     completed = _run_restricted(
-        _RESTRICTED_PROJECTION,
+        _RESTRICTED_READ,
         str(schema_path),
         str(overlay_path),
         str(output_path),
@@ -159,32 +158,9 @@ def test_orrery_projection_runs_where_numpy_pandas_frame_and_store_cannot_import
 
     assert completed.returncode == 0, completed.stderr[-4000:]
     assert json.loads(completed.stdout) == []
-    assert output_path.read_bytes() == (
-        orrery_json_from_schema(schema, execution=overlay).encode("utf-8")
+    assert output_path.read_bytes() == canonical_json(
+        [schema, validate_presentation(schema), overlay]
     )
-
-
-def test_orrery_command_runs_where_numpy_pandas_frame_and_store_cannot_import(
-    recorded, tmp_path
-):
-    schema, _overlay = recorded
-    schema_path = tmp_path / "graph.schema.json"
-    schema_path.write_bytes(canonical_json(schema))
-    restricted_output = tmp_path / "restricted" / "graph.orrery.json"
-    in_process_output = tmp_path / "in-process" / "graph.orrery.json"
-
-    completed = _run_restricted(
-        _RESTRICTED_COMMAND,
-        "--schema",
-        str(schema_path),
-        "--output",
-        str(restricted_output),
-        cwd=tmp_path,
-    )
-
-    assert completed.returncode == 0, completed.stderr[-4000:]
-    assert main(["--schema", str(schema_path), "--output", str(in_process_output)]) == 0
-    assert restricted_output.read_bytes() == in_process_output.read_bytes()
 
 
 def test_package_runtime_exports_still_resolve_from_the_package():
@@ -199,10 +175,8 @@ def test_package_runtime_exports_still_resolve_from_the_package():
         graph_api.not_an_export  # noqa: B018
 
 
-def test_execution_overlay_file_round_trips_to_byte_identical_orrery_json(
-    recorded, tmp_path
-):
-    schema, overlay = recorded
+def test_execution_overlay_file_round_trips_to_an_equal_overlay(recorded, tmp_path):
+    _schema, overlay = recorded
     overlay_path = tmp_path / "graph.execution.json"
     overlay_path.write_bytes(execution_overlay.execution_overlay_bytes(overlay))
 
@@ -211,8 +185,8 @@ def test_execution_overlay_file_round_trips_to_byte_identical_orrery_json(
     assert overlay_path.read_bytes() == canonical_json(overlay)
     assert loaded["protocol"] == "microcosm.graph.execution-evidence.v1"
     assert loaded == overlay
-    assert orrery_json_from_schema(schema, execution=loaded) == (
-        orrery_json_from_schema(schema, execution=overlay)
+    assert execution_overlay.execution_overlay_bytes(loaded) == (
+        overlay_path.read_bytes()
     )
 
 

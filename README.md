@@ -46,15 +46,18 @@ until you restart the kernel, load it by path with
 
 ## Build progress and staging run files
 
-UK build completion automatically exports Orrery execution graphs for viewing
-offline and uploads none. Its staged dataset bundle hands the graph's inputs
-to the emitter for the collector, which builds the Orrery graph files; see
-[graph publication](docs/orrery-publication.md) and
+UK builds write their graph's Orrery inputs (the compiler schema, the
+execution overlay and the upstream files they link) and upload no graph.
+Microcosm makes no Orrery document: the staged dataset bundle hands the
+inputs to the emitter for the collector, which builds the Orrery graph files,
+and staff view them through the run viewer. A build staged only locally has
+no Orrery document until its inputs are submitted; see
+[UK graph inputs](docs/orrery-publication.md) and
 [its status](docs/orrery-publication.md#status).
 
 Supported US and UK build commands start the local emitter as the build's
-child process, with its telemetry, graph-publication and Hugging Face
-hand-over modules. Microcosm depends only on `microcosm-emitter-interface`,
+child process, with its telemetry and Hugging Face hand-over modules.
+Microcosm depends only on `microcosm-emitter-interface`,
 the typed calls a build makes; the emitter itself is installed on its own,
 outside the workspace environment, so an emitter release needs no Microcosm
 change:
@@ -70,7 +73,7 @@ The build finds the `microcosm-emitter` command through
 environment variables and user, so it uses the build's Hugging Face
 credential (`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the `hf auth login`
 token). Without the command the build continues with no hosted telemetry and
-no remote staging, and measures no Orrery publication inventory; a UK build given
+no remote staging; a UK build given
 `--staging-read-back` fails at the read-back, and a UK build asked to stage
 its dataset bundle remotely, as it is by default, is refused before it
 starts, since the emitter uploads the bundle. Before it starts the emitter,
@@ -104,13 +107,13 @@ another Google Cloud project; from 0.10.0 on, releases send to the
 collector's hostname, which stays the same. 0.13.0, 0.14.0, 0.15.0, 0.16.0
 and 0.17.0 were each the newest release when practically no machine ran the
 emitter yet, so requiring them cost nothing (see
-[graph publication](docs/orrery-publication.md#emitter-dependency)). The
+[UK graph inputs](docs/orrery-publication.md#emitter-dependency)). The
 build prints the installed and required versions, what it loses and the
 upgrade command, `uv tool install --upgrade 'microcosm-emitter>=0.17.0'`,
 and continues as it does without the command. `uv tool upgrade` keeps any
 version constraint given at install time, such as `==0.7.0`; that
 `uv tool install --upgrade` command replaces it. Microcosm supplies build
-metadata, graph files, staging run files and staged dataset bundles; the
+metadata, the graph's Orrery inputs, staging run files and staged dataset bundles; the
 emitter owns authentication, durable queues and delivery.
 The telemetry module reports live progress to the hosted collector when the
 operator's Hugging Face login is accepted; otherwise it retains the events

@@ -3,16 +3,16 @@
 Public API. ``decl`` and ``kernel`` are the frozen interfaces; the runtime
 modules implement execution, storage, provenance, and inspection against them.
 
-Declarations, the compiler schema and the Orrery projection need only the
-standard library, so they import eagerly. Exports from the runtime modules,
-which need numpy, pandas and microcosm-frame, load on first access: a process
-that only projects saved schemas and execution overlays imports
-``microcosm.graph.orrery`` without those dependencies.
+Declarations and the compiler schema need only the standard library, so they
+import eagerly. Exports from the runtime modules, which need numpy, pandas and
+microcosm-frame, load on first access: a process that only reads saved schemas
+and execution overlays needs none of those dependencies. Microcosm makes no
+Orrery documents; the collector projects a build's saved schema, execution
+overlay and upstream files with its own copy of the projection.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from importlib import import_module
 from importlib import metadata as _metadata
 
@@ -129,8 +129,6 @@ __all__ = [
     "run_graph",
     "source_hash",
     "weight_update_receipt",
-    "orrery_document",
-    "orrery_json",
     "ArtifactSummaryContext",
     "RecordedRun",
     "checkpoint_references",
@@ -233,31 +231,3 @@ def __getattr__(name: str) -> object:
 
 def __dir__() -> list[str]:
     return sorted({*globals(), *_RUNTIME_EXPORTS})
-
-
-def orrery_document(
-    graph: Graph | CompiledGraph,
-    *,
-    title: str | None = None,
-    extensions: Mapping[str, object] | None = None,
-    execution: object | None = None,
-) -> dict[str, object]:
-    """Compile and transform a graph into a complete Orrery document."""
-
-    from .orrery import orrery_document as export
-
-    return export(graph, title=title, extensions=extensions, execution=execution)
-
-
-def orrery_json(
-    graph: Graph | CompiledGraph,
-    *,
-    title: str | None = None,
-    extensions: Mapping[str, object] | None = None,
-    execution: object | None = None,
-) -> str:
-    """Compile and return deterministic UTF-8-ready Orrery JSON."""
-
-    from .orrery import orrery_json as export
-
-    return export(graph, title=title, extensions=extensions, execution=execution)

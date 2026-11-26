@@ -30,11 +30,14 @@ Module map:
 | `manifest.py` | `RunManifest`, `NodeReceipt`, human decision records |
 | `view.py` | `describe(node)`: the one-screen view |
 | `schema.py` | Canonical compiler-derived fields and declared input bindings for presentation adapters |
-| `orrery.py` | Pure adapter from `Graph` or compiler schema to Orrery's `graph-explorer/v1` input |
+| `evidence.py` | Recorded run evidence, its checks against the content store, and `collect_execution_evidence`, which returns the execution overlay |
+| `execution_overlay.py` | The execution overlay file (`graph.execution.json`): canonical JSON writer and bounded reader |
 
 The shard depends on `microcosm-frame` only. Kernels that wrap fit,
 calibrate, or a rules engine live in those shards and register here.
 
-See [the Orrery adapter](../../docs/orrery-adapter.md) for versioned field
-inspection, offline integration, and evidence boundaries. The
+The package makes no Orrery documents. The collector builds the Orrery graph
+files from a build's saved schema, execution overlay and upstream files with
+its own copy of the projection; see [Orrery inputs](../../docs/orrery-adapter.md)
+for those files' fields, input bindings, recorded evidence and limits. The
 existing deterministic `explain_html` export remains available unchanged.
