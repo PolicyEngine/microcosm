@@ -15645,7 +15645,6 @@ def test_staging_bundle_defaults_on_and_no_staging_disables_files(
             staging_dir=tmp_path / "stage",
             staging_repo_id=None,
             staging_run_id=None,
-            staging_prefix=args.staging_prefix,
             epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
             dense_default_dataset=False,
         )
@@ -15690,7 +15689,6 @@ def test_build_progress_hands_staging_files_to_the_build_emitter(
         staging_dir=tmp_path / "stage",
         staging_repo_id="policyengine/populace-us-staging",
         staging_run_id=None,
-        staging_prefix="runs",
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )
@@ -15826,7 +15824,6 @@ def test_us_short_run_forwards_each_solve_first_epoch_so_the_epoch_falls_at_the_
         staging_dir=run_dir,
         staging_repo_id=None,
         staging_run_id=None,
-        staging_prefix=module.DEFAULT_STAGING_PREFIX,
         epochs=epochs,
         dense_default_dataset=False,
     )
@@ -15883,7 +15880,6 @@ def test_us_build_progress_stride_keeps_long_runs_under_the_row_cap(
         staging_dir=None,
         staging_repo_id=None,
         staging_run_id=None,
-        staging_prefix=module.DEFAULT_STAGING_PREFIX,
         epochs=epochs,
         dense_default_dataset=dense_default_dataset,
     )
@@ -16025,7 +16021,6 @@ def _remote_build_progress(module, tmp_path, client=None):
         staging_dir=tmp_path / "stage",
         staging_repo_id="policyengine/populace-us-staging",
         staging_run_id=None,
-        staging_prefix="runs",
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )
@@ -16311,7 +16306,6 @@ def test_build_progress_replaces_any_previous_active_run(tmp_path) -> None:
         staging_dir=tmp_path / "stage",
         staging_repo_id=None,
         staging_run_id=None,
-        staging_prefix=module.DEFAULT_STAGING_PREFIX,
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )
@@ -16377,7 +16371,6 @@ def test_staging_bundle_refuses_a_destinationless_namespace(tmp_path) -> None:
         staging_dir=None,
         staging_repo_id="",
         staging_run_id=None,
-        staging_prefix=module.DEFAULT_STAGING_PREFIX,
         epochs=module.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )

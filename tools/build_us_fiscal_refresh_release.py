@@ -70,6 +70,7 @@ import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
+from functools import partial
 from importlib.resources import files as package_files
 from pathlib import PurePosixPath
 from types import MethodType, SimpleNamespace
@@ -100,8 +101,13 @@ from microcosm.build.gates import (
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.run_outcome import classify_failure
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
 from microcosm.build.staging_storage import confirm_and_report_final_commit
+from microcosm.build.staging_v2 import (
+    EMITTER_MAX_FILE_BYTES,
+    StagingContentPolicy,
+    StagingRunBundleWriterV2,
+    disabled_staging_delivery,
+)
 from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     start_local_telemetry_emitter_service,
@@ -2000,8 +2006,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--staging-dir",
         type=Path,
         help=(
-            "Optional local directory for staging run files. Defaults "
-            "to <out>/staging/runs/<run_id> when --staging-repo-id is set."
+            "Local root for the build's version 2 staging run files, which go "
+            "to <dir>/runs/<run_id>/. Defaults to <out>/staging when "
+            "--staging-repo-id is set; without a repository, it makes a "
+            "local-only run."
         ),
     )
     parser.add_argument(
@@ -2040,14 +2048,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Disable staging run files and their uploads for this build; hosted "
             "telemetry remains active."
-        ),
-    )
-    parser.add_argument(
-        "--staging-prefix",
-        default=_env_default("POPULACE_STAGING_PREFIX", DEFAULT_STAGING_PREFIX),
-        help=(
-            "Repo prefix for staging run artifacts. Defaults to "
-            "POPULACE_STAGING_PREFIX or runs."
         ),
     )
     parser.add_argument(
@@ -2195,10 +2195,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             parser.error(
                 "ExactKExplicitSeedError: --exact-k requires an explicit "
                 "non-negative --seed."
-            )
-        if not args.no_staging:
-            parser.error(
-                "ExactKPointerSuppressionError: --exact-k requires --no-staging."
             )
         if not math.isfinite(args.exact_k_pi_hi) or not (
             0.0 <= args.exact_k_pi_hi <= 1.0
@@ -12966,12 +12962,157 @@ def _calibration_epoch_every(args: argparse.Namespace) -> int:
     return calibration_epoch_stride(int(args.epochs) * solves)
 
 
+#: The pipeline a US staging run names, as the build's hosted telemetry does.
+US_STAGING_PIPELINE = "us_fiscal_refresh"
+#: The operation of a build's staging run, and of its certification's.
+US_BUILD_STAGING_OPERATION = "us_fiscal_refresh_build"
+US_CERTIFICATION_STAGING_OPERATION = "us_fiscal_refresh_certification"
+#: The version 2 event status for each status a US build reports for a stage.
+#: Any other status (``skipped``, or a check's own verdict such as ``PASS``)
+#: becomes a completed event whose details keep it as ``stage_status``.
+_STAGING_EVENT_STATUSES: Mapping[str, str] = {
+    "running": "started",
+    "failed": "failed",
+}
+#: The longest message a version 2 event or progress document carries.
+_STAGING_MESSAGE_CHARACTERS = 500
+#: The size limit of a US result file reviewed to hold rows of aggregates
+#: (lists of objects, one per state, age band, program, reform or target),
+#: as version 2 allows a file of no rows.
+_US_AGGREGATE_ROWS_BYTES = 5 * 1024 * 1024
+
+
+class _StagedResultFile:
+    """How a US staging run carries one result file: its version 2 fields.
+
+    ``aggregate_rows_bytes`` is set for a file reviewed to hold rows of
+    aggregates, and is then its size limit; a file without it may hold no
+    lists of objects and keeps version 2's 5 MiB limit. (A plain class, for
+    the reason :class:`_RecordedCalibrationResult` gives.)
+    """
+
+    __slots__ = ("aggregate_rows_bytes", "artifact_kind", "classification")
+
+    def __init__(
+        self,
+        artifact_kind: str,
+        classification: str = "aggregate",
+        aggregate_rows_bytes: int | None = None,
+    ) -> None:
+        self.artifact_kind = artifact_kind
+        self.classification = classification
+        self.aggregate_rows_bytes = aggregate_rows_bytes
+
+
+_AGGREGATE_ROWS = _US_AGGREGATE_ROWS_BYTES
+#: The result files a US staging run carries, by logical name (microcosm#1135).
+#: Each was checked against version 2's content rules on real US runs: none
+#: holds a sensitive or row-level field, an individual record or a row
+#: collection, and those that hold rows hold aggregates. A file attached under
+#: any other name stays out of the run, with a warning, as does one the
+#: content checks refuse.
+US_STAGING_RESULT_FILES: Mapping[str, _StagedResultFile] = {
+    "build_manifest": _StagedResultFile(
+        "build_metadata", "non_row_level", _AGGREGATE_ROWS
+    ),
+    "build_record": _StagedResultFile(
+        "build_metadata", "non_row_level", _AGGREGATE_ROWS
+    ),
+    # Per-target rows, which the dashboard's calibration view reads: 33.4 MB
+    # for the national build in October 2026, up to the emitter's own limit.
+    "calibration_diagnostics": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=EMITTER_MAX_FILE_BYTES
+    ),
+    "demographics": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "esi_premiums": _StagedResultFile("validation_summary"),
+    "input_coverage": _StagedResultFile("validation_summary"),
+    "input_mass_parity": _StagedResultFile("validation_summary"),
+    "qrf_tail_concentration": _StagedResultFile("validation_summary"),
+    "reform_coverage_smoke": _StagedResultFile(
+        "validation_summary", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "reform_validation": _StagedResultFile(
+        "validation_summary", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "release_manifest": _StagedResultFile(
+        "build_metadata", "non_row_level", _AGGREGATE_ROWS
+    ),
+    US_STORED_INPUTS_EVIDENCE_KEY: _StagedResultFile("validation_summary"),
+    "us_medicaid_take_up": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_medicare_irmaa_holdout": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_population_structure_holdout": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_snap_state_take_up": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_source_coverage": _StagedResultFile(
+        "validation_summary", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_ssi_social_security_holdout": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_ssi_take_up": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_take_up_participation": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+}
+#: Version 2's content checks with the US files reviewed to hold rows.
+US_STAGING_CONTENT_POLICY = StagingContentPolicy(
+    aggregate_tables={
+        name: result_file.aggregate_rows_bytes
+        for name, result_file in US_STAGING_RESULT_FILES.items()
+        if result_file.aggregate_rows_bytes is not None
+    }
+)
+
+
+def _close_run(error: BaseException, bundle: StagingRunBundleWriterV2) -> None:
+    """Close a staging run the build did not finish.
+
+    A build whose release checks failed once its record was written
+    (:class:`_BuildFailedReleaseGatesError`, exit 3) reached a decision and
+    the checks refused it, so its run is ``blocked``; any other ending is a
+    failure, classified as the hosted telemetry classifies it.
+    """
+    if isinstance(error, _BuildFailedReleaseGatesError):
+        bundle.block(
+            phase="release_gates",
+            blocking_gate_ids=[],
+            blocking_failure_count=max(1, len(error.failures)),
+        )
+        return
+    classified = classify_failure(error)
+    bundle.fail(
+        error,
+        error_code=classified.error_code or "BUILD_FAILED",
+        failure_class=classified.failure_class,
+    )
+
+
+def _staging_message(message: str | None) -> str | None:
+    if message is None:
+        return None
+    return message[:_STAGING_MESSAGE_CHARACTERS]
+
+
 class _BuildProgress:
     """Report progress to an emitter and, independently, a staging bundle.
 
     Both receive the same calibration epochs: each solve's first and last and
     every ``epoch_every``-th epoch, the rule the UK build follows too
-    (microcosm#1292).
+    (microcosm#1292). The staging run is best-effort: an error in it (a
+    local write, the version 2 checks refusing a document or a result file)
+    prints a warning and never stops the build or its hosted telemetry,
+    which hears of every stage before the staging run does.
     """
 
     def __init__(
@@ -12979,7 +13120,7 @@ class _BuildProgress:
         *,
         run_id: str,
         emitter: LocalTelemetryEmitter,
-        staging_bundle: StagingRunBundleWriter | None,
+        staging_bundle: StagingRunBundleWriterV2 | None,
         staging_opt_out_reason: str | None = None,
         epoch_every: int = CALIBRATION_EPOCH_EVERY,
     ) -> None:
@@ -13001,6 +13142,22 @@ class _BuildProgress:
             return 0
         return self.staging_bundle.uploads_succeeded
 
+    def _staged(
+        self, action: str, call: Callable[[StagingRunBundleWriterV2], object]
+    ) -> None:
+        """Make one call on the staging run; an error in it only warns."""
+        if self.staging_bundle is None:
+            return
+        try:
+            call(self.staging_bundle)
+        except Exception as error:
+            print(
+                f"warning: the staging run could not {action} "
+                f"({type(error).__name__}: {error}); the build and its hosted "
+                "telemetry go on.",
+                file=sys.stderr,
+            )
+
     def stage(
         self,
         stage: str,
@@ -13015,29 +13172,49 @@ class _BuildProgress:
             message=message,
             **details,
         )
-        if self.staging_bundle is not None:
-            self.staging_bundle.stage(
+        event_status = _STAGING_EVENT_STATUSES.get(status)
+        staged_details = (
+            details if event_status is not None else {**details, "stage_status": status}
+        )
+        self._staged(
+            f"record the stage {stage}",
+            lambda bundle: bundle.stage(
                 stage,
-                message=message,
-                status=status,
-                **details,
-            )
+                event_status=event_status or "completed",
+                message=_staging_message(message),
+                **staged_details,
+            ),
+        )
 
     def calibration_progress(self, event: dict[str, object]) -> None:
         if not forwards_calibration_epoch(event, every=self.epoch_every):
             return
         self.emitter.transition_calibration_progress(event)
-        if self.staging_bundle is not None:
-            self.staging_bundle.calibration_progress(event)
+        self._staged(
+            "record calibration progress",
+            lambda bundle: bundle.calibration_progress(event),
+        )
 
-    def attach_artifact(
-        self,
-        name: str,
-        path: Path | str,
-        **details: Any,
-    ) -> None:
-        if self.staging_bundle is not None:
-            self.staging_bundle.attach_artifact(name, path, **details)
+    def attach_artifact(self, name: str, path: Path | str) -> None:
+        if self.staging_bundle is None:
+            return
+        result_file = US_STAGING_RESULT_FILES.get(name)
+        if result_file is None:
+            print(
+                f"warning: the staging run does not carry the result file {name}, "
+                "which is not one it was reviewed for; the build goes on.",
+                file=sys.stderr,
+            )
+            return
+        self._staged(
+            f"carry the result file {name}",
+            lambda bundle: bundle.add_artifact(
+                name,
+                path,
+                artifact_kind=result_file.artifact_kind,
+                classification=result_file.classification,
+            ),
+        )
 
     def fail(self, error: BaseException) -> None:
         # The staging run's failed state is handed to the emitter, and its
@@ -13045,7 +13222,7 @@ class _BuildProgress:
         # emitter down (it drops a run's events after its outcome).
         try:
             if self.staging_bundle is not None:
-                self.staging_bundle.fail(error)
+                self._staged("record how the build ended", partial(_close_run, error))
                 confirm_and_report_final_commit(
                     self.staging_bundle, self.emitter, error=error
                 )
@@ -13053,8 +13230,12 @@ class _BuildProgress:
             _fail_emitter(self.emitter, error)
 
     def complete(self) -> None:
+        # An interrupt here is not contained: the build's failure path then
+        # records it, so the emitter never hears of a completion first.
         if self.staging_bundle is not None:
-            self.staging_bundle.complete()
+            self._staged(
+                "record the build's completion", lambda bundle: bundle.complete()
+            )
             confirm_and_report_final_commit(self.staging_bundle, self.emitter)
         self.emitter.complete()
 
@@ -13758,13 +13939,8 @@ def _staging_manifest_block(telemetry: _BuildProgress | None) -> dict[str, objec
             if telemetry is None
             else telemetry.staging_opt_out_reason or "--no-staging"
         )
-        return {"enabled": False, "reason": reason}
-    return {
-        "enabled": True,
-        "run_id": telemetry.run_id,
-        "repo_id": telemetry.repo_id,
-        "uploads_succeeded": telemetry.uploads_succeeded,
-    }
+        return disabled_staging_delivery(reason)
+    return telemetry.staging_bundle.delivery_summary
 
 
 def _build_progress(
@@ -13775,7 +13951,19 @@ def _build_progress(
     run_id: str | None = None,
     emitter: LocalTelemetryEmitter,
     epoch_every: int | None = None,
+    candidate_id: str | None = None,
+    operation_id: str = US_BUILD_STAGING_OPERATION,
+    run_kind: str = "release",
 ) -> _BuildProgress:
+    """The build's progress, with its version 2 staging run unless opted out.
+
+    The run carries the identity the build's hosted telemetry has: its
+    candidate (``candidate_id``, the build itself by default), the release
+    build it is to become (``release_id``) and its kind of run. Its files are
+    written below ``--staging-dir`` (``<out>/staging`` by default), at
+    ``runs/<run_id>/``, and committed through the build's emitter when a
+    staging repository is set.
+    """
     global _ACTIVE_PROGRESS
     # Each call establishes the current run, so a handle from a previous one
     # can never be marked failed in place of this build's.
@@ -13801,16 +13989,24 @@ def _build_progress(
             "empty and staging_dir is unset. Set no_staging to skip staging, "
             "or give a staging_dir for a local-only run."
         )
-    run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
-    staging_bundle = StagingRunBundleWriter(
+    remote = bool(args.staging_repo_id)
+    staging_bundle = StagingRunBundleWriterV2(
         run_id=run_id,
-        candidate_release_id=release_id,
-        run_dir=run_dir,
-        repo_id=args.staging_repo_id,
-        path_prefix=args.staging_prefix,
+        country_code="US",
+        operation_id=operation_id,
+        pipeline_id=US_STAGING_PIPELINE,
+        pipeline_version=importlib.metadata.version("microcosm-build"),
+        candidate_id=candidate_id or release_id,
+        release_id=release_id,
+        local_dir=args.staging_dir or release_root / "staging",
+        run_kind=run_kind,
+        delivery_mode="local_and_remote" if remote else "local_only",
+        repo_id=args.staging_repo_id if remote else None,
         # The build's emitter commits the run files with its own credential.
-        emitter_client=emitter.client,
+        emitter_client=emitter.client if remote else None,
+        content_policy=US_STAGING_CONTENT_POLICY,
     )
+    staging_bundle.set_sample({"mode": "full"})
     _ACTIVE_PROGRESS = _BuildProgress(
         run_id=run_id,
         emitter=emitter,
@@ -13860,13 +14056,8 @@ class _TerminalBatchProgress:
     def stage(self, stage: str, **details: Any) -> None:
         self._call("stage", stage, **details)
 
-    def attach_artifact(
-        self,
-        name: str,
-        path: Path | str,
-        **details: Any,
-    ) -> None:
-        self._call("attach_artifact", name, path, **details)
+    def attach_artifact(self, name: str, path: Path | str) -> None:
+        self._call("attach_artifact", name, path)
 
 
 def _print_build_result(
@@ -13928,8 +14119,12 @@ class _BuildFailedReleaseGatesError(RuntimeError):
 
     Raised once the H5, the calibration weights and the record are written;
     run as a script, the build then exits
-    :data:`US_BUILD_FAILED_RELEASE_GATES_EXIT`.
+    :data:`US_BUILD_FAILED_RELEASE_GATES_EXIT`. ``failures`` are the record's.
     """
+
+    def __init__(self, failures: Sequence[str]) -> None:
+        self.failures = tuple(failures)
+        super().__init__("Release gates failed: " + "; ".join(self.failures))
 
 
 #: The build record a build leaves beside ``artifacts/`` and ``build/``
@@ -14560,8 +14755,8 @@ def _certify_parser() -> argparse.ArgumentParser:
         "--staging-dir",
         type=Path,
         help=(
-            "Local directory for the certification's staging run files. "
-            "Defaults to <build_dir>/staging/runs/<run id>."
+            "Local root for the certification's version 2 staging run files, "
+            "which go to <dir>/runs/<run id>/. Defaults to <build_dir>/staging."
         ),
     )
     return parser
@@ -14579,10 +14774,11 @@ def _certify_progress(
 
     The post-export verdicts and the manifests reach the staging dashboard,
     as they did when a build certified itself (microcosm#1585 item 11, PR
-    4a). Certification stages where its build did, to the build's repository
-    and prefix, in a run of its own, since a staging run's files start afresh
-    when it opens. A build that did not stage (``--no-staging``, which
-    ``--exact-k`` requires) is certified without staging. ``--no-staging``
+    4a). Certification stages where its build did, to the build's repository,
+    in a version 2 run of its own, since a staging run's files start afresh
+    when it opens; the run names the build as its candidate and the build
+    certification publishes as its release. A build that did not stage
+    (``--no-staging``) is certified without staging. ``--no-staging``
     opts certification out where the build staged too, as a build may opt
     out: the publisher accepts a stated opt-out, and the reason says the
     build staged, so the manifest shows that its certification did not.
@@ -14607,20 +14803,22 @@ def _certify_progress(
     staging_dir = args.staging_dir
     if staging_dir is None and not settings["repo_id"]:
         # A build that staged only locally is certified into the same layout.
-        staging_dir = record.release_root / "staging" / "runs" / run_id
+        staging_dir = record.release_root / "staging"
     return _build_progress(
         SimpleNamespace(
             no_staging=False,
             staging_run_id=run_id,
             staging_dir=staging_dir,
             staging_repo_id=settings["repo_id"],
-            staging_prefix=settings["prefix"],
         ),
         release_root=record.release_root,
         release_id=build,
         run_id=run_id,
         emitter=emitter,
         epoch_every=CALIBRATION_EPOCH_EVERY,
+        candidate_id=record.build,
+        operation_id=US_CERTIFICATION_STAGING_OPERATION,
+        run_kind="certification",
     )
 
 
@@ -19282,9 +19480,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             message="Release gates failed (batched pre-export report).",
             failures=terminal_gate_failures,
         )
-        build_refusal = _BuildFailedReleaseGatesError(
-            "Release gates failed: " + "; ".join(terminal_gate_failures)
-        )
+        build_refusal = _BuildFailedReleaseGatesError(terminal_gate_failures)
     # A green run must not inherit a prior failed attempt's weight evidence
     # (microcosm#568 round 2): with --out/--release-id reuse, stale evidence
     # files would coexist with a green build whose record knows nothing about
@@ -19383,13 +19579,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # own checks exits as a refusal (exit 1), not with
         # US_BUILD_FAILED_RELEASE_GATES_EXIT: no tier certifies it, so a
         # driver must not keep it for certification.
-        refusal = (
-            RuntimeError
+        build_refusal = (
+            RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
             if artifact_integrity_failures
-            else _BuildFailedReleaseGatesError
-        )
-        build_refusal = refusal(
-            "Release gates failed: " + "; ".join(terminal_gate_failures)
+            else _BuildFailedReleaseGatesError(terminal_gate_failures)
         )
     timing["build_seconds"] = time.perf_counter() - build_started
     build_record_path = _write_us_build_record(
@@ -19460,7 +19653,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             staging_settings={
                 "no_staging": bool(args.no_staging),
                 "repo_id": args.staging_repo_id or None,
-                "prefix": args.staging_prefix,
             },
         ),
     )

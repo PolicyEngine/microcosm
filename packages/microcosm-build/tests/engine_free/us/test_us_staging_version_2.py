@@ -62,7 +62,6 @@ def _staging_arguments(builder, *, repository=US_STAGING):
         staging_dir=None,
         staging_repo_id=repository,
         staging_run_id=None,
-        staging_prefix="runs",
         epochs=builder.DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
         dense_default_dataset=False,
     )

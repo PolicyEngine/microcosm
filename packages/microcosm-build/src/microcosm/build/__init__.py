@@ -185,13 +185,6 @@ from microcosm.build.source_runtime import (  # noqa: E402 - after the compat ga
     UnsupportedSourceOperationError,
     run_source_stage,
 )
-from microcosm.build.staging import (  # noqa: E402 - after the compat gate
-    DEFAULT_STAGING_PREFIX,
-    LATEST_STAGING_POINTER,
-    RUNS_INDEX,
-    STAGING_SCHEMA_VERSION,
-    StagingRunBundleWriter,
-)
 
 __version__ = "0.1.0"
 
@@ -200,7 +193,6 @@ __all__ = [
     "CountrySpec",
     "CountryResourceRow",
     "DonorSpec",
-    "DEFAULT_STAGING_PREFIX",
     "EvidenceContext",
     "FitWeightRecord",
     "FunctionBinding",
@@ -230,10 +222,6 @@ __all__ = [
     "SourceRuntimeConfig",
     "SourceRuntimeContext",
     "SourceRuntimeError",
-    "LATEST_STAGING_POINTER",
-    "RUNS_INDEX",
-    "STAGING_SCHEMA_VERSION",
-    "StagingRunBundleWriter",
     "TargetCoverageRequirement",
     "TargetFitRequirement",
     "ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS",

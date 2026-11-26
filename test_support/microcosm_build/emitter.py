@@ -100,8 +100,6 @@ from microcosm_emitter_interface.telemetry import (
 )
 
 ALL_MODULES = frozenset({"telemetry", "orrery", "huggingface"})
-LATEST_POINTER_PATH = "latest_staging.json"
-RUNS_INDEX_PATH = "runs.json"
 #: The emitter copies a bundle's smallest files, each of at most 32 MiB and
 #: together at most 64 MiB, before it answers the hand-over.
 MAX_COPIED_FILE_BYTES = 32 * 1024 * 1024
@@ -312,14 +310,16 @@ class FakeEmitterClient:
     def stage_run_files(self, request: StageRunFiles) -> RunFilesReceipt:
         self.calls.append("stage_run_files")
         self.run_file_requests.append(request)
+        # Version 2 runs are found by their folders: Microcosm hands over no
+        # pointer file and no runs index entry.
+        assert request.latest_pointer is None, "a staging pointer file was handed over"
+        assert request.run_index_entry is None, "a runs index entry was handed over"
         if "huggingface" not in self.modules or not self.accept_run_files:
             return unavailable_run_files_receipt(request.repository, request.run_id)
         targets = [
             (f"{request.prefix}/{request.run_id}/{item.relative_path}", item.local_path)
             for item in request.files
         ]
-        if request.latest_pointer is not None:
-            targets.append((LATEST_POINTER_PATH, request.latest_pointer))
         for path_in_repo, local_path in targets:
             content = Path(local_path).read_bytes()
             self.hub_files[(request.repository, path_in_repo)] = content
@@ -328,9 +328,6 @@ class FakeEmitterClient:
                 hashlib.sha256(content).hexdigest(),
             )
         committed = len(targets)
-        if request.run_index_entry is not None:
-            self._merge_runs_index(request.repository, dict(request.run_index_entry))
-            committed += 1
         delivery = self._delivery(request.repository, request.run_id)
         if committed:
             delivery["files_attempted"] += committed
@@ -341,22 +338,6 @@ class FakeEmitterClient:
                 str(len(self.run_file_requests)).encode()
             ).hexdigest()
         return self._receipt(request.repository, request.run_id)
-
-    def _merge_runs_index(self, repository: str, entry: dict[str, Any]) -> None:
-        existing = self.hub_files.get((repository, RUNS_INDEX_PATH))
-        runs = [] if existing is None else json.loads(existing).get("runs", [])
-        runs = [run for run in runs if run.get("run_id") != entry["run_id"]]
-        runs.append(entry)
-        runs.sort(
-            key=lambda run: str(
-                run.get("updated_at") or run.get("started_at") or run.get("run_id")
-            ),
-            reverse=True,
-        )
-        self.hub_files[(repository, RUNS_INDEX_PATH)] = json.dumps(
-            {"schema_version": 1, "updated_at": entry.get("updated_at"), "runs": runs},
-            indent=1,
-        ).encode()
 
     def run_files_receipt(self, repository: str, run_id: str) -> RunFilesReceipt:
         self.calls.append("run_files_receipt")
