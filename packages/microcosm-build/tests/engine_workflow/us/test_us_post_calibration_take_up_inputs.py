@@ -250,3 +250,60 @@ def test_reused_medicaid_eligibility_reruns_the_households_whose_inputs_changed(
     # The self-employed adult's eligibility comes from the rerun, not the
     # first pass, which had it ineligible.
     assert by_person_id(export_frame, reuse.values)[SELF_EMPLOYED_PERSON_ID]
+
+
+@pytest.mark.parametrize(
+    ("variable", "period"),
+    [("uncapped_ssi", "2024-12"), ("is_medicaid_eligible", 2024)],
+)
+def test_the_engine_reads_only_listed_columns_while_it_computes_the_pass(
+    variable, period, builder, system, monkeypatch
+) -> None:
+    """Every variable policyengine-us calculates or looks up while it computes
+    the pass variable is in the reuse's input list, except the household
+    weight, which only weights the returned array."""
+
+    from policyengine_core.simulations.simulation import Simulation
+    from policyengine_us import Microsimulation
+
+    from microcosm.build.us_runtime.household_pass_inputs import (
+        us_household_pass_inputs,
+    )
+
+    reads: set[str] = set()
+    recording = False
+    calculate = Simulation.calculate
+    get_holder = Simulation.get_holder
+
+    def recording_calculate(self, variable_name, *args, **kwargs):
+        if recording:
+            reads.add(variable_name)
+        return calculate(self, variable_name, *args, **kwargs)
+
+    def recording_get_holder(self, variable_name):
+        if recording:
+            reads.add(variable_name)
+        return get_holder(self, variable_name)
+
+    monkeypatch.setattr(Simulation, "calculate", recording_calculate)
+    monkeypatch.setattr(Simulation, "get_holder", recording_get_holder)
+    frame = take_up_pass_frame()
+    simulation = Microsimulation(
+        dataset=builder._dataset_from_frame(
+            frame, assert_no_formula_owned_columns=False, period_only=True
+        )
+    )
+    recording = True
+    simulation.calculate(variable, period=period, map_to="person")
+    recording = False
+
+    listed = {
+        column.name
+        for column in us_household_pass_inputs(
+            variable,
+            metadata_index=builder._formula_owned_gate_adapter(),
+            system=system,
+        ).columns
+    }
+    assert len(reads) > 100
+    assert reads - listed == {"household_weight"}

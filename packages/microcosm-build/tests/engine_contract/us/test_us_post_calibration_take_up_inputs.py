@@ -32,6 +32,7 @@ from pathlib import Path
 
 import pytest
 
+from microcosm.build.us_runtime.household_pass_inputs import us_household_pass_inputs
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
     VariableDependencyClosure,
@@ -91,6 +92,25 @@ def _graph_nodes_written(
 ) -> dict[str, tuple[str, ...]]:
     nodes = set(closure.input_leaves) | set(closure.formula_nodes)
     return {stage.name: tuple(sorted(set(stage.columns) & nodes)) for stage in stages}
+
+
+def _listed_columns_written(
+    variable: str,
+    stages: tuple[StageOutputs, ...],
+    metadata_index: PolicyEngineUSVariableMetadataIndex,
+) -> dict[str, tuple[str, ...]]:
+    """The same intersection with the reuse's full input list, which adds the
+    reads the static graph does not follow."""
+
+    from policyengine_us.system import system
+
+    listed = {
+        column.name
+        for column in us_household_pass_inputs(
+            variable, metadata_index=metadata_index, system=system
+        ).columns
+    }
+    return {stage.name: tuple(sorted(set(stage.columns) & listed)) for stage in stages}
 
 
 def _reachable(
@@ -183,6 +203,9 @@ def test_no_column_written_between_the_ssi_passes_reaches_december_uncapped_ssi(
 
     stages = stages_between_ssi_passes(builder)
     assert _graph_nodes_written(closure, stages) == {stage.name: () for stage in stages}
+    assert _listed_columns_written(SSI_PASS_VARIABLE, stages, metadata_index) == {
+        stage.name: () for stage in stages
+    }
 
 
 def test_snap_take_up_and_other_health_outputs_are_medicaid_eligibility_inputs(
@@ -197,7 +220,7 @@ def test_snap_take_up_and_other_health_outputs_are_medicaid_eligibility_inputs(
         "f771a669de6b5e94310b44f249eb6ab09f93fe4e4bd854eb64257311af08f17a",
     )
 
-    assert _graph_nodes_written(closure, stages_between_medicaid_passes()) == {
+    expected = {
         "medicaid_take_up": (),
         "snap_state_take_up": ("takes_up_snap_if_eligible",),
         "other_health_insurance": (
@@ -206,6 +229,12 @@ def test_snap_take_up_and_other_health_outputs_are_medicaid_eligibility_inputs(
             "is_self_employed",
         ),
     }
+    stages = stages_between_medicaid_passes()
+    assert _graph_nodes_written(closure, stages) == expected
+    assert (
+        _listed_columns_written(MEDICAID_PASS_VARIABLE, stages, metadata_index)
+        == expected
+    )
 
 
 def test_snap_take_up_reaches_medicaid_eligibility_only_through_work_requirements(

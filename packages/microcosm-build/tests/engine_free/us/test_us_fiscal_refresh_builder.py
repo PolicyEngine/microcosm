@@ -9312,7 +9312,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return SimpleNamespace(variable=variable)
 
     def fake_reuse_household_pass(
-        record, frame, *, recompute, maximum_microsim_batch_size, description
+        record,
+        frame,
+        *,
+        recompute,
+        maximum_microsim_batch_size,
+        description,
+        telemetry=None,
     ):
         assert callable(recompute)
         captured.setdefault("household_pass_reuses", []).append(

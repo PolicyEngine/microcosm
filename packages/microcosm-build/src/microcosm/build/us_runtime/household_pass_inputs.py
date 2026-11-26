@@ -2,15 +2,32 @@
 
 ``microcosm.build.household_pass_reuse`` reuses a pass's values for
 households whose input columns are unchanged. For policyengine-us those
-columns are every variable in the static dependency graph of the pass's
-variable (``PolicyEngineUSVariableMetadataIndex.variable_dependency_closure``:
-every variable its formulas can read, on any branch and in any period), the
-variable itself included, because a stored column replaces a formula.
+columns are every variable the pass's variable can read, the variable itself
+included, because a stored column replaces a formula. The list starts from
+the static dependency graph
+(``PolicyEngineUSVariableMetadataIndex.variable_dependency_closure``: every
+variable its formulas read through ``entity(...)``, ``add`` and similar
+calls, on any branch and in any period). That graph does not follow three
+kinds of read, so the list adds, until nothing new appears:
+
+* every string in a listed variable's class source that names an engine
+  variable, which covers ``simulation.get_branch(...).calculate("...")``,
+  ``simulation.get_holder("...")`` and ``all_of_variables([...])``, together
+  with each such variable's own graph;
+* each listed variable's ``defined_for`` variable (the state flags such as
+  ``CA`` are named as ``StateCode`` members, not strings).
+
+A string that names a variable without reading it only adds a column to the
+digest, which can rerun a household but never reuses a wrong value.
 """
 
 from __future__ import annotations
 
+import ast
 import enum
+import inspect
+import textwrap
+from functools import cache
 
 from microcosm.build.household_pass_reuse import HouseholdPassInputs, PassInputColumn
 from microcosm.frame.adapters.policyengine_us import PolicyEngineUSVariableMetadataIndex
@@ -64,11 +81,7 @@ def us_household_pass_inputs(
     """
 
     closure = metadata_index.variable_dependency_closure(variable)
-    names = sorted(
-        name
-        for name in {*closure.input_leaves, *closure.formula_nodes}
-        if name in system.variables
-    )
+    names = _readable_variables(variable, metadata_index=metadata_index, system=system)
     columns = tuple(
         PassInputColumn(
             name=name,
@@ -82,7 +95,71 @@ def us_household_pass_inputs(
         variable=variable,
         columns=columns,
         description=(
-            f"policyengine-us {closure.engine_version} dependency graph of "
-            f"{variable}: {len(columns)} variables, sha256 {closure.sha256}"
+            f"policyengine-us {closure.engine_version}: {len(columns)} variables "
+            f"{variable} can read (dependency graph sha256 {closure.sha256}, "
+            "with string and defined_for reads)"
         ),
     )
+
+
+def _graph_variables(
+    name: str, *, metadata_index: PolicyEngineUSVariableMetadataIndex, system
+) -> set[str]:
+    try:
+        closure = metadata_index.variable_dependency_closure(name)
+    except ValueError:
+        # A variable the static index does not define (one generated at
+        # import) has no graph to add; its own name is still listed.
+        return {name}
+    return {
+        node
+        for node in (*closure.input_leaves, *closure.formula_nodes)
+        if node in system.variables
+    }
+
+
+@cache
+def _class_string_constants(variable_class: type) -> frozenset[str]:
+    try:
+        source = inspect.getsource(variable_class)
+    except (OSError, TypeError):
+        # A class generated at import has no source file; the static index
+        # covers those from its audited snapshot.
+        return frozenset()
+    return frozenset(
+        node.value
+        for node in ast.walk(ast.parse(textwrap.dedent(source)))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    )
+
+
+def _extra_reads(definition, system) -> set[str]:
+    """Variables ``definition`` reads that its static graph may not show."""
+
+    reads = {
+        value
+        for value in _class_string_constants(type(definition))
+        if value in system.variables
+    }
+    defined_for = getattr(definition, "defined_for", None)
+    if defined_for is not None:
+        reads.add(getattr(defined_for, "name", defined_for))
+    reads.discard(definition.name)
+    return {read for read in reads if read in system.variables}
+
+
+def _readable_variables(
+    variable: str, *, metadata_index: PolicyEngineUSVariableMetadataIndex, system
+) -> list[str]:
+    names = _graph_variables(variable, metadata_index=metadata_index, system=system)
+    names.add(variable)
+    pending = sorted(names)
+    while pending:
+        definition = system.variables[pending.pop()]
+        for read in sorted(_extra_reads(definition, system) - names):
+            added = {read} | _graph_variables(
+                read, metadata_index=metadata_index, system=system
+            )
+            pending.extend(sorted(added - names))
+            names |= added
+    return sorted(names)

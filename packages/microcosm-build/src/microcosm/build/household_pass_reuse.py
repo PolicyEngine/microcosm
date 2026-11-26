@@ -14,8 +14,8 @@ belongs to one household, and the input list names every column the engine
 can read for the variable. :class:`HouseholdPassRecord` keeps the values, the
 person IDs and a 128-bit digest of each household's rows; it keeps no frame.
 
-A reuse also runs the engine on some unchanged households and compares the
-results byte for byte with the recorded values. If any differ (an input list
+A reuse also runs the engine on some unchanged households, spread over the
+frame, and compares the results byte for byte with the recorded values. If any differ (an input list
 that misses a column the engine reads, say), it runs every household again,
 so the values it returns are those of a full pass.
 """
@@ -318,37 +318,81 @@ def record_household_pass(
     )
 
 
+def _checked_household_positions(unchanged: np.ndarray, count: int) -> np.ndarray:
+    """Up to ``count`` unchanged households, spread evenly over the frame.
+
+    Pools are concatenated from source blocks (one spine, then another), so a
+    sample from one end of the frame would check one source only.
+    """
+
+    unchanged_positions = np.flatnonzero(unchanged)
+    count = min(max(int(count), 0), len(unchanged_positions))
+    if not count:
+        return np.zeros(0, dtype=np.int64)
+    picks = (np.arange(count, dtype=np.int64) * len(unchanged_positions)) // count
+    return unchanged_positions[picks]
+
+
 def _run_households(
     frame: Frame,
-    person_mask: np.ndarray,
+    run_households: np.ndarray,
+    person_households: np.ndarray,
     recompute: Callable[[Frame], np.ndarray],
     *,
     variable: str,
     dtype: np.dtype,
+    batch_household_count: int,
 ) -> np.ndarray:
-    """The engine's values for the masked people, in frame order."""
+    """The engine's values for the people of the marked households.
+
+    Returns a person-aligned array whose entries for people outside those
+    households are unset. With every household marked, ``recompute`` gets
+    ``frame`` itself and batches it as a full pass does. Otherwise it gets one
+    selection of at most ``batch_household_count`` marked households at a
+    time, so no more than one batch's rows are copied at once.
+    """
 
     schema = frame.schema
-    run_frame = frame if person_mask.all() else frame.select(person_mask)
-    run_person_ids = run_frame.table(schema.person_entity)[
-        schema.person_id_column
-    ].to_numpy()
-    run_values = np.asarray(recompute(run_frame))
-    if run_values.shape != (len(run_person_ids),):
-        raise ValueError(
-            f"The {variable} pass must return one value per person: "
-            f"{len(run_person_ids)} people, values of shape {run_values.shape}."
-        )
-    if run_values.dtype != dtype:
-        raise ValueError(
-            f"The {variable} pass returned dtype {run_values.dtype}; the "
-            f"record holds {dtype}."
-        )
     person_ids = frame.table(schema.person_entity)[schema.person_id_column].to_numpy()
-    positions = pd.Index(run_person_ids).get_indexer(person_ids[person_mask])
-    if (positions < 0).any():
-        raise ValueError(f"The {variable} pass dropped people from its frame.")
-    return run_values[positions]
+    values = np.empty(len(person_ids), dtype=dtype)
+    positions = np.flatnonzero(run_households)
+    if len(positions) == len(run_households):
+        batches = [None]
+    else:
+        size = max(int(batch_household_count), 1)
+        batches = [
+            positions[start : start + size] for start in range(0, len(positions), size)
+        ]
+    for batch in batches:
+        if batch is None:
+            batch_people = np.ones(len(person_ids), dtype=bool)
+            batch_frame = frame
+        else:
+            in_batch = np.zeros(len(run_households), dtype=bool)
+            in_batch[batch] = True
+            batch_people = in_batch[person_households]
+            batch_frame = frame.select(batch_people)
+        batch_person_ids = batch_frame.table(schema.person_entity)[
+            schema.person_id_column
+        ].to_numpy()
+        batch_values = np.asarray(recompute(batch_frame))
+        if batch_values.shape != (len(batch_person_ids),):
+            raise ValueError(
+                f"The {variable} pass must return one value per person: "
+                f"{len(batch_person_ids)} people, values of shape "
+                f"{batch_values.shape}."
+            )
+        if batch_values.dtype != dtype:
+            raise ValueError(
+                f"The {variable} pass returned dtype {batch_values.dtype}; the "
+                f"record holds {dtype}."
+            )
+        order = pd.Index(batch_person_ids).get_indexer(person_ids[batch_people])
+        if (order < 0).any():
+            raise ValueError(f"The {variable} pass dropped people from its frame.")
+        values[batch_people] = batch_values[order]
+        del batch_frame, batch_values
+    return values
 
 
 def reuse_household_pass(
@@ -357,16 +401,17 @@ def reuse_household_pass(
     *,
     recompute: Callable[[Frame], np.ndarray],
     checked_household_count: int,
+    batch_household_count: int,
 ) -> HouseholdPassReuse:
     """Values of ``record``'s pass on ``frame``, rerunning only what changed.
 
-    ``recompute`` runs the pass on a frame (a selection of whole households)
-    and returns one value per person of that frame. It runs once, on the
-    households whose digest differs from the record or that the record lacks,
-    together with the first ``checked_household_count`` unchanged households
-    in frame order. If any checked person's value differs from the recorded
-    one, ``recompute`` runs once more on every household and those values are
-    returned.
+    ``recompute`` runs the pass on a frame of whole households and returns
+    one value per person of that frame. It runs on the households whose
+    digest differs from the record or that the record lacks, together with
+    ``checked_household_count`` unchanged households spread over the frame,
+    in selections of at most ``batch_household_count`` households. If any
+    checked person's value differs from the recorded one, ``recompute`` runs
+    on the whole frame and those values are returned.
     """
 
     schema = frame.schema
@@ -395,20 +440,31 @@ def reuse_household_pass(
     values[person_reused] = record.values[stored_people[person_reused]]
 
     checked = np.zeros(len(household_ids), dtype=bool)
-    checked[np.flatnonzero(unchanged)[: max(int(checked_household_count), 0)]] = True
+    checked[_checked_household_positions(unchanged, checked_household_count)] = True
     run_households = ~unchanged | checked
     if run_households.any():
         run_people = run_households[person_households]
-        run_values = np.empty(len(person), dtype=dtype)
-        run_values[run_people] = _run_households(
-            frame, run_people, recompute, variable=variable, dtype=dtype
+        run_values = _run_households(
+            frame,
+            run_households,
+            person_households,
+            recompute,
+            variable=variable,
+            dtype=dtype,
+            batch_household_count=batch_household_count,
         )
         checked_people = run_people & person_reused
         if values[checked_people].tobytes() != run_values[checked_people].tobytes():
-            every_person = np.ones(len(person), dtype=bool)
+            del run_values
             return HouseholdPassReuse(
                 values=_run_households(
-                    frame, every_person, recompute, variable=variable, dtype=dtype
+                    frame,
+                    np.ones(len(household_ids), dtype=bool),
+                    person_households,
+                    recompute,
+                    variable=variable,
+                    dtype=dtype,
+                    batch_household_count=batch_household_count,
                 ),
                 reused_households=0,
                 recomputed_households=len(household_ids),

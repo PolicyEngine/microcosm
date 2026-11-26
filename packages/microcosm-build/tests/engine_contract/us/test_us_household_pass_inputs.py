@@ -1,11 +1,15 @@
 """The input columns of a household-batched policyengine-us pass.
 
-``us_household_pass_inputs`` lists every variable a pass's formulas can read
-(the engine's static dependency graph of the variable, the variable itself
-included) with the table it is stored in and the value an absent column
-reads as. ``microcosm.build.household_pass_reuse`` digests these columns per
-household to decide which households a later pass can take from an earlier
-one.
+``us_household_pass_inputs`` lists every variable a pass's formulas can
+read, the variable itself included, with the table it is stored in and the
+value an absent column reads as: the engine's static dependency graph, plus
+the reads that graph does not follow (names in strings, such as a branch
+simulation's ``calculate("income_tax")``, ``get_holder("has_itin")`` and
+``all_of_variables([...])``, and ``defined_for`` state flags).
+``microcosm.build.household_pass_reuse`` digests these columns per household
+to decide which households a later pass can take from an earlier one.
+``engine_workflow/us/test_us_post_calibration_take_up_inputs.py`` checks the
+list against the names the engine reads while it computes each variable.
 """
 
 from __future__ import annotations
@@ -40,17 +44,50 @@ def test_pass_inputs_are_every_engine_variable_in_the_graph(
 
     # The graph also names a few parameter paths; the engine reads no column
     # by those names.
-    expected = sorted(
+    graph = {
         name
         for name in {*closure.input_leaves, *closure.formula_nodes}
         if name in system.variables
-    )
+    }
+    names = [column.name for column in inputs.columns]
     assert inputs.variable == variable
-    assert [column.name for column in inputs.columns] == expected
-    assert variable in expected
+    assert names == sorted(set(names))
+    assert graph <= set(names)
+    assert variable in names
     assert closure.sha256 in inputs.description
     for column in inputs.columns:
         assert column.entity == system.variables[column.name].entity.key
+
+
+def test_pass_inputs_add_the_reads_the_static_graph_does_not_follow(
+    metadata_index, system
+) -> None:
+    def added(variable: str) -> set[str]:
+        closure = metadata_index.variable_dependency_closure(variable)
+        listed = {
+            column.name
+            for column in us_household_pass_inputs(
+                variable, metadata_index=metadata_index, system=system
+            ).columns
+        }
+        return listed - {*closure.input_leaves, *closure.formula_nodes}
+
+    assert added("uncapped_ssi") == set()
+    medicaid_added = added("is_medicaid_eligible")
+    # tax_liability_if_itemizing computes income_tax in a branch simulation;
+    # has_tin reads a stored has_itin through get_holder; is_adult_for_medicaid
+    # combines its _fc and _nfc variables with all_of_variables; state
+    # programs are defined_for a state flag.
+    for name in (
+        "income_tax",
+        "has_itin",
+        "is_adult_for_medicaid_fc",
+        "is_military",
+        "refundable_payroll_tax_credit",
+        "CA",
+        "NY",
+    ):
+        assert name in medicaid_added, name
 
 
 def test_only_plain_inputs_with_neutral_defaults_read_as_absent(

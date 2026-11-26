@@ -147,9 +147,20 @@ def _record(frame: Frame, engine: _StandInEngine):
     return record_household_pass(frame, engine(frame), _INPUTS)
 
 
-def _reuse(record, frame: Frame, engine: _StandInEngine, *, checked: int = 1):
+def _reuse(
+    record,
+    frame: Frame,
+    engine: _StandInEngine,
+    *,
+    checked: int = 1,
+    batch: int = 100,
+):
     return reuse_household_pass(
-        record, frame, recompute=engine, checked_household_count=checked
+        record,
+        frame,
+        recompute=engine,
+        checked_household_count=checked,
+        batch_household_count=batch,
     )
 
 
@@ -164,8 +175,23 @@ def test_unchanged_households_take_their_recorded_values() -> None:
     assert (result.reused_households, result.recomputed_households) == (5, 0)
     assert result.checked_households == 2
     assert result.check_failed is False
-    # One run over the two checked households only.
-    assert engine.calls[1] == [1, 2]
+    # One run over the two checked households only, spread over the frame.
+    assert engine.calls[1] == [1, 3]
+
+
+def test_reruns_take_one_batch_of_households_at_a_time() -> None:
+    frame = _frame()
+    engine = _StandInEngine()
+    record = _record(frame, engine)
+    person = frame.table("person").copy()
+    person.loc[person["person_id"].isin([1, 4, 7]), "income"] = 33.0
+    changed = _with_tables(frame, person=person)
+
+    result = _reuse(record, changed, engine, checked=0, batch=2)
+
+    # Households 1, 3 and 5 changed; selections of at most two households.
+    assert engine.calls[1:3] == [[1, 3], [5]]
+    assert result.values.tobytes() == engine(changed).tobytes()
 
 
 def test_a_changed_input_reruns_only_its_household() -> None:
@@ -369,6 +395,7 @@ def test_record_and_reuse_refuse_misaligned_values() -> None:
             _with_tables(frame, person=person),
             recompute=lambda run_frame: np.zeros(1, dtype=np.float64),
             checked_household_count=0,
+            batch_household_count=100,
         )
     with pytest.raises(ValueError, match="dtype"):
         reuse_household_pass(
@@ -376,4 +403,5 @@ def test_record_and_reuse_refuse_misaligned_values() -> None:
             _with_tables(frame, person=person),
             recompute=lambda run_frame: np.zeros(run_frame.n("person"), dtype=bool),
             checked_household_count=0,
+            batch_household_count=100,
         )
