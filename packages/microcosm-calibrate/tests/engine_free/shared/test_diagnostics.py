@@ -8,20 +8,25 @@ the artifact a release directory publishes.
 
 from __future__ import annotations
 
+import gc
 import json
 import logging
+import weakref
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from scipy import sparse
 
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_ASSEMBLY_SCHEMA_VERSION,
     TARGET_LOSS_ATTRIBUTION_WARNING_CODES,
     TARGET_LOSS_BASIS_HASH_ALGORITHM,
     CalibrationHierarchy,
+    ConstraintMatrixDroppedError,
+    DroppedConstraintMatrix,
     HierarchyCategory,
     HierarchyDimension,
     HierarchyGeography,
@@ -37,9 +42,12 @@ from microcosm.calibrate import (
     geography_constants,
     past_cap_census,
     score_targets,
+    without_constraint_matrix,
     write_calibration_diagnostics,
 )
 from microcosm.calibrate._target_loss_attribution import target_loss_basis_hash
+from microcosm.calibrate.artifacts import encode_problem
+from microcosm.calibrate.diagnostics import target_surface_payload
 from microcosm.calibrate.geography_constants import (
     UK_GEOGRAPHY_ID_TO_LABEL,
     UK_WIDE_GEOGRAPHY_IDS,
@@ -1216,3 +1224,177 @@ def test_payload_census_from_a_real_solve(feasible_frame) -> None:
     assert census["final_past_cap"] == census["frozen"] + census["pushed_out"]
     assert census == past_cap_census(result)
     json.dumps(payload, allow_nan=False)
+
+
+def _sparse_targets(truths) -> TargetSet:
+    """Income on every household and renters on about a third of them, so the
+    constraint matrix stores fewer entries than it has cells."""
+    return TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                value=truths["income"] * 1.2,
+                measure="income",
+            ),
+            Target(
+                name="renters",
+                entity="household",
+                value=truths["renters"] * 1.1,
+                measure="is_renter",
+            ),
+        )
+    )
+
+
+def _sparse_result(feasible_frame):
+    frame, truths = feasible_frame()
+    return calibrate(frame, _sparse_targets(truths), epochs=20, seed=0)
+
+
+def _l0_refit_result(feasible_frame):
+    frame, truths = feasible_frame()
+    return calibrate_l0_refit(
+        frame,
+        _sparse_targets(truths),
+        epochs=40,
+        seed=0,
+        l0_lambda=0.003,
+        mass="conserve",
+    )
+
+
+def _assert_sparse(matrix) -> None:
+    rows, columns = matrix.shape
+    assert 0 < matrix.nnz < rows * columns
+
+
+def _matrix_references(problem) -> list[weakref.ref]:
+    """Weak references to a constraint matrix and each array that stores it."""
+    matrix = problem.matrix
+    return [
+        weakref.ref(matrix),
+        weakref.ref(matrix.data),
+        weakref.ref(matrix.indices),
+        weakref.ref(matrix.indptr),
+    ]
+
+
+def test_dropping_the_constraint_matrix_keeps_its_shape_and_nonzero_count(
+    feasible_frame,
+) -> None:
+    """The matrix is freed; the target surface and the payload are unchanged."""
+    result = _sparse_result(feasible_frame)
+    _assert_sparse(result.problem.matrix)
+    shape = tuple(result.problem.matrix.shape)
+    nonzero_count = int(result.problem.matrix.nnz)
+    surface = target_surface_payload(result)
+    payload = diagnostics_payload(result)
+    references = _matrix_references(result.problem)
+
+    dropped = without_constraint_matrix(result)
+    del result
+    gc.collect()
+
+    assert [
+        index for index, reference in enumerate(references) if reference() is not None
+    ] == []
+    assert isinstance(dropped.problem.matrix, DroppedConstraintMatrix)
+    assert dropped.problem.matrix.shape == shape
+    assert dropped.problem.matrix.nnz == nonzero_count
+    assert (dropped.problem.n_targets, dropped.problem.n_weights) == shape
+    assert target_surface_payload(dropped) == surface
+    assert diagnostics_payload(dropped) == payload
+    # Dropping twice keeps the recorded numbers.
+    again = without_constraint_matrix(dropped)
+    assert again.problem.matrix.shape == shape
+    assert again.problem.matrix.nnz == nonzero_count
+
+
+def test_dropping_an_l0_refit_result_drops_the_selection_matrix_too(
+    feasible_frame,
+) -> None:
+    """Under L0 selection the selection's full-frame matrix is freed as well."""
+    result = _l0_refit_result(feasible_frame)
+    _assert_sparse(result.selection.problem.matrix)
+    _assert_sparse(result.refit.problem.matrix)
+    refit_shape = tuple(result.refit.problem.matrix.shape)
+    refit_nonzero_count = int(result.refit.problem.matrix.nnz)
+    selection_shape = tuple(result.selection.problem.matrix.shape)
+    selection_nonzero_count = int(result.selection.problem.matrix.nnz)
+    surface = target_surface_payload(result)
+    payload = diagnostics_payload(result)
+    references = [
+        *_matrix_references(result.selection.problem),
+        *_matrix_references(result.refit.problem),
+    ]
+
+    dropped = without_constraint_matrix(result)
+    del result
+    gc.collect()
+
+    assert [
+        index for index, reference in enumerate(references) if reference() is not None
+    ] == []
+    assert dropped.selection.problem.matrix.shape == selection_shape
+    assert dropped.selection.problem.matrix.nnz == selection_nonzero_count
+    assert dropped.refit.problem.matrix.shape == refit_shape
+    assert dropped.refit.problem.matrix.nnz == refit_nonzero_count
+    assert target_surface_payload(dropped) == surface
+    assert diagnostics_payload(dropped) == payload
+
+
+def test_a_dropped_constraint_matrix_refuses_every_use_that_needs_its_entries(
+    feasible_frame,
+) -> None:
+    """A later call that needs the matrix raises; it never sees an empty one."""
+    dropped = without_constraint_matrix(_result(feasible_frame, epochs=20))
+    matrix = dropped.problem.matrix
+    weights = np.asarray(dropped.weights, dtype=np.float64)
+
+    with pytest.raises(ConstraintMatrixDroppedError, match="was dropped"):
+        dropped.problem.estimates(weights)
+    with pytest.raises(ConstraintMatrixDroppedError, match="was dropped"):
+        matrix @ weights
+    with pytest.raises(ConstraintMatrixDroppedError, match="was dropped"):
+        weights @ matrix
+    with pytest.raises(ConstraintMatrixDroppedError, match="was dropped"):
+        matrix[0:1]
+    with pytest.raises(ConstraintMatrixDroppedError, match="was dropped"):
+        matrix.toarray()
+    with pytest.raises(ConstraintMatrixDroppedError, match="was dropped"):
+        _ = matrix.data
+    with pytest.raises(ConstraintMatrixDroppedError, match="was dropped"):
+        np.asarray(matrix)
+    with pytest.raises(ConstraintMatrixDroppedError, match="was dropped"):
+        len(matrix)
+    # Encoding the problem for an artifact needs every entry. SciPy reports
+    # the refusal as its own error raised from this one.
+    with pytest.raises(
+        (ConstraintMatrixDroppedError, TypeError, ValueError)
+    ) as encoding_error:
+        encode_problem(dropped.problem, entity_ids=list(range(len(weights))))
+    assert isinstance(encoding_error.value, ConstraintMatrixDroppedError) or isinstance(
+        encoding_error.value.__cause__, ConstraintMatrixDroppedError
+    )
+
+
+def test_a_dropped_matrix_keeps_the_stored_entry_count() -> None:
+    """``nnz`` is the stored-entry count the target surface records, explicit
+    zeros included, not the count of nonzero values or of cells."""
+    matrix = sparse.csr_array(
+        (np.array([1.0, 0.0, 2.0]), np.array([0, 2, 1]), np.array([0, 2, 3])),
+        shape=(2, 4),
+    )
+    assert (matrix.nnz, matrix.count_nonzero()) == (3, 2)
+
+    dropped = DroppedConstraintMatrix.of(matrix)
+
+    assert (dropped.shape, dropped.nnz) == ((2, 4), 3)
+    assert DroppedConstraintMatrix.of(dropped) is dropped
+
+
+def test_dropping_the_constraint_matrix_returns_other_objects_unchanged() -> None:
+    """A stand-in for a result holds no compiled matrix and passes through."""
+    stand_in = SimpleNamespace(diagnostics=[], problem=SimpleNamespace(targets=[]))
+    assert without_constraint_matrix(stand_in) is stand_in

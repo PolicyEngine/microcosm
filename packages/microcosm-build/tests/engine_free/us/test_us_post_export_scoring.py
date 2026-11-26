@@ -1,6 +1,10 @@
 """Tests split from packages/microcosm-build/tests/test_us_post_export_scoring.py."""
 
 # ruff: noqa: F403, F405
+import weakref
+from collections.abc import Iterator
+
+from microcosm.calibrate import DroppedConstraintMatrix
 from test_support.microcosm_build.us_post_export_scoring import *
 
 
@@ -1191,12 +1195,41 @@ def test_main_frees_the_target_frame_before_the_export(builder) -> None:
     assert reads and max(reads) < deleted_at
 
 
-def test_calibration_result_holds_no_reference_to_the_target_frame() -> None:
-    """The premise of ``del target_frame``: ``calibrate`` keeps no reference
-    to its input frame, and ``result.frame`` shares no memory with it."""
+@pytest.fixture
+def copy_on_write_on() -> Iterator[None]:
+    """Turn copy-on-write on under pandas 2.x; pandas 3 always has it on."""
+
+    if int(pd.__version__.split(".", 1)[0]) >= 3:
+        yield
+        return
+    with pd.option_context("mode.copy_on_write", True):
+        yield
+
+
+def test_calibration_leaves_its_input_frame_unchanged_and_unreferenced(
+    copy_on_write_on: None,
+) -> None:
+    """The premise of ``del target_frame``.
+
+    ``calibrate`` keeps no reference to its input frame and leaves it
+    unchanged. Under pandas copy-on-write, ``result.frame`` shares the input's
+    column memory (``Frame.with_weights`` builds it without copying), so the
+    target tables are freed only once both ``target_frame`` and the result's
+    frame are gone: ``del target_frame`` removes one reference and
+    ``_without_calibrated_frames`` the other. A result built with
+    ``return_frame=False`` holds no frame, so it keeps nothing of the input's
+    tables alive.
+    """
     frame, targets = _small_calibration_problem()
+    tables_before = {
+        entity: frame.table(entity).copy(deep=True) for entity in frame.entities
+    }
+    weights_before = frame.weights_for("household").values.copy()
+    strata_before = frame.strata.copy(deep=True)
+
     result = calibrate(frame, targets, epochs=3, mass="conserve", seed=0)
     gc.collect()
+
     # Nothing the calibration returned (or cached) refers to the input frame.
     referrers = [
         type(referrer).__name__
@@ -1205,12 +1238,45 @@ def test_calibration_result_holds_no_reference_to_the_target_frame() -> None:
     ]
     assert referrers == []
     assert result.frame is not frame
-    for entity in ("person", "household"):
-        for column in frame.table(entity).columns:
-            assert not np.shares_memory(
+    for entity, table_before in tables_before.items():
+        pd.testing.assert_frame_equal(
+            frame.table(entity), table_before, check_exact=True
+        )
+        assert result.frame.table(entity) is not frame.table(entity)
+        for column in table_before.columns:
+            assert np.shares_memory(
                 frame.table(entity)[column].to_numpy(),
                 result.frame.table(entity)[column].to_numpy(),
-            )
+            ), (entity, column)
+    assert frame.weights_for("household").kind is WeightKind.DESIGN
+    np.testing.assert_array_equal(frame.weights_for("household").values, weights_before)
+    pd.testing.assert_series_equal(frame.strata, strata_before, check_exact=True)
+    assert frame.mass_log == ()
+
+    # A pandas write into the calibrated frame's tables never reaches the input.
+    result.frame.table("household").loc[0, "x"] = -1.0
+    pd.testing.assert_frame_equal(
+        frame.table("household"), tables_before["household"], check_exact=True
+    )
+
+    frameless = calibrate(
+        frame, targets, epochs=3, mass="conserve", seed=0, return_frame=False
+    )
+    assert frameless.frame is None
+    np.testing.assert_array_equal(frameless.weights, result.weights)
+    # Follow the input's income column to the array that owns its memory.
+    income_values = frame.table("person")["income"].to_numpy()
+    while isinstance(income_values.base, np.ndarray):
+        income_values = income_values.base
+    input_income_memory = weakref.ref(income_values)
+    del income_values, frame
+    gc.collect()
+    # The calibrated frame alone keeps the input's column memory alive...
+    assert input_income_memory() is not None
+    del result
+    gc.collect()
+    # ...and a result built with return_frame=False keeps none of it.
+    assert input_income_memory() is None
 
 
 def test_calibration_results_drop_their_frames_and_keep_everything_else(
@@ -1312,6 +1378,7 @@ def test_main_drops_the_calibration_frames_before_the_export(builder) -> None:
     assert [value for _, value in later_bindings] == [
         "_without_calibrated_frames(result, "
         "export_frame=export_frame if ladder_outcome is not None else None)",
+        "without_constraint_matrix(result)",
     ]
     assert all(deleted < lineno < write_call for lineno, _ in later_bindings)
     export_bindings = [
@@ -1401,6 +1468,8 @@ def test_main_has_no_calibrated_target_frame_at_the_export_write(
         cleaned = namespace["result"]
         if not full_pool:
             assert cleaned.selection.frame is None
+            assert isinstance(cleaned.selection.problem.matrix, DroppedConstraintMatrix)
+        assert isinstance(cleaned.problem.matrix, DroppedConstraintMatrix)
         assert cleaned.frame is (frame if exact_k else None)
         if exact_k:
             outcome = namespace["ladder_outcome"]
@@ -1928,3 +1997,208 @@ def test_scorer_dataset_keeps_the_engine_projection(
 
     assert scorer._dataset_from_frame(first_batch) is first_batch
     assert calls == [{"assert_no_formula_owned_columns": False}]
+
+
+# ---------------------------------------------------------------------------
+# Rule modules: each reform's are removed once the consumer moves on
+# ---------------------------------------------------------------------------
+
+
+def _stand_in_rule_modules_left(variables_dir) -> list[str]:
+    return [
+        name
+        for name, module in tuple(sys.modules.items())
+        if str(getattr(module, "__file__", "")).startswith(str(variables_dir))
+    ]
+
+
+def test_each_reform_releases_its_rule_modules_once_the_next_reform_opens(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    """policyengine-core never removes the variable modules a rules build adds
+    to ``sys.modules``. The scorer removes a reform's once its consumer opens
+    the next reform or finishes, refuses to score a finished reform again, and
+    scores the same values."""
+    frame = _nested_frame()
+    log = _EngineLog()
+    scorer = _scorer(
+        builder,
+        frame,
+        log,
+        3,
+        tmp_path / "released",
+        variables_dir=stand_in_rule_modules,
+    )
+    consumer = scorer.open_consumer("fixture", ())
+    first = consumer.simulate(_FakeReform("first"))
+    first_values = first.calculate("income_tax", builder.PERIOD)
+    first_module = _rule_module_name(log.systems[0])
+    assert first_module in sys.modules
+
+    second = consumer.simulate(_FakeReform("second"))
+    assert first_module not in sys.modules
+    with pytest.raises(RuntimeError, match="finished reform"):
+        first.calculate("income_tax", builder.PERIOD + 1)
+    second_values = second.calculate("income_tax", builder.PERIOD)
+    second_module = _rule_module_name(log.systems[1])
+    assert second_module in sys.modules
+
+    scorer.finish_consumer(consumer)
+    assert second_module not in sys.modules
+    assert _stand_in_rule_modules_left(stand_in_rule_modules) == []
+
+    reference = _scorer(builder, frame, _EngineLog(), 3, tmp_path / "reference")
+    reference_consumer = reference.open_consumer("fixture", ())
+    for label, values in (("first", first_values), ("second", second_values)):
+        expected = reference_consumer.simulate(_FakeReform(label)).calculate(
+            "income_tax", builder.PERIOD
+        )
+        assert np.asarray(values).tobytes() == np.asarray(expected).tobytes()
+        assert values.weights.tobytes() == expected.weights.tobytes()
+
+
+def test_closing_the_scorer_releases_an_unfinished_consumers_rule_modules(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    log = _EngineLog()
+    scorer = _scorer(
+        builder, _nested_frame(), log, 3, tmp_path, variables_dir=stand_in_rule_modules
+    )
+    consumer = scorer.open_consumer("fixture", ())
+    consumer.simulate(_FakeReform("only")).calculate("income_tax", builder.PERIOD)
+    assert _rule_module_name(log.systems[0]) in sys.modules
+
+    scorer.close()
+
+    assert _stand_in_rule_modules_left(stand_in_rule_modules) == []
+
+
+def test_the_shipped_consumers_leave_no_rule_modules_and_score_the_same(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    frame = _nested_frame()
+    reference, _, _, _ = _batched_run(builder, frame, 3, tmp_path / "reference")
+    log = _EngineLog()
+    scorer = _scorer(
+        builder,
+        frame,
+        log,
+        3,
+        tmp_path / "released",
+        variables_dir=stand_in_rule_modules,
+    )
+    consumers: dict[str, object] = {}
+
+    def simulate_for(name, consumer):
+        plan = builder._record_post_export_baseline_plan(consumer)
+        consumers[name] = scorer.open_consumer(name, plan)
+        return consumers[name].simulate
+
+    gate, payload, demographics = _run_consumers(builder, simulate_for)
+    for consumer in consumers.values():
+        scorer.finish_consumer(consumer)
+
+    reference_gate, reference_payload, reference_demographics = reference
+    assert gate.passed == reference_gate.passed
+    assert gate.details == reference_gate.details
+    assert payload == reference_payload
+    assert demographics == reference_demographics
+    assert len(log.systems) > 43
+    assert _stand_in_rule_modules_left(stand_in_rule_modules) == []
+
+
+def test_an_abandoned_scorers_reform_never_removes_a_later_scorers_modules(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    """A scorer dropped with a reform open leaves its modules, harmlessly, and
+    the garbage collector never makes it remove a later reform's modules."""
+    abandoned_log = _EngineLog()
+    abandoned = _scorer(
+        builder,
+        _nested_frame(),
+        abandoned_log,
+        3,
+        tmp_path / "abandoned",
+        variables_dir=stand_in_rule_modules,
+    )
+    abandoned.open_consumer("fixture", ()).simulate(_FakeReform("dropped")).calculate(
+        "income_tax", builder.PERIOD
+    )
+    del abandoned
+    log = _EngineLog()
+    scorer = _scorer(
+        builder,
+        _nested_frame(),
+        log,
+        3,
+        tmp_path / "later",
+        variables_dir=stand_in_rule_modules,
+    )
+    consumer = scorer.open_consumer("fixture", ())
+    consumer.simulate(_FakeReform("kept")).calculate("income_tax", builder.PERIOD)
+    later_module = _rule_module_name(log.systems[0])
+    gc.collect()
+    assert later_module in sys.modules
+
+    scorer.finish_consumer(consumer)
+    assert later_module not in sys.modules
+
+
+def test_a_scorer_keeps_one_reform_open_across_its_consumers(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    log = _EngineLog()
+    scorer = _scorer(
+        builder, _nested_frame(), log, 3, tmp_path, variables_dir=stand_in_rule_modules
+    )
+    first_consumer = scorer.open_consumer("first", ())
+    first_consumer.simulate(_FakeReform("first")).calculate(
+        "income_tax", builder.PERIOD
+    )
+    second_consumer = scorer.open_consumer("second", ())
+    second_consumer.simulate(_FakeReform("second")).calculate(
+        "income_tax", builder.PERIOD
+    )
+
+    assert _rule_module_name(log.systems[0]) not in sys.modules
+    assert _rule_module_name(log.systems[1]) in sys.modules
+    scorer.finish_consumer(first_consumer)
+    assert _rule_module_name(log.systems[1]) in sys.modules
+    scorer.finish_consumer(second_consumer)
+    assert _stand_in_rule_modules_left(stand_in_rule_modules) == []
+
+
+def test_closing_one_scorer_keeps_another_scorers_open_reform_modules(
+    builder, fake_reforms, stand_in_rule_modules, tmp_path
+) -> None:
+    first_log, second_log = _EngineLog(), _EngineLog()
+    first = _scorer(
+        builder,
+        _nested_frame(),
+        first_log,
+        3,
+        tmp_path / "first",
+        variables_dir=stand_in_rule_modules,
+    )
+    second = _scorer(
+        builder,
+        _nested_frame(),
+        second_log,
+        3,
+        tmp_path / "second",
+        variables_dir=stand_in_rule_modules,
+    )
+    first.open_consumer("fixture", ()).simulate(_FakeReform("first")).calculate(
+        "income_tax", builder.PERIOD
+    )
+    second_consumer = second.open_consumer("fixture", ())
+    second_reform = second_consumer.simulate(_FakeReform("second"))
+    second_reform.calculate("income_tax", builder.PERIOD)
+
+    first.close()
+
+    assert _rule_module_name(first_log.systems[0]) not in sys.modules
+    assert _rule_module_name(second_log.systems[0]) in sys.modules
+    second_reform.calculate("income_tax", builder.PERIOD + 1)
+    second.finish_consumer(second_consumer)
+    assert _stand_in_rule_modules_left(stand_in_rule_modules) == []

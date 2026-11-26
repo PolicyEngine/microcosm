@@ -3734,6 +3734,27 @@ def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
     }
     assert {spec.metadata["ledger_geography_level"] for spec in soi} == {"state"}
     assert {spec.name for spec in state_specs} <= set(full_by_name)
+    # The compiler drops the district file's SALT and premium-tax-credit facts
+    # read from the wrong IRS column (microcosm#1038), so `totals` keeps only
+    # the 51 states' Historic Table 2 premium-tax-credit rows, returns and
+    # amounts, and `full` 29,824 SOI specs. With no such district rows left,
+    # the crosswalk no longer copies those Historic Table 2 rows to the nine
+    # at-large districts (each copy repeated its state row).
+    totals_soi = [spec for spec in totals_registry.specs if spec.family == "irs_soi"]
+    assert len(totals_soi) == 102
+    assert {spec.metadata["ledger_geography_level"] for spec in totals_soi} == {
+        "state"
+    }
+    assert {spec.metadata["source_measure_id"] for spec in totals_soi} == {
+        "premium_tax_credit_returns",
+        "premium_tax_credit_amount",
+    }
+    assert not [
+        spec.name
+        for spec in totals_soi
+        if ".congressional_district_" in spec.metadata["ledger_layout_record_set_id"]
+    ]
+    assert sum(spec.family == "irs_soi" for spec in full_registry.specs) == 29_824
 
     assert not [
         spec
@@ -6455,9 +6476,17 @@ def _reviewed_fill(entity, column, fill_value="0", spine="acs_2024_1yr") -> dict
     }
 
 
+#: Reviewed fills added since release 767312d60, each with its register entry.
+#: strike_benefits: the OIP predictor extension (d5aa4e25c) makes every donor
+#: carry it, and nothing transfers it, so every ACS person is filled
+#: (microcosm#922).
+_REVIEWED_FILLS_ADDED_SINCE_767312D60 = {("person", "strike_benefits")}
+
+
 def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     """Release 767312d60 default-filled 79 columns; the stack now fills 20 of
-    them (NEVER_DEFAULT_FILLED), and every other one has a register entry."""
+    them (NEVER_DEFAULT_FILLED), and every other one has a register entry, as
+    does each reviewed fill added since."""
 
     module = _load_tool_module()
     document = load_reviewed_fill_consumer_register()
@@ -6479,7 +6508,8 @@ def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     # returned to a reviewed fill after the microcosm#1064 review (VEH counts
     # vehicles available, not owned): it left NEVER_DEFAULT_FILLED and gained
     # an entry together, so this still holds.
-    assert registered == released - now_filled
+    assert registered == (released - now_filled) | _REVIEWED_FILLS_ADDED_SINCE_767312D60
+    assert not released & _REVIEWED_FILLS_ADDED_SINCE_767312D60
 
 
 def test_do_finalize_hard_fails_on_an_unregistered_reviewed_fill(

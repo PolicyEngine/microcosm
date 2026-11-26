@@ -154,7 +154,7 @@ _NAMESPACE_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
         "this manifest describes, turns none of them into a target.",
         "compile_us_fiscal_target_registry(age_targets=True) + "
         "apply_us_medicaid_enrollment_substitutions on the 41b2fb2b feed: "
-        "33,250 targets, none from the feed's 461 ed_fsa facts; sample fact "
+        "31,748 targets, none from the feed's 461 ed_fsa facts; sample fact "
         "ed_fsa.portfolio_by_location.2026_03_31.ar.borrowers",
         _fence(
             origin=(
@@ -659,7 +659,10 @@ _COMPILED_FAMILY_NOTES = {
         "artifact record count changes only L0, never target membership. "
         "There is no local-versus-national surface. "
         "Congressional-district rows inform shape while national and state "
-        "actuals retain control ownership."
+        "actuals retain control ownership. Its capital-gains rows ship as shares "
+        "of its own US row scaled to the national Table 1.4 control, and that US "
+        "row retires (microcosm#1038); facts it reads from the wrong IRS column "
+        "are excluded (US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS)."
     ),
 }
 

@@ -3081,11 +3081,14 @@ def write_nullable_us_h5(
     verified every nonempty entity table, household weights, period metadata,
     fixed-format storage, caller-declared root attributes, and the
     ``artifact_kind``.  A failed write or verification leaves any existing
-    destination bytes untouched.
+    destination bytes untouched.  A raw write into a column the frame shares
+    raises ``SharedColumnChangedError`` before anything is written; string
+    columns are converted below, so the check must come first.
     """
 
     if not isinstance(frame, Frame):
         raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
+    frame.check_shared_columns()
     if not isinstance(artifact_kind, str) or not artifact_kind.strip():
         raise ValueError("artifact_kind must be a non-empty string.")
     if publication_run_id is not None and (

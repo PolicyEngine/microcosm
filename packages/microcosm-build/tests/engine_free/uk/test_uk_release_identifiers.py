@@ -35,7 +35,7 @@ from microcosm.build.uk_runtime.national_frame import (
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.weight_year import uk_dataset_year_frame
-from microcosm.frame import WeightKind
+from microcosm.frame import SharedColumnChangedError, WeightKind
 from test_support.microcosm_build.uk_graph_terminal import _frame as _ladder_frame
 
 # Two copies of a three-household survey, numbered the way the clone stages
@@ -304,3 +304,16 @@ def test_the_local_readback_refuses_out_of_range_and_repeated_identifiers(
     report = validate_uk_export(path, descriptor)
     assert report["passed"] is False
     assert "Written 'person_id' repeats a value." in report["failures"]
+
+
+def test_the_release_frame_refuses_a_changed_shared_column() -> None:
+    """The release boundary copies its tables, which would hide the change."""
+
+    built = _frame()
+    shared = built.replace_tables()
+    np.add.at(built.table("person")["person_id"].to_numpy(), [0], 1)
+
+    with pytest.raises(SharedColumnChangedError) as raised:
+        uk_release_export_frame(shared)
+
+    assert raised.value.changed_columns == (("person", "person_id"),)

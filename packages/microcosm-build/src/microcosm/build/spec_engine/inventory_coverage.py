@@ -409,8 +409,14 @@ EXPECTED_HASHES = {
     # acs_transfer's attested bytes change; no draw, RNG rule or QRF target does.
     # The QRF draw's default thread count, joblib.cpu_count() in place of
     # os.cpu_count() in microcosm.fit.qrf, moves both again; no draw changes.
-    "seed_map": "530bdaf982c7ad2440db7b4b02f8de5843dac083c6e36c28385ce5d8bbb23e35",
-    "seed_protocol": "f5cc748f1b9fbeaea54c18d9e2c1e6e74f2679c9cbf6cf7a09e7b548d2788d66",
+    # calibrate's return_frame option in solve moves both again; the default
+    # is unchanged, and no draw changes.
+    # microcosm#1686's shared SIPP person-file read moves both again: the five
+    # SIPP donor tables are byte-identical, and no draw changes.
+    # The SIPP 2023 donor download tag and the financial-asset cache lookup
+    # move both again: the donor bytes are unchanged, and no draw changes.
+    "seed_map": "65677b9b7f7a7504e611451d2d494525efd774aba7dd3ca0b6332dcdb03d8976",
+    "seed_protocol": "4fc066840c23d994a6b52a6b510eedd99b6ca5bed522c6837f7ff258b91596eb",
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

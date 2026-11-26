@@ -1,12 +1,14 @@
 """The Microcosm-derived fact resources compiled beside the pinned Chronicle feed.
 
-Two committed resources carry facts Microcosm computes from public data, in
+Three committed resources carry facts Microcosm computes from public data, in
 consumer-fact row shape under the ``microcosm.derived_fact.`` key namespace:
 the high-value home stock (``uk/high_value_home_stock_facts.json``,
-microcosm#1240) and DESNZ's domestic energy split onto constituencies
-(``uk/desnz_constituency_energy_facts.json``, microcosm#1095). Every compile of
-the UK target references reads both beside the feed, so they are listed here
-once; a compile that left one out would find its family's cells absent.
+microcosm#1240), DESNZ's domestic energy split onto constituencies
+(``uk/desnz_constituency_energy_facts.json``, microcosm#1095) and CenTax's
+tabulations of parents of 3- and 4-year-olds
+(``uk/centax_childcare_parent_facts.json``, microcosm#1399). Every compile of
+the UK target references reads all three beside the feed, so they are listed
+here once; a compile that left one out would find its family's cells absent.
 """
 
 from __future__ import annotations
@@ -14,6 +16,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from microcosm.build.uk_runtime.centax_childcare_parents import (
+    load_uk_centax_childcare_parent_facts,
+)
 from microcosm.build.uk_runtime.desnz_constituency_energy import (
     load_uk_desnz_constituency_energy_facts,
 )
@@ -34,6 +39,7 @@ def load_uk_derived_facts() -> dict[str, Any]:
     return {
         "high_value_home_stock_facts": load_uk_high_value_home_stock_facts(),
         "desnz_constituency_energy_facts": load_uk_desnz_constituency_energy_facts(),
+        "centax_childcare_parent_facts": load_uk_centax_childcare_parent_facts(),
     }
 
 

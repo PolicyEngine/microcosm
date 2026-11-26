@@ -50,9 +50,13 @@ imports, unrelated paths, and the shared default system when imported lazily.
 It restores pre-existing entries if Core reused a discarded system's id.
 The returned slice contains no live engine objects.
 
-`--worker-max-slices K` additionally passes `max_tasks_per_child=K` to the spawn
-executor. The default remains no recycling. An explicit K also uses the pool
-with `--workers 1`. Task submission and ordered reduction remain unchanged.
+`--worker-max-slices K` additionally replaces each spawned worker after K
+slices. The scorer first did this with `ProcessPoolExecutor`'s
+`max_tasks_per_child=K`; it now runs its slices on the shared worker pool
+(`microcosm.build.worker_pool`), which replaces workers itself and so works on
+every supported Python. The default remains no replacement. An explicit K also
+uses the pool with `--workers 1`. Task order and ordered reduction remain
+unchanged.
 
 ## Measurement method
 

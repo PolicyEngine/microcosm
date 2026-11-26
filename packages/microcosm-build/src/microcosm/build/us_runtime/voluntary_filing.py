@@ -37,6 +37,9 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.us_runtime.sipp_december_person_rows import (
+    SippDecemberPersonRows,
+)
 from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     require_assembled_support_provenance,
@@ -48,6 +51,7 @@ from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
+    "SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION",
     "SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION",
     "SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256",
     "SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES",
@@ -60,9 +64,9 @@ __all__ = [
     "VOLUNTARY_FILING_ARCHIVED_DERIVATION_URL",
     "VOLUNTARY_FILING_ARCHIVED_PARAMETERS_URL",
     "VOLUNTARY_FILING_SIPP_DICTIONARY_URL",
+    "build_sipp_2023_voluntary_filing_donor",
     "fetch_sipp_2023_voluntary_filing_donor",
     "impute_us_voluntary_filing",
-    "load_sipp_2023_voluntary_filing_donor",
     "us_voluntary_filing_signal_gate",
     "us_voluntary_filing_stage_spec",
     "us_voluntary_filing_summary",
@@ -89,14 +93,19 @@ VOLUNTARY_FILING_SIPP_DICTIONARY_URL = (
     "data-dictionaries/2023/2023_SIPP_Data_Dictionary.pdf"
 )
 
+# SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION is the recorded coordinate these
+# bytes were pinned and measured at, kept as the record key.
+# SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION is where the same bytes are
+# served now.  Both name bytes identified by the SHA-256 and size below.
 SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION = "21280dca5995e978d706740a8a4b9b7860cfd7b6"
+SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION = "1.115.5"
 SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256 = (
     "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
 )
 SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES = 3_726_010_471
 SIPP_2023_VOLUNTARY_FILING_DONOR_URL = (
     f"https://huggingface.co/policyengine/{_RETIRED_REPOSITORY}/resolve/"
-    f"{SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION}/pu2023.csv"
+    f"{SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION}/pu2023.csv"
 )
 
 US_VOLUNTARY_FILING_STAGE_NAME = "voluntary_filing_input"
@@ -349,54 +358,15 @@ def _source_unit_keys(december: pd.DataFrame) -> pd.Series:
     return pd.Series(keys, index=december.index, dtype="string")
 
 
-def load_sipp_2023_voluntary_filing_donor(
-    path: str | Path,
-    *,
-    expected_sha256: str | None = None,
-    expected_size_bytes: int | None = SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
-    chunksize: int = 100_000,
+def build_sipp_2023_voluntary_filing_donor(
+    person_rows: SippDecemberPersonRows,
 ) -> pd.DataFrame:
-    """Transform the pinned SIPP person file to measured filing tax units."""
+    """Transform the SIPP person file's December rows to filing tax units."""
 
-    path = Path(path)
-    if expected_size_bytes is not None and path.stat().st_size != expected_size_bytes:
-        raise ValueError(
-            "SIPP 2023 voluntary-filing donor failed byte-length verification: "
-            f"expected {expected_size_bytes}, got {path.stat().st_size}."
-        )
-    if expected_sha256 is not None:
-        actual_sha256 = _sha256_file(path)
-        if actual_sha256 != expected_sha256:
-            raise ValueError(
-                "SIPP 2023 voluntary-filing donor failed sha-256 verification: "
-                f"expected {expected_sha256}, got {actual_sha256}."
-            )
-    if chunksize < 1:
-        raise ValueError("chunksize must be a positive integer")
-
-    header = pd.read_csv(path, delimiter="|", nrows=0)
-    missing = sorted(set(SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS) - set(header.columns))
-    if missing:
-        raise ValueError(
-            f"SIPP 2023 voluntary-filing donor missing column(s): {missing}."
-        )
-
-    parts: list[pd.DataFrame] = []
-    reader = pd.read_csv(
-        path,
-        delimiter="|",
-        usecols=list(SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS),
-        chunksize=int(chunksize),
-        low_memory=True,
+    december = person_rows.source_table(
+        SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS,
+        read_in_parser_blocks=True,
     )
-    for chunk in reader:
-        month = _numeric(chunk["MONTHCODE"])
-        december = chunk.loc[month.eq(12)].copy()
-        if not december.empty:
-            parts.append(december)
-    if not parts:
-        raise ValueError("SIPP 2023 voluntary-filing donor has no December rows.")
-    december = pd.concat(parts, ignore_index=True)
 
     numeric_columns = [
         column for column in SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS if column != "SSUID"

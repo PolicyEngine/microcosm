@@ -1,8 +1,9 @@
 """A syntactic check for raw writes that pandas copy-on-write does not protect.
 
-:meth:`Frame.replace_tables` and :meth:`Frame.with_columns` build frames that
-share the memory of every unchanged column with their source frame
-(:meth:`Frame._adopt`). pandas copy-on-write keeps a write made through pandas
+:meth:`Frame.replace_tables`, :meth:`Frame.with_columns`,
+:meth:`Frame.with_weights`, :meth:`Frame.place` and :meth:`Frame.select` build
+frames that share the memory of unchanged columns with their source frame
+(:meth:`Frame.adopt`). pandas copy-on-write keeps a write made through pandas
 (``.loc``, column assignment, in-place methods) on one frame from reaching
 the other, but it does not see a raw write into the shared memory. Checked
 with pandas 3.0.3 and NumPy 2.4.6, each form below writes into the shared
@@ -137,6 +138,52 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
         "np.asarray(...).copy() from the household weights. Review again if "
         "either of those functions changes."
     ),
+    (
+        "packages/microcosm-frame/src/microcosm/frame/shared_columns.py",
+        "_column_buffers",
+        "pandas-private-attribute",
+        "values._data",
+        "64ca7d79dc01",
+    ): (
+        "Read only, so the shared-column check can hash a nullable column's "
+        "values. pandas has no public access to them when values are missing."
+    ),
+    (
+        "packages/microcosm-frame/src/microcosm/frame/shared_columns.py",
+        "_column_buffers",
+        "pandas-private-attribute",
+        "values._mask",
+        "64ca7d79dc01",
+    ): (
+        "Read only, so the shared-column check can hash a nullable column's "
+        "missing-value mask. pandas exposes only a copy of it."
+    ),
+    (
+        "packages/microcosm-graph/src/microcosm/graph/executor.py",
+        "_read_only_masked",
+        "pandas-private-attribute",
+        "values._data",
+        "f08675645fa1",
+    ): (
+        "Read only: the graph executor passes a nullable column's values to "
+        "_read_only_view, which builds a read-only array whose base is a "
+        "_ReadOnlyMemory, so a kernel's item write into it, into its .base or "
+        "after setflags(write=True) raises instead of reaching the stored "
+        "population (graph amendment 31). Review again if either changes."
+    ),
+    (
+        "packages/microcosm-graph/src/microcosm/graph/executor.py",
+        "_read_only_masked",
+        "pandas-private-attribute",
+        "values._mask",
+        "f08675645fa1",
+    ): (
+        "Read only: the graph executor passes a nullable column's mask to "
+        "_read_only_view, which builds a read-only array whose base is a "
+        "_ReadOnlyMemory, so a kernel's item write into it, into its .base or "
+        "after setflags(write=True) raises instead of reaching the stored "
+        "population (graph amendment 31). Review again if either changes."
+    ),
 }
 
 #: The functions a reviewed reason rests on, by repository-relative path and
@@ -151,6 +198,14 @@ _REVIEWED_HELPERS: dict[tuple[str, str], str] = {
         "tools/verify_uk_identity_stability.py",
         "_pre_residential_household_weights",
     ): "e39cc12da417",
+    (
+        "packages/microcosm-graph/src/microcosm/graph/executor.py",
+        "_read_only_view",
+    ): "9e403641598e",
+    (
+        "packages/microcosm-graph/src/microcosm/graph/executor.py",
+        "_ReadOnlyMemory",
+    ): "fa358510ff88",
 }
 
 _MAKES_ARRAY_WRITABLE = "makes-array-writable"
