@@ -49,30 +49,36 @@ COUNTY_PREFIX = "0500000US"
 # The LWI release contract covers the 50 states and DC on planning-region
 # county boundaries. A self-consistent but incomplete ladder is not complete.
 REQUIRED_COUNTY_COUNT = 3_144
-COUNTY_SOI_REQUIRED_MEASURES = ("return_count", "adjusted_gross_income")
+
+
+def _county_soi_nesting():
+    """The declared choices of the county SOI shares (microcosm#1760).
+
+    ``us/cross_grain_declarations.json`` holds them with their reasons: the
+    measures every state must carry, and the combined cells with their basis.
+    The names below are those choices under the names they had as literals
+    here.
+    """
+
+    from microcosm.build.us_runtime.cross_grain_declarations import (
+        us_county_soi_nesting,
+    )
+
+    return us_county_soi_nesting()
+
+
+_COUNTY_SOI_NESTING = _county_soi_nesting()
+COUNTY_SOI_REQUIRED_MEASURES = _COUNTY_SOI_NESTING.required_measures
 #: Puerto Rico (state 72) is outside the County Files. The county facts loader
 #: drops its municipios with a count; a row that still reaches this module is
 #: a defect, never a county to fit.
 PUERTO_RICO_STATE = 72
 
 #: Counties absent from an IRS SOI county file, each merged into one declared
-#: host county of the same state for the SOI families only. The IRS 2022
-#: county users guide (https://www.irs.gov/pub/irs-soi/22incydocguide.docx)
-#: says items with fewer than 20 returns for a county were excluded, and
-#: 22incyallnoagi.csv has no row for Kalawao County, HI (15005). Its SOI value
-#: is therefore missing, not zero; the guide does not say whether its returns
-#: are counted in another county's row. Kalawao is merged into Maui (15009),
-#: which surrounds it: the combined cell's share is Maui's published value
-#: over the state's published county sum, and its households are those in
-#: either county. Kalawao keeps its own ladder population, ACS household and
-#: validation rows. Any other absent county is refused unless declared here.
-DECLARED_SOI_COMBINED_CELLS = {15005: 15009}
-SOI_COMBINED_CELL_BASIS = (
-    "IRS SOI 2022 county users guide (22incydocguide.docx): items with fewer "
-    "than 20 returns for a county were excluded; 22incyallnoagi.csv has no row "
-    "for this county, so its SOI value is missing, not zero, and it is "
-    "merged into its declared host county for the SOI families only."
-)
+#: host county of the same state for the SOI families only (Kalawao County,
+#: HI, into Maui). Any other absent county is refused unless declared.
+DECLARED_SOI_COMBINED_CELLS = dict(_COUNTY_SOI_NESTING.combined_cells)
+SOI_COMBINED_CELL_BASIS = _COUNTY_SOI_NESTING.combined_cell_basis
 
 
 def _concatenate(parts, dtype):

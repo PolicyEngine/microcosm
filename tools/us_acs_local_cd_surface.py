@@ -46,90 +46,56 @@ from scipy import sparse
 
 #: Ledger record-set specs from the congressional-district SOI file.
 CD_FILE_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_"
-#: How the ``state_cd`` surface resolves the two vintages of a state concept.
-STATE_CD_VINTAGE_RULE = "state_cd.historic_table_2_level_cd_file_shares.v1"
 
+
+def _district_soi_nesting():
+    """The declared choices of the ``state_cd`` surface (microcosm#1760).
+
+    ``us/cross_grain_declarations.json`` holds them with their reasons: the
+    vintage rule, the registers of defective, unparented and excluded
+    district measures, the level bridges, the factor band and the two
+    tolerances. The names below are those choices under the names they had as
+    literals here.
+    """
+
+    from microcosm.build.us_runtime.cross_grain_declarations import (
+        us_district_soi_nesting,
+    )
+
+    return us_district_soi_nesting()
+
+
+_DISTRICT_SOI_NESTING = _district_soi_nesting()
+#: How the ``state_cd`` surface resolves the two vintages of a state concept.
+STATE_CD_VINTAGE_RULE = _DISTRICT_SOI_NESTING.vintage_rule
 #: District-file measures that read the wrong IRS column (microcosm#1038).
-#: The compiler's ``US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS`` drops these
-#: facts by (measure id, IRS column) before this surface sees them; this
-#: register stays as a second fence on the ``state_cd`` surface, at both
-#: geographies, and records the reason in the receipt.
-STATE_CD_DEFECTIVE_CD_FILE_MEASURES: Mapping[str, str] = {
-    "limited_state_local_taxes_amount": (
-        "22incd.csv column A18425 is state and local income taxes (Schedule A "
-        "line 5a), not the limited SALT deduction (A18460); the district "
-        "file sums to 1.98x Historic Table 2 (microcosm#1038)."
-    ),
-    "limited_state_local_taxes_returns": (
-        "22incd.csv column N18425 counts state and local income-tax "
-        "deductions, not the limited SALT deduction (microcosm#1038)."
-    ),
-    "premium_tax_credit_returns": (
-        "22incd.csv column N85530 is the additional Medicare tax (Form 8959 "
-        "line 24), not the premium tax credit (N85770) (microcosm#1038)."
-    ),
-}
-#: District-file measures with no state parent in either vintage, so their
-#: district rows could not nest in a bound state target.
-STATE_CD_UNPARENTED_CD_MEASURES: Mapping[str, str] = {
-    "tax_filer_individual_count": (
-        "The compiler drops this measure at state and national geography "
-        "(fiscal_targets._soi_reference_from_fact), so no state target exists "
-        "for its district rows to reconcile to."
-    ),
-}
-#: District-file-only concepts (Historic Table 2 lacks them) and the sibling
-#: concept whose two state levels bridge theirs onto the Historic Table 2
-#: basis. The district file's own state levels sit below Historic Table 2's
-#: for two reasons: it covers only the returns processed in its window (about
-#: 1.7% fewer), and the feed stamps it one tax year late, so its amounts are
-#: aged one year less. A sibling both files carry, in the same state, estimates
-#: that gap, on the assumption that the measure shares the sibling's ratio:
-#: counts bridge by ``return_count`` (counts are not aged), amounts by the
-#: closest amount Historic Table 2 carries. The factor band below applies to
-#: the sibling. The bridge is stamp-invariant: if the stamp is corrected
-#: (#1030) both levels move together.
-STATE_CD_LEVEL_BRIDGES: Mapping[str, str] = {
-    "charitable_amount": "itemized_deductions_amount",
-    "charitable_returns": "return_count",
-    "interest_paid_deduction_amount": "itemized_deductions_amount",
-    "interest_paid_deduction_returns": "return_count",
-    "qualified_business_income_deduction_amount": "adjusted_gross_income",
-    "qualified_business_income_deduction_returns": "return_count",
-}
-#: States whose district SOI rows stay off the surface, with the evidence.
-#: Empty since #1043 rebuilt the 117th->119th crosswalk from the block plan
-#: registry: the packaged crosswalk before it (sha256 c7cb040b...) carried
-#: North Carolina's 2016 plan instead of the 2019 plan the 117th Congress used,
-#: and 37.0% of NC's population mapped to a different 119th district, so NC's
-#: district rows were held off until then.
-STATE_CD_EXCLUDED_CD_STATES: Mapping[str, str] = {}
-#: How far a state's Historic Table 2 / district-file ratio may sit from its
-#: measure's median across states before the district file's data for that
-#: (state, concept) is refused. The ratio mixes a common part (the file's
-#: coverage and aging gap, or a measure-wide rebase such as taxable interest's
-#: x2.47 onto Table 4.3), which the median absorbs, with a state-specific part.
-#: A state-specific part beyond 25% means the two publications disagree about
-#: that state (Hawaii's dividends differ 2.4x from the typical gap on the
-#: pinned feed), so the district file's shares, or a bridge built on that
-#: sibling, are not trusted: the block's district rows and any bridged state
-#: row are dropped and recorded; the Historic Table 2 state row stays.
-STATE_CD_FACTOR_BAND = 1.25
-#: The district file's own state row must equal the sum of its district rows
-#: to this relative tolerance wherever both are present (the receipt records
-#: the largest gap; the feed-gated contract test pins it on the pinned feed).
-#: A gap means a column or crosswalk defect inside the file (#1038 class),
-#: which no median absorbs.
-STATE_CD_INTERNAL_RTOL = 1e-6
-#: The packaged crosswalk the exclusions above were reviewed against. A test
-#: pins it, so regenerating the crosswalk forces a second look at them.
-STATE_CD_REVIEWED_CROSSWALK_SHA256 = (
-    "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233"
+STATE_CD_DEFECTIVE_CD_FILE_MEASURES: Mapping[str, str] = dict(
+    _DISTRICT_SOI_NESTING.defective_lower_measures
 )
+#: District-file measures with no state parent in either vintage.
+STATE_CD_UNPARENTED_CD_MEASURES: Mapping[str, str] = dict(
+    _DISTRICT_SOI_NESTING.unparented_lower_measures
+)
+#: District-file-only concepts and the sibling concept that bridges their
+#: state level onto the Historic Table 2 basis.
+STATE_CD_LEVEL_BRIDGES: Mapping[str, str] = dict(_DISTRICT_SOI_NESTING.level_bridges)
+#: States whose district SOI rows stay off the surface, with the evidence.
+STATE_CD_EXCLUDED_CD_STATES: Mapping[str, str] = dict(
+    _DISTRICT_SOI_NESTING.excluded_legs
+)
+#: How far a state's Historic Table 2 / district-file ratio may sit from its
+#: measure's median across states.
+STATE_CD_FACTOR_BAND = _DISTRICT_SOI_NESTING.factor_band
+#: Relative tolerance between the district file's own state row and the sum
+#: of its district rows.
+STATE_CD_INTERNAL_RTOL = _DISTRICT_SOI_NESTING.internal_rtol
+#: The packaged crosswalk the registers above were reviewed against. A test
+#: pins it, so regenerating the crosswalk forces a second look at them.
+STATE_CD_REVIEWED_CROSSWALK_SHA256 = _DISTRICT_SOI_NESTING.reviewed_crosswalk_sha256
 
 #: Relative tolerance for "district rows sum to their state parent". The
 #: rebase makes it exact up to float64 rounding.
-RECONCILIATION_RTOL = 1e-9
+RECONCILIATION_RTOL = _DISTRICT_SOI_NESTING.closure_rtol
 
 SIGMA_BASIS_FEED = "feed_standard_error"
 SIGMA_BASIS_NONE = "not_provided_by_feed"

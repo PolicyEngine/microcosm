@@ -325,6 +325,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # 2020 tract/county -> 2023 county-equivalent metadata and its gate;
         # writes calibration geography only, no population treatment.
         "county_vintage.py",
+        # The US nesting declarations of the shared cross-grain operator
+        # (microcosm#1760): a typed read of a packaged JSON file.
+        "cross_grain_declarations.py",
         # Household location v1 (#696): one block per household within its
         # finest source geography; every geography derives from the block.
         # Reached by the stacked pool under --location-rule block_v1 and
@@ -475,6 +478,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Calibration loss weights computed from target specs alone; reads no
         # frame and treats no population.
         "target_loss_weights.py",
+        # Target nesting across geography levels on the shared cross-grain
+        # operator (microcosm#1760): reads target specs and facts only, no
+        # frame and no population.
+        "target_nesting.py",
         # Data-only final-owner matrix; provenance owner above.
         "us_late_overlap_ownership.py",
         # Data-only late input/output registry; provenance owner above.
