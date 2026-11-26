@@ -475,14 +475,19 @@ def test_certification_removes_an_earlier_attempts_batch_files(
     assert kept.read_text() == "not a scorer's"
 
 
+@pytest.mark.parametrize(
+    ("damage", "refusal"),
+    [("changed", "SHA-256"), ("missing", "cannot be read")],
+)
 def test_the_merged_baseline_pass_raises_a_refused_batch_file_at_once(
-    builder, tmp_path, monkeypatch, capsys
+    builder, tmp_path, monkeypatch, capsys, damage, refusal
 ) -> None:
     """The merged baseline pass, one pass over every registered consumer's
     keys, falls back to each consumer's own pass when it raises, so a key only
-    one consumer planned fails that consumer alone. A refused batch file is
-    not such a key: every pass reads the same files. The merged pass raises
-    it, having read the changed file once, and nothing falls back."""
+    one consumer planned fails that consumer alone. A refused batch file, one
+    whose bytes changed or that cannot be read, is not such a key: every pass
+    reads the same files. The merged pass raises it, having tried the file
+    once, and nothing falls back."""
 
     plans = {
         "demographics": builder._record_post_export_baseline_plan(
@@ -503,8 +508,11 @@ def test_the_merged_baseline_pass_raises_a_refused_batch_file_at_once(
     scorer = _open_scorer(builder, _nested_frame(), tmp_path, baseline_plans=plans)
     try:
         first_file = sorted(scorer.batch_directory.iterdir())[0]
-        first_file.write_bytes(first_file.read_bytes() + b"changed")
-        with pytest.raises(builder.PostExportBatchFileError, match="SHA-256"):
+        if damage == "changed":
+            first_file.write_bytes(first_file.read_bytes() + b"changed")
+        else:
+            first_file.unlink()
+        with pytest.raises(builder.PostExportBatchFileError, match=refusal):
             scorer.open_consumer("demographics", plans["demographics"])
     finally:
         scorer.close()
