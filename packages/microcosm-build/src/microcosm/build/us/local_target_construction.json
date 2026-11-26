@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "country": "us",
+  "description": "How the ACS local release (tools/build_us_acs_local_release.py) builds the targets that the compile does not give it (microcosm#1728). Each section is read by a shared, country-free module: holdouts by microcosm.build.target_holdouts.",
+  "holdouts": {
+    "concept_families": {
+      "source_field": "source_measure_id",
+      "families": [
+        "irs_soi"
+      ],
+      "merge_prefixes": [
+        "eitc"
+      ],
+      "strip_suffixes": [
+        "_amount",
+        "_returns",
+        "_claims",
+        "_count"
+      ],
+      "rationale": "The holdout family of an IRS SOI measure is its concept without the count or amount suffix. Every EITC measure is one family, because the per-child-count rows add up to the EITC total and holding one out would leave it pinned by the rest. A target of another family is its own concept family."
+    },
+    "passes": [
+      {
+        "id": "district",
+        "label": "CD",
+        "unit": "state_x_soi_concept_family",
+        "unit_fields": [
+          "state_fips",
+          "concept_family"
+        ],
+        "salt": "microcosm.us_acs_local.cd_holdout.v1",
+        "default_fraction": 0.1,
+        "max_fraction": 0.5,
+        "scope": [],
+        "eligible": [
+          {
+            "key": "family",
+            "kind": "equals",
+            "value": "irs_soi"
+          },
+          {
+            "key": "geography_level",
+            "kind": "equals",
+            "value": "congressional_district"
+          },
+          {
+            "key": "state_cd_parent_target_name",
+            "kind": "truthy"
+          }
+        ],
+        "receipt": [
+          "unit",
+          "salt",
+          "fraction",
+          "eligible_units",
+          "held_units",
+          "held_unit_keys",
+          "eligible_targets",
+          "held_targets",
+          "hash"
+        ],
+        "hash_description": "sha256(salt + 0x1f + unit)[:8] / 2**64 < fraction",
+        "scoring": {
+          "level": "congressional_district",
+          "parent_name_field": "state_cd_parent_target_name",
+          "child_population_field": "cd_population",
+          "parent_population_field": "state_population",
+          "population_check": "nonzero",
+          "populations": {
+            "families": [
+              "irs_soi"
+            ],
+            "code_field": "congressional_district_geoid",
+            "parent_code_divisor": 100
+          },
+          "by_family": true,
+          "target_fields": {
+            "unit": "holdout_unit"
+          },
+          "baseline": "state parent target x (district population / state population), populations from the PUMA ladder's 119th-plan district overlap"
+        },
+        "rationale": "The held unit is every district target of one SOI concept family in one state. A single district, or a single district target, is not a fair holdout: with its state total and sibling districts trained it is pinned by adding up. Only district SOI targets with a bound state parent are eligible; every other target trains. The pass writes every record. The tool draws the default fraction under --soi-mode state_cd and none in the other modes."
+      },
+      {
+        "id": "county",
+        "label": "County",
+        "unit": "state x county concept family",
+        "unit_fields": [
+          "state_fips",
+          "concept_family"
+        ],
+        "salt": "acs-local-county-v1",
+        "default_fraction": 0.1,
+        "max_fraction": 0.5,
+        "scope": [
+          {
+            "key": "geography_level",
+            "kind": "equals",
+            "value": "county"
+          }
+        ],
+        "eligible": [
+          {
+            "key": "state_county_parent_target_name",
+            "kind": "truthy"
+          }
+        ],
+        "receipt": [
+          "unit",
+          "salt",
+          "fraction",
+          "eligible_units",
+          "eligible_targets",
+          "held_units",
+          "held_unit_keys",
+          "held_targets"
+        ],
+        "hash_description": null,
+        "scoring": {
+          "level": "county",
+          "parent_name_field": "state_county_parent_target_name",
+          "child_population_field": "county_population",
+          "parent_population_field": "state_population",
+          "population_check": "finite_positive",
+          "populations": null,
+          "by_family": false,
+          "target_fields": {
+            "county_fips": "county_fips"
+          },
+          "baseline": "state parent target x county population / state population"
+        },
+        "rationale": "Hold out whole state and concept-family blocks of county rows, so that no held county row is pinned by its trained siblings. Only county rows with a state parent are eligible, so the county population rows always train. The pass writes county rows only, after the district pass."
+      }
+    ]
+  }
+}

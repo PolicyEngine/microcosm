@@ -368,6 +368,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # The national materializer's ledger filter rules (moved from the
         # release tool, microcosm#1728); reads spec metadata only, no frame.
         "ledger_filter_rules.py",
+        # Names and loads the ACS local release's declared target
+        # construction (us/local_target_construction.json, microcosm#1728);
+        # reads no frame and treats no population.
+        "local_target_construction.py",
         "l0_refit_export.py",
         "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
         "medicaid_take_up.py",

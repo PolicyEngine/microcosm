@@ -2217,34 +2217,34 @@ def _attach_pro_rata_populations(targets: list[dict], cd_populations: dict) -> N
 
     The pro-rata baseline allocates the state parent by these; both come
     from the PUMA ladder's 119th-plan district overlap populations, so a
-    state's district shares sum to one.
+    state's district shares sum to one. The shared
+    :func:`microcosm.build.target_holdouts.attach_population_shares` reads the
+    district hold-out's declared fields (microcosm#1728).
     """
 
-    state_population: dict[int, float] = {}
-    for district, population in cd_populations.items():
-        state = int(district) // 100
-        state_population[state] = state_population.get(state, 0.0) + float(population)
-    for target in targets:
-        geoid = target.get("congressional_district_geoid")
-        if target.get("family") != "irs_soi" or not geoid:
-            continue
-        district = int(geoid)
-        target["cd_population"] = float(cd_populations.get(district, 0.0))
-        target["state_population"] = float(state_population.get(district // 100, 0.0))
+    from microcosm.build.target_holdouts import attach_population_shares
+    from microcosm.build.us_runtime.local_target_construction import (
+        DISTRICT_HOLDOUT,
+        us_holdout_scoring,
+    )
+
+    attach_population_shares(
+        targets, cd_populations, us_holdout_scoring(DISTRICT_HOLDOUT)
+    )
 
 
 def _require_pro_rata_populations(targets: list[dict]) -> None:
     """Refuse, before any solve, a district row the baseline cannot score."""
 
-    unpopulated = [
-        target["name"]
-        for target in targets
-        if target.get("family") == "irs_soi"
-        and target.get("congressional_district_geoid")
-        and not (
-            target.get("cd_population", 0) > 0 and target.get("state_population", 0) > 0
-        )
-    ]
+    from microcosm.build.target_holdouts import missing_population_shares
+    from microcosm.build.us_runtime.local_target_construction import (
+        DISTRICT_HOLDOUT,
+        us_holdout_scoring,
+    )
+
+    unpopulated = missing_population_shares(
+        targets, us_holdout_scoring(DISTRICT_HOLDOUT)
+    )
     if unpopulated:
         raise SystemExit(
             f"{len(unpopulated)} district SOI target(s) have no positive "

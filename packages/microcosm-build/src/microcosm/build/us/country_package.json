@@ -108,6 +108,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "local_target_construction.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "obbba_reforms.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

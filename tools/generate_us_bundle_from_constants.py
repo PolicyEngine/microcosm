@@ -148,6 +148,8 @@ LEGACY_RESOURCE_PATHS = (
     "federal_eitc_by_state.json",
     "fiscal_target_references.json",
     "gates.json",
+    # The ACS local release's declared target construction (microcosm#1728).
+    "local_target_construction.json",
     "obbba_reforms.json",
     "puf_aggregate_record_disaggregation.json",
     "release_input_coverage_manifest.json",

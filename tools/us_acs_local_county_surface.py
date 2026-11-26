@@ -26,9 +26,21 @@ import pandas as pd
 import us_acs_local_cd_surface as cd_surface
 from scipy import sparse
 
+from microcosm.build import target_holdouts
+from microcosm.build.us_runtime.local_target_construction import (
+    COUNTY_HOLDOUT,
+    us_holdout_pass,
+    us_holdout_scoring,
+    us_target_holdouts,
+)
+
 COUNTY_COLUMN = "county_fips"
-COUNTY_HOLDOUT_SALT = "acs-local-county-v1"
-DEFAULT_COUNTY_HOLDOUT_FRACTION = 0.1
+#: The county hold-out pass, declared in ``us/local_target_construction.json``
+#: (``holdouts``, microcosm#1728) and run by the shared
+#: :mod:`microcosm.build.target_holdouts`.
+_COUNTY_HOLDOUT = us_holdout_pass(COUNTY_HOLDOUT)
+COUNTY_HOLDOUT_SALT = _COUNTY_HOLDOUT.salt
+DEFAULT_COUNTY_HOLDOUT_FRACTION = _COUNTY_HOLDOUT.default_fraction
 RELIABILITY_FILENAME = "county_reliability.json"
 RELIABILITY_CSV_FILENAME = "county_reliability.csv"
 SUPPORT_FILENAME = "county_support.json"
@@ -1595,111 +1607,39 @@ def target_record(spec):
 def assign_target_roles(
     records, *, fraction=DEFAULT_COUNTY_HOLDOUT_FRACTION, salt=COUNTY_HOLDOUT_SALT
 ):
-    """Hold out whole state/concept-family blocks to prevent sibling leakage."""
-    from microcosm.build.holdout import hash_holdout_unit
+    """Hold out whole state/concept-family blocks to prevent sibling leakage.
 
-    if not isinstance(salt, str) or not salt:
-        raise ValueError("County holdout salt must be a non-empty string.")
-    if not 0 <= fraction <= cd_surface.MAX_CD_HOLDOUT_FRACTION:
-        raise ValueError(
-            f"County holdout fraction must be in [0, {cd_surface.MAX_CD_HOLDOUT_FRACTION}]."
-        )
-    units = {}
-    eligible = []
-    for record in records:
-        if record.get("geography_level") != "county":
-            continue
-        unit = None
-        if record.get("state_county_parent_target_name"):
-            family = (
-                cd_surface.soi_concept_family(str(record.get("source_measure_id")))
-                if record.get("family") == "irs_soi"
-                else str(record.get("family"))
-            )
-            unit = f"{record['state_fips']}|{family}"
-        record["holdout_unit"] = unit
-        record["role"] = cd_surface.ROLE_TRAIN
-        if unit is not None:
-            eligible.append(record)
-            units.setdefault(
-                unit, hash_holdout_unit(unit, fraction=fraction, salt=salt)
-            )
-            if units[unit]:
-                record["role"] = cd_surface.ROLE_HOLDOUT
-    return {
-        "unit": "state x county concept family",
-        "salt": salt,
-        "fraction": float(fraction),
-        "eligible_units": len(units),
-        "eligible_targets": len(eligible),
-        "held_units": sum(units.values()),
-        "held_unit_keys": sorted(key for key, value in units.items() if value),
-        "held_targets": sum(
-            record["role"] == cd_surface.ROLE_HOLDOUT for record in eligible
-        ),
-    }
+    The shared :func:`microcosm.build.target_holdouts.assign_holdout_roles`
+    runs the declared county pass over the county rows (microcosm#1728).
+    """
+
+    return target_holdouts.assign_holdout_roles(
+        records,
+        _COUNTY_HOLDOUT,
+        us_target_holdouts().concept_families,
+        fraction=fraction,
+        salt=salt,
+    )
 
 
 def pro_rata_baseline(records, rows):
-    by_name = {record["name"]: record for record in records}
-    values = []
-    for index in rows:
-        record = records[index]
-        parent = by_name.get(record.get("state_county_parent_target_name"))
-        county, state = (
-            float(record.get("county_population", 0)),
-            float(record.get("state_population", 0)),
-        )
-        if parent is None or not (
-            math.isfinite(county) and math.isfinite(state) and county > 0 and state > 0
-        ):
-            raise ValueError(
-                f"{record['name']} has no state parent or positive county/state population for pro-rata baseline."
-            )
-        values.append(float(parent["value"]) * county / state)
-    return np.asarray(values, dtype=float)
+    return target_holdouts.pro_rata_baseline(
+        records, rows, us_holdout_scoring(COUNTY_HOLDOUT)
+    )
 
 
 def score_county_holdout(
     records, matrix, *, design_weights, final_weights, cap, receipt=None
 ):
-    rows = [
-        index
-        for index, record in enumerate(records)
-        if record.get("geography_level") == "county"
-        and record.get("role") == cd_surface.ROLE_HOLDOUT
-    ]
-    base = {"report_only": True, **dict(receipt or {}), "n_targets": len(rows)}
-    if not rows:
-        return base
-    held = sparse.csr_array(matrix[rows]).astype(float)
-    targets = np.asarray([records[index]["value"] for index in rows], float)
-    final, design = held @ np.asarray(final_weights), held @ np.asarray(design_weights)
-    baseline = pro_rata_baseline(records, rows)
-    scale = np.maximum(np.abs(targets), 1.0)
-    return {
-        **base,
-        "calibrated": cd_surface._error_summary(final, targets, cap=cap),
-        "design_weights": cd_surface._error_summary(design, targets, cap=cap),
-        "pro_rata_baseline": cd_surface._error_summary(baseline, targets, cap=cap),
-        "calibrated_beats_pro_rata_share": float(
-            (
-                np.abs(final - targets) / scale < np.abs(baseline - targets) / scale
-            ).mean()
-        ),
-        "baseline": "state parent target x county population / state population",
-        "targets": [
-            {
-                "name": records[index]["name"],
-                "county_fips": records[index]["county_fips"],
-                "target": float(targets[position]),
-                "calibrated": float(final[position]),
-                "design": float(design[position]),
-                "pro_rata": float(baseline[position]),
-            }
-            for position, index in enumerate(rows)
-        ],
-    }
+    return target_holdouts.score_holdout(
+        records,
+        matrix,
+        us_holdout_scoring(COUNTY_HOLDOUT),
+        design_weights=design_weights,
+        final_weights=final_weights,
+        cap=cap,
+        receipt=receipt,
+    )
 
 
 def reliability_grade(ess, error):

@@ -40,6 +40,17 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 
+from microcosm.build import target_holdouts
+
+# The shared role names; the county module and tests read them from here.
+from microcosm.build.target_holdouts import ROLE_HOLDOUT, ROLE_TRAIN  # noqa: F401
+from microcosm.build.us_runtime.local_target_construction import (
+    DISTRICT_HOLDOUT,
+    us_holdout_pass,
+    us_holdout_scoring,
+    us_target_holdouts,
+)
+
 # ---------------------------------------------------------------------------
 # Surface constants
 # ---------------------------------------------------------------------------
@@ -138,18 +149,18 @@ SIGMA_BASIS_NONE = "not_provided_by_feed"
 # Holdout constants
 # ---------------------------------------------------------------------------
 
-#: Salt of the CD holdout hash. Changing it re-draws every held unit.
-CD_HOLDOUT_SALT = "microcosm.us_acs_local.cd_holdout.v1"
-#: The held unit: every district target of one SOI concept family in one
-#: state. A single district (or a single district target) is not a fair
-#: holdout: with its state total and sibling districts trained it is pinned
-#: by adding up. Concept families also group measures that add up to each
-#: other (EITC by number of children sums to the EITC total).
-CD_HOLDOUT_UNIT = "state_x_soi_concept_family"
-DEFAULT_STATE_CD_HOLDOUT_FRACTION = 0.1
-MAX_CD_HOLDOUT_FRACTION = 0.5
-ROLE_TRAIN = "train"
-ROLE_HOLDOUT = "holdout"
+#: The district hold-out pass, declared in ``us/local_target_construction.json``
+#: (``holdouts``, microcosm#1728) and run by the shared
+#: :mod:`microcosm.build.target_holdouts`. The held unit is every district
+#: target of one SOI concept family in one state: a single district target is
+#: not a fair holdout, because its state total and trained siblings pin it by
+#: adding up. Changing the salt re-draws every held unit. ``ROLE_TRAIN`` and
+#: ``ROLE_HOLDOUT`` are the shared role names.
+_DISTRICT_HOLDOUT = us_holdout_pass(DISTRICT_HOLDOUT)
+CD_HOLDOUT_SALT = _DISTRICT_HOLDOUT.salt
+CD_HOLDOUT_UNIT = _DISTRICT_HOLDOUT.unit
+DEFAULT_STATE_CD_HOLDOUT_FRACTION = _DISTRICT_HOLDOUT.default_fraction
+MAX_CD_HOLDOUT_FRACTION = _DISTRICT_HOLDOUT.max_fraction
 
 # ---------------------------------------------------------------------------
 # Sampling constants: the rung tokens of tools/build_us_multispine_pool.py
@@ -255,15 +266,11 @@ def soi_concept_family(source_measure_id: str) -> str:
 
     Every EITC measure is one family, because the per-child-count rows add up
     to the EITC total and holding one out would leave it pinned by the rest.
+    The rule is declared in ``us/local_target_construction.json``
+    (``holdouts.concept_families``, microcosm#1728).
     """
 
-    measure = str(source_measure_id)
-    if measure.startswith("eitc"):
-        return "eitc"
-    for suffix in ("_amount", "_returns", "_claims", "_count"):
-        if measure.endswith(suffix):
-            return measure[: -len(suffix)]
-    return measure
+    return us_target_holdouts().concept_families.of_measure(source_measure_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1223,30 +1230,7 @@ def load_target_matrix(path: Path) -> sparse.csr_array:
     return matrix
 
 
-def csr_row_measure(matrix: sparse.csr_array, row: int, n: int):
-    """A callable measure returning one CSR row as a dense float64 vector.
-
-    The calibrate kernel compiles targets through ``build_constraint_matrix``,
-    which reads each target's row and keeps its nonzeros; a callable measure
-    lets it read the row straight from the checkpoint CSR (the UK rowwise
-    precedent, ``uk_runtime.local_rowwise._rowwise_target_set``). Only one
-    dense row exists at a time. float32 values widen exactly to float64, as
-    the dense checkpoint's float32 columns did.
-    """
-
-    start, stop = int(matrix.indptr[row]), int(matrix.indptr[row + 1])
-    indices = matrix.indices[start:stop]
-    data = matrix.data[start:stop]
-
-    def measure(frame) -> np.ndarray:
-        values = np.zeros(n, dtype=np.float64)
-        values[indices] = data
-        return values
-
-    # Calibration diagnostics name a callable measure by its qualified name;
-    # name the matrix row rather than this closure.
-    measure.__qualname__ = f"target_matrix_row[{row}]"
-    return measure
+csr_row_measure = target_holdouts.csr_row_measure
 
 
 # ---------------------------------------------------------------------------
@@ -1288,16 +1272,7 @@ def target_record(spec) -> dict:
 def cd_holdout_unit_key(record: Mapping) -> str | None:
     """The holdout unit of a district SOI target, or None if not eligible."""
 
-    if record.get("family") != "irs_soi":
-        return None
-    if record.get("geography_level") != GEOGRAPHY_CD:
-        return None
-    if not record.get("state_cd_parent_target_name"):
-        return None
-    return (
-        f"{record['state_fips']}|"
-        f"{soi_concept_family(str(record.get('source_measure_id')))}"
-    )
+    return _DISTRICT_HOLDOUT.unit_key(record, us_target_holdouts().concept_families)
 
 
 def assign_target_roles(
@@ -1310,123 +1285,29 @@ def assign_target_roles(
 
     Only district SOI targets with a bound state parent are eligible; every
     other target trains. A unit is held out by
-    :func:`microcosm.build.holdout.hash_holdout_unit` on its key.
+    :func:`microcosm.build.holdout.hash_holdout_unit` on its key. The shared
+    :func:`microcosm.build.target_holdouts.assign_holdout_roles` runs the
+    declared district pass (microcosm#1728).
     """
 
-    from microcosm.build.holdout import hash_holdout_unit
-
-    if not 0.0 <= float(fraction) <= MAX_CD_HOLDOUT_FRACTION:
-        raise ValueError(
-            f"CD holdout fraction must be in [0, {MAX_CD_HOLDOUT_FRACTION}], "
-            f"got {fraction!r}."
-        )
-    units: dict[str, bool] = {}
-    for record in records:
-        unit = cd_holdout_unit_key(record)
-        record["holdout_unit"] = unit
-        if unit is None:
-            record["role"] = ROLE_TRAIN
-            continue
-        if unit not in units:
-            units[unit] = hash_holdout_unit(unit, fraction=fraction, salt=salt)
-        record["role"] = ROLE_HOLDOUT if units[unit] else ROLE_TRAIN
-    held_units = sorted(unit for unit, held in units.items() if held)
-    return {
-        "unit": CD_HOLDOUT_UNIT,
-        "salt": salt,
-        "fraction": float(fraction),
-        "eligible_units": len(units),
-        "held_units": len(held_units),
-        "held_unit_keys": held_units,
-        "eligible_targets": sum(
-            1 for record in records if record["holdout_unit"] is not None
-        ),
-        "held_targets": sum(1 for record in records if record["role"] == ROLE_HOLDOUT),
-        "hash": "sha256(salt + 0x1f + unit)[:8] / 2**64 < fraction",
-    }
+    return target_holdouts.assign_holdout_roles(
+        records,
+        _DISTRICT_HOLDOUT,
+        us_target_holdouts().concept_families,
+        fraction=fraction,
+        salt=salt,
+    )
 
 
-def train_rows(records: Sequence[Mapping]) -> list[int]:
-    return [
-        index for index, record in enumerate(records) if record["role"] == ROLE_TRAIN
-    ]
+#: The training and the held-out rows, the CSR-row measure and the training
+#: target set are shared code (microcosm.build.target_holdouts, microcosm#1728).
+train_rows = target_holdouts.train_rows
 
 
-def holdout_rows(records: Sequence[Mapping]) -> list[int]:
-    return [
-        index for index, record in enumerate(records) if record["role"] == ROLE_HOLDOUT
-    ]
+holdout_rows = target_holdouts.holdout_rows
 
 
-def calibration_target_set(
-    records: Sequence[Mapping],
-    matrix: sparse.csr_array,
-    n_households: int,
-    *,
-    specs: Sequence | None = None,
-):
-    """The TargetSet the calibrator sees: training targets only.
-
-    Held-out targets are never constructed, so they cannot reach the solve.
-    With ``specs`` (the checkpoint's registry specs, row-aligned with
-    ``records``) each target keeps its spec's value, period, source,
-    metadata and calibration hierarchy, as ``TargetSpec.to_target`` would,
-    and only its measure becomes the CSR row.
-    """
-
-    from microcosm.calibrate.target import Target, TargetSet
-
-    if matrix.shape != (len(records), n_households):
-        raise ValueError(
-            f"target matrix shape {matrix.shape} does not match "
-            f"{len(records)} targets x {n_households} households."
-        )
-    if specs is not None and [spec.name for spec in specs] != [
-        record["name"] for record in records
-    ]:
-        raise ValueError("target specs are not row-aligned with the roles.")
-    targets = []
-    for index in train_rows(records):
-        record = records[index]
-        if record["role"] != ROLE_TRAIN:  # pragma: no cover - train_rows filters
-            raise AssertionError("a held-out target reached the calibration set")
-        measure = csr_row_measure(matrix, index, n_households)
-        if specs is None:
-            targets.append(
-                Target(
-                    name=record["name"],
-                    entity=record.get("entity", "household"),
-                    measure=measure,
-                    value=float(record["value"]),
-                    period=record["period"],
-                    source=record["source"],
-                )
-            )
-            continue
-        spec = specs[index]
-        if spec.filter is not None:
-            raise ValueError(
-                f"{spec.name}: a filtered spec cannot take a matrix-row measure; "
-                "the row already carries the filter."
-            )
-        targets.append(
-            Target(
-                name=spec.name,
-                entity=spec.entity,
-                measure=measure,
-                value=spec.value,
-                period=spec.period,
-                tolerance=spec.tolerance,
-                source=spec.source,
-                metadata=spec.metadata,
-                hierarchy=spec.hierarchy,
-            )
-        )
-    held = {records[index]["name"] for index in holdout_rows(records)}
-    leaked = held & {target.name for target in targets}
-    if leaked:
-        raise AssertionError(f"held-out targets reached the calibrator: {leaked}")
-    return TargetSet(targets)
+calibration_target_set = target_holdouts.training_target_set
 
 
 # ---------------------------------------------------------------------------
@@ -1434,48 +1315,15 @@ def calibration_target_set(
 # ---------------------------------------------------------------------------
 
 
-def _error_summary(estimates, targets, *, cap: float) -> dict:
-    from microcosm.calibrate import relative_error_loss
-
-    estimates = np.asarray(estimates, dtype=np.float64)
-    targets = np.asarray(targets, dtype=np.float64)
-    scale = np.maximum(np.abs(targets), 1.0)
-    errors = np.abs(estimates - targets) / scale
-    return {
-        "mean_abs_rel_error": float(errors.mean()),
-        "median_abs_rel_error": float(np.median(errors)),
-        "p90_abs_rel_error": float(np.quantile(errors, 0.9)),
-        "max_abs_rel_error": float(errors.max()),
-        "fraction_within_10pct": float((errors <= 0.10).mean()),
-        "capped_loss": float(
-            relative_error_loss(estimates, targets, target_loss_cap=cap)
-        ),
-    }
+_error_summary = target_holdouts.error_summary
 
 
 def pro_rata_baseline(records: Sequence[Mapping], rows: Sequence[int]) -> np.ndarray:
     """State parent value x district population share, for each row."""
 
-    by_name = {record["name"]: record for record in records}
-    values = []
-    for index in rows:
-        record = records[index]
-        parent = by_name.get(record.get("state_cd_parent_target_name"))
-        if parent is None:
-            raise ValueError(
-                f"{record['name']} has no bound state parent for the baseline."
-            )
-        cd_population = record.get("cd_population")
-        state_population = record.get("state_population")
-        if not cd_population or not state_population:
-            raise ValueError(
-                f"{record['name']} carries no district/state population for "
-                "the pro-rata baseline."
-            )
-        values.append(
-            float(parent["value"]) * float(cd_population) / float(state_population)
-        )
-    return np.asarray(values, dtype=np.float64)
+    return target_holdouts.pro_rata_baseline(
+        records, rows, us_holdout_scoring(DISTRICT_HOLDOUT)
+    )
 
 
 def score_cd_holdout(
@@ -1489,59 +1337,15 @@ def score_cd_holdout(
 ) -> dict:
     """Held-out district targets: calibrated vs design vs pro-rata baseline."""
 
-    rows = [
-        row for row in holdout_rows(records)
-        if records[row].get("geography_level") == GEOGRAPHY_CD
-    ]
-    base = {"report_only": True, **dict(receipt or {})}
-    if not rows:
-        return {**base, "n_targets": 0}
-    held = sparse.csr_array(matrix[rows]).astype(np.float64)
-    targets = np.asarray([records[i]["value"] for i in rows], dtype=np.float64)
-    final = held @ np.asarray(final_weights, dtype=np.float64)
-    design = held @ np.asarray(design_weights, dtype=np.float64)
-    baseline = pro_rata_baseline(records, rows)
-    scale = np.maximum(np.abs(targets), 1.0)
-    final_error = np.abs(final - targets) / scale
-    baseline_error = np.abs(baseline - targets) / scale
-    families: dict[str, list[int]] = defaultdict(list)
-    for position, index in enumerate(rows):
-        families[str(records[index]["holdout_unit"]).split("|", 1)[1]].append(position)
-    by_family = {}
-    for family, positions in sorted(families.items()):
-        idx = np.asarray(positions)
-        by_family[family] = {
-            "n_targets": len(positions),
-            "calibrated_mean_abs_rel_error": float(final_error[idx].mean()),
-            "pro_rata_mean_abs_rel_error": float(baseline_error[idx].mean()),
-            "calibrated_beats_pro_rata": float(
-                (final_error[idx] < baseline_error[idx]).mean()
-            ),
-        }
-    return {
-        **base,
-        "n_targets": len(rows),
-        "calibrated": _error_summary(final, targets, cap=cap),
-        "design_weights": _error_summary(design, targets, cap=cap),
-        "pro_rata_baseline": _error_summary(baseline, targets, cap=cap),
-        "calibrated_beats_pro_rata_share": float((final_error < baseline_error).mean()),
-        "baseline": (
-            "state parent target x (district population / state population), "
-            "populations from the PUMA ladder's 119th-plan district overlap"
-        ),
-        "by_family": by_family,
-        "targets": [
-            {
-                "name": records[index]["name"],
-                "unit": records[index]["holdout_unit"],
-                "target": float(targets[position]),
-                "calibrated": float(final[position]),
-                "design": float(design[position]),
-                "pro_rata": float(baseline[position]),
-            }
-            for position, index in enumerate(rows)
-        ],
-    }
+    return target_holdouts.score_holdout(
+        records,
+        matrix,
+        us_holdout_scoring(DISTRICT_HOLDOUT),
+        design_weights=design_weights,
+        final_weights=final_weights,
+        cap=cap,
+        receipt=receipt,
+    )
 
 
 # ---------------------------------------------------------------------------
