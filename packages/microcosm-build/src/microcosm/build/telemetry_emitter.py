@@ -3,8 +3,11 @@
 A build imports only ``microcosm-emitter-interface``. Starting the adapter
 starts the ``microcosm-emitter`` command, installed on its own (for example
 ``uv tool install microcosm-emitter``), as this build's child process, with
-three modules: telemetry, Orrery graph publication, and the Hugging Face
-hand-over of staging run files and staged dataset bundles. The interface
+two modules: telemetry, and the Hugging Face hand-over of staging run files
+and staged dataset bundles. A build starts no graph publication module: its
+staged bundle hands the graph's Orrery inputs to the Hugging Face module,
+which submits them to the collector, and the collector builds the Orrery
+graph files. The interface
 finds the command through ``MICROCOSM_EMITTER_COMMAND``, then ``PATH``.
 
 The child inherits the build's environment variables and runs as the same
@@ -57,7 +60,6 @@ from microcosm_emitter_interface import (
     EmitterClient,
     EmitterStartupError,
     HuggingFaceSettings,
-    OrrerySettings,
     RequestFailure,
     StageDatasetBundle,
     TelemetryRun,
@@ -66,13 +68,6 @@ from microcosm_emitter_interface import (
 )
 from microcosm_emitter_interface.bundles import DatasetBundleReceipt, WriteAccess
 from microcosm_emitter_interface.launcher import StartupFailureReason, resolve_command
-from microcosm_emitter_interface.orrery import (
-    PublicationFileRole,
-    PublicationInventory,
-    PublicationReceipt,
-    publication_id_of,
-    unavailable_receipt,
-)
 from microcosm_emitter_interface.protocol import HUGGING_FACE_MODULE, TELEMETRY_MODULE
 from microcosm_emitter_interface.telemetry import (
     DEFAULT_FAILURE_CLASS,
@@ -98,8 +93,6 @@ __all__ = [
     "TelemetryRun",
     "emitter_problem",
     "hugging_face_settings",
-    "publication_inventory",
-    "publish_graph",
     "start_bundle_emitter",
     "start_local_telemetry_emitter_service",
 ]
@@ -143,19 +136,18 @@ def _packaged_minimum_emitter_version() -> str:
 #: ``parent_build_manifest.json`` and ``reform_validation.json`` to the
 #: collector with its ``calibration-diagnostics`` submission. The changelog of
 #: microcosm-emitter says what each earlier release added. A refused emitter
-#: costs a build its hosted telemetry, its staging hand-overs and its Orrery
-#: graph publication, fails a UK build given ``--staging-read-back``, and
-#: refuses a UK build that asks for remote staging of its dataset bundle
-#: (``OUTDATED_EMITTER_WARNING``), so a later rise weighs that against how
-#: many machines would have to upgrade.
+#: costs a build its hosted telemetry and its staging hand-overs, including
+#: the Orrery inputs in its staged bundle, fails a UK build given
+#: ``--staging-read-back``, and refuses a UK build that asks for remote
+#: staging of its dataset bundle (``OUTDATED_EMITTER_WARNING``), so a later
+#: rise weighs that against how many machines would have to upgrade.
 MINIMUM_EMITTER_VERSION = _packaged_minimum_emitter_version()
 UPGRADE_EMITTER_COMMAND = (
     f"uv tool install --upgrade 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"
 )
 INSTALL_EMITTER_COMMAND = "uv tool install microcosm-emitter"
 #: Printed instead of starting an older emitter. Without one, staging run
-#: files are still written locally, the UK graph step records a failed
-#: receipt (``local_service_unavailable``) and creates no publication job,
+#: files are still written locally,
 #: ``StagingRunBundleWriterV2.verify_remote`` fails because no files were
 #: handed over, and the UK pre-flight refuses a remote stage of the dataset
 #: bundle (``rowwise_staging.preflight_staged_dataset``), naming the upgrade
@@ -163,8 +155,8 @@ INSTALL_EMITTER_COMMAND = "uv tool install microcosm-emitter"
 OUTDATED_EMITTER_WARNING = (
     "The installed microcosm-emitter {reported}; this build needs {required} "
     "or later, so it did not start that emitter. The build continues without "
-    "hosted telemetry or staging hand-overs and queues no Orrery graph "
-    "publication; a UK build given --staging-read-back will fail at the "
+    "hosted telemetry or staging hand-overs; a UK build given "
+    "--staging-read-back will fail at the "
     "read-back. But a UK build that asks for remote staging of its dataset "
     "bundle is refused before it starts; UK builds ask for it by default, and "
     "--staging-local-only or --no-staged-dataset keeps the bundle local. "
@@ -722,7 +714,6 @@ class LocalTelemetryEmitter:
                 development_collector_url=development_collector_url,
                 heartbeat_seconds=heartbeat_seconds,
             ),
-            orrery=OrrerySettings(development_collector_url=development_collector_url),
             hugging_face=hugging_face_settings(development_collector_url),
             spool_path=path,
             startup_timeout=startup_timeout_seconds,
@@ -867,28 +858,6 @@ class LocalTelemetryEmitter:
         if self.client is not None:
             self.client.close()
 
-    def publication_inventory(
-        self, directory: Path, roles: Mapping[str, PublicationFileRole]
-    ) -> PublicationInventory | None:
-        """Ask this build's emitter to measure selected public files."""
-        if not self.available:
-            return None
-        return self.client.orrery_inventory(directory, roles)
-
-    def publish_graph(
-        self,
-        directory: Path,
-        inventory: PublicationInventory,
-        *,
-        wait_seconds: float = 30.0,
-    ) -> PublicationReceipt:
-        """Queue the measured files; wait only after the emitter queued them."""
-        if not self.available:
-            return unavailable_receipt(publication_id_of(inventory))
-        return self.client.hand_over_orrery_inputs(
-            directory, inventory, wait_seconds=wait_seconds
-        )
-
 
 #: Whether the emitters a build starts submit described staged bundles,
 #: release publications, promotions and withdrawals to the collector. On
@@ -908,18 +877,11 @@ def hugging_face_settings(
     the spool database on one machine. Collector submissions are switched
     on (``COLLECTOR_SUBMISSIONS``) and go to the production collector, or to
     ``development_collector_url``, a loopback collector for tests and local
-    development, as telemetry and Orrery graph publication do.
+    development, as telemetry does.
     """
     return HuggingFaceSettings(
         collector_submissions=COLLECTOR_SUBMISSIONS,
         development_collector_url=development_collector_url,
-    )
-
-
-def _orrery_emitter() -> EmitterClient:
-    """A short-lived emitter that runs only the Orrery module."""
-    return _start_emitter(
-        orrery=OrrerySettings(), startup_timeout=STARTUP_TIMEOUT_SECONDS
     )
 
 
@@ -938,37 +900,6 @@ def start_bundle_emitter(
         hugging_face=hugging_face_settings(development_collector_url),
         startup_timeout=STARTUP_TIMEOUT_SECONDS,
     )
-
-
-def publication_inventory(
-    directory: Path, roles: Mapping[str, PublicationFileRole]
-) -> PublicationInventory | None:
-    """Measure graph files when the build has no emitter of its own."""
-    client = _orrery_emitter()
-    try:
-        return client.orrery_inventory(directory, roles)
-    finally:
-        client.close()
-
-
-def publish_graph(
-    directory: Path,
-    inventory: PublicationInventory,
-    *,
-    wait_seconds: float = 30.0,
-) -> PublicationReceipt:
-    """Queue graph files when the build has no emitter of its own.
-
-    The emitter's queue is durable, so a pending job is delivered by a later
-    emitter or by ``microcosm-emitter-publish-graph``.
-    """
-    client = _orrery_emitter()
-    try:
-        return client.hand_over_orrery_inputs(
-            directory, inventory, wait_seconds=wait_seconds
-        )
-    finally:
-        client.close()
 
 
 def start_local_telemetry_emitter_service(**run: Any) -> LocalTelemetryEmitter:

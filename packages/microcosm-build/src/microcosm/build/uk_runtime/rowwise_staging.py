@@ -124,12 +124,6 @@ _CANDIDATE_RELEASES = frozenset(
 )
 
 
-def active_telemetry_emitter() -> LocalTelemetryEmitter | None:
-    """The process-local emitter of the current UK build attempt, if started."""
-
-    return _ACTIVE_EMITTER
-
-
 def _emitter_client() -> EmitterClient | None:
     """This build attempt's emitter client, running or not, or None.
 

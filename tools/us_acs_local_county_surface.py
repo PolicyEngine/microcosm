@@ -3227,9 +3227,19 @@ def loss_row_mapping(specs):
     )
 
 
-def target_loss_weights(specs, multipliers):
+def target_loss_weights(specs, multipliers, *, rule=None):
+    """The loss weights of ``specs`` under a declared ACS local weight rule.
+
+    ``rule`` names one of ``US_ACS_LOCAL_TARGET_WEIGHT_RULES``; ``None`` is
+    the release's default, the formula every build has used.
+    """
     from microcosm.build.us_runtime import target_loss_weights as weighting
 
     return weighting.target_loss_weights(
-        specs, multipliers, row_mapping=loss_row_mapping(specs)
+        specs,
+        multipliers,
+        row_mapping=loss_row_mapping(specs),
+        rule=weighting.acs_local_target_weight_rule(
+            weighting.US_ACS_LOCAL_TARGET_WEIGHT_RULE if rule is None else rule
+        ),
     )

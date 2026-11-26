@@ -304,7 +304,7 @@ def output_role(key: str) -> str:
 
     Lowercased, with each run of other characters as one ``_``, so that
     ``dataset`` and ``calibration_diagnostics`` keep their names and
-    ``orrery/graph.orrery.json`` becomes ``orrery_graph_orrery_json``.
+    ``orrery/execution.evidence.json`` becomes ``orrery_execution_evidence_json``.
     Digests and identifiers in the key are left out
     (``orrery/evidence-<id>-<digest>-binding.json`` becomes
     ``orrery_evidence_binding_json``). A key that would not start with a

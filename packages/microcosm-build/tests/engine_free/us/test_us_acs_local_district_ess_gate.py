@@ -28,6 +28,7 @@ import math
 import numpy as np
 import pytest
 
+from microcosm.build.area_support import effective_sample_size_by_group
 from test_support.paths import paths_for
 
 hypothesis = pytest.importorskip("hypothesis")
@@ -524,7 +525,7 @@ def test_a_design_weight_solve_collapses_no_district(solve, relative_floor, floo
     assert gate["n_collapsed"] == 0
     # The absolute floor is not relative: it flags the design's own thin
     # districts, and only those.
-    design_ess = _CD.ess_by_group(design, codes)
+    design_ess = effective_sample_size_by_group(design, codes)
     assert set(_districts(gate["below_floor"])) == {
         district for district, ess in design_ess.items() if ess < floor
     }

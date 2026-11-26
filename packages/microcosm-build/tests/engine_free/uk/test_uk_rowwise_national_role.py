@@ -311,7 +311,7 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
         collect_execution_evidence,
         load_run_evidence,
     )
-    from microcosm.graph.orrery import orrery_document_from_schema
+    from microcosm.graph.execution_overlay import load_execution_overlay
 
     schema = json.loads((out / "graph.schema.json").read_bytes())
     inventory = json.loads((out / "operations.json").read_bytes())
@@ -322,12 +322,12 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     store = ContentStore(out / ".graph-store", create=False)
     runs = load_run_evidence(out / "execution.evidence.json", store=store)
     evidence = collect_execution_evidence(schema, runs=runs, store=store)
-    document = orrery_document_from_schema(schema, execution=evidence)
     assert any(
-        json.loads(node["id"]) == ["operation", "uk.full.national.readback"]
-        for node in document["nodes"]
+        "uk.full.national.readback" in phase["operations"]
+        for phase in evidence["phases"]
     )
-    assert (out / "graph.orrery.json").is_file()
+    # The build wrote the same overlay beside the schema for the collector.
+    assert load_execution_overlay(out / "graph.execution.json") == evidence
 
     # The build record the release-cut certifier reads: the seam's schema.
     record = json.loads((out / "build_record.json").read_text())

@@ -7,7 +7,9 @@ that asks "is this the district file?" keys on the family, so that package
 meets the same guards with no code change:
 
 - ``fiscal_targets``: a district aggregate never keys a taxable-interest
-  rebase control (microcosm#489) and the district PTC amount never compiles;
+  rebase control (microcosm#489), a district fact of a measure the column
+  register lists must name its IRS column, and the district PTC amount,
+  read from A85530, never compiles (microcosm#1038);
 - ``release_target_parity``: the red line still requires the CD family
   compiled, and now requires every declared CD vintage compiled;
 - ``tools/build_us_target_parity_manifest.py``: the one-surface note still
@@ -105,8 +107,9 @@ def _cd_fact(
     groupby_value_id: str = "hi_01",
     geography_level: str = "congressional_district",
     geography_id: str = "5001700US1501",
+    source_column_id: str | None = None,
 ) -> dict[str, object]:
-    return _dynamic_ledger_fact(
+    fact = _dynamic_ledger_fact(
         source_record_id=f"{record_set_id}.{groupby_value_id}.{measure_id}",
         source_name="irs_soi",
         measure_id=measure_id,
@@ -119,6 +122,9 @@ def _cd_fact(
         groupby_dimension="irs_soi.congressional_district",
         groupby_value_id=groupby_value_id,
     )
+    if source_column_id is not None:
+        fact["layout"]["source_column_id"] = source_column_id
+    return fact
 
 
 def _is_cd(record_set_id: str) -> bool:
@@ -127,9 +133,25 @@ def _is_cd(record_set_id: str) -> bool:
     )
 
 
-def _ptc_conflict(record_set_id: str, measure_id: str) -> bool:
-    return fiscal_targets._is_soi_cd_premium_tax_credit_amount_conflict(
-        {"layout": {"record_set_id": record_set_id}}, measure_id=measure_id
+def _column_excluded(
+    record_set_id: str, measure_id: str, source_column_id: str | None = None
+) -> bool:
+    """Whether the column register drops this SOI fact (microcosm#1038).
+
+    Raises ``MissingSoiSourceColumnError`` for a district fact of a listed
+    measure that names no column."""
+    layout = {"record_set_id": record_set_id}
+    if source_column_id is not None:
+        layout["source_column_id"] = source_column_id
+    return fiscal_targets._is_source_column_concept_exclusion(
+        {
+            "observed_measure": {
+                "source_name": "irs_soi",
+                "source_measure_id": measure_id,
+            },
+            "layout": layout,
+            "lineage": {"source_record_id": f"{record_set_id}.us.{measure_id}"},
+        }
     )
 
 
@@ -191,11 +213,19 @@ def test_district_record_set_is_matched_by_family(
     record_set_id: str, is_cd: bool
 ) -> None:
     """Any IRS SOI district file, at any data vintage and with or without a
-    period token, is a CD record set, and its PTC amount conflicts; no other
-    family or source is, and no other measure conflicts."""
+    period token, is a CD record set, and its PTC amount must name its IRS
+    column; no other family or source is. The column register drops the PTC
+    amount read from A85530 and keeps the one read from A85770, whatever the
+    record set."""
     assert _is_cd(record_set_id) is is_cd
-    assert _ptc_conflict(record_set_id, "premium_tax_credit_amount") is is_cd
-    assert not _ptc_conflict(record_set_id, "premium_tax_credit_returns")
+    assert _column_excluded(record_set_id, "premium_tax_credit_amount", "A85530")
+    assert not _column_excluded(record_set_id, "premium_tax_credit_amount", "A85770")
+    if is_cd:
+        with pytest.raises(fiscal_targets.MissingSoiSourceColumnError):
+            _column_excluded(record_set_id, "premium_tax_credit_amount")
+    else:
+        assert not _column_excluded(record_set_id, "premium_tax_credit_amount")
+    assert not _column_excluded(record_set_id, "return_count")
     if is_cd:
         assert _interest_control_key(record_set_id) is None
 
@@ -205,9 +235,10 @@ def test_district_guards_hold_at_every_vintage() -> None:
     bare year, month, ``YYYY_MM``; district data vintage 1990-2099; any
     trailing segments):
 
-    - a district file is a CD record set, its PTC amount conflicts, and it
-      never keys a taxable-interest control, while its Table 1.4 twin keys one
-      and does not conflict;
+    - a district file is a CD record set, its PTC amount must name its IRS
+      column and is dropped when the column is A85530, and it never keys a
+      taxable-interest control, while its Table 1.4 twin keys one and needs
+      no column;
     - no other SOI family and no other source is a CD record set;
     - differential against the pinned literal this replaced: every id
       ``.congressional_district_2022.`` matched still matches, and the two
@@ -293,14 +324,17 @@ def test_district_guards_hold_at_every_vintage() -> None:
 
         assert fiscal_targets._soi_record_set_family(cd) == "congressional_district"
         assert _is_cd(cd)
-        assert _ptc_conflict(cd, "premium_tax_credit_amount")
+        with pytest.raises(fiscal_targets.MissingSoiSourceColumnError):
+            _column_excluded(cd, "premium_tax_credit_amount")
+        assert _column_excluded(cd, "premium_tax_credit_amount", "A85530")
+        assert not _column_excluded(cd, "premium_tax_credit_amount", "A85770")
         cd_all_returns = record_set("irs_soi", token, district_family, ["all_returns"])
         assert _interest_control_key(cd_all_returns) is None
         twin = record_set("irs_soi", token, "table_1_4", ["all_returns"])
         twin_key = _interest_control_key(twin)
         assert twin_key is not None
         assert (twin_key[0], twin_key[2]) == ("taxable_interest_amount", "all_returns")
-        assert not _ptc_conflict(twin, "premium_tax_credit_amount")
+        assert not _column_excluded(twin, "premium_tax_credit_amount")
 
         assert fiscal_targets._soi_record_set_family(other) == other_family
         assert not _is_cd(other)
@@ -404,9 +438,10 @@ def test_district_taxable_interest_never_controls_the_rebase(
 
 @CD_RECORD_SETS
 def test_district_ptc_amount_never_compiles(cd_record_set: str) -> None:
-    """The district A85530 amount is not the gross annual PTC that
-    ``assigned_aca_ptc`` measures, so no district PTC amount compiles at any
-    vintage, while the file's other district and state-total rows do."""
+    """The district file reads its PTC amount from A85530, additional
+    Medicare tax, which is not the gross annual PTC that ``assigned_aca_ptc``
+    measures (microcosm#1038). The column register drops it at any vintage,
+    while the file's other district and state-total rows compile."""
     facts = [
         *packaged_reference_facts(),
         _cd_fact(cd_record_set, "return_count", 100_000),
@@ -418,7 +453,12 @@ def test_district_ptc_amount_never_compiles(cd_record_set: str) -> None:
             geography_id="5001700US1502",
         ),
         _cd_fact(cd_record_set, "adjusted_gross_income", 10_000_000_000),
-        _cd_fact(cd_record_set, "premium_tax_credit_amount", 90_000_000),
+        _cd_fact(
+            cd_record_set,
+            "premium_tax_credit_amount",
+            90_000_000,
+            source_column_id="A85530",
+        ),
         _cd_fact(
             cd_record_set,
             "return_count",
@@ -434,6 +474,7 @@ def test_district_ptc_amount_never_compiles(cd_record_set: str) -> None:
             groupby_value_id="hi_total",
             geography_level="state",
             geography_id="0400000US15",
+            source_column_id="A85530",
         ),
     ]
     registry = compile_us_fiscal_target_registry(
@@ -686,7 +727,9 @@ def test_pinned_feed_district_match_is_unchanged_fact_by_fact() -> None:
     """On the pinned feed the family match decides exactly as the
     ``.congressional_district_2022.`` literal it replaced, fact by fact, so
     neither guard moves a target. It also agrees with the release tools'
-    vintage-free spec prefix on every SOI fact's record-set spec id."""
+    vintage-free spec prefix on every SOI fact's record-set spec id. The
+    column register drops district facts only, and every district PTC
+    amount (microcosm#1038)."""
     tool = _load_tool("build_us_target_parity_manifest")
     feed_path = tool.DEFAULT_FEED_PATH
     if not feed_path.exists():
@@ -707,9 +750,10 @@ def test_pinned_feed_district_match_is_unchanged_fact_by_fact() -> None:
             record_set_id
         )
         measure_id = fiscal_targets._measure_id(fact)
-        assert fiscal_targets._is_soi_cd_premium_tax_credit_amount_conflict(
-            fact, measure_id=measure_id
-        ) is (is_cd and measure_id == "premium_tax_credit_amount")
+        excluded = fiscal_targets._is_source_column_concept_exclusion(fact)
+        assert is_cd or not excluded, record_set_id
+        if is_cd and measure_id == "premium_tax_credit_amount":
+            assert excluded, fiscal_targets._source_record_id(fact)
         spec_id = fiscal_targets._str_at(fact, "layout", "record_set_spec_id")
         if fiscal_targets._source_name(fact) == "irs_soi" and spec_id:
             assert spec_id.startswith("irs_soi.congressional_district_") is is_cd

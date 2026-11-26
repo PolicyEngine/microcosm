@@ -2541,44 +2541,150 @@ def support_gate(
     )
 
 
+#: The support columns of the long-form area support table, beside
+#: ``geography_level`` and ``area_code``. A gate needs only the columns of the
+#: floors it declares.
+AREA_SUPPORT_ROWS = "nonzero_households"
+AREA_SUPPORT_SOURCES = "nonzero_source_households"
+AREA_SUPPORT_ESS = "effective_sample_size"
+AREA_SUPPORT_STARTING_ESS = "starting_effective_sample_size"
+AREA_SUPPORT_COLUMNS = (
+    AREA_SUPPORT_ROWS,
+    AREA_SUPPORT_SOURCES,
+    AREA_SUPPORT_ESS,
+    AREA_SUPPORT_STARTING_ESS,
+)
+
+
+def checked_area_support_floors(
+    minimum_rows: int | None,
+    minimum_effective_sample_size: float | None,
+    minimum_distinct_sources: int | None,
+    minimum_effective_sample_size_ratio: float | None = None,
+) -> None:
+    """Refuse a floor that is not a valid declaration (``None`` is unchecked)."""
+
+    if minimum_rows is not None and (
+        isinstance(minimum_rows, bool)
+        or not isinstance(minimum_rows, int)
+        or minimum_rows < 1
+    ):
+        raise ValueError("minimum_rows must be a positive integer.")
+    if minimum_distinct_sources is not None and (
+        isinstance(minimum_distinct_sources, bool)
+        or not isinstance(minimum_distinct_sources, int)
+        or minimum_distinct_sources < 1
+    ):
+        raise ValueError("minimum_distinct_sources must be a positive integer.")
+    if minimum_effective_sample_size is not None and (
+        isinstance(minimum_effective_sample_size, bool)
+        or not math.isfinite(float(minimum_effective_sample_size))
+        or minimum_effective_sample_size <= 0
+    ):
+        raise ValueError("minimum_effective_sample_size must be positive and finite.")
+    if minimum_effective_sample_size_ratio is not None and (
+        isinstance(minimum_effective_sample_size_ratio, bool)
+        or not math.isfinite(float(minimum_effective_sample_size_ratio))
+        or not 0.0 < minimum_effective_sample_size_ratio <= 1.0
+    ):
+        raise ValueError("minimum_effective_sample_size_ratio must be in (0, 1].")
+
+
+def area_support_required_columns(
+    minimum_rows: int | None,
+    minimum_effective_sample_size: float | None,
+    minimum_distinct_sources: int | None,
+    minimum_effective_sample_size_ratio: float | None = None,
+) -> list[str]:
+    """The table columns the declared floors read."""
+
+    columns = ["geography_level", "area_code"]
+    if minimum_rows is not None:
+        columns.append(AREA_SUPPORT_ROWS)
+    if minimum_distinct_sources is not None:
+        columns.append(AREA_SUPPORT_SOURCES)
+    if (
+        minimum_effective_sample_size is not None
+        or minimum_effective_sample_size_ratio is not None
+    ):
+        columns.append(AREA_SUPPORT_ESS)
+    if minimum_effective_sample_size_ratio is not None:
+        columns.append(AREA_SUPPORT_STARTING_ESS)
+    return columns
+
+
 def area_support_shortfalls(
     rows: float,
     effective_sample_size: float,
     sources: float,
     *,
-    minimum_rows: int,
-    minimum_effective_sample_size: float,
-    minimum_distinct_sources: int,
+    minimum_rows: int | None,
+    minimum_effective_sample_size: float | None,
+    minimum_distinct_sources: int | None,
+    starting_effective_sample_size: float | None = None,
+    minimum_effective_sample_size_ratio: float | None = None,
 ) -> list[str]:
     """The support floors one area misses, worded as :func:`area_support_gate` reports them.
 
     Each shortfall states the area's measured value beside the floor: the
     release ships per-area support figures since María's ruling of
     2026-10-26, which dropped their withholding (microcosm#1301).
+
+    A floor that is ``None`` is not declared and not checked. The relative
+    floor (microcosm#1729) is missed when the ESS is below
+    ``minimum_effective_sample_size_ratio`` times the area's starting ESS. The
+    test multiplies, so an area whose starting ESS is zero never misses it.
     """
 
     shortfalls = []
-    if rows < minimum_rows:
+    if minimum_rows is not None and rows < minimum_rows:
         shortfalls.append(f"rows {int(rows)} < {minimum_rows}")
-    if effective_sample_size < minimum_effective_sample_size:
+    if (
+        minimum_effective_sample_size is not None
+        and effective_sample_size < minimum_effective_sample_size
+    ):
         shortfalls.append(
             "ESS "
             f"{float(effective_sample_size):.6g} < "
             f"{float(minimum_effective_sample_size):.6g}"
         )
-    if sources < minimum_distinct_sources:
+    if minimum_distinct_sources is not None and sources < minimum_distinct_sources:
         shortfalls.append(
             f"distinct sources {int(sources)} < {minimum_distinct_sources}"
         )
+    if (
+        minimum_effective_sample_size_ratio is not None
+        and effective_sample_size
+        < minimum_effective_sample_size_ratio * starting_effective_sample_size
+    ):
+        shortfalls.append(
+            "ESS "
+            f"{float(effective_sample_size):.6g} < "
+            f"{float(minimum_effective_sample_size_ratio):.6g} x starting ESS "
+            f"{float(starting_effective_sample_size):.6g}"
+        )
     return shortfalls
+
+
+def _area_shortfalls(row, floors: Mapping[str, object]) -> list[str]:
+    """One table row's shortfalls under ``floors`` (undeclared columns unread)."""
+
+    return area_support_shortfalls(
+        getattr(row, AREA_SUPPORT_ROWS, 0),
+        getattr(row, AREA_SUPPORT_ESS, 0.0),
+        getattr(row, AREA_SUPPORT_SOURCES, 0),
+        starting_effective_sample_size=getattr(row, AREA_SUPPORT_STARTING_ESS, None),
+        **floors,
+    )
 
 
 def area_support_below_floor(
     area_support: pd.DataFrame,
     *,
-    minimum_rows: int,
-    minimum_effective_sample_size: float,
-    minimum_distinct_sources: int,
+    minimum_rows: int | None,
+    minimum_effective_sample_size: float | None,
+    minimum_distinct_sources: int | None,
+    minimum_effective_sample_size_ratio: float | None = None,
 ) -> pd.Series:
     """Whether each area of a support table misses any floor, by the gate's rule.
 
@@ -2586,18 +2692,22 @@ def area_support_below_floor(
     below the floor, which is what a consumer of the area's estimates needs.
     """
 
+    floors = {
+        "minimum_rows": minimum_rows,
+        "minimum_effective_sample_size": minimum_effective_sample_size,
+        "minimum_distinct_sources": minimum_distinct_sources,
+        "minimum_effective_sample_size_ratio": minimum_effective_sample_size_ratio,
+    }
+    missing_columns = sorted(
+        set(area_support_required_columns(**floors)) - set(area_support.columns)
+    )
+    if missing_columns:
+        raise ValueError(
+            f"area_support is missing required column(s): {missing_columns}."
+        )
     return pd.Series(
         [
-            bool(
-                area_support_shortfalls(
-                    row.nonzero_households,
-                    row.effective_sample_size,
-                    row.nonzero_source_households,
-                    minimum_rows=minimum_rows,
-                    minimum_effective_sample_size=minimum_effective_sample_size,
-                    minimum_distinct_sources=minimum_distinct_sources,
-                )
-            )
+            bool(_area_shortfalls(row, floors))
             for row in area_support.itertuples(index=False)
         ],
         index=area_support.index,
@@ -2610,9 +2720,10 @@ def area_support_gate(
     *,
     area_roster: Mapping[str, Iterable[str]],
     geography_levels: Iterable[str],
-    minimum_rows: int,
-    minimum_effective_sample_size: float,
-    minimum_distinct_sources: int,
+    minimum_rows: int | None = None,
+    minimum_effective_sample_size: float | None = None,
+    minimum_distinct_sources: int | None = None,
+    minimum_effective_sample_size_ratio: float | None = None,
     reviewed_exclusions: Mapping[str, Mapping[str, object]] | None = None,
 ) -> GateResult:
     """Require adequate positive-weight support in every declared local area.
@@ -2625,38 +2736,57 @@ def area_support_gate(
     beside the floors it misses, and each geography level reports how many
     areas were checked and sit below a floor, and its minima (María's ruling
     of 2026-10-26 dropped the withholding of microcosm#1301).
+
+    Each floor is a country's declaration, and ``None`` leaves it unchecked
+    (microcosm#1729). The table needs only the columns of the declared
+    floors.
+
+    - ``minimum_rows``, ``minimum_effective_sample_size`` and
+      ``minimum_distinct_sources`` are absolute floors. With these three and
+      no relative floor, the result is the one this gate always gave.
+    - ``minimum_effective_sample_size_ratio`` (in ``(0, 1]``) fails an area
+      whose ESS is below that share of its
+      ``starting_effective_sample_size``: the rule microcosm#1078 adopted. A
+      gate that declares it also reports, for each level, how many areas are
+      below it and the smallest ratio.
+
+    The result reports. Whether a failure blocks a release is the caller's
+    declaration, not this function's.
     """
 
     levels = tuple(str(level) for level in geography_levels)
     if not levels or len(set(levels)) != len(levels):
         raise ValueError("geography_levels must be non-empty and unique.")
-    if (
-        isinstance(minimum_rows, bool)
-        or not isinstance(minimum_rows, int)
-        or minimum_rows < 1
-    ):
-        raise ValueError("minimum_rows must be a positive integer.")
-    if (
-        isinstance(minimum_distinct_sources, bool)
-        or not isinstance(minimum_distinct_sources, int)
-        or minimum_distinct_sources < 1
-    ):
-        raise ValueError("minimum_distinct_sources must be a positive integer.")
-    if (
-        not math.isfinite(float(minimum_effective_sample_size))
-        or minimum_effective_sample_size <= 0
-    ):
-        raise ValueError("minimum_effective_sample_size must be positive and finite.")
+    checked_area_support_floors(
+        minimum_rows,
+        minimum_effective_sample_size,
+        minimum_distinct_sources,
+        minimum_effective_sample_size_ratio,
+    )
+    ratio_floor = (
+        None
+        if minimum_effective_sample_size_ratio is None
+        else float(minimum_effective_sample_size_ratio)
+    )
+    floors = {
+        "minimum_rows": minimum_rows,
+        "minimum_effective_sample_size": (
+            None
+            if minimum_effective_sample_size is None
+            else float(minimum_effective_sample_size)
+        ),
+        "minimum_distinct_sources": minimum_distinct_sources,
+        "minimum_effective_sample_size_ratio": ratio_floor,
+    }
     if not isinstance(area_support, pd.DataFrame):
         raise TypeError("area_support must be a pandas DataFrame.")
-    required_columns = {
-        "geography_level",
-        "area_code",
-        "nonzero_households",
-        "nonzero_source_households",
-        "effective_sample_size",
-    }
-    missing_columns = sorted(required_columns - set(area_support.columns))
+    required_columns = area_support_required_columns(
+        minimum_rows,
+        minimum_effective_sample_size,
+        minimum_distinct_sources,
+        minimum_effective_sample_size_ratio,
+    )
+    missing_columns = sorted(set(required_columns) - set(area_support.columns))
     if missing_columns:
         raise ValueError(
             f"area_support is missing required column(s): {missing_columns}."
@@ -2702,12 +2832,10 @@ def area_support_gate(
             f"missing={missing_areas[:10]}, extra={extra_areas[:10]}."
         )
 
-    numeric_columns = (
-        "nonzero_households",
-        "nonzero_source_households",
-        "effective_sample_size",
-    )
-    values = rows.loc[:, list(numeric_columns)].to_numpy(dtype=np.float64)
+    numeric_columns = [
+        column for column in required_columns if column in AREA_SUPPORT_COLUMNS
+    ]
+    values = rows.loc[:, numeric_columns].to_numpy(dtype=np.float64)
     if not np.isfinite(values).all() or (values < 0).any():
         raise ValueError("area_support contains invalid support values.")
 
@@ -2716,29 +2844,29 @@ def area_support_gate(
     used_exclusions: dict[str, dict[str, object]] = {}
     stale_exclusions: list[str] = []
     below_floor = dict.fromkeys(levels, 0)
+    below_ratio = dict.fromkeys(levels, 0)
     for row in rows.sort_values(["geography_level", "area_code"]).itertuples(
         index=False
     ):
         key = f"{row.geography_level}/{row.area_code}"
-        shortfalls = area_support_shortfalls(
-            row.nonzero_households,
-            row.effective_sample_size,
-            row.nonzero_source_households,
-            minimum_rows=minimum_rows,
-            minimum_effective_sample_size=minimum_effective_sample_size,
-            minimum_distinct_sources=minimum_distinct_sources,
-        )
+        shortfalls = _area_shortfalls(row, floors)
         if shortfalls:
             below_floor[row.geography_level] += 1
+        if ratio_floor is not None and getattr(
+            row, AREA_SUPPORT_ESS
+        ) < ratio_floor * getattr(row, AREA_SUPPORT_STARTING_ESS):
+            below_ratio[row.geography_level] += 1
         record = exclusions.get(key)
         if record is not None and shortfalls:
-            used_exclusions[key] = {
-                "shortfalls": shortfalls,
-                "rows": int(row.nonzero_households),
-                "ess": float(row.effective_sample_size),
-                "sources": int(row.nonzero_source_households),
-                "record": dict(record),
-            }
+            used: dict[str, object] = {"shortfalls": shortfalls}
+            if AREA_SUPPORT_ROWS in rows.columns:
+                used["rows"] = int(getattr(row, AREA_SUPPORT_ROWS))
+            if AREA_SUPPORT_ESS in rows.columns:
+                used["ess"] = float(getattr(row, AREA_SUPPORT_ESS))
+            if AREA_SUPPORT_SOURCES in rows.columns:
+                used["sources"] = int(getattr(row, AREA_SUPPORT_SOURCES))
+            used["record"] = dict(record)
+            used_exclusions[key] = used
         elif record is not None:
             stale_exclusions.append(key)
             failures.append(
@@ -2758,27 +2886,45 @@ def area_support_gate(
     by_level: dict[str, dict[str, object]] = {}
     for level in levels:
         level_rows = rows.loc[rows["geography_level"] == level]
-        by_level[level] = {
+        summary: dict[str, object] = {
             "areas_checked": int(len(level_rows)),
             "areas_below_floor": below_floor[level],
-            "minimum_rows": int(level_rows["nonzero_households"].min()),
-            "minimum_effective_sample_size": float(
-                level_rows["effective_sample_size"].min()
-            ),
-            "minimum_distinct_sources": int(
-                level_rows["nonzero_source_households"].min()
-            ),
         }
+        if AREA_SUPPORT_ROWS in level_rows.columns:
+            summary["minimum_rows"] = int(level_rows[AREA_SUPPORT_ROWS].min())
+        if AREA_SUPPORT_ESS in level_rows.columns:
+            summary["minimum_effective_sample_size"] = float(
+                level_rows[AREA_SUPPORT_ESS].min()
+            )
+        if AREA_SUPPORT_SOURCES in level_rows.columns:
+            summary["minimum_distinct_sources"] = int(
+                level_rows[AREA_SUPPORT_SOURCES].min()
+            )
+        if ratio_floor is not None:
+            ess = level_rows[AREA_SUPPORT_ESS].to_numpy(dtype=np.float64)
+            starting = level_rows[AREA_SUPPORT_STARTING_ESS].to_numpy(dtype=np.float64)
+            rated = starting > 0
+            # A ratio too large for a float is infinite, as plain division gives.
+            with np.errstate(over="ignore"):
+                ratios = ess[rated] / starting[rated]
+            summary["areas_below_effective_sample_size_ratio"] = below_ratio[level]
+            summary["minimum_effective_sample_size_ratio"] = (
+                float(ratios.min()) if rated.any() else None
+            )
+        by_level[level] = summary
+    # A gate that declares no relative floor reports the three absolute
+    # floors alone, as it always has.
+    declared_floors = {
+        key: value
+        for key, value in floors.items()
+        if key != "minimum_effective_sample_size_ratio" or value is not None
+    }
     return GateResult(
         name="area_support",
         passed=not failures,
         failures=tuple(failures),
         details={
-            "floors": {
-                "minimum_rows": minimum_rows,
-                "minimum_effective_sample_size": float(minimum_effective_sample_size),
-                "minimum_distinct_sources": minimum_distinct_sources,
-            },
+            "floors": declared_floors,
             "by_geography_level": by_level,
             "areas_checked": len(expected_pairs),
             "areas_failed": len(failures),

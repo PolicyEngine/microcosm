@@ -3734,6 +3734,27 @@ def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
     }
     assert {spec.metadata["ledger_geography_level"] for spec in soi} == {"state"}
     assert {spec.name for spec in state_specs} <= set(full_by_name)
+    # The compiler drops the district file's SALT and premium-tax-credit facts
+    # read from the wrong IRS column (microcosm#1038), so `totals` keeps only
+    # the 51 states' Historic Table 2 premium-tax-credit rows, returns and
+    # amounts, and `full` 29,824 SOI specs. With no such district rows left,
+    # the crosswalk no longer copies those Historic Table 2 rows to the nine
+    # at-large districts (each copy repeated its state row).
+    totals_soi = [spec for spec in totals_registry.specs if spec.family == "irs_soi"]
+    assert len(totals_soi) == 102
+    assert {spec.metadata["ledger_geography_level"] for spec in totals_soi} == {
+        "state"
+    }
+    assert {spec.metadata["source_measure_id"] for spec in totals_soi} == {
+        "premium_tax_credit_returns",
+        "premium_tax_credit_amount",
+    }
+    assert not [
+        spec.name
+        for spec in totals_soi
+        if ".congressional_district_" in spec.metadata["ledger_layout_record_set_id"]
+    ]
+    assert sum(spec.family == "irs_soi" for spec in full_registry.specs) == 29_824
 
     assert not [
         spec
