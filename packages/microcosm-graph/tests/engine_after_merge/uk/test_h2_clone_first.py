@@ -59,7 +59,8 @@ engine-uk-after-merge job on pushes to main.
   household carries its area, ladder, local authority, fuel-relief flag and
   BRMA; the geography keys are unique through area_brma, the SPI copies and
   band donors repeat the key they copy until spi_copy_areas gives each its
-  own, and every later copy carries a key spi_copy_areas gave; private_rent
+  own, high_value_home_support gives each of its copies its own too, and
+  every later copy carries its parent's key; private_rent
   re-draws Great Britain's private renters' rents and leaves every other
   row's, and H2's root households all own their homes, so it re-draws none
   here (microcosm#931).
@@ -71,7 +72,9 @@ engine-uk-after-merge job on pushes to main.
   on the frame the stage ran on, bit for bit; regional_property_uprating
   returns each localised home to its knot within one rounding, and a home at
   the knots' cap to the cap or a few roundings below; and every high-value
-  support copy keeps its parent's every column but its ids (microcosm#931).
+  support copy keeps its parent's every column, its home value among them,
+  but its ids, its key, its area columns and its council tax, which it takes
+  at its own place (María's ruling of 2026-11-25, microcosm#931).
 - **Council tax, at one clone and at four:** council_tax_localise gives every
   row on a ratio path its bill from before the stage times the ratio of its
   own draw cell: one wherever the cell holds one toy authority (Wales's and
