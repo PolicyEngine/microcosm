@@ -5077,11 +5077,16 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 #   household and the batches must partition every entity, or the scorer
 #   refuses before any engine exists;
 # * every construction declares ``spm=US_RELEASE_SPM_SELECTION``;
-# * a consumer's baseline requests are learned by an engine-free recording
-#   dry run and scored in ONE batch-outer pass, in ascending period order;
-#   the served baseline refuses any key outside that recorded plan;
-# * each reform builds ONE tax-benefit system (microcosm#456) and scores its
-#   keys batch by batch; every batch engine is released before the next;
+# * each consumer's baseline requests are learned by an engine-free recording
+#   dry run; the scorer registers the recorded plans and scores their union
+#   in ONE batch-outer pass, in ascending period order, serving each consumer
+#   its own keys (microcosm#1595). A consumer without a registered plan, and
+#   every consumer once that pass has failed, scores its own plan in a pass
+#   of its own. The served baseline refuses any key outside the consumer's
+#   recorded plan;
+# * each reform builds ONE tax-benefit system (microcosm#456) and scores each
+#   key, or each set of keys it is asked to ``prefetch``, in one pass, batch
+#   by batch; every batch engine is released before the next;
 # * a batch reform engine gets that system alone, not ``reform=`` too (see
 #   ``_HouseholdBatchedPostExportScorer._construct``), so it carries no
 #   ``baseline`` branch; it refuses the formulas that read one
@@ -5101,7 +5106,9 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 # a batch-local aggregate.
 
 #: Recorded in ``post_export_scoring`` blocks; bump with any change to how the
-#: written H5 is scored.
+#: written H5 is scored that can change a scored value. Regrouping keys into
+#: fewer passes while every value stays byte-identical (the merged baseline
+#: pass and the shared pre-OBBBA pass, microcosm#1595) keeps it.
 POST_EXPORT_SCORING_METHOD = "household_batched_written_h5"
 
 #: One scored request: (variable, period, map_to).
@@ -5269,11 +5276,16 @@ class _RecordingPostExportSimulation:
     """Engine-free stand-in that records each key one simulation is asked for.
 
     ``asked`` is shared by every recorder of one dry run: it collects
-    ``(simulation, key)`` in the order of first asks, where ``simulation`` is
-    the reformed simulation's number, or ``None`` for the baseline.
-    ``reforms`` is the dry run's list of the reforms opened so far, also
-    shared, so a reformed simulation's recorder refuses every key once a later
-    one is opened, as the scorer refuses a finished ``_BatchedPostExportReform``.
+    ``(simulation, key)`` in the order the serial scorer computes them, where
+    ``simulation`` is the reformed simulation's number, or ``None`` for the
+    baseline. ``reforms`` is the dry run's list of the reforms opened so far,
+    also shared, so a reformed simulation's recorder refuses every key once a
+    later one is opened, as the scorer refuses a finished
+    ``_BatchedPostExportReform``. ``reform_passes``, also shared, gets one
+    entry per batched reform pass: when the consumer runs for real, each
+    ``calculate`` or ``prefetch`` that asks a reformed simulation for a key it
+    was not asked before is one pass of ``_BatchedPostExportReform``, which
+    computes the new keys in ascending period order.
     """
 
     def __init__(
@@ -5281,25 +5293,39 @@ class _RecordingPostExportSimulation:
         asked: dict[tuple[int | None, PostExportKey], None],
         simulation: int | None,
         reforms: Sequence[object],
+        reform_passes: list[int],
     ) -> None:
         self._asked = asked
         self._simulation = simulation
         self._reforms = reforms
+        self._reform_passes = reform_passes
 
     def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
-        key = _post_export_key(variable, period, map_to)
+        self._record((_post_export_key(variable, period, map_to),))
+        return _PostExportValues(np.zeros(0), np.zeros(0))
+
+    def prefetch(self, requests) -> None:
+        """Record ``requests`` as ``_BatchedPostExportReform.prefetch`` scores them."""
+        self._record(tuple(_post_export_key(*request) for request in requests))
+
+    def _record(self, keys: Sequence[PostExportKey]) -> None:
         latest = len(self._reforms) - 1
         if self._simulation is not None and self._simulation != latest:
+            asked_for = keys[0] if len(keys) == 1 else tuple(keys)
             raise RuntimeError(
                 f"A post-export consumer asked reformed simulation "
-                f"{self._simulation} for {key} after opening reformed simulation "
-                f"{latest}. The scorer finishes a reformed simulation when the "
-                "consumer opens the next one and refuses it further keys, so a "
-                "consumer asks each reformed simulation for all its keys before "
-                "opening the next."
+                f"{self._simulation} for {asked_for} after opening reformed "
+                f"simulation {latest}. The scorer finishes a reformed simulation "
+                "when the consumer opens the next one and refuses it further "
+                "keys, so a consumer asks each reformed simulation for all its "
+                "keys before opening the next."
             )
-        self._asked.setdefault((self._simulation, key), None)
-        return _PostExportValues(np.zeros(0), np.zeros(0))
+        new_keys = _ascending_period_plan(
+            key for key in keys if (self._simulation, key) not in self._asked
+        )
+        self._asked.update(dict.fromkeys((self._simulation, key) for key in new_keys))
+        if new_keys and self._simulation is not None:
+            self._reform_passes.append(self._simulation)
 
 
 def _dry_run_post_export_requests(
@@ -5310,10 +5336,12 @@ def _dry_run_post_export_requests(
     Returns ``(simulation, reform, key)`` for each request, in the order the
     serial scorer runs them: the baseline plan first (``reform`` and
     ``simulation`` None; ``_ascending_period_plan`` order), then the reform
-    requests. When the consumer runs for real, each key a reformed simulation
-    is first asked for is one batched pass (``_BatchedPostExportReform``), so
-    the reform requests follow those first asks; ``simulation`` numbers the
-    consumer's ``simulate(reform)`` calls from 0.
+    requests. When the consumer runs for real, each ``calculate`` or
+    ``prefetch`` that asks a reformed simulation for keys it was not asked
+    before is one batched pass (``_BatchedPostExportReform``), which computes
+    those keys in ascending period order, so the reform requests follow that
+    order; ``simulation`` numbers the consumer's ``simulate(reform)`` calls
+    from 0. ``_dry_run_post_export`` also counts the passes.
 
     No engine is constructed: ``simulate(None)`` returns a recorder that logs
     every baseline request, and each ``simulate(reform)`` a recorder of its
@@ -5329,22 +5357,35 @@ def _dry_run_post_export_requests(
     So is a key asked of a reformed simulation after the consumer opened the
     next one, which the scorer refuses too (``_BatchedPostExportReform``).
     """
+    return _dry_run_post_export(consumer)[0]
+
+
+def _dry_run_post_export(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[tuple[tuple[int | None, object, PostExportKey], ...], int]:
+    """``_dry_run_post_export_requests``'s requests and the number of batched
+    reform passes the scorer runs for them: one per ``calculate`` or
+    ``prefetch`` that asks a reformed simulation for a key not asked of it
+    before, so a ``prefetch`` of several keys is one pass."""
     asked: dict[tuple[int | None, PostExportKey], None] = {}
     reforms: list[object] = []
+    reform_passes: list[int] = []
 
     def simulate(reform):
         if reform is None:
-            return _RecordingPostExportSimulation(asked, None, reforms)
+            return _RecordingPostExportSimulation(asked, None, reforms, reform_passes)
         check_post_export_reform(reform)
         reforms.append(reform)
-        return _RecordingPostExportSimulation(asked, len(reforms) - 1, reforms)
+        return _RecordingPostExportSimulation(
+            asked, len(reforms) - 1, reforms, reform_passes
+        )
 
     setattr(simulate, RECORDS_REQUESTS_ONLY, True)
     consumer(simulate)
     baseline = _ascending_period_plan(
         key for simulation, key in asked if simulation is None
     )
-    return (
+    requests = (
         *((None, None, key) for key in baseline),
         *(
             (simulation, reforms[simulation], key)
@@ -5352,6 +5393,7 @@ def _dry_run_post_export_requests(
             if simulation is not None
         ),
     )
+    return requests, len(reform_passes)
 
 
 def _record_post_export_request_descriptors(
@@ -5390,14 +5432,16 @@ def _record_post_export_requests(
 ) -> tuple[tuple[PostExportKey, ...], int]:
     """Learn a consumer's baseline keys and reform pass count from its dry run.
 
-    The baseline keys are the plan the served baseline scores; the pass count
-    is the dry run's reform requests (``_dry_run_post_export_requests``).
-    Progress reporting alone uses the count: a consumer that runs more passes
-    than counted reports no outer counter on the extra ones.
+    The baseline keys are the plan the served baseline scores. The pass count
+    is the batched reform passes the scorer runs for the dry run's reform
+    requests (``_dry_run_post_export``): a ``prefetch`` of several keys of one
+    reformed simulation is one pass. Progress reporting alone uses the count:
+    a consumer that runs more passes than counted reports no outer counter on
+    the extra ones.
     """
-    requests = _dry_run_post_export_requests(consumer)
+    requests, reform_passes = _dry_run_post_export(consumer)
     baseline = tuple(key for simulation, _, key in requests if simulation is None)
-    return baseline, len(requests) - len(baseline)
+    return baseline, reform_passes
 
 
 def _record_post_export_baseline_plan(
@@ -5761,7 +5805,12 @@ class _HouseholdBatchedPostExportScorer:
         microsimulation_cls=None,
         dataset_from_frame=None,
         load_frame=None,
+        baseline_plans: Mapping[str, Sequence[PostExportKey]] | None = None,
     ) -> None:
+        """``baseline_plans`` registers consumers' recorded baseline plans by
+        name: the first of them opened scores the union of every registered
+        plan in one batch-outer pass, and each is served its own keys from it
+        (``_baseline_for``)."""
         self.dataset_path = Path(dataset_path)
         self.maximum_batch_size = maximum_microsim_batch_size
         # The scored bytes are bound to this digest: the loader refuses a file
@@ -5815,6 +5864,17 @@ class _HouseholdBatchedPostExportScorer:
         # Each finished consumer's scoring record, for the manifests' block.
         # Records, not consumers: a finished consumer's arrays must be freed.
         self.consumer_records: dict[str, dict[str, object]] = {}
+        # Every registered plan, which an opened consumer must match; the
+        # non-empty ones not yet served; and the merged pass's values of the
+        # keys those still need (None until that pass runs).
+        self._registered_baseline_plans: dict[str, tuple[PostExportKey, ...]] = {
+            name: tuple(plan) for name, plan in (baseline_plans or {}).items()
+        }
+        self._unserved_baseline_plans = {
+            name: plan for name, plan in self._registered_baseline_plans.items() if plan
+        }
+        self._merged_baseline: dict[PostExportKey, _PostExportValues] | None = None
+        self._merged_baseline_failed = False
         # The reform last handed to any consumer. Consumers run one after
         # another, so at most one reform's system and rule modules are held;
         # opening the next reform, finishing its consumer or closing the scorer
@@ -5827,7 +5887,8 @@ class _HouseholdBatchedPostExportScorer:
         baseline_plan: Sequence[PostExportKey],
         planned_reform_passes: int | None = None,
     ) -> _PostExportConsumer:
-        """Score ``baseline_plan`` now; return the consumer's simulate seam.
+        """Score or serve ``baseline_plan`` now (``_baseline_for``); return the
+        consumer's simulate seam.
 
         With ``planned_reform_passes``, each reform pass reports its number of
         that count as its progress's outer counter.
@@ -5884,6 +5945,7 @@ class _HouseholdBatchedPostExportScorer:
     def close(self) -> None:
         self._finish_open_reform()
         self._batch_frames = None
+        self._merged_baseline = None
         _collect_family_garbage()
 
     def _open_reform_for(
@@ -5907,6 +5969,68 @@ class _HouseholdBatchedPostExportScorer:
         if self._batch_frames is None:
             raise RuntimeError("The post-export scorer is closed.")
         return self._batch_frames
+
+    def _baseline_for(
+        self, name: str, baseline_plan: tuple[PostExportKey, ...]
+    ) -> tuple[dict[PostExportKey, _PostExportValues], bool]:
+        """Score ``name``'s baseline plan, or serve it from the merged pass.
+
+        Returns the plan's values and whether they came from the merged pass.
+        A registered consumer opened with any plan but its registered one is
+        refused. The first registered consumer opened scores the union of
+        every unserved registered plan in one batch-outer pass, in ascending
+        period order; each registered consumer is then served exactly its own
+        keys, once, and the merged values are dropped once no unserved
+        registered plan holds them. A consumer without a registered plan, or
+        opened again, scores its own plan in a pass of its own. If the merged
+        pass raises, every consumer scores its own plan, so a key that only
+        one consumer planned fails that consumer alone, with the error it
+        raised before the merge (the holdout reports catch it).
+        """
+        registered = self._registered_baseline_plans.get(name)
+        if registered is not None and registered != baseline_plan:
+            raise ValueError(
+                f"{name}: opened with a baseline plan other than its registered "
+                "baseline plan; a registered consumer is served the plan recorded "
+                "before export."
+            )
+        if not baseline_plan:
+            return {}, False
+        self._batches()
+        if name not in self._unserved_baseline_plans or self._merged_baseline_failed:
+            return self._score(baseline_plan, label=f"{name} baseline plan"), False
+        if self._merged_baseline is None:
+            union = _ascending_period_plan(
+                key for plan in self._unserved_baseline_plans.values() for key in plan
+            )
+            try:
+                self._merged_baseline = self._score(union, label="merged baseline plan")
+            except Exception as error:
+                self._merged_baseline_failed = True
+                try:
+                    reason = f"{type(error).__name__}: {error}"
+                except Exception:
+                    reason = type(error).__name__
+                print(
+                    f"Post-export merged baseline plan failed ({reason}); each "
+                    "consumer scores its own baseline plan instead.",
+                    flush=True,
+                )
+            if self._merged_baseline_failed:
+                # Outside the handler, so the failed pass's traceback and the
+                # per-batch values its frame collected are no longer
+                # referenced; a full collection frees any held in a cycle.
+                _collect_family_garbage()
+                return self._score(baseline_plan, label=f"{name} baseline plan"), False
+        del self._unserved_baseline_plans[name]
+        served = {key: self._merged_baseline[key] for key in baseline_plan}
+        still_planned = {
+            key for plan in self._unserved_baseline_plans.values() for key in plan
+        }
+        for key in tuple(self._merged_baseline):
+            if key not in still_planned:
+                del self._merged_baseline[key]
+        return served, True
 
     def _construct(self, batch_frame: Frame, *, reform_system):
         dataset = self._dataset_from_frame(batch_frame)
@@ -6038,6 +6162,7 @@ def _open_post_export_scorer(
         dataset_path,
         maximum_microsim_batch_size=plan.maximum_batch_size,
         expected_n_households=plan.n_households,
+        baseline_plans=plan.baseline_plans,
     )
 
 
@@ -6084,10 +6209,8 @@ class _PostExportConsumer:
         self.reform_passes = 0
         self.planned_reform_passes = planned_reform_passes
         self.reform_systems = 0
-        self._baseline = (
-            scorer._score(baseline_plan, label=f"{name} baseline plan")
-            if baseline_plan
-            else {}
+        self._baseline, self.baseline_from_merged_pass = scorer._baseline_for(
+            name, baseline_plan
         )
 
     def simulate(self, reform):
@@ -6121,11 +6244,20 @@ class _PostExportConsumer:
                 "baseline request, so nothing is scored off-plan."
             ) from None
 
-    def _reform_values(self, reform_system, key: PostExportKey):
-        label = f"{self.name} reform {key[0]}@{key[1]}"
-        self._scorer._assert_reform_keeps_baseline_responses(
-            reform_system, key, label=label
+    def _reform_values(
+        self, reform_system, keys: tuple[PostExportKey, ...]
+    ) -> dict[PostExportKey, _PostExportValues]:
+        """One batched reform pass over ``keys`` (ascending period order)."""
+        label = f"{self.name} reform " + ", ".join(
+            f"{variable}@{period}" for variable, period, _ in keys
         )
+        checked_periods: set[int] = set()
+        for key in keys:
+            if key[1] not in checked_periods:
+                checked_periods.add(key[1])
+                self._scorer._assert_reform_keeps_baseline_responses(
+                    reform_system, key, label=label
+                )
         self.reform_passes += 1
         planned = self.planned_reform_passes
         outer = (
@@ -6133,10 +6265,9 @@ class _PostExportConsumer:
             if planned is not None and self.reform_passes <= planned
             else None
         )
-        scored = self._scorer._score(
-            (key,), label=label, reform_system=reform_system, outer=outer
+        return self._scorer._score(
+            keys, label=label, reform_system=reform_system, outer=outer
         )
-        return scored[key]
 
 
 class _PlannedPostExportBaseline:
@@ -6150,11 +6281,18 @@ class _PlannedPostExportBaseline:
             _post_export_key(variable, period, map_to)
         )
 
+    def prefetch(self, requests) -> None:
+        """Nothing to score: refuse any request outside the served plan, as
+        ``calculate`` would (the dry run's recorder takes ``prefetch`` too)."""
+        for request in requests:
+            self._consumer._baseline_values(_post_export_key(*request))
+
 
 class _BatchedPostExportReform:
-    """A reformed simulation a consumer sees: each key is one batched pass.
+    """A reformed simulation a consumer sees: each key not yet scored, or each
+    ``prefetch`` of several such keys, is one batched pass.
 
-    The reform's tax-benefit system is built once, on the first key, and
+    The reform's tax-benefit system is built once, on the first pass, and
     handed to every batch engine (microcosm#456). The engines get that system
     alone (see ``_HouseholdBatchedPostExportScorer._construct``).
 
@@ -6177,29 +6315,46 @@ class _BatchedPostExportReform:
 
     def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
         key = _post_export_key(variable, period, map_to)
+        self._score_new((key,))
+        return self._results[key]
+
+    def prefetch(self, requests) -> None:
+        """Score every requested key not yet scored in one batched pass.
+
+        ``requests`` are ``(variable, period)`` or ``(variable, period,
+        map_to)`` tuples. Each batch engine computes them in ascending period
+        order, and later ``calculate`` calls for them are served from the
+        pass. The dry run counts it as one pass
+        (``_RecordingPostExportSimulation.prefetch``).
+        """
+        self._score_new(tuple(_post_export_key(*request) for request in requests))
+
+    def _score_new(self, keys: Sequence[PostExportKey]) -> None:
         if self._finished:
+            asked = keys[0] if len(keys) == 1 else tuple(keys)
             raise RuntimeError(
-                f"{self._consumer.name} asked a finished reform for {key}. A "
+                f"{self._consumer.name} asked a finished reform for {asked}. A "
                 "post-export consumer scores each reform completely before it "
                 "opens the next one, which finishes and releases the earlier."
             )
-        if key not in self._results:
-            if self._system is None:
-                scorer = self._consumer._scorer
-                rule_modules = EngineVariableModuleScope().open()
-                try:
-                    self._system = (
-                        scorer._microsimulation_cls.default_tax_benefit_system(
-                            reform=self._reform
-                        )
-                    )
-                except BaseException:
-                    rule_modules.close()
-                    raise
-                self._rule_modules = rule_modules
-                self._consumer.reform_systems += 1
-            self._results[key] = self._consumer._reform_values(self._system, key)
-        return self._results[key]
+        new_keys = _ascending_period_plan(
+            key for key in keys if key not in self._results
+        )
+        if not new_keys:
+            return
+        if self._system is None:
+            scorer = self._consumer._scorer
+            rule_modules = EngineVariableModuleScope().open()
+            try:
+                self._system = scorer._microsimulation_cls.default_tax_benefit_system(
+                    reform=self._reform
+                )
+            except BaseException:
+                rule_modules.close()
+                raise
+            self._rule_modules = rule_modules
+            self._consumer.reform_systems += 1
+        self._results.update(self._consumer._reform_values(self._system, new_keys))
 
     def finish(self) -> None:
         """Drop the reform's system and remove the modules its build added."""
@@ -11424,8 +11579,13 @@ def _score_post_export_consumer(
         )
         output = consumer(scoring.simulate)
         record = scorer.finish_consumer(scoring)
+        baseline = (
+            "baseline served from the merged pass"
+            if scoring.baseline_from_merged_pass
+            else f"{record['baseline_passes']} baseline pass"
+        )
         print(
-            f"Post-export {name}: {record['baseline_passes']} baseline pass "
+            f"Post-export {name}: {baseline} "
             f"({len(plan)} keys), {record['reform_passes']} reform passes, "
             f"{record['reform_systems']} reform systems, "
             f"{record['n_batches']} batches of up to "
@@ -19568,7 +19728,8 @@ def _certify_us_build(
     # smoke, reform validation, demographics) scores THIS file through one
     # household-batched scorer instead of one whole-pool Microsimulation each.
     # It loads the written H5 once, binds its sha256 (the manifest must pin
-    # the same bytes), and serves the baseline plans recorded above.
+    # the same bytes), and serves the baseline plans recorded above from one
+    # merged baseline pass (microcosm#1595).
     post_export_scorer = _open_post_export_scorer(
         post_export_scoring_plan, dataset_path
     )
@@ -19617,8 +19778,9 @@ def _certify_us_build(
             )
             + "\n"
         )
-        # The smoke's scored baseline plan is recorded; free its arrays before
-        # reform validation scores its own.
+        # The smoke's record is written; free its reform results before reform
+        # validation runs. Its baseline values stay with the scorer only while
+        # a consumer still to be served planned them.
         del smoke_scoring
         if telemetry is not None:
             telemetry.attach_artifact(
