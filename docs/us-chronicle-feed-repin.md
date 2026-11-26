@@ -21,8 +21,10 @@ PEP county population vintage 2024, and the ACS 2020-2024 5-year county tables
 B01003, B11001, B19001, B19013, B19025, B19051 and B19061. They have their own
 pin, `us/chronicle_county_facts.json`, with scope
 `us/chronicle_county_facts_scope.json` (scope name `us_county_facts`), beside
-the main pin. No fiscal compile reads them, and the main feed, its scope and
-the target-parity resources do not move when they do.
+the main pin. No fiscal compile reads them. When microcosm#922 gave them their
+own pin, the main feed, its scope and the target-parity resources stayed as
+they were. From then on, the county pin moves only with the main pin (see the
+joint re-pin rule, "The two pins move together", below).
 
 They are separate because of size. The ACS county rows keep both estimate and
 margin-of-error rows in one record set, about 5.2 KB per row, and the eight
@@ -38,7 +40,8 @@ machine on 2026-11-13; the run notes are not in this repository.
 
 - **Commit.** Chronicle main `3e9d3a0694e8ca7e31ed5319c3ceb1bde92b12e0`
   (merged 2026-11-12), which carries every county package. It is on main, so
-  it needs no branch or tag; the next main re-pin starts at or after it.
+  it needs no branch or tag. The combined re-pin (below) moves both pins to
+  one Chronicle main commit at or after it.
   The rows are on the `chronicle.consumer_fact.v5` contract
   (schema digest `acd33a09…`); the main pin stays on v3.
 - **Pairs.** 10 (record set, period) pairs from nine packages, built at their
@@ -105,11 +108,138 @@ machine on 2026-11-13; the run notes are not in this repository.
 A later main re-pin can fold these pairs into the main scope only by retiring
 the county pin in the same change.
 
-The two pins move together. The main feed is pinned at `41b2fb2` and the
-county facts at `3e9d3a0`; the next main re-pin starts at or after
-`3e9d3a0`. From then on, a change that re-pins the main feed at a Chronicle
-commit also rebuilds the county facts at that commit and re-pins them, so a
-US build reads one Chronicle base.
+The two pins move together. When microcosm#922 pinned the county facts at
+`3e9d3a0`, the main pin named `41b2fb2` (the split pin). While the county pin
+names `3e9d3a0`, the main pin may stay at the split pin or name one feed cut on
+it that the US feed owner allowed; `test_us_chronicle_county_facts.py` names
+that cut until the owner allows a later cut in its place. Once the county pin
+moves, both exceptions end and the main pin names the county pin's commit. Any
+other main re-pin starts at or after `3e9d3a0` and rebuilds and re-pins the
+county facts at the same commit, so a US build reads one Chronicle base.
+
+An operator builds a cut from the split pin, or the cut before it, plus whole
+Chronicle packages whose git trees equal Chronicle main's, using `41b2fb2`'s
+Chronicle code with changes only to `SOURCE_PACKAGE_ALIASES`. The cut's re-pin
+report keeps every earlier row byte for byte, or the operator brings a reviewed
+check of the rows the cut changes. Either way, the cut adds, removes or changes
+no target that the ACS local lane selects from the main feed, in any
+`--soi-mode` the lane accepts: `state`, `totals`, `full`, `state_cd` and
+`state_county`. In each mode, `state_admin_surface` with SNAP, Medicaid and
+SOI selects the same targets from both feeds, equal in every `TargetSpec` field
+and in the same order, with the same SOI receipt and substitution records.
+`acs_local_ssi_medicaid_take_up_targets`, which takes no mode, returns the same
+SSI age-band counts, Medicaid enrollment table and substitution records from
+both. While `soi_surface_predicate` maps `state_county` to `state` and
+`state_admin_surface` branches only on `state_cd`, those two modes select the
+same main-feed targets, so one comparison covers both.
+
+The operator compiles the cut and the main feed it replaces on the tree that
+will merge (the merge tree). The operator first merges main into the change
+that pins the cut, then compiles both feeds at the change's new head, the
+tested commit. The operator runs both compiles from one clean checkout of the
+tested commit, in the environment its `uv.lock` resolves:
+`uv sync --all-packages --locked --extra us` builds it, and
+`docs/agent-guide.md` lists that command under Commands as the US engine
+environment.
+
+The operator compiles each feed with a script (the runner) that calls
+`state_admin_surface` in each mode and `acs_local_ssi_medicaid_take_up_targets`
+on that feed and writes what each call returns to a file. A second script (the
+comparator) reads the runner's files for both feeds. It reports each target
+that the cut adds to or removes from the lane's selection or changes in any
+`TargetSpec` field, and any change in the targets' order. It also reports any
+difference in the SOI receipt, the substitution records, the SSI age-band
+counts or the Medicaid enrollment table. The repository holds neither script,
+so the operator records each one's sha256 in a receipt. The operator keeps the
+receipt and both scripts with the evidence, outside the repository, and links
+to them or quotes them in the change's pull request.
+
+In the receipt, the operator also records the tested commit, the interpreter
+version, the resolved versions of the packages the compile imports and both
+feeds' digests. The operator records where the compile imported the lane's
+tool, each workspace package and each overridden package from, and the output
+of `git status --porcelain` at compile time. The operator lists each way the
+run departs from that checkout or environment, such as a package they swapped
+in by hand. The change's reviewer checks the two digests against the main pin
+the cut replaces and the pin the change sets. The reviewer also checks that
+`git status` printed nothing. They check that the compile imported the tool
+and each workspace package from the checkout, and each overridden package from
+a path the operator listed as a departure.
+
+After the compiles, the operator may add commits that record the result. Each
+changes nothing but the changelog and the paragraph below that starts "Today
+the US feed owner allows", and reports a result from the runner, the
+comparator and the inputs the receipt names. The operator compiles both feeds
+again if main moves after the compiles or the change gains any other commit.
+The change's reviewer can skip that rerun on finding that the tested commit
+and the merge tree share their compile inputs and dependency configuration.
+The two match when no file differs under `tools/` or `packages/*/src`, or in
+`uv.lock`, the workspace `pyproject.toml` or any package's `pyproject.toml`.
+GitHub does not refresh its test merge, `refs/pull/<number>/merge`, while the
+change conflicts with main. So just before the merge, the reviewer builds the
+merge tree from main's tip and runs the check:
+
+```bash
+git fetch origin +refs/heads/main:refs/remotes/origin/main pull/<number>/head
+git rev-parse origin/main
+git merge-tree --write-tree <main sha> <change head sha>
+git diff --exit-code --stat <tested commit> <merge tree> -- ':(top)tools' ':(top)uv.lock' ':(top)pyproject.toml' ':(top)packages/*/src/**' ':(top)packages/*/pyproject.toml'
+```
+
+The reviewer stops if `git fetch` fails, since `origin/main` may then name an
+older main. The fetch names `refs/remotes/origin/main` as its destination, so
+it updates `origin/main` even in a clone whose fetch configuration leaves main
+out. The reviewer writes each commit as its full sha: main's from
+`git rev-parse origin/main`, and the change's head from
+`gh pr view <number> --json headRefOid`. `git merge-tree` prints the merge
+tree's id on its first line. If the change conflicts with main, it exits with
+status 1 and still prints a tree id, but that tree holds conflict markers. So
+the reviewer goes on only when `git merge-tree` exits with 0. The `:(top)`
+prefix makes git read each path from the repository root, so the `git diff`
+checks the same files from any directory. The two match only when `git diff`
+exits with status 0 and prints nothing; it exits with 1 when they differ and
+with 128 on an error, such as an unknown commit. If main's tip or the change's
+head moves before the merge, the reviewer runs the check again. Keep the
+trailing `/**`: without it, git's `packages/*/src` pathspec matches no file,
+so the command misses every change under `packages/*/src`.
+
+The lane's county rung (`--soi-mode state_county`) is the only build path that
+consumes both feeds. It loads the county facts the county pin names and checks
+their digest, and it checks the main feed against the operator's
+`--feed-sha256` (see Tool flags above). The country-spec loader reads both pin
+declarations as package resources, but no feed rows. From the main feed, the
+lane selects state SNAP, state Medicaid enrollment, the IRS SOI targets its
+`--soi-mode` selects and the SSI age bands (`state_admin_surface` and
+`acs_local_ssi_medicaid_take_up_targets` in
+`tools/build_us_acs_local_release.py`). In `state` and `state_county` the SOI
+targets are state targets, the state HT2 child tax credit cells among them;
+`totals`, `full` and `state_cd` can also select congressional-district
+targets. The county rung splits the selected state IRS SOI parents into county
+targets using the county facts. So a cut that meets the rule leaves the lane's
+selected calibration inputs equal. A build on the cut still records the cut's
+feed digest in its run identity, so its receipts change.
+
+Today the US feed owner allows `60266a3`, the cut that microcosm#1610 pins for
+microcosm#880, though its evidence is not yet complete. In `state_county` mode,
+and so in `state`, the lane selects the same 4,380 targets on it as on
+`41b2fb2` (102 SNAP, 51 Medicaid enrollment and 4,227 IRS SOI), with the same
+SSI age bands and Medicaid enrollment table. Compiles of both feeds at main
+`5499382` on 17 November 2026 showed this, before microcosm#1610's compiler
+changes. No run yet covers `totals`, `full` or `state_cd`, or any mode at
+microcosm#1610's head. Before it merges, microcosm#1610 owes the comparison in
+every mode, on the merge tree and with the receipt the rule above names. The
+change that runs the comparison replaces this paragraph with the result and a
+link to its evidence. The guard compares commit ids only, so it cannot check
+this evidence.
+
+The combined re-pin moves both pins to one Chronicle main commit at or after
+chronicle#430's merge `b428468d`, rebuilds both feeds and retires the allowed
+cut in the same change. It brings the 20 main-scope packages that differ
+between `41b2fb2` and `3e9d3a0`, the v5 row contract, and a scope rebuild for
+the ten pairs Chronicle main no longer emits (see the TY2023 state AGI bands
+re-pin below), so it needs its own decisions. The US feed owner owns it and
+starts it once the next certified build's commit is fixed; target merge
+11 December 2026.
 
 ## A re-pin onto a newer row contract
 
