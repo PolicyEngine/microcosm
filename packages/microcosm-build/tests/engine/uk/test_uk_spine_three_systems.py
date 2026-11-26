@@ -1,5 +1,5 @@
-"""The spine's BRMA, private-rent and council-tax stages on all three systems,
-through the installed engine.
+"""The spine's BRMA, private-rent, council-tax and high-value support stages on
+all three systems, through the installed engine.
 
 microcosm#931 (C-37). H2's households cycle through four Great Britain
 regions, so the parity fixture cannot show the BRMA stages on Northern
@@ -20,7 +20,13 @@ prices the council tax of the frame private_rent left, invented as frs_council_t
 and the housing shell would leave it (``with_toy_council_tax``), at the
 committed 2024-25 Band D: H2 has no Northern Ireland household, so this
 stand-in is where the localisation meets Northern Ireland's households and
-their SPI copies (microcosm#931).
+their SPI copies (microcosm#931). high_value_home_support then splits the top
+value stratum of the frame council_tax_localise left, every household
+invented as an owner (``_owned``), and places its copies: its Northern
+Ireland copies take the stage's one engine call over their households, later
+in the spine than the copy stage's and on a frame that also carries home
+values and localised council tax. H2 has no Northern Ireland household, so
+this stand-in is where that call meets the installed engine (microcosm#931).
 
 At one geographic clone and at two:
 
@@ -48,7 +54,15 @@ At one geographic clone and at two:
   ratio of its draw cell, the SPI copies at L2 or L3 by their band, and moves
   some; holds every
   Great Britain reduction and rebate within the new bill; keeps the paid bill
-  from before it as ``council_tax_frs_bill``; and changes no other column.
+  from before it as ``council_tax_frs_bill``; and changes no other column;
+- high_value_home_support copies households of Northern Ireland and of Great
+  Britain, makes one engine call, of one simulation, over its Northern
+  Ireland copies' households alone, and gives those copies the BRMAs
+  frs_brma's draw gives them on that call's frame; that call gives them the
+  LHA_category, and so the BRMAs, a call over the whole frame the stage cut
+  it from gives them, which at two clones runs clone by clone under the
+  guard; Great Britain's copies read the layer for their new areas, and
+  every other row keeps its BRMA.
 
 Invented data only; assertion messages give stages, columns and K, never a
 value, a key or an id.
@@ -71,6 +85,12 @@ from microcosm.build.uk_runtime.frs_brma import (
     load_brma_count_resource,
 )
 from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
+from microcosm.build.uk_runtime.high_value_home_support import (
+    HIGH_VALUE_SUPPORT_STAGE_NAME,
+    UKHighValueHomeSupportStageTransform,
+    split_high_value_support_households,
+)
+from microcosm.build.uk_runtime.household_lineage import HIGH_VALUE_SUPPORT_COPY_COLUMN
 from microcosm.build.uk_runtime.local_authority_input import (
     local_authority_keys_missing_from_engine,
 )
@@ -83,6 +103,8 @@ from microcosm.build.uk_runtime.spi_support import (
 from microcosm.build.uk_runtime.spine_council_tax import (
     COUNCIL_TAX_FRS_BILL_COLUMN,
     COUNCIL_TAX_LOCALISE_STAGE_NAME,
+    UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_REWRITES,
+    UK_COUNCIL_TAX_LOCALISE_PERSON_REWRITES,
     UKCouncilTaxLocaliseStageTransform,
     uk_council_tax_references,
 )
@@ -652,3 +674,217 @@ def test_council_tax_localise_prices_great_britain_and_leaves_northern_ireland(
     # An invented Northern Ireland reduction sits above its zero bill and is
     # not capped.
     assert checks["northern_ireland_reductions_within_bill"] is False
+
+
+#: The scale of the invented home values: each row's home is worth this over
+#: the row's weight.
+_HOME_VALUE_SCALE = 2.0e8
+
+
+def _owned(frame: Frame) -> Frame:
+    """``frame`` with the inputs high_value_home_support reads that the
+    stand-in lacks, as was_wealth and the regional property uprating would
+    leave them, invented: every household an owner outright, its home worth
+    more the less its row weighs. The stage's stratum is the top twentieth of
+    each region's owner weight, so it takes a region's lightest rows wherever
+    they weigh little enough against the region's owner weight: in Northern
+    Ireland and in Great Britain at both clone counts."""
+
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    household = tables["household"].copy()
+    weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
+    household["tenure_type"] = "OWNED_OUTRIGHT"
+    household["main_residence_value"] = _HOME_VALUE_SCALE / weights
+    tables["household"] = household
+    return Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+@pytest.fixture(scope="module")
+def high_value(run) -> dict[str, object]:
+    """high_value_home_support, run as the packaged spec declares it at the
+    committed Band D, on the frame council_tax_localise left with invented
+    owners, its engine call recorded."""
+
+    clones = run["clones"]
+    owned = _owned(run["council_tax_localise"])
+    engine = _RecordingEngine(clones)
+    stage = UKHighValueHomeSupportStageTransform(
+        stage=_stage(HIGH_VALUE_SUPPORT_STAGE_NAME),
+        engine=engine,
+        supports=toy_conditioned_support_payloads(),
+    )
+    return {
+        "clones": clones,
+        "owned": owned,
+        "engine": engine,
+        "high_value": stage(owned),
+    }
+
+
+def test_the_high_value_stage_draws_northern_ireland_copies_on_one_engine_call(
+    high_value,
+) -> None:
+    """high_value_home_support places its copies as spi_copy_areas places its
+    own: one engine call, of one simulation, over its Northern Ireland copies'
+    households alone, every clone's together, and each such copy's BRMA
+    frs_brma's draw on that call's frame. Great Britain's copies read the
+    layer for their new areas, and every root and every household the stage
+    left whole keeps the BRMA it carried in (microcosm#931)."""
+
+    clones = high_value["clones"]
+    after = high_value["high_value"]
+    household = after.table("household")
+    copies = household[HIGH_VALUE_SUPPORT_COPY_COLUMN].to_numpy(dtype=bool)
+    northern_ireland = household[_SYSTEM].eq(NI_SYSTEM).to_numpy()
+    assert (copies & northern_ireland).any() and (copies & ~northern_ireland).any(), (
+        f"high_value_home_support's copies at K={clones}"
+    )
+    # One call, one simulation, over the Northern Ireland copies' households
+    # alone: no Great Britain copy and no root.
+    ((scratch, simulations),) = high_value["engine"].calls
+    assert simulations == 1, f"high_value_home_support's call at K={clones}"
+    ids = household["household_id"].to_numpy()
+    copied_ids = ids[copies & northern_ireland]
+    assert set(scratch.table("household")["household_id"]) == set(copied_ids), (
+        f"high_value_home_support's call frame at K={clones}"
+    )
+    # Each copy's BRMA is frs_brma's draw on that call's frame, on the
+    # engine's LHA_category for the copies' own benefit units.
+    reference = _frs_brma_draw(scratch, clones)
+    drawn = _brmas(after)
+    assert drawn.loc[copied_ids].equals(reference.loc[copied_ids]), (
+        f"Northern Ireland high-value copies' brma at K={clones}"
+    )
+    # Great Britain's copies read the layer for the areas the stage drew them.
+    rows = copies & ~northern_ireland
+    np.testing.assert_array_equal(
+        household.loc[rows, "brma"].to_numpy(dtype=object),
+        _layer_brmas(after, rows),
+        err_msg=f"Great Britain high-value copies' brma at K={clones}",
+    )
+    # Every other row keeps the BRMA it carried into the stage.
+    base = ids[~copies]
+    assert drawn.loc[base].equals(_brmas(high_value["owned"]).loc[base]), (
+        f"high_value_home_support's other rows' brma at K={clones}"
+    )
+
+
+#: The columns high_value_home_support writes after its engine call, by
+#: entity: the BRMA and fuel-relief flag its placement writes last, then the
+#: bill, rebate and reduction it rescales.
+_HIGH_VALUE_AFTER_THE_CALL = {
+    "household": ("brma", RFDR_COLUMN, *UK_COUNCIL_TAX_LOCALISE_HOUSEHOLD_REWRITES),
+    "person": tuple(UK_COUNCIL_TAX_LOCALISE_PERSON_REWRITES),
+}
+_IDS = {"household": "household_id", "person": "person_id", "benunit": "benunit_id"}
+
+
+def _high_value_call_frame(high_value) -> Frame:
+    """The frame high_value_home_support cut its engine call's frame from: the
+    frame it returns, with the columns it writes after its call as its split
+    held them, each copy's its parent's. The split
+    (``split_high_value_support_households`` on the frame the stage read)
+    keeps its rows in the order the stage returns them."""
+
+    after = high_value["high_value"]
+    split = split_high_value_support_households(high_value["owned"]).frame
+    tables = {entity: after.table(entity) for entity in after.entities}
+    for entity, columns in _HIGH_VALUE_AFTER_THE_CALL.items():
+        table = tables[entity].copy()
+        before = split.table(entity)
+        assert table.index.equals(before.index), entity
+        assert table[_IDS[entity]].equals(before[_IDS[entity]]), entity
+        for column in columns:
+            table[column] = before[column]
+        tables[entity] = table
+    return Frame(
+        tables,
+        after.schema,
+        {"household": after.weights_for("household")},
+        after.strata,
+        mass_log=after.mass_log,
+        metadata=after.metadata,
+    )
+
+
+def test_the_high_value_stages_sub_pool_call_gives_what_a_whole_frame_call_gives(
+    high_value,
+) -> None:
+    """high_value_home_support reads its Northern Ireland copies'
+    LHA_category on one simulation over their households alone, as
+    spi_copy_areas reads its copies' (C-9), but later in the spine, on a
+    frame that also carries home values and localised council tax. The
+    adapter's population guard does not judge that call. This holds it to
+    one over the whole frame the stage cut it from, which at K = 2 runs clone
+    by clone under the guard: the copies' LHA_category, and the BRMAs
+    frs_brma's draw gives them on it, are the same (microcosm#931)."""
+
+    clones = high_value["clones"]
+    ((scratch, _),) = high_value["engine"].calls
+    (sub_pool,) = high_value["engine"].results
+    whole = _high_value_call_frame(high_value)
+    household = whole.table("household")
+    person = whole.table("person")
+    benunit = whole.table("benunit")
+    households = set(scratch.table("household")["household_id"])
+    copies = household["household_id"].isin(households).to_numpy()
+    members = person["person_household_id"].isin(households).to_numpy()
+    units = (
+        benunit["benunit_id"]
+        .isin(set(person.loc[members, "person_benunit_id"]))
+        .to_numpy()
+    )
+    # The call's frame is the whole frame's rows of those households, their
+    # persons and their benefit units, without the clone index.
+    for entity, table, rows in (
+        (
+            "household",
+            household.drop(columns=ladder_clone_index_column("household")),
+            copies,
+        ),
+        ("person", person, members),
+        ("benunit", benunit, units),
+    ):
+        key = _IDS[entity]
+        pd.testing.assert_frame_equal(
+            table.loc[rows].set_index(key).sort_index().sort_index(axis=1),
+            scratch.table(entity).set_index(key).sort_index().sort_index(axis=1),
+            check_exact=True,
+            obj=f"high_value_home_support's call frame, {entity} table, K={clones}",
+        )
+    pooled_engine = _RecordingEngine(clones)
+    pooled = pooled_engine.materialize(whole, UK_BRMA_PREDICTORS, uk_time_period(whole))
+    ((_, simulations),) = pooled_engine.calls
+    assert simulations == clones, f"The whole frame's call at K={clones}"
+    (lha,) = UK_BRMA_PREDICTORS
+    unit_ids = scratch.table("benunit")["benunit_id"].to_numpy()
+    by_unit = pd.Series(
+        np.asarray(pooled[lha], dtype=object),
+        index=benunit["benunit_id"].to_numpy(),
+    )
+    assert by_unit.loc[unit_ids].equals(
+        pd.Series(np.asarray(sub_pool[lha], dtype=object), index=unit_ids)
+    ), f"Northern Ireland high-value copies' {lha} at K={clones}"
+    counts, _ = load_committed_brma_counts()
+    drawn = draw_household_brmas(
+        person,
+        benunit,
+        household.loc[copies],
+        lha_category=pooled[lha],
+        count_resource=counts,
+        seed=UK_BRMA_DECLARED_SEEDS["brma"],
+    )
+    np.testing.assert_array_equal(
+        np.asarray(drawn, dtype=object),
+        _brmas(high_value["high_value"])
+        .loc[household.loc[copies, "household_id"].to_numpy()]
+        .to_numpy(dtype=object),
+        err_msg=f"Northern Ireland high-value copies' brma at K={clones}",
+    )
