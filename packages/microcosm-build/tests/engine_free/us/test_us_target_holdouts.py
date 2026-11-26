@@ -169,6 +169,7 @@ def test_the_declaration_holds_the_tool_constants() -> None:
         "country",
         "description",
         "holdouts",
+        "ladder_population",
     }
 
 

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "us",
-  "description": "How the ACS local release (tools/build_us_acs_local_release.py) builds the targets that the compile does not give it (microcosm#1728). Each section is read by a shared, country-free module: holdouts by microcosm.build.target_holdouts.",
+  "description": "How the ACS local release (tools/build_us_acs_local_release.py) builds the targets that the compile does not give it (microcosm#1728). Each section is read by a shared, country-free module: holdouts by microcosm.build.target_holdouts, ladder_population by microcosm.build.ladder_population_targets.",
   "holdouts": {
     "concept_families": {
       "source_field": "source_measure_id",
@@ -132,5 +132,69 @@
         "rationale": "Hold out whole state and concept-family blocks of county rows, so that no held county row is pinned by its trained siblings. Only county rows with a state parent are eligible, so the county population rows always train. The pass writes county rows only, after the district pass."
       }
     ]
+  },
+  "ladder_population": {
+    "name_prefix": "pop_",
+    "record": {
+      "source": "us_puma_ladder_2020",
+      "family": "census_population_ladder"
+    },
+    "spec": {
+      "entity": "household",
+      "family": "census_population",
+      "source": "US Census Bureau 2020 PUMA population ladder",
+      "provider": {
+        "id": "census_population",
+        "label": "Census population"
+      },
+      "category": {
+        "id": "census_population.resident_population",
+        "label": "Resident population"
+      },
+      "target_label": "{label} resident population"
+    },
+    "levels": [
+      {
+        "geography": "state",
+        "level": "state",
+        "household_column": "state_fips",
+        "code_digits": 2,
+        "geography_id_prefix": "0400000US",
+        "label": "us_state_name",
+        "record_codes": [
+          {
+            "field": "state_fips",
+            "divisor": 1,
+            "digits": 2
+          },
+          {
+            "field": "congressional_district_geoid",
+            "divisor": null,
+            "digits": null
+          }
+        ]
+      },
+      {
+        "geography": "cd",
+        "level": "congressional_district",
+        "household_column": "congressional_district_geoid",
+        "code_digits": 4,
+        "geography_id_prefix": "5001900US",
+        "label": "us_congressional_district_name",
+        "record_codes": [
+          {
+            "field": "state_fips",
+            "divisor": 100,
+            "digits": 2
+          },
+          {
+            "field": "congressional_district_geoid",
+            "divisor": 1,
+            "digits": 4
+          }
+        ]
+      }
+    ],
+    "rationale": "The PUMA ladder's state and district populations (--geographies state,cd): a state is the sum of its PUMAs and a district the sum of its PUMA overlaps on the 119th Congress plan. Each household adds its persons to its cell's row. A release run refuses a cell that no household supports; --allow-partial-geography is for capped smokes. The county population rows belong to the county rung (tools/us_acs_local_county_surface.py)."
   }
 }

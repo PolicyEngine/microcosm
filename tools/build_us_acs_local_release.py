@@ -1619,10 +1619,17 @@ def population_targets(
     involved. A ladder cell with no supporting household is DROPPED from the
     surface and returned in the third element: the caller decides whether a
     shrunken surface is acceptable (a capped smoke) or a defect (release).
-    Returns ``(target records, CSR rows, dropped cell names)``.
+    Returns ``(target records, CSR rows, dropped cell names)``. A county run
+    takes its rows from the county rung, which adds the county rows to the
+    state and district rows.
     """
 
-    return cd_surface.population_rows(
+    rows = (
+        county_surface.population_rows
+        if "county" in geographies
+        else cd_surface.population_rows
+    )
+    return rows(
         frame.table("household"),
         household_sizes(frame),
         ladder_populations,
@@ -1638,71 +1645,49 @@ def population_target_specs(names, values):
     same id: a state its Census name, the name the ledger targets take from
     their facts ("Maine"), and a district the Census Bureau's name, which
     the IRS SOI district rows carry too. A registry refuses one US geography
-    with two labels (microcosm#1335).
+    with two labels (microcosm#1335). The state and district specs are the
+    shared :func:`microcosm.build.ladder_population_targets.population_target_specs`
+    over the declared US levels (microcosm#1728); county specs are the county
+    rung's.
     """
 
-    from microcosm.build.us_runtime.congressional_district_vintage import (
-        CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
-        congressional_district_label,
+    from microcosm.build.ladder_population_targets import (
+        population_target_specs as ladder_population_specs,
     )
-    from microcosm.calibrate import TargetSpec
-    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
-    from microcosm.calibrate.hierarchy import (
-        CalibrationHierarchy,
-        HierarchyCategory,
-        HierarchyGeography,
-        HierarchyNode,
+    from microcosm.build.us_runtime.local_target_construction import (
+        us_ladder_population,
+        us_population_labels,
     )
 
-    provider = HierarchyNode("census_population", "Census population")
-    category = HierarchyCategory(
-        "census_population.resident_population",
-        "Resident population",
-        provider.id,
-    )
-    specs = []
-    for name, value in zip(names, values, strict=True):
-        if name.startswith("pop_county_"):
-            specs.append(county_surface.population_spec(name, value, period=PERIOD))
-            continue
-        if name.startswith("pop_state_"):
-            fips = name.removeprefix("pop_state_")
-            label = US_STATE_FIPS_TO_NAME.get(fips)
-            if label is None:
-                raise ValueError(
-                    f"Population target {name!r} names no US state FIPS code."
-                )
-            geography = HierarchyGeography(f"0400000US{fips}", label, "state")
-        elif name.startswith("pop_cd_"):
-            geoid = name.removeprefix("pop_cd_")
-            # The ladder's districts are the 119th Congress plan.
-            geography_id = f"{CURRENT_CONGRESSIONAL_DISTRICT_PREFIX}{geoid}"
-            label = congressional_district_label(geography_id)
-            geography = HierarchyGeography(
-                geography_id, label, "congressional_district"
-            )
-        else:  # pragma: no cover - names originate in population_measure_arrays
-            raise ValueError(f"Unknown population target name {name!r}.")
-        specs.append(
-            TargetSpec(
-                name=name,
-                entity="household",
-                measure=name,
-                value=value,
-                period=PERIOD,
-                source="US Census Bureau 2020 PUMA population ladder",
-                family="census_population",
-                metadata={"geography_level": geography.level},
-                hierarchy=CalibrationHierarchy(
-                    provider=provider,
-                    category=category,
-                    geography=geography,
-                    dimensions=(),
-                    target=HierarchyNode(name, f"{label} resident population"),
-                ),
-            )
+    names, values = list(names), list(values)
+    if len(names) != len(values):
+        raise ValueError(
+            f"{len(names)} population target names but {len(values)} values."
         )
-    return tuple(specs)
+    county = [name.startswith("pop_county_") for name in names]
+    ladder_specs = iter(
+        ladder_population_specs(
+            [
+                name
+                for name, is_county in zip(names, county, strict=True)
+                if not is_county
+            ],
+            [
+                value
+                for value, is_county in zip(values, county, strict=True)
+                if not is_county
+            ],
+            us_ladder_population(),
+            period=PERIOD,
+            labels=us_population_labels(),
+        )
+    )
+    return tuple(
+        county_surface.population_spec(name, value, period=PERIOD)
+        if is_county
+        else next(ladder_specs)
+        for name, value, is_county in zip(names, values, county, strict=True)
+    )
 
 
 def ladder_population_target_specs(ladder_populations, geographies):

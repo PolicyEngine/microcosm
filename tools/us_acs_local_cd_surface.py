@@ -40,7 +40,7 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 
-from microcosm.build import target_holdouts
+from microcosm.build import ladder_population_targets, target_holdouts
 
 # The shared role names; the county module and tests read them from here.
 from microcosm.build.target_holdouts import ROLE_HOLDOUT, ROLE_TRAIN  # noqa: F401
@@ -48,6 +48,7 @@ from microcosm.build.us_runtime.local_target_construction import (
     DISTRICT_HOLDOUT,
     us_holdout_pass,
     us_holdout_scoring,
+    us_ladder_population,
     us_target_holdouts,
 )
 
@@ -1129,14 +1130,20 @@ def district_row_parents(
 
 
 #: Digits of a ladder population target's geography code, by ladder geography.
-POPULATION_TARGET_CODE_DIGITS: Mapping[str, int] = {"state": 2, "cd": 4, "county": 5}
+POPULATION_TARGET_CODE_DIGITS: Mapping[str, int] = {
+    # The state and district levels are declared in
+    # us/local_target_construction.json (ladder_population, microcosm#1728);
+    # the county rung names its own rows.
+    **{level.geography: level.code_digits for level in us_ladder_population().levels},
+    "county": 5,
+}
 
 
 def population_target_name(geography: str, code: int) -> str:
     """A ladder population target's name: ``pop_state_06``, ``pop_cd_0601``."""
 
     digits = POPULATION_TARGET_CODE_DIGITS[geography]
-    return f"pop_{geography}_{int(code):0{digits}d}"
+    return f"{us_ladder_population().name_prefix}{geography}_{int(code):0{digits}d}"
 
 
 def population_rows(
@@ -1150,64 +1157,27 @@ def population_rows(
     """Ladder population marginals as sparse rows (household size x 1[geo]).
 
     Returns (target records, CSR rows, dropped cell names). A ladder cell
-    with no supporting household is dropped and named, as before.
+    with no supporting household is dropped and named, as before. The rows
+    are the shared
+    :func:`microcosm.build.ladder_population_targets.population_rows` over the
+    declared US state and district levels (microcosm#1728). County rows are
+    the county rung's (``us_acs_local_county_surface.population_rows``), which
+    calls this function for its other levels; ``county_column`` is kept for
+    callers that pass it.
     """
 
     if "county" in geographies:
-        import us_acs_local_county_surface as county_surface
-
-        return county_surface.population_rows(
-            households, household_size, ladder_populations, geographies,
-            county_column=county_column,
+        raise ValueError(
+            "County population rows are the county rung's: call "
+            "us_acs_local_county_surface.population_rows."
         )
-    column_map = {
-        "state": ("state_fips", "state", GEOGRAPHY_STATE),
-        "cd": ("congressional_district_geoid", "cd", GEOGRAPHY_CD),
-    }
-    size32 = np.asarray(household_size, dtype=np.float32)
-    records: list[dict] = []
-    rows: list[np.ndarray] = []
-    cols: list[np.ndarray] = []
-    data: list[np.ndarray] = []
-    dropped: list[str] = []
-    for geography in geographies:
-        column, key, level = column_map[geography]
-        codes = pd.to_numeric(households[column]).to_numpy()
-        for value, population in sorted(ladder_populations[key].items()):
-            name = population_target_name(geography, value)
-            present = np.flatnonzero(codes == value)
-            if not len(present):
-                dropped.append(name)
-                continue
-            present = present[size32[present] != 0]
-            row = len(records)
-            rows.append(np.full(len(present), row, dtype=np.int32))
-            cols.append(present.astype(np.int32))
-            data.append(size32[present])
-            record = {
-                "name": name,
-                "value": float(population),
-                "source": "us_puma_ladder_2020",
-                "family": "census_population_ladder",
-                "geography_level": level,
-                "state_fips": f"{int(value) // (100 if geography == 'cd' else 1):02d}",
-                "congressional_district_geoid": (
-                    f"{int(value):04d}" if geography == "cd" else None
-                ),
-            }
-            records.append(record)
-    matrix = sparse.csr_array(
-        (
-            np.concatenate(data) if data else np.empty(0, np.float32),
-            (
-                np.concatenate(rows) if rows else np.empty(0, np.int32),
-                np.concatenate(cols) if cols else np.empty(0, np.int32),
-            ),
-        ),
-        shape=(len(records), len(households)),
+    return ladder_population_targets.population_rows(
+        households,
+        household_size,
+        ladder_populations,
+        geographies,
+        us_ladder_population(),
     )
-    matrix.sort_indices()
-    return records, matrix, dropped
 
 
 def save_target_matrix(path: Path, matrix: sparse.csr_array) -> str:
