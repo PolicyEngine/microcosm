@@ -274,6 +274,7 @@ def test_pooled_scoring_writes_the_serial_scorers_bytes_at_any_worker_count(
             "max_units_ahead": None,
             "worker_environment_variables": [],
             "units": {"baseline": workers, "reform": reform_units},
+            "resources": None,
         }
         assert report["units_completed"] == workers + reform_units
         assert report["failed_attempts"] == []
@@ -689,3 +690,120 @@ def test_the_batch_ranges_cover_every_batch_once(builder) -> None:
             assert len(split) == min(ranges, n_batches)
             sizes = {len(batches) for batches in split}
             assert max(sizes) - min(sizes) <= 1
+
+
+# ---------------------------------------------------------------------------
+# Pooled scoring is certification's default (1.4 · 6's settings, approved by
+# Anthony on 27 November)
+# ---------------------------------------------------------------------------
+
+GIB = 2**30
+WORKERS_VARIABLE = "MICROCOSM_POST_EXPORT_WORKERS"
+
+
+def test_the_environment_chooses_pooled_or_serial_scoring(builder, capsys) -> None:
+    resources = {"total_memory_bytes": 32 * GIB, "usable_cores": 10}
+    pooling = builder._post_export_pooling_from_environment({}, **resources)
+    assert pooling.chosen_by == "formula"
+    settings = pooling.settings
+    assert (settings.workers, settings.max_units_per_worker) == (4, 2)
+    assert settings.memory_cap_bytes == 21 * GIB // 4
+    assert settings.worker_environment is None
+    assert pooling.resources["planned_peak_bytes"] == 23 * GIB
+    assert "4 pool workers" in capsys.readouterr().out
+    named = builder._post_export_pooling_from_environment(
+        {WORKERS_VARIABLE: "6"}, **resources
+    )
+    assert (named.settings.workers, named.chosen_by) == (6, f"{WORKERS_VARIABLE}=6")
+    assert (
+        builder._post_export_pooling_from_environment(
+            {WORKERS_VARIABLE: "serial"}, **resources
+        )
+        is None
+    )
+    assert "in this process" in capsys.readouterr().out
+    for environment, machine in (
+        ({WORKERS_VARIABLE: "lots"}, resources),
+        ({}, {"total_memory_bytes": 8 * GIB, "usable_cores": 10}),
+    ):
+        with pytest.raises(SystemExit, match=WORKERS_VARIABLE):
+            builder._post_export_pooling_from_environment(environment, **machine)
+
+
+def test_the_execution_record_holds_the_plan_it_ran(
+    builder,
+    pooled_reforms,
+    tmp_path,
+) -> None:
+    plan = _fixture_plan(builder, _fixture_consumer(lambda total: []))
+    pooling = builder._PostExportPooling(
+        WorkerPoolSettings(workers=2),
+        chosen_by="formula",
+        microsimulation_cls=FakeMicrosimulation,
+        dataset_from_frame=identity_dataset,
+        reform_builder=build_fake_reform,
+        resources={"usable_cores": 3},
+    )
+    scorer = builder._PooledPostExportScorer(
+        _written_h5(tmp_path),
+        maximum_microsim_batch_size=BATCH_SIZE,
+        consumer_requests=plan.consumer_requests,
+        pooling=pooling,
+        load_frame=_load(_nested_frame()),
+    )
+    scorer.close()
+    record = scorer.execution_record()
+    assert (record["chosen_by"], record["resources"]) == (
+        "formula",
+        {"usable_cores": 3},
+    )
+
+
+def test_certification_chooses_its_workers_before_it_places_the_build(
+    builder,
+) -> None:
+    """A bad setting or a machine too small for one worker stops
+    certification before it copies the build's files or loads the H5, and
+    the pool settings reach the post-export scorer."""
+    import ast
+    import inspect
+
+    source = inspect.getsource(builder._certify_main_with_close_out)
+    chosen = source.index(
+        "post_export_pooling = _post_export_pooling_from_environment()"
+    )
+    assert chosen < source.index("_place_build_for_certification(")
+    calls = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "_certify_us_build"
+    ]
+    assert [ast.unparse(call) for call in calls] == [
+        "_certify_us_build(record, certification=certification, "
+        "telemetry=telemetry, post_export_pooling=post_export_pooling)"
+    ]
+
+
+def test_the_probe_command_scores_as_certification_does(builder) -> None:
+    """The export probe's command reads the same setting, before it loads
+    the export, so it times pooled scoring by default."""
+    import ast
+    import inspect
+
+    from test_support.microcosm_build.us_export_subsample import _load_tool
+
+    probe_tool = _load_tool("probe_us_post_export", "probe_us_post_export.py")
+    source = inspect.getsource(probe_tool.main)
+    chosen = source.index(
+        "post_export_pooling = load_builder()._post_export_pooling_from_environment()"
+    )
+    assert chosen < source.index("report = probe_export(")
+    (call,) = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "probe_export"
+    ]
+    keywords = {keyword.arg: ast.unparse(keyword.value) for keyword in call.keywords}
+    assert keywords["post_export_pooling"] == "post_export_pooling"

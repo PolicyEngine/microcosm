@@ -178,3 +178,117 @@ def test_a_worker_finds_a_loaded_release_tool_or_loads_it_once(
             if getattr(module, "__file__", None) in (str(tool), str(other))
         ]:
             sys.modules.pop(name, None)
+
+
+# ---------------------------------------------------------------------------
+# The default worker settings (tracker decision 1.4 · 6, approved 27 November)
+# ---------------------------------------------------------------------------
+
+GIB = 2**30
+VARIABLE = "MICROCOSM_POST_EXPORT_WORKERS"
+
+
+def _plan(pool_module, memory, cores, value=None):
+    environment = {} if value is None else {VARIABLE: value}
+    return pool_module.plan_post_export_workers(
+        environment, total_memory_bytes=int(memory), usable_cores=cores
+    )
+
+
+@pytest.mark.parametrize(
+    ("memory", "cores", "workers", "cap"),
+    [
+        # 1.4 · 6's table: the 32 GiB, 6-core design target, Anthony's Mac,
+        # the build Mac, and a 16 GiB machine.
+        (32 * GIB, 6, 4, 21 * GIB // 4),
+        (32 * GIB, 10, 4, 21 * GIB // 4),
+        (128 * GIB, 18, 17, 93 * GIB // 17),
+        (16 * GIB, 8, 1, 9 * GIB),
+        # The memory term reaches 4 from 30.67 GiB, so a Linux host's 31.3
+        # GiB keeps 4; a container given 32 * 10**9 bytes (29.8 GiB) gets 3.
+        (int(31.3 * GIB), 10, 4, (3 * int(31.3 * GIB) // 4 - 3 * GIB) // 4),
+        (32 * 10**9, 10, 3, (3 * 32 * 10**9 // 4 - 3 * GIB) // 3),
+        # The cores term: usable cores less one, at least one.
+        (32 * GIB, 3, 2, 21 * GIB // 2),
+        (32 * GIB, 1, 1, 21 * GIB),
+    ],
+)
+def test_the_formula_picks_the_workers_and_each_ones_cap(
+    pool_module, memory, cores, workers, cap
+) -> None:
+    for value in (None, "", "auto"):
+        plan = _plan(pool_module, memory, cores, value)
+        assert not plan.serial
+        assert plan.workers == workers
+        assert plan.chosen_by == "formula"
+        assert plan.memory_cap_bytes == max(5 * GIB, cap)
+        assert plan.max_units_per_worker == 2
+        assert plan.budget_bytes == int(memory) * 3 // 4
+        assert plan.planned_peak_bytes == 3 * GIB + workers * 5 * GIB
+        settings = plan.pool_settings()
+        assert settings.workers == workers
+        assert settings.memory_cap_bytes == plan.memory_cap_bytes
+        assert settings.max_units_per_worker == 2
+        # Workers inherit the parent's thread variables (1.4 · 6, part 5).
+        assert settings.worker_environment is None
+        assert (settings.max_attempts, settings.max_units_ahead) == (2, None)
+
+
+def test_a_machine_too_small_for_one_worker_is_refused_unless_told(
+    pool_module,
+) -> None:
+    """Under about 10.7 GiB, 75% of memory less this process's 3 GiB leaves no
+    room for one 5 GiB worker: refused, before anything is loaded, unless the
+    operator names a count or serial scoring."""
+    for value in (None, "auto"):
+        with pytest.raises(pool_module.PostExportWorkersError) as refused:
+            _plan(pool_module, 10 * GIB, 8, value)
+        message = str(refused.value)
+        assert "post-export scoring" in message
+        assert "8.00 GiB" in message and "7.50 GiB" in message
+        assert VARIABLE in message and "serial" in message
+    assert _plan(pool_module, 10.7 * GIB, 8).workers == 1
+    explicit = _plan(pool_module, 10 * GIB, 8, "2")
+    assert (explicit.workers, explicit.chosen_by) == (2, f"{VARIABLE}=2")
+    assert explicit.memory_cap_bytes == 5 * GIB
+    assert explicit.planned_peak_bytes > explicit.budget_bytes
+    assert "above" in explicit.describe()
+    assert _plan(pool_module, 10 * GIB, 8, "serial").serial
+
+
+def test_an_operator_names_a_count_or_serial_scoring(pool_module) -> None:
+    one = _plan(pool_module, 32 * GIB, 10, "1")
+    # One pool worker, a separate process with the cap and replacement.
+    assert (one.serial, one.workers) == (False, 1)
+    assert one.memory_cap_bytes == 21 * GIB
+    many = _plan(pool_module, 32 * GIB, 10, "12")
+    assert many.workers == 12 and many.memory_cap_bytes == 5 * GIB
+    serial = _plan(pool_module, 32 * GIB, 10, "serial")
+    assert serial.serial and serial.workers is None
+    assert serial.chosen_by == f"{VARIABLE}=serial"
+    assert serial.pool_settings() is None
+    assert "in this process" in serial.describe()
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "four", " 4", "4.0", "+4", "Serial"])
+def test_any_other_setting_is_refused(pool_module, value) -> None:
+    with pytest.raises(pool_module.PostExportWorkersError, match=VARIABLE):
+        _plan(pool_module, 32 * GIB, 10, value)
+
+
+def test_the_plan_says_what_it_chose_and_why(pool_module) -> None:
+    plan = _plan(pool_module, 32 * GIB, 10)
+    assert plan.record() == {
+        "mode": "pooled",
+        "chosen_by": "formula",
+        "workers": 4,
+        "total_memory_bytes": 32 * GIB,
+        "usable_cores": 10,
+        "budget_bytes": 24 * GIB,
+        "planned_peak_bytes": 23 * GIB,
+        "memory_cap_bytes": 21 * GIB // 4,
+        "max_units_per_worker": 2,
+    }
+    line = plan.describe()
+    for text in ("4 pool workers", "formula", "23.00 GiB", "24.00 GiB", "5.25 GiB"):
+        assert text in line, text
