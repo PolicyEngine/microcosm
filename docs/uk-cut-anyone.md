@@ -412,8 +412,13 @@ another commit that holds the folder, such as the `commit` that
 commit on another ref may hold an edited copy of the folder.
 `--keep-regional-release` reads the local-area build at the folder and commit
 the current bundle pins. `--resume-worktree` refuses a worktree whose modified
-bundle pins other commits than this run's, because the first attempt's
-constant rewrite already moved the constants to its own.
+bundle pins another national commit, or routes regions elsewhere than this
+run would (including none), because the first attempt's constant rewrite
+already moved the constants to its own builds.
+
+The policyengine.py base (`--base-ref`) must read builds in their own folders
+(`read_build_folder`, policyengine.py#683); a base without it refuses before
+anything is downloaded.
 
 Each heavy step first checks the host. The disk floor defaults to 55 GB
 (`--min-free-gb`). There is no load limit unless you set one with
@@ -424,9 +429,7 @@ For an accepted mismatch (see [Regions](#regions-the-dense-cut)), add
 `--audited-by "<who ran the audit>"` (it appears in policyengine.py's public
 bundle) and at least one `--regional-limitation "<text>"`. The base needs
 policyengine.py#699's audit, and a base without it refuses before anything
-is downloaded. Until #699 merges, test the route with `--base-ref
-origin/accept-regional-model-mismatch --pr-base accept-regional-model-mismatch`.
-The audit and `certify-data` also need `uv` and PyPI: both read the build
+is downloaded. The audit and `certify-data` also need `uv` and PyPI: both read the build
 model through a pinned `uv` probe, and `certify-data` re-reads both models
 rather than trusting the evidence's lists.
 

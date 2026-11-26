@@ -98,6 +98,8 @@ FOLDER_MANIFEST_URI = re.compile(
     rf"/releases/(?P<release>[^/]+)/(?P<build>[^/]+)/{re.escape(RELEASE_MANIFEST)}$"
 )
 CONSTANT_PATTERN = r'(?P<pre>["@/-]){old}(?P<post>["/])'
+#: policyengine.py's bundle manifest, which certify-data rewrites.
+BUNDLE_MANIFEST = "src/policyengine/data/bundle/manifest.json"
 CONSTANT_FILES = (
     "tests/test_models.py",
     "tests/test_release_manifests.py",
@@ -256,7 +258,7 @@ def read_published_build(
             fresh=True,
         )
     except ValueError as error:
-        # A listing refusal names releases.json; a parse error does not.
+        # Name releases.json where the refusal does not already.
         message = str(error)
         if "releases.json" not in message:
             message = f"releases.json at main in {BUILD_REPO}: {message}"
@@ -429,7 +431,7 @@ def certification_path(relative: str, national_build: str) -> bool:
         "uv.lock",
         *CONSTANT_FILES,
         f"changelog.d/certify-uk-{national_build}.changed.md",
-        "src/policyengine/data/bundle/manifest.json",
+        BUNDLE_MANIFEST,
         "src/policyengine/data/bundle/uk.trace.tro.jsonld",
         "src/policyengine/data/bundle/us.trace.tro.jsonld",
         *(
@@ -530,7 +532,7 @@ def validate_resume_worktree(
             "resume worktree has unresolved merges; no files were changed."
         )
     paths = certification_changes(worktree, national_build)
-    manifest_path = "src/policyengine/data/bundle/manifest.json"
+    manifest_path = BUNDLE_MANIFEST
     if manifest_path in paths:
         record = json.loads((worktree / manifest_path).read_text())["data_releases"][
             "uk"
@@ -544,19 +546,20 @@ def validate_resume_worktree(
     return paths
 
 
-BUNDLE_MANIFEST = "src/policyengine/data/bundle/manifest.json"
-
-
 def check_resumed_pins(
     worktree: Path,
     replayed: Sequence[str],
     national: PublishedBuild,
-    dense: PublishedBuild | None,
+    regional_uri: str | None,
 ) -> None:
-    """Refuse a resumed worktree whose modified bundle pins other commits.
+    """Refuse a resumed worktree whose modified bundle pins other builds.
 
+    ``regional_uri`` is the regional manifest URI this run passes to
+    certify-data, which writes it as the bundle's
+    ``regional_source_manifest_uri``, or ``None`` for no regional routing.
     The first attempt's constant rewrite moved the certified constants to its
-    commits, so a resume that certifies other ones would leave them behind.
+    own national commit and local-area build, so a resume that certifies
+    others would leave them behind.
     """
 
     if BUNDLE_MANIFEST not in replayed:
@@ -570,11 +573,11 @@ def check_resumed_pins(
             "certify another commit."
         )
     regional = record.get("regional_source_manifest_uri")
-    if dense is not None and regional != dense.manifest_uri:
+    if regional != regional_uri:
         raise CertifyError(
             f"resume worktree's modified manifest routes regions to {regional!r}, "
-            f"not the local-area build at {dense.manifest_uri}; use a fresh "
-            "worktree to certify another one."
+            f"not {regional_uri!r} as this run would; use a fresh worktree to "
+            "change the regional route."
         )
 
 
@@ -841,6 +844,26 @@ def rewrite_regional_constants(
 AUDIT_SCRIPT = "scripts/audit_regional_input_surface.py"
 #: The evidence version that measures drops against the regional build model.
 REGIONAL_EVIDENCE_SCHEMA = 2
+
+
+#: The policyengine.py module that reads a build in its own folder (policyengine.py#683).
+PEPY_MANIFEST_MODULE = "src/policyengine/provenance/manifest.py"
+
+
+def build_folder_support(repo: Path, base_commit: str) -> str | None:
+    """Why the base cannot certify a build in its own folder, or ``None`` if
+    it can: the base needs .py's ``read_build_folder``."""
+
+    found = subprocess.run(
+        ["git", "grep", "-q", "-e", "def read_build_folder", base_commit, "--",
+         PEPY_MANIFEST_MODULE],
+        cwd=repo,
+        capture_output=True,
+        check=False,
+    )  # fmt: skip
+    if found.returncode != 0:
+        return f"its {PEPY_MANIFEST_MODULE} has no read_build_folder"
+    return None
 
 
 def regional_audit_support(repo: Path, base_commit: str) -> str | None:
@@ -1390,6 +1413,14 @@ def certify(args: argparse.Namespace) -> int:
             cwd=repo,
             text=True,
         ).strip()
+    with timed_step("base-build-folder-support", timings):
+        problem = build_folder_support(repo, base_commit)
+    if problem is not None:
+        raise CertifyError(
+            f"policyengine.py at {base_ref} ({base_commit[:9]}) cannot certify a "
+            f"build in its own folder: {problem} (policyengine.py#683). Use a "
+            "--base-ref that has it."
+        )
 
     replay_paths = []
     if args.resume_worktree:
@@ -1433,7 +1464,7 @@ def certify(args: argparse.Namespace) -> int:
                 [
                     "git",
                     "show",
-                    f"{base_commit}:src/policyengine/data/bundle/manifest.json",
+                    f"{base_commit}:{BUNDLE_MANIFEST}",
                 ],
                 cwd=repo,
                 text=True,
@@ -1452,11 +1483,18 @@ def certify(args: argparse.Namespace) -> int:
                 dense = read_published_build(
                     kept.release, kept.build, commit=kept.commit
                 )
-    # Before the regional microdata is downloaded: a refused resume must not
-    # download it first.
-    check_resumed_pins(worktree, replay_paths, national, dense)
     flags = regional_flags(args, record, dense)
     regional_summary = shlex.join(flags)
+    # Before the regional microdata is downloaded: a refused resume must not
+    # download it first.
+    check_resumed_pins(
+        worktree,
+        replay_paths,
+        national,
+        flags[flags.index("--regional-manifest-uri") + 1]
+        if "--regional-manifest-uri" in flags
+        else None,
+    )
     if dense is not None:
         if not covers(dense, model):
             if not args.accept_regional_model_mismatch:
@@ -1598,9 +1636,7 @@ def certify(args: argparse.Namespace) -> int:
     run(sync, step="certified-sync", credentials=False)
     run([python, "scripts/release_lock.py"], step="release-lock")
     run([python, "scripts/bundle.py", "generate", "--include-tros"], step="TROs")
-    new_bundle = json.loads(
-        (worktree / "src/policyengine/data/bundle/manifest.json").read_text()
-    )
+    new_bundle = json.loads((worktree / BUNDLE_MANIFEST).read_text())
     new_record = new_bundle["data_releases"]["uk"]
     rewrite = run(
         [
