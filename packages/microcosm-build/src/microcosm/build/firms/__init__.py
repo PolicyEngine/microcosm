@@ -11,12 +11,22 @@ first consumer.
 - :mod:`.thinning`: stratified thinning with exact base weights;
 - :mod:`.registration`: the two-universe treatment of a register and a
   tax-registration count, set by a :class:`RegistrationSpec`;
-- :mod:`.rules`: the seam to a rule engine, with outputs keyed by firm id.
+- :mod:`.rules`: the seam to a rule engine, with outputs keyed by firm id;
+- :mod:`.engine_inputs`: a rule engine's entity inputs read from source, the
+  input-status record a build keeps, and checks of an export against both.
 """
 
 from __future__ import annotations
 
 from .bands import draw_in_band
+from .engine_inputs import (
+    EXPORTED_INPUT_STATUSES,
+    INPUT_STATUSES,
+    EntityVariables,
+    export_schema_problems,
+    input_status_problems,
+    read_entity_variables,
+)
 from .registration import (
     BAND_ROLES,
     RegistrationSpec,
@@ -29,12 +39,18 @@ from .thinning import stratified_thin
 
 __all__ = [
     "BAND_ROLES",
+    "EXPORTED_INPUT_STATUSES",
+    "INPUT_STATUSES",
+    "EntityVariables",
     "FirmRuleOutputs",
     "FirmRules",
     "RegistrationSpec",
     "align_rule_outputs",
     "assign_scope_and_registration",
     "draw_in_band",
+    "export_schema_problems",
+    "input_status_problems",
+    "read_entity_variables",
     "registration_propensity",
     "select_to_weighted_target",
     "stratified_thin",
