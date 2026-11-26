@@ -46,7 +46,7 @@ import subprocess
 from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
-from typing import NamedTuple, NoReturn
+from typing import NoReturn
 
 import numpy as np
 import pandas as pd
@@ -1367,17 +1367,15 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
 
     A resume must supply equal values, except for
     ``_RESUME_IGNORED_RUN_CONFIG_PATHS``. A step process of a ``--stage all``
-    run takes the PUF, location ladder and builder source digests its parent
-    passed (``PARENT_DIGESTS_VARIABLE``) instead of hashing those files again.
+    run takes the PUF and location ladder digests its parent passed
+    (``PARENT_DIGESTS_VARIABLE``) instead of hashing those files again; it
+    hashes the builder's source files itself.
     """
 
     def path(value: Path | None) -> str | None:
         return None if value is None else str(value.resolve())
 
     parent_digests = _parent_digests(args)
-    parent_source_sha256 = (
-        None if parent_digests is None else parent_digests.builder_source_sha256
-    )
 
     asec_sources: list[str] | None = None
     if args.asec_h5 is not None:
@@ -1434,11 +1432,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "assign_congressional_districts": bool(args.assign_congressional_districts),
         "base_h5": path(args.base_h5),
         "block_ladder_artifact": path(args.block_ladder_artifact),
-        "builder_code_identity": (
-            _builder_code_identity()
-            if parent_source_sha256 is None
-            else _builder_code_identity(source_sha256=parent_source_sha256)
-        ),
+        "builder_code_identity": _builder_code_identity(),
         "congressional_district_seed": args.congressional_district_seed,
         "congressional_district_vintage_crosswalk": path(
             args.congressional_district_vintage_crosswalk
@@ -1495,19 +1489,14 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
     return config
 
 
-def _builder_code_identity(*, source_sha256: str | None = None) -> dict[str, object]:
-    """Fingerprint executable sources and dependency versions for safe resume.
-
-    ``source_sha256`` is the parent's digest of the sources, which are then
-    not read again; ``None`` hashes them here.
-    """
+def _builder_code_identity() -> dict[str, object]:
+    """Fingerprint executable sources and dependency versions for safe resume."""
 
     from microcosm.build.code_identity import builder_code_identity
 
-    tool = _builder_tool_path()
     return builder_code_identity(
-        tool.parents[1],
-        tool_path=tool,
+        Path(__file__).resolve().parents[1],
+        tool_path=Path(__file__).resolve(),
         distributions=(
             "h5py",
             "numpy",
@@ -1516,46 +1505,35 @@ def _builder_code_identity(*, source_sha256: str | None = None) -> dict[str, obj
             "quantile-forest",
             "scikit-learn",
         ),
-        source_sha256=source_sha256,
     )
 
 
-def _builder_tool_path() -> Path:
-    """This tool's file; its repository root is ``parents[1]``."""
-
-    return Path(__file__).resolve()
-
-
-#: The variable in which a ``--stage all`` parent passes each step process the
-#: digests it computed, as JSON: under each file's resolved path, the SHA-256
-#: of the PUF H5 and CSV and, under ``block_v1``, of the location ladder
-#: (all from its run config), and of each pinned ASEC file (from its pin
-#: check); and the builder source digest with the repository root and tool
-#: file it covers.
-#: So the step's own run config (``_stage_run_config``) and pin check
+#: The variable in which a ``--stage all`` parent passes each step process,
+#: as JSON, the SHA-256 of the input files it hashed, each under the file's
+#: resolved path: the PUF H5 and CSV and, under ``block_v1``, the location
+#: ladder (from its run config), and each pinned ASEC file (from its pin
+#: check). So the step's own run config (``_stage_run_config``) and pin check
 #: (``_verify_asec_source_digests``) do not read those files again, except
 #: where a step hashes the ASEC files itself
-#: (``_STEPS_HASHING_THEIR_ASEC_SOURCES``). A step process
-#: uses a digest only for the same path, and only when the process that set
-#: the variable is its parent (the recorded process ID equals
-#: ``os.getppid()``); otherwise it hashes the file itself, as a named
+#: (``_STEPS_HASHING_THEIR_ASEC_SOURCES``). The builder's source files are not
+#: passed: every step hashes them again (about 0.12 s), so a ``git pull`` or
+#: an edit in the checkout after the parent started is refused by the next
+#: step. A step process uses a digest only for the same path, and only when
+#: the process that set the variable is its parent (the recorded process ID
+#: equals ``os.getppid()``); otherwise it hashes the file itself, as a named
 #: ``--stage`` run by hand does when the variable is unset. A malformed
 #: variable stops the process. The parent ignores the variable and hashes
 #: these files at every start, comparing the result with the locked run
-#: config and the ASEC pins before it starts a step, so a resume after one
-#: of them changed is still refused. (Other inputs, such as ``--acs-h5``,
-#: are recorded by path only, as before.) What goes unnoticed, in the steps
-#: that take the parent's digests, is one of these files changing while the
-#: run is under way, a ``git pull`` in the same checkout included. The
-#: process-ID comparison does not identify
-#: the run: a copy of the variable used where process IDs repeat (a fresh
-#: container) can match, as ``MICROCOSM_TELEMETRY_PARENT_PID`` can.
+#: config and the ASEC pins before it starts a step, so a resume after one of
+#: them changed is still refused. (Other inputs, such as ``--acs-h5``, are
+#: recorded by path only, as before.) What goes unnoticed, in the steps that
+#: take the parent's digests, is one of these input files changing while the
+#: run is under way. The process-ID comparison does not identify the run: a
+#: copy of the variable used where process IDs repeat (a fresh container)
+#: can match, as ``MICROCOSM_TELEMETRY_PARENT_PID`` can.
 PARENT_DIGESTS_VARIABLE = "MICROCOSM_US_BASE_PARENT_DIGESTS"
 _PARENT_DIGESTS_SCHEMA_VERSION = 1
-_PARENT_DIGESTS_KEYS = frozenset(
-    {"builder_source_sha256", "file_sha256", "parent_pid", "schema_version"}
-)
-_PARENT_SOURCE_DIGEST_KEYS = frozenset({"repo_root", "sha256", "tool_path"})
+_PARENT_DIGESTS_KEYS = frozenset({"file_sha256", "parent_pid", "schema_version"})
 #: The run-config keys of each input path the parent passes a digest for,
 #: and of that digest. The ladder's digest is in the run config only under
 #: ``block_v1``.
@@ -1566,22 +1544,10 @@ _PARENT_DIGEST_FILE_KEYS = (
 )
 
 
-class _ParentDigests(NamedTuple):
-    """The digests a step process's parent passed it.
-
-    ``file_sha256`` maps resolved paths to digests. ``builder_source_sha256``
-    is ``None`` unless the parent's source digest covers this tool file and
-    repository root.
-    """
-
-    file_sha256: Mapping[str, str]
-    builder_source_sha256: str | None
-
-
 def _parent_digests_environment(
     run_config: Mapping[str, object], verified_asec_sha256: Mapping[str, str]
 ) -> dict[str, str]:
-    """``PARENT_DIGESTS_VARIABLE`` carrying this process's digests.
+    """``PARENT_DIGESTS_VARIABLE`` carrying this process's input digests.
 
     They are ``run_config``'s and ``verified_asec_sha256``, the pinned ASEC
     files' digests under their resolved paths.
@@ -1592,21 +1558,7 @@ def _parent_digests_environment(
         path, digest = run_config.get(path_key), run_config.get(digest_key)
         if isinstance(path, str) and isinstance(digest, str):
             file_sha256[path] = digest
-    identity = run_config.get("builder_code_identity")
-    source_sha256 = (
-        identity.get("source_sha256") if isinstance(identity, Mapping) else None
-    )
-    tool = _builder_tool_path()
     payload = {
-        "builder_source_sha256": (
-            {
-                "repo_root": str(tool.parents[1]),
-                "sha256": source_sha256,
-                "tool_path": str(tool),
-            }
-            if isinstance(source_sha256, str)
-            else None
-        ),
         "file_sha256": file_sha256,
         "parent_pid": os.getpid(),
         "schema_version": _PARENT_DIGESTS_SCHEMA_VERSION,
@@ -1614,11 +1566,12 @@ def _parent_digests_environment(
     return {PARENT_DIGESTS_VARIABLE: json.dumps(payload, sort_keys=True)}
 
 
-def _parent_digests(args: argparse.Namespace) -> _ParentDigests | None:
-    """The digests this step process's parent passed it, or ``None``.
+def _parent_digests(args: argparse.Namespace) -> Mapping[str, str] | None:
+    """The input digests this step process's parent passed it, or ``None``.
 
-    ``None`` for a ``--stage all`` run, which hashes its own inputs, and for
-    a process whose parent did not set ``PARENT_DIGESTS_VARIABLE``.
+    The digests are keyed by resolved path. ``None`` for a ``--stage all``
+    run, which hashes its own inputs, and for a process whose parent did not
+    set ``PARENT_DIGESTS_VARIABLE``.
     """
 
     if getattr(args, "stage", "all") == "all":
@@ -1629,17 +1582,7 @@ def _parent_digests(args: argparse.Namespace) -> _ParentDigests | None:
     payload = _parse_parent_digests(raw)
     if payload["parent_pid"] != os.getppid():
         return None
-    source = payload["builder_source_sha256"]
-    tool = _builder_tool_path()
-    covers_this_tool = (
-        source is not None
-        and source["tool_path"] == str(tool)
-        and source["repo_root"] == str(tool.parents[1])
-    )
-    return _ParentDigests(
-        file_sha256=payload["file_sha256"],
-        builder_source_sha256=source["sha256"] if covers_this_tool else None,
-    )
+    return payload["file_sha256"]
 
 
 def _parse_parent_digests(raw: str) -> dict[str, object]:
@@ -1675,18 +1618,6 @@ def _parse_parent_digests(raw: str) -> dict[str, object]:
             "has a file_sha256 that does not map absolute paths to lowercase "
             "SHA-256 digests"
         )
-    source = payload["builder_source_sha256"]
-    if source is not None and not (
-        isinstance(source, dict)
-        and set(source) == _PARENT_SOURCE_DIGEST_KEYS
-        and isinstance(source["repo_root"], str)
-        and isinstance(source["tool_path"], str)
-        and _is_sha256(source["sha256"])
-    ):
-        refuse(
-            "has a builder_source_sha256 that is neither null nor an object "
-            "with a repo_root, a tool_path and a lowercase SHA-256 sha256"
-        )
     return payload
 
 
@@ -1698,11 +1629,11 @@ def _is_sha256(value: object) -> bool:
     )
 
 
-def _input_sha256(path: Path, parent_digests: _ParentDigests | None) -> str:
+def _input_sha256(path: Path, parent_digests: Mapping[str, str] | None) -> str:
     """``path``'s SHA-256: the parent's digest for its resolved path, else hashed."""
 
     if parent_digests is not None:
-        digest = parent_digests.file_sha256.get(str(Path(path).resolve()))
+        digest = parent_digests.get(str(Path(path).resolve()))
         if digest is not None:
             return digest
     return _sha256(path)
