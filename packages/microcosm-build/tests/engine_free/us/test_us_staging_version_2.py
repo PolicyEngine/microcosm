@@ -649,3 +649,20 @@ def test_microcosm_has_no_version_1_staging_writer() -> None:
         assert not hasattr(build_package, name), name
     parameters = inspect.signature(RunFileHandOver.hand_over).parameters
     assert {"latest_pointer", "run_index_entry"}.isdisjoint(parameters)
+
+
+def test_a_failure_after_the_run_closed_leaves_it_as_it_was(
+    builder, tmp_path, capsys
+) -> None:
+    """An error after the run completed records the build's failure with the
+    hosted telemetry only: the run keeps its state, and its final commit is
+    not checked again."""
+    progress, emitter = _remote_build_progress(builder, tmp_path)
+    progress.complete()
+    capsys.readouterr()
+
+    progress.fail(RuntimeError("printing the result failed"))
+
+    assert _read(_run_dir(tmp_path), "progress.json")["status"] == "completed"
+    assert emitter.client.read_back_waits == [120.0]
+    assert "could not" not in capsys.readouterr().err

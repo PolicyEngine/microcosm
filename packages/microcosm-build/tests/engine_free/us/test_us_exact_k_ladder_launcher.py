@@ -410,3 +410,42 @@ def test_an_exact_count_build_stages_under_its_build_id(
         "fixture/staging"
     }
     assert emitter.client.release_requests == []
+
+
+def test_the_launcher_passes_an_explicit_staging_opt_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exact-count builds stage by default; --no-staging still opts one out."""
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    config_path = _write_config(
+        tmp_path,
+        _config_payload(pool_manifest_sha256=_sha256(manifest)),
+    )
+    monkeypatch.setattr(launcher, "_validate_pins_and_resolve_k", lambda **_: (8, {}))
+    argv = [
+        "--pool-manifest",
+        str(manifest),
+        "--config",
+        str(config_path),
+        "--out",
+        str(tmp_path / "out"),
+    ]
+    assert getattr(launcher._parse_args(argv), "no_staging", None) is False
+    parsed = launcher._parse_args([*argv, "--no-staging"])
+    assert getattr(parsed, "no_staging", None) is True
+    captured: list[str] = []
+
+    try:
+        launcher.launch(
+            pool_manifest=manifest,
+            config_path=config_path,
+            out=tmp_path / "out",
+            release_builder=captured.extend,
+            no_staging=True,
+        )
+    except TypeError:
+        pytest.fail("the launcher cannot pass --no-staging to the build")
+
+    assert captured.count("--no-staging") == 1
