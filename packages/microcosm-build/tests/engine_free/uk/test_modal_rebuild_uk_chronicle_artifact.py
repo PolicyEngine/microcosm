@@ -64,12 +64,12 @@ def _image_chain(modal_stub):
 def test_the_rebuild_image_trusts_no_compromised_certificate_authority(monkeypatch):
     """As the US Modal image does, before anything else is downloaded.
 
-    emSign ECC Root CA - G3, the eMudhra root removed after the 2026-10-20
-    key disclosure: uv before 0.13.4 compiles it in, the cached base's pip 25.3
-    bundles it, and the base's CA store, which git's clone of Chronicle and the
-    standard library read, holds it until it is upgraded. The upload's Hub
-    client checks the Hub's certificate against certifi on the image's own
-    Python.
+    emSign ECC Root CA - G3, the eMudhra root distrusted over eMudhra's
+    disclosed intermediate keys: uv before 0.13.4 compiles it in, the cached
+    base's pip 25.3 bundles it, and the base's CA store, which git's clone of
+    Chronicle and the standard library read, holds it until it is upgraded.
+    The upload's Hub client checks the Hub's certificate against certifi on
+    the image's own Python.
     """
 
     us_plan = _load_us_plan(monkeypatch)

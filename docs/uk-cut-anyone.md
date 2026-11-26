@@ -236,12 +236,12 @@ ephemeral secret for that run; no named workspace secret keeps it. A rebuild
 without `--upload` sends no credential at all.
 
 As the US Modal image does, the rebuild's image stops trusting emSign ECC Root
-CA - G3, the eMudhra root that certifi and Debian removed after eMudhra
-intermediate keys were disclosed on 2026-10-20, before it downloads anything
-else. It upgrades `ca-certificates`, replaces the base's pip with a
-hash-pinned pip 26.2.2, and installs uv 0.13.4 and certifi 2026.10.19 or
-later beside `huggingface_hub`. uv 0.13.4 installs Python 3.14.8, where the
-app's earlier uv 0.11.7 installed 3.14.4; the receipt records the one used.
+CA - G3, the eMudhra root that certifi and Debian distrust over eMudhra's
+disclosed intermediate keys, before it downloads anything else. It upgrades
+`ca-certificates`, replaces the base's pip with a hash-pinned pip 26.2.2, and
+installs uv 0.13.4 and certifi 2026.10.19 or later beside `huggingface_hub`.
+uv 0.13.4 installs Python 3.14.8, where the app's earlier uv 0.11.7 installed
+3.14.4; the receipt records the one used.
 
 ### The reference build
 

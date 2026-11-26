@@ -16,10 +16,10 @@ volume under ``<commit>/<facts sha256>/``, with a receipt beside them.
 
 As in the US Modal image, before it downloads anything else the image stops
 trusting emSign ECC Root CA - G3, the eMudhra root that certifi and Debian
-removed after the disclosure of eMudhra intermediate keys on 2026-10-20 (an
-upgraded CA store, a hash-pinned pip, uv 0.13.4 and a certifi floor). So
-neither the packages an upload runs with ``HF_TOKEN`` nor the upload's own
-connection to the Hub depends on that root.
+distrust over eMudhra's disclosed intermediate keys (an upgraded CA store, a
+hash-pinned pip, uv 0.13.4 and a certifi floor). So neither the packages an
+upload runs with ``HF_TOKEN`` nor the upload's own connection to the Hub
+depends on that root.
 
 Check the pin and print the plan (plain Python; contacts no Modal service
 and sends nothing)::
@@ -67,11 +67,11 @@ VOLUME_MOUNT = "/artifacts"
 HF_REPO = "policyengine/microcosm-uk-build-inputs"
 CHRONICLE_URL = "https://github.com/PolicyEngine/chronicle.git"
 PYTHON_VERSION = "3.14"
-# emSign ECC Root CA - G3, the eMudhra root removed after eMudhra
-# intermediate keys were disclosed on 2026-10-20, is dropped as in the US
-# Modal image (tools/modal_us_stage_plan.py, whose values the tests compare
-# with these). uv verifies HTTPS against a CA list compiled into it, and
-# 0.13.4 is the first release whose list drops it.
+# emSign ECC Root CA - G3, the eMudhra root distrusted over eMudhra's
+# disclosed intermediate keys, is dropped as in the US Modal image
+# (tools/modal_us_stage_plan.py, whose values the tests compare with these).
+# uv verifies HTTPS against a CA list compiled into it, and 0.13.4 is the
+# first release whose list drops it.
 UV_VERSION = "0.13.4"
 # Modal's cached debian_slim base carries pip 25.3, whose bundled certifi
 # still contains emSign ECC Root CA - G3, so the image replaces it with this
@@ -82,9 +82,10 @@ PIP_WHEEL_SHA256 = "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a725481
 PIP_BOOTSTRAP_REQUIREMENTS = "/tmp/pip-bootstrap.txt"
 HF_HUB_VERSION = "1.18.0"
 # The upload's Hub client checks the Hub's certificate against certifi's CA
-# list on the image's own Python, and 2026.10.19 is the first certifi release
-# without emSign ECC Root CA - G3. Stated, since Modal reuses a cached layer
-# while its definition is unchanged.
+# list on the image's own Python. certifi 2026.10.19 and later leave out
+# emSign ECC Root CA - G3 (2026.10.18 left out every emSign root, and
+# 2026.10.19 restored the three certifi judged unaffected). Stated, since
+# Modal reuses a cached layer while its definition is unchanged.
 CERTIFI_MINIMUM_VERSION = "2026.10.19"
 FEED_PIN = Path(__file__).resolve().parents[1] / (
     "packages/microcosm-build/src/microcosm/build/uk/chronicle_feed.json"
