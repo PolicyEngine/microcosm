@@ -155,6 +155,10 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1030: us_runtime.fiscal_targets imports the source-vintage
         # corrections for restamped Chronicle facts.
         "microcosm.build.us_runtime.source_vintage",
+        # microcosm#1728: us_runtime.fiscal_targets and source_vintage read
+        # their reviewed registers through these two modules.
+        "microcosm.build.declared_registers",
+        "microcosm.build.us_runtime.fiscal_target_registers",
         # microcosm#1585: the US keyed draws call
         # stochastic_assignment.stable_identity_uniforms.
         "microcosm.build.stochastic_assignment",

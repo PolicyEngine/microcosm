@@ -131,3 +131,59 @@ Before the declarations, the local SNAP, Medicaid, `totals`, `full` and
 surface changes. On a feed with such rows at another level (for example county
 rows in the main feed), the declarations keep them out until a clause names
 the level.
+
+## Rows the local tool builds, and its hold-outs
+
+`us/local_target_construction.json` declares how the ACS local release builds
+the targets that the compile does not give it. Shared, country-free modules
+read each section (microcosm#1728):
+
+| Section | Shared module | What the section declares |
+|---|---|---|
+| `holdouts` | `microcosm.build.target_holdouts` | The district pass (`--soi-mode state_cd`) and the county pass (`state_county`): which records each pass writes (`scope`), which get a held unit (`eligible`), the unit key (`unit_fields`, with the concept-family rule), the salt, the default and largest fraction, the receipt keys, and how the held rows are scored against the pro-rata baseline. |
+| `ladder_population` | `microcosm.build.ladder_population_targets` | The PUMA ladder's state and district levels: the target names, the household column of each level, the code fields of each record, the geography ids and the label lookup of each level. |
+
+The tool functions keep their names (`assign_target_roles`,
+`calibration_target_set`, `score_cd_holdout`, `population_rows`,
+`population_target_specs` and others) and call the shared modules. A record
+has at least `name`, `value`, `family` and `geography_level`. The role pass
+adds `holdout_unit` and `role`, and the training target set holds the
+training rows only.
+
+Two parts of the local surface are still tool code. The district SOI shares
+of `state_cd` (`tools/us_acs_local_cd_surface.py`) and the county rung
+(`tools/us_acs_local_county_surface.py`) make child rows as shares of parent
+rows. One nesting rule across all levels will replace them, together with the
+district rows of microcosm#1731.
+
+## The compile registers
+
+`us/fiscal_target_registers.json` holds the reviewed registers of the US
+fiscal target compile (`us_runtime/fiscal_targets.py` and
+`us_runtime/source_vintage.py`). The shared
+`microcosm.build.declared_registers` reads them. Each register keeps the
+comments that stood beside it in the code, as its `description` and as the
+`note` of an entry.
+
+| Register | What it holds |
+|---|---|
+| `support_exclusions`, `all_vintage_support_exclusions`, `exclusion_vintage_bypasses` | The facts the compile drops, with the reason for each, and their vintage scope. |
+| `source_column_exclusions` | The IRS columns a package reads under a measure whose concept they do not carry (microcosm#1038). |
+| `restamped_source_packages`, `later_period_observation_exemptions` | The source packages whose period stamp is wrong (microcosm#1030). |
+| `soi_amount_measure_variables`, `soi_return_measure_variables`, `soi_variables`, `soi_base_variable_overrides` | The model variable of each IRS SOI measure and concept. |
+| `direct_targets`, `indicator_targets` | The model variable, family and metadata of each direct and indicator Ledger target. |
+| `m_chip_state_fips` | The M-CHIP states whose CHIP rows never calibrate (microcosm#321). |
+
+A section has a `key` (one field, or a list of fields for a tuple key), a
+`value` (one field, a list of fields for a tuple value, or `null` for a set)
+and its `entries` in order. JSON arrays read back as tuples.
+
+To change a register:
+
+1. Edit its entries. Give each new entry its reason or note.
+2. Run `test_us_fiscal_target_registers.py`. It pins each register's digest
+   and, with the pinned feed, the compile under four flag sets and the
+   exclusion receipt. An intended change moves these pins: update them and
+   say which targets moved.
+3. A change that moves the compile changes what the calibration fits, so a
+   build must measure it.
