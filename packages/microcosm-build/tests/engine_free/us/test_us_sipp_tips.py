@@ -11,6 +11,7 @@ signal contracts.
 from __future__ import annotations
 
 import hashlib
+import io
 
 import numpy as np
 import pandas as pd
@@ -267,7 +268,10 @@ def test_predictors_match_retired_sipp_tip_model() -> None:
 
 def test_sipp_donor_coordinate_and_sha_are_pinned() -> None:
     assert SIPP_2023_TIP_DONOR_URL.endswith("/pu2023_slim.csv")
-    assert "/resolve/" in SIPP_2023_TIP_DONOR_URL
+    assert module.SIPP_2023_TIP_DONOR_DOWNLOAD_REVISION == "1.115.5"
+    assert f"/resolve/{module.SIPP_2023_TIP_DONOR_DOWNLOAD_REVISION}/" in (
+        SIPP_2023_TIP_DONOR_URL
+    )
     assert SIPP_2023_TIP_DONOR_SHA256 == _EXPECTED_DONOR_SHA256
 
 
@@ -528,4 +532,22 @@ def test_fetch_reuses_cache_only_when_sha_matches(tmp_path, monkeypatch) -> None
         expected_sha256=digest,
     )
     assert result == cached
+    assert result.read_bytes() == payload
+
+
+def test_fetch_downloads_the_tag_url_on_a_cache_miss(tmp_path, monkeypatch) -> None:
+    payload = b"synthetic pinned SIPP slim donor"
+    opened: list[object] = []
+
+    def fake_urlopen(url, *_args, **_kwargs):
+        opened.append(url)
+        return io.BytesIO(payload)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    result = fetch_sipp_2023_tip_donor(
+        cache_dir=tmp_path,
+        expected_sha256=hashlib.sha256(payload).hexdigest(),
+    )
+
+    assert opened == [SIPP_2023_TIP_DONOR_URL]
     assert result.read_bytes() == payload

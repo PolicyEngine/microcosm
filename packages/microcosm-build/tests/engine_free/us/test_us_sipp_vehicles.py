@@ -22,6 +22,7 @@ from microcosm.build.us_runtime.sipp_vehicles import (
     ARCHIVED_SIPP_VEHICLE_RECEIVER_URL,
     ARCHIVED_SIPP_VEHICLE_SOURCE_URL,
     ARCHIVED_SIPP_VEHICLE_TRANSFORM_URL,
+    SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION,
     SIPP_2023_VEHICLE_DONOR_REVISION,
     SIPP_2023_VEHICLE_DONOR_SHA256,
     SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
@@ -305,7 +306,10 @@ def test_immutable_artifact_and_archive_coordinates_are_exact() -> None:
         "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
     )
     assert SIPP_2023_VEHICLE_DONOR_SIZE_BYTES == 3_726_010_471
-    assert SIPP_2023_VEHICLE_DONOR_REVISION in SIPP_2023_VEHICLE_DONOR_URL
+    assert SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION == "1.115.5"
+    assert f"/resolve/{SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION}/" in (
+        SIPP_2023_VEHICLE_DONOR_URL
+    )
     assert SIPP_2023_VEHICLE_DONOR_URL.endswith("/pu2023.csv")
     assert "/resolve/" in SIPP_2023_VEHICLE_DONOR_URL
     for url in (
@@ -479,7 +483,13 @@ def test_fetch_streams_verifies_atomically_and_reuses_cache(
     payload = b"small synthetic pinned donor payload"
     digest = hashlib.sha256(payload).hexdigest()
     response = _ChunkedResponse(payload)
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *_args, **_kwargs: response)
+    opened: list[object] = []
+
+    def fake_urlopen(url, *_args, **_kwargs):
+        opened.append(url)
+        return response
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
     path = fetch_sipp_2023_vehicle_donor(
         tmp_path,
@@ -491,6 +501,7 @@ def test_fetch_streams_verifies_atomically_and_reuses_cache(
     assert len(response.read_sizes) > 2
     assert all(size == 5 for size in response.read_sizes)
     assert not (tmp_path / "pu2023.csv.part").exists()
+    assert opened == [SIPP_2023_VEHICLE_DONOR_URL]
 
     def unexpected_download(*_args, **_kwargs):
         raise AssertionError("valid cached donor should not be downloaded again")

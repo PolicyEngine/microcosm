@@ -837,6 +837,7 @@ from microcosm.build.us_runtime.sipp_december_person_rows import (
     read_sipp_december_person_rows,
 )
 from microcosm.build.us_runtime.sipp_financial_assets import (
+    SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION,
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS,
     SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE,
     SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION,
@@ -876,6 +877,7 @@ from microcosm.build.us_runtime.sipp_head_start import (
 )
 from microcosm.build.us_runtime.sipp_tips import (
     CENSUS_OCCUPATION_CODE_TO_TTOC,
+    SIPP_2023_TIP_DONOR_DOWNLOAD_REVISION,
     SIPP_2023_TIP_DONOR_REVISION,
     SIPP_2023_TIP_DONOR_SHA256,
     SIPP_2023_TIP_DONOR_URL,
@@ -895,6 +897,7 @@ from microcosm.build.us_runtime.sipp_tips import (
     with_us_sipp_tip_inputs,
 )
 from microcosm.build.us_runtime.sipp_vehicles import (
+    SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION,
     SIPP_2023_VEHICLE_DONOR_REVISION,
     SIPP_2023_VEHICLE_DONOR_SHA256,
     SIPP_2023_VEHICLE_DONOR_SIZE_BYTES,
@@ -1066,6 +1069,7 @@ from microcosm.build.us_runtime.validation_input_coverage import (
     us_validation_input_coverage_gate,
 )
 from microcosm.build.us_runtime.voluntary_filing import (
+    SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION,
     SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION,
     SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256,
     SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES,
@@ -1682,6 +1686,7 @@ __all__ = [
     "us_scf_wealth_summary",
     "with_us_scf_wealth_inputs",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REVISION",
+    "SIPP_2023_FINANCIAL_ASSET_DONOR_DOWNLOAD_REVISION",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_ID_PARTS",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_REPOSITORY_TYPE",
     "SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256",
@@ -1772,6 +1777,7 @@ __all__ = [
     "write_us_ssi_take_up_diagnostics",
     "CENSUS_OCCUPATION_CODE_TO_TTOC",
     "SIPP_2023_TIP_DONOR_REVISION",
+    "SIPP_2023_TIP_DONOR_DOWNLOAD_REVISION",
     "SIPP_2023_TIP_DONOR_SHA256",
     "SIPP_2023_TIP_DONOR_URL",
     "SIPP_TIP_OUTPUT_COLUMNS",
@@ -1789,6 +1795,7 @@ __all__ = [
     "us_sipp_tips_summary",
     "with_us_sipp_tip_inputs",
     "SIPP_2023_VEHICLE_DONOR_REVISION",
+    "SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION",
     "SIPP_2023_VEHICLE_DONOR_SHA256",
     "SIPP_2023_VEHICLE_DONOR_SIZE_BYTES",
     "SIPP_2023_VEHICLE_DONOR_URL",
@@ -1802,6 +1809,7 @@ __all__ = [
     "us_sipp_vehicles_summary",
     "with_us_sipp_vehicle_inputs",
     "SIPP_2023_VOLUNTARY_FILING_DONOR_REVISION",
+    "SIPP_2023_VOLUNTARY_FILING_DONOR_DOWNLOAD_REVISION",
     "SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256",
     "SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES",
     "SIPP_2023_VOLUNTARY_FILING_DONOR_URL",
