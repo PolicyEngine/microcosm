@@ -705,3 +705,75 @@ def test_an_interrupt_while_the_run_closes_still_hands_its_final_state_over(
     ]
     assert [check["method"] for check in checks] == ["receipt"]
     assert "read_back_run_files" not in client.calls
+    assert _read(_run_dir(tmp_path), "progress.json")["status"] == "completed"
+    (outcome,) = _run_events(emitter)
+    assert outcome["details"].get("error_code") == "TERMINATED"
+
+
+class _InterruptedHandOver:
+    """An in-memory emitter whose next run-file hand-over raises a SIGTERM."""
+
+    @staticmethod
+    def client():
+        from microcosm.build.termination import BuildTerminatedError
+        from test_support.microcosm_build.emitter import FakeEmitterClient
+
+        class Client(FakeEmitterClient):
+            interrupt_next = False
+
+            def stage_run_files(self, request):
+                if self.interrupt_next:
+                    self.interrupt_next = False
+                    raise BuildTerminatedError()
+                return super().stage_run_files(request)
+
+        return Client()
+
+
+@pytest.mark.parametrize("ending", ["failed", "blocked"])
+def test_an_interrupt_while_a_failure_closes_the_run_ends_only_the_close(
+    builder, tmp_path, ending
+) -> None:
+    """A SIGTERM during the final hand-over of a failed or blocked run (review
+    round 2 of microcosm#1771) ends that hand-over only: the build keeps its
+    own outcome, the run's state is handed over once more and the final
+    commit is checked by receipt."""
+    client = _InterruptedHandOver.client()
+    progress, emitter = _remote_build_progress(builder, tmp_path, client=client)
+    progress.stage("release_gates", message="Checking the release.")
+    error = (
+        RuntimeError("export failed")
+        if ending == "failed"
+        else builder._BuildFailedReleaseGatesError(["Input coverage failed: x"])
+    )
+    client.interrupt_next = True
+
+    try:
+        progress.fail(error)
+    except KeyboardInterrupt:
+        pytest.fail("the interrupt escaped the build's close-out")
+
+    remote = client.hub_json(US_STAGING, f"runs/{BUILD}/progress.json")
+    assert remote["status"] == ending
+    checks = [
+        event["details"]
+        for event in emitter.events
+        if event["details"].get("check") == "staging_final_commit"
+    ]
+    assert [check["method"] for check in checks] == ["receipt"]
+    (outcome,) = _run_events(emitter)
+    assert outcome["status"] == "failed"
+    assert outcome["details"].get("error_code") != "TERMINATED"
+
+
+def test_a_local_only_run_records_that_its_closing_finished(builder, tmp_path) -> None:
+    """A local-only run has no emitter to hand over to; once it has closed, a
+    later failure leaves it as it is."""
+    arguments = _staging_arguments(builder, repository=None)
+    arguments.staging_dir = tmp_path / "local-staging"
+    progress = builder._build_progress(
+        arguments, release_root=tmp_path, release_id=BUILD, emitter=_hosted_telemetry()
+    )
+    progress.complete()
+
+    assert getattr(progress.staging_bundle, "closing_finished", None) is True
