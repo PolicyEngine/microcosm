@@ -8,7 +8,8 @@ where it is readable, and otherwise current RSS from one ``ps`` call. Where
 ``ps`` gives no usable reading, the reading is the process's lifetime peak RSS
 from ``getrusage`` instead of its current RSS. "No usable reading" means no
 ``ps`` is on ``PATH``; or running it raises ``OSError``, exits non-zero or
-times out; or it prints something other than a positive number. That happens
+times out; or it prints something other than a positive number, including
+output that cannot be decoded. That happens
 on Linux without ``/proc``, because ``ps`` reads ``/proc`` there, in images
 that ship without ``ps``, and in sandboxes that deny ``ps``.
 
@@ -16,13 +17,12 @@ that ship without ``ps``, and in sandboxes that deny ``ps``.
 says which:
 
 - Where ``/proc/self/statm`` is readable (Linux), a background thread reads
-  current RSS every ``sample_interval_seconds``. The peak is the largest of
-  those samples and the entry and exit readings (``"sampled_current_rss"``).
-  Each sample is taken by ``current_rss_bytes``, so if ``/proc`` stops being
-  readable during the stage, a sample can come from ``ps`` or ``getrusage``.
-  If a sample fails, sampling stops for the rest of the stage and
-  ``sampling_error`` says why, so the peak covers only the samples taken
-  before that.
+  current RSS from it every ``sample_interval_seconds``. The peak is the
+  largest of those samples and the entry and exit readings
+  (``"sampled_current_rss"``). Every sample comes from ``/proc``. If ``/proc``
+  stops reporting current RSS during the stage, or a sample fails in any
+  other way, sampling stops for the rest of the stage and ``sampling_error``
+  says why, so the peak covers only the samples taken before that.
 - Elsewhere (macOS, or a container that hides ``/proc``), no background thread
   runs, because each reading of current RSS would start a ``ps`` process.
   Instead the process's lifetime peak RSS, ``getrusage(RUSAGE_SELF).ru_maxrss``,
@@ -147,6 +147,9 @@ def _read_ps_current_rss_bytes() -> int:
         check=True,
         capture_output=True,
         text=True,
+        # Output that is not valid in the locale's encoding then fails to
+        # parse below and falls back, instead of raising UnicodeDecodeError.
+        errors="replace",
         timeout=_PS_TIMEOUT_SECONDS,
     )
     try:
@@ -172,6 +175,19 @@ def _read_resource_peak_rss_bytes() -> int:
 # Keep a narrow patch seam for tests without adding a test-only argument to the
 # public context manager.
 _current_rss_bytes = current_rss_bytes
+
+
+def _read_procfs_sample_rss_bytes() -> int:
+    """Read one background sample from /proc, failing if /proc gives none.
+
+    A sample never falls back to ``ps`` or ``getrusage``, so every sample in a
+    ``"sampled_current_rss"`` record is current RSS from ``/proc``.
+    """
+
+    rss_bytes = _read_procfs_current_rss_bytes()
+    if rss_bytes is None:
+        raise RuntimeError("/proc/self/statm did not report current RSS")
+    return rss_bytes
 
 
 def _procfs_reports_current_rss() -> bool:
@@ -242,7 +258,7 @@ class _RssSampler:
     def _sample_until_stopped(self) -> None:
         while not self._stop_event.wait(self._sample_interval_seconds):
             try:
-                rss_bytes = _current_rss_bytes()
+                rss_bytes = _read_procfs_sample_rss_bytes()
             except Exception as error:  # noqa: BLE001
                 with self._state_lock:
                     self._sampling_error = _exception_payload(error)
