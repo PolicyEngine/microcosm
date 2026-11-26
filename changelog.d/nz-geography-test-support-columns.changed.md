@@ -1,0 +1,1 @@
+The NZ geography assignment test (microcosm#1732) now checks each derived layer against a support-column map the test states itself, takes the support system and alias from `transport_graph.json`, and checks the derive and gate nodes' declared household inputs against the assignment's outputs and the derived layers.
