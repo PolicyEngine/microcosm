@@ -721,9 +721,6 @@ def national_argv(
         "--ledger-manifest-sha256", chronicle["manifest.json"],
         "--reference-h5", str(paths.reference_h5(reference)),
         "--reference-record", str(paths.reference_record),
-        # No build uploads its graph any more; builds accept the flag and
-        # ignore it.
-        "--no-publish-orrery",
         "--out", str(paths.run_dir),
     ]  # fmt: skip
     if logbook_prev_row_digest:

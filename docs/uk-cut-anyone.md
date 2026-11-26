@@ -117,8 +117,7 @@ missing. Without them no reservation is checked.
 - **It never publishes to the public Orrery.** No build uploads its graph:
   the national build's staged bundle submits the graph's inputs to the
   collector, which keeps a licensed build's graph private
-  ([orrery-publication.md](orrery-publication.md)). The national step still
-  passes `--no-publish-orrery`, which builds accept and ignore.
+  ([orrery-publication.md](orrery-publication.md)).
 - **It never certifies into policyengine.py.** That is a pull request in
   another repository; see [Certifying into policyengine.py](#certifying-into-policyenginepy).
 - **It builds only from main.** It refuses a commit that is not on
