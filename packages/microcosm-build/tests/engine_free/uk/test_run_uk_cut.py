@@ -259,8 +259,8 @@ def test_national_argv_parses(tmp_path, dry_run):
 
 
 @pytest.mark.parametrize("dry_run", [True, False])
-def test_the_national_build_never_publishes_to_the_orrery(tmp_path, dry_run):
-    """The runner never asks for the retired upload to the public Orrery."""
+def test_the_national_build_passes_no_orrery_upload_flag(tmp_path, dry_run):
+    """The build has no upload to the public Orrery to ask for or refuse."""
 
     from microcosm.build.uk_runtime import full_build_cli
 
@@ -274,8 +274,8 @@ def test_the_national_build_never_publishes_to_the_orrery(tmp_path, dry_run):
         reference=_reference(paths),
         dry_run=dry_run,
     )
-    assert "--publish-orrery" not in argv
-    assert full_build_cli.parse_args(argv[2:]).publish_orrery is False
+    assert not [flag for flag in argv if "orrery" in flag]
+    assert not hasattr(full_build_cli.parse_args(argv[2:]), "publish_orrery")
 
 
 def _tool(name: str):
