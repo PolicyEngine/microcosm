@@ -5,10 +5,12 @@ Each profiled stage gets one record in ``stage_profile.json``.
 ``entry_rss_bytes`` and ``exit_rss_bytes`` are read by ``current_rss_bytes``
 as the stage starts and ends. That is current RSS from ``/proc/self/statm``
 where it is readable, and otherwise current RSS from one ``ps`` call. Where
-``ps`` fails too, the reading is the process's lifetime peak RSS from
-``getrusage`` instead of its current RSS. That happens on Linux without
-``/proc``, because ``ps`` reads ``/proc`` there, and in sandboxes that deny
-``ps``.
+running ``ps`` raises ``OSError``, exits non-zero or times out, the reading is
+the process's lifetime peak RSS from ``getrusage`` instead of its current RSS.
+That happens on Linux without ``/proc``, because ``ps`` reads ``/proc``
+there, and in sandboxes that deny ``ps``. Where no ``ps`` is on ``PATH``, or
+it prints something other than a positive number, the reading raises
+``RuntimeError``.
 
 ``peak_rss_bytes`` is measured in one of two ways, and ``peak_rss_source``
 says which:
@@ -89,9 +91,10 @@ def current_rss_bytes() -> int:
     """Return the current process resident set size in bytes.
 
     Linux exposes current RSS through procfs. macOS does not, so the portable
-    fallback asks ``ps`` for the current process's RSS in KiB. Unlike
-    ``resource.getrusage``, both paths report current rather than lifetime-peak
-    RSS.
+    fallback asks ``ps`` for the current process's RSS in KiB. Both report
+    current RSS. Where running ``ps`` raises ``OSError``, exits non-zero or
+    times out, this returns the lifetime peak from ``resource.getrusage``
+    instead, which is at least the current RSS.
     """
 
     procfs_rss_bytes = _read_procfs_current_rss_bytes()
