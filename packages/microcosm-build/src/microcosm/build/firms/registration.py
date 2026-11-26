@@ -37,6 +37,8 @@ from typing import Final
 
 import numpy as np
 
+from ._arrays import as_1d
+
 __all__ = [
     "BAND_ROLES",
     "RegistrationSpec",
@@ -93,17 +95,8 @@ class RegistrationSpec:
         return tuple(b for b, r in enumerate(self.band_roles) if r == role)
 
 
-def _as_1d(name: str, values: object, length: int | None = None) -> np.ndarray:
-    array = np.asarray(values)
-    if array.ndim != 1:
-        raise ValueError(f"{name} must be one-dimensional, got shape {array.shape}")
-    if length is not None and len(array) != length:
-        raise ValueError(f"{name} has {len(array)} entries; expected {length}")
-    return array
-
-
 def _counts(spec: RegistrationSpec, registered_counts: object) -> np.ndarray:
-    counts = _as_1d("registered_counts", registered_counts, spec.n_bands).astype(
+    counts = as_1d("registered_counts", registered_counts, spec.n_bands).astype(
         np.float64
     )
     if not np.all(np.isfinite(counts)) or np.any(counts < 0):
@@ -114,7 +107,7 @@ def _counts(spec: RegistrationSpec, registered_counts: object) -> np.ndarray:
 def _band_indices(
     spec: RegistrationSpec, band_idx: object, length: int | None = None
 ) -> np.ndarray:
-    bands = _as_1d("band_idx", band_idx, length)
+    bands = as_1d("band_idx", band_idx, length)
     if not np.issubdtype(bands.dtype, np.integer):
         raise TypeError("band_idx must be an integer array")
     if bands.size and (bands.min() < 0 or bands.max() >= spec.n_bands):
@@ -150,8 +143,8 @@ def registration_propensity(
 
     bands = _band_indices(spec, band_idx)
     n = len(bands)
-    frame = _as_1d("frame_mask", frame_mask, n).astype(bool)
-    weights = _as_1d("base_weights", base_weights, n).astype(np.float64)
+    frame = as_1d("frame_mask", frame_mask, n).astype(bool)
+    weights = as_1d("base_weights", base_weights, n).astype(np.float64)
     counts = _counts(spec, registered_counts)
 
     frame_mass = np.bincount(
@@ -233,8 +226,8 @@ def assign_scope_and_registration(
 
     bands = _band_indices(spec, band_idx)
     n = len(bands)
-    frame = _as_1d("frame_mask", frame_mask, n).astype(bool)
-    row_weights = _as_1d("weights", weights, n).astype(np.float64)
+    frame = as_1d("frame_mask", frame_mask, n).astype(bool)
+    row_weights = as_1d("weights", weights, n).astype(np.float64)
     counts = _counts(spec, registered_counts)
     rng = np.random.default_rng(int(seed))
 

@@ -6,4 +6,4 @@
 - `read_entity_variables` reads a policyengine-core package's entity variables from source with `ast`, and `input_status_problems` and `export_schema_problems` check a build's input-status record and its export against them;
 - `firms.receipts` sets model totals beside sourced official receipts, without inventing a gap for an unset input or a missing figure.
 
-Under UK-shaped arguments, each function reproduces the UK firm port's outputs exactly.
+The UK firm port (#1706) is to be rebuilt on these and will pin that its outputs are unchanged. The firm-only `Frame` is not included: it needs `EntitySchema` root populations.

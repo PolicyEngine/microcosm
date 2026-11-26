@@ -14,16 +14,9 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from ._arrays import as_1d
+
 __all__ = ["stratified_thin"]
-
-
-def _as_1d(name: str, values: object, length: int | None = None) -> np.ndarray:
-    array = np.asarray(values)
-    if array.ndim != 1:
-        raise ValueError(f"{name} must be one-dimensional, got shape {array.shape}")
-    if length is not None and len(array) != length:
-        raise ValueError(f"{name} has {len(array)} entries; expected {length}")
-    return array
 
 
 def stratified_thin(
@@ -67,11 +60,11 @@ def stratified_thin(
         rows and their float64 base weights.
     """
 
-    values = _as_1d("window_values", window_values).astype(np.float64)
+    values = as_1d("window_values", window_values).astype(np.float64)
     n = len(values)
     keys = []
     for position, key in enumerate(strata):
-        array = _as_1d(f"strata[{position}]", key, n)
+        array = as_1d(f"strata[{position}]", key, n)
         if not np.issubdtype(array.dtype, np.integer):
             raise TypeError(f"strata[{position}] must be an integer array")
         keys.append(array.astype(np.int64))

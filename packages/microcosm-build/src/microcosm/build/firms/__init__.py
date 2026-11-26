@@ -4,8 +4,8 @@ A country's firm build draws candidate firms from published band counts,
 thins them for speed, calibrates them against a business register and a
 tax-registration count, and hands them to a rule engine. The pieces here know
 nothing about any country: band edges, band roles, registered counts and rule
-engines all arrive as arguments. The UK firm build in ``uk_runtime`` is the
-first consumer.
+engines all arrive as arguments. They come from the UK firm port in
+PolicyEngine/microcosm#1706, which is to be rebuilt on them.
 
 - :mod:`.bands`: values drawn inside a band from uniforms the caller supplies;
 - :mod:`.thinning`: stratified thinning with exact base weights;
