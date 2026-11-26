@@ -254,9 +254,12 @@ _REASONS_AFTER_VERSION_CHECK: Mapping[StartupFailureReason, AdapterFailureReason
     "unsupported_protocol_version": "hello_failed"
 }
 #: How ``microcosm-emitter version`` gave no usable answer: it did not answer
-#: in time, did not run, exited with an error, or answered with something no
-#: emitter release prints.
-type VersionFailureKind = Literal["timeout", "not_run", "exited", "not_an_answer"]
+#: in time, did not run, exited with an error, answered with something no
+#: emitter release prints, or was not run because the interface refused the
+#: request (a time limit that is not more than 0 s and at most a day).
+type VersionFailureKind = Literal[
+    "timeout", "not_run", "exited", "not_an_answer", "refused_request"
+]
 _NOT_STARTED = "so the emitter was not started"
 #: For a ``version`` that ran and answered with something no emitter
 #: release prints: the command may be another program.
@@ -398,6 +401,11 @@ def _version_failure(
         return "timeout", f"did not answer within {timeout:g} s"
     if failure.reason == "unusable_output":
         return "not_an_answer", "printed no JSON object"
+    if failure.reason == "invalid_arguments":
+        return "refused_request", (
+            f"was not run: its time limit of {timeout:g} s is outside what "
+            "microcosm-emitter-interface accepts (more than 0 s, at most a day)"
+        )
     if failure.exit_code is not None:
         return "exited", f"exited {failure.exit_code}"
     if failure.reason == "command_not_found":
@@ -434,6 +442,10 @@ def _version_refusal(
     if kind == "timeout":
         return TelemetryRequiredError(
             "version_timeout", f"`{command} version` {detail}, {_NOT_STARTED}."
+        )
+    if kind == "refused_request":
+        return TelemetryRequiredError(
+            "version_failed", f"`{command} version` {detail}, {_NOT_STARTED}."
         )
     if kind == "not_run":
         advice = f"Check that `{command}` runs on this machine."

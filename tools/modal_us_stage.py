@@ -267,8 +267,9 @@ def _emitter_version() -> plan_lib.EmitterVersionAnswer | None:
     It runs without the runner's credentials or the collector token, which
     ``version`` does not need. It runs the command itself, not through
     microcosm-emitter-interface's ``emitter_version``: the runner runs on the
-    image's interpreter, which has only uv, huggingface_hub and certifi; the
-    build's environment, which has the interface, is separate.
+    image's interpreter, where the image installs uv, huggingface_hub and
+    certifi besides Modal's own client, and not the interface; the build's
+    environment, which has the interface, is separate.
     """
 
     try:

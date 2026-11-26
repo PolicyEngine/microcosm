@@ -162,7 +162,7 @@ Hugging Face.
 ## Emitter dependency
 
 `packages/microcosm-build` depends on `microcosm-emitter-interface`
-(`>=0.16.0,<1`), the dependency-free package of typed calls, which `uv.lock`
+(`>=0.18.0,<1`), the dependency-free package of typed calls, which `uv.lock`
 records with its hashes. The emitter itself, `microcosm-emitter`, is not a
 workspace dependency: each machine installs it on its own with
 `uv tool install microcosm-emitter`, and the Modal image installs the newest

@@ -2338,8 +2338,8 @@ def request_telemetry_token(
 
     It runs the command itself, not through microcosm-emitter-interface's
     ``telemetry_token``: this module uses only the standard library, and the
-    launch runs under the Modal client's own interpreter, which does not have
-    the interface.
+    launch runs under the Modal client's own interpreter, which the runbook
+    asks only to have Modal, not the interface.
 
     Runs the installed emitter's ``telemetry-token`` (``MICROCOSM_EMITTER_COMMAND``,
     then ``PATH``) with this machine's environment, so it exchanges the
