@@ -18,22 +18,45 @@ A description or a note is a string or a list of lines. :func:`load_register`
 reads one section. JSON arrays read back as tuples and JSON objects as dicts,
 so a register reads back as the Python literal it replaces, in entry order.
 Nothing here holds country data.
+
+**Signed entries** (microcosm#1759). Many reviewed files sign each entry: who
+approved it, on what date, and until when it is in force. Every such file
+needs the same few things, which the end of this module holds for any
+country:
+
+- :func:`read_strict_json` reads JSON and refuses duplicate keys and
+  non-finite numbers;
+- :func:`canonical_date` reads a date only in its one canonical spelling
+  (``YYYY-MM-DD``);
+- :class:`ReviewWindow` is an entry's window, ``approved_on`` to
+  ``expires_on`` with both days included, and its state on a date;
+- :func:`stale_entries` gives the declared entries that name nothing found.
+
+They return values. The country's code writes the error texts and decides
+what a lapse does: refuse a run, fail a gate, or report it.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from datetime import date
 from functools import cache
 from importlib.resources import files
 from typing import Any
 
 __all__ = [
     "NOTE_FIELD",
+    "WINDOW_STATES",
     "DeclaredRegisterError",
+    "ReviewWindow",
+    "canonical_date",
     "load_register",
     "package_register",
     "package_registers",
+    "read_strict_json",
+    "stale_entries",
 ]
 
 #: The optional entry field that explains one entry.
@@ -171,3 +194,102 @@ def package_register(package: str, resource: str, name: str) -> Any:
             f"{sorted(registers)}."
         )
     return load_register(registers[name], name=name)
+
+
+# ---------------------------------------------------------------------------
+# Signed entries: strict reads and review windows
+# ---------------------------------------------------------------------------
+
+#: The states of a review window on a date, in time order.
+WINDOW_STATES = ("premature", "in_force", "expired")
+
+
+def read_strict_json(text: str, *, label: str) -> Any:
+    """Read JSON text; refuse duplicate object keys and non-finite numbers.
+
+    Raises:
+        DeclaredRegisterError: ``"{label}: duplicate JSON key(s): [...]."``,
+            ``"{label}: non-finite JSON value 'NaN' is invalid."`` or
+            ``"{label}: malformed JSON: <reason>."``.
+    """
+
+    def strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        duplicates: set[str] = set()
+        for name, value in pairs:
+            if name in result:
+                duplicates.add(name)
+            result[name] = value
+        if duplicates:
+            raise DeclaredRegisterError(
+                f"{label}: duplicate JSON key(s): {sorted(duplicates)}."
+            )
+        return result
+
+    def reject_nonfinite(value: str) -> Any:
+        raise DeclaredRegisterError(
+            f"{label}: non-finite JSON value {value!r} is invalid."
+        )
+
+    try:
+        return json.loads(
+            text, object_pairs_hook=strict_object, parse_constant=reject_nonfinite
+        )
+    except json.JSONDecodeError as exc:
+        raise DeclaredRegisterError(f"{label}: malformed JSON: {exc.msg}.") from exc
+
+
+def canonical_date(value: Any) -> date | None:
+    """``value`` as a date if it is a canonical ISO date string, else None.
+
+    ``date.fromisoformat`` also reads the compact (``20270210``) and week-date
+    forms. A signed date has one spelling, because the raw text is often
+    sealed into a digest, so only ``YYYY-MM-DD`` counts.
+    """
+
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.isoformat() == value else None
+
+
+@dataclass(frozen=True)
+class ReviewWindow:
+    """The days an approval is in force: ``approved_on`` to ``expires_on``.
+
+    Both days are in force. A date before ``approved_on`` is premature; a
+    date after ``expires_on`` is expired.
+    """
+
+    approved_on: date
+    expires_on: date
+
+    def premature(self, on: date) -> bool:
+        return on < self.approved_on
+
+    def expired(self, on: date) -> bool:
+        return on > self.expires_on
+
+    def in_force(self, on: date) -> bool:
+        return self.approved_on <= on <= self.expires_on
+
+    def state(self, on: date) -> str:
+        """One of :data:`WINDOW_STATES`."""
+
+        if self.premature(on):
+            return "premature"
+        return "expired" if self.expired(on) else "in_force"
+
+    def days_left(self, on: date) -> int:
+        """Days from ``on`` to ``expires_on``; negative once expired."""
+
+        return (self.expires_on - on).days
+
+
+def stale_entries(declared: Iterable[str], matched: Iterable[str]) -> list[str]:
+    """The declared entries that name nothing found, sorted."""
+
+    return sorted(set(declared) - set(matched))

@@ -130,3 +130,94 @@ def test_a_malformed_register_refuses(case: str) -> None:
     _broken()[case](section)
     with pytest.raises(DeclaredRegisterError):
         load_register(section)
+
+
+# ---------------------------------------------------------------------------
+# Signed entries: strict reads and review windows (microcosm#1759)
+# ---------------------------------------------------------------------------
+
+
+def test_read_strict_json_refuses_duplicates_non_finite_and_malformed() -> None:
+    from microcosm.build.declared_registers import read_strict_json
+
+    assert read_strict_json('{"a": [1, {"b": 2.5}]}', label="f") == {
+        "a": [1, {"b": 2.5}]
+    }
+    with pytest.raises(
+        DeclaredRegisterError, match=r"^f: duplicate JSON key\(s\): \['a'\]\.$"
+    ):
+        read_strict_json('{"a": 1, "a": 2}', label="f")
+    with pytest.raises(
+        DeclaredRegisterError, match=r"duplicate JSON key\(s\): \['b'\]"
+    ):
+        read_strict_json('{"a": {"b": 1, "b": 1}}', label="f")
+    for constant in ("NaN", "Infinity", "-Infinity"):
+        with pytest.raises(
+            DeclaredRegisterError,
+            match=rf"^f: non-finite JSON value '{constant}' is invalid\.$",
+        ):
+            read_strict_json(f'{{"a": {constant}}}', label="f")
+    with pytest.raises(DeclaredRegisterError, match=r"^f: malformed JSON: .+\.$"):
+        read_strict_json('{"a": }', label="f")
+    assert issubclass(DeclaredRegisterError, ValueError)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2026-11-26", "2026-11-26"),
+        ("2024-02-29", "2024-02-29"),
+        ("20261126", None),
+        ("2026-W48-4", None),
+        ("2026-11-26T00:00", None),
+        ("2026-02-30", None),
+        (" 2026-11-26", None),
+        ("", None),
+        (None, None),
+        (20261126, None),
+    ],
+)
+def test_canonical_date_reads_only_the_canonical_spelling(value, expected) -> None:
+    from microcosm.build.declared_registers import canonical_date
+
+    parsed = canonical_date(value)
+    assert (None if parsed is None else parsed.isoformat()) == expected
+
+
+def test_a_review_window_includes_both_days() -> None:
+    from datetime import date
+
+    from microcosm.build.declared_registers import WINDOW_STATES, ReviewWindow
+
+    window = ReviewWindow(date(2026, 10, 1), date(2026, 12, 31))
+    states = {
+        day: window.state(date.fromisoformat(day))
+        for day in (
+            "2026-09-30",
+            "2026-10-01",
+            "2026-11-26",
+            "2026-12-31",
+            "2027-01-01",
+        )
+    }
+    assert states == {
+        "2026-09-30": "premature",
+        "2026-10-01": "in_force",
+        "2026-11-26": "in_force",
+        "2026-12-31": "in_force",
+        "2027-01-01": "expired",
+    }
+    assert set(states.values()) == set(WINDOW_STATES)
+    assert window.premature(date(2026, 9, 30)) and not window.in_force(
+        date(2026, 9, 30)
+    )
+    assert window.expired(date(2027, 1, 1)) and not window.in_force(date(2027, 1, 1))
+    assert window.days_left(date(2026, 12, 24)) == 7
+    assert window.days_left(date(2027, 1, 2)) == -2
+
+
+def test_stale_entries_are_the_declared_names_not_found() -> None:
+    from microcosm.build.declared_registers import stale_entries
+
+    assert stale_entries(["b", "a", "c", "a"], {"c"}) == ["a", "b"]
+    assert stale_entries([], ["x"]) == []
