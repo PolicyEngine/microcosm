@@ -122,13 +122,11 @@ class UKGraphCalibrationConfig:
                 )
             if self.dataset_households is None:
                 raise ValueError(f"A {stage} L2 penalty requires a dataset size.")
-        if self.target_weight_rule not in (
-            *UK_LOCAL_TARGET_WEIGHT_RULES,
-            "family_equal",
-        ):
+        admitted = (*UK_LOCAL_TARGET_WEIGHT_RULES, "family_equal", "loss_family_equal")
+        if self.target_weight_rule not in admitted:
             raise ValueError(
                 f"Unknown target_weight_rule {self.target_weight_rule!r}; admitted: "
-                f"{(*UK_LOCAL_TARGET_WEIGHT_RULES, 'family_equal')}."
+                f"{admitted}."
             )
 
 

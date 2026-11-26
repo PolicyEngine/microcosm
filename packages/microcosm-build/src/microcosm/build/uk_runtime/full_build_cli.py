@@ -765,6 +765,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "uniform",
             "grain_equal",
             "family_equal",
+            "loss_family_equal",
             *UK_LOCAL_ROW_METADATA_RULES,
         ),
         help="Defaults to the role's doctrine; any other admitted rule is a receipted override.",

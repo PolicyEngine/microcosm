@@ -130,6 +130,7 @@ _STAGE_MODULES = {
     "spi_benefit_coherence": "spi_benefit_coherence",
     "uc_capital_coherence": "uc_capital_coherence",
     "uc_limited_capability": "uc_limited_capability",
+    "uc_housing_costs_claim": "uc_housing_costs_claim",
     "uc_take_up": "uc_take_up",
     "uc_legacy_closure_take_up": "legacy_closure_take_up",
     "pension_credit_take_up": "pension_credit_take_up",
@@ -225,6 +226,13 @@ _STAGE_HELPER_MODULES = {
         frs_take_up,
         uc_take_up,
         stochastic_assignment,
+    ),
+    # One engine materialization of the housing costs element; the frs_spine
+    # carrier's codes and the receipt's support counts (B1 of microcosm#1710).
+    "uc_housing_costs_claim": (
+        uk_engine_adapter,
+        frs_spine,
+        receipt_counts,
     ),
     # vendored DWP counts, the closure stage's rule and rates, the deduction
     # attributes, the take-up population and the family-type roles, and counts
@@ -371,6 +379,7 @@ _COUNTING_STAGES = frozenset(
         "spi_employment_shell",
         "aps_occupation",
         "uc_limited_capability",
+        "uc_housing_costs_claim",
         "pip_points",
     }
 )
@@ -740,6 +749,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .trading_allowance_receipts import UKTradingAllowanceReceiptsStageTransform
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .uc_deduction_attributes import UKUCDeductionAttributesStageTransform
+    from .uc_housing_costs_claim import UKUCHousingCostsClaimStageTransform
     from .uc_limited_capability import UKUCLimitedCapabilityStageTransform
     from .uc_new_claimant_draw import UKUCNewClaimantDrawStageTransform
     from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
@@ -957,6 +967,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "uc_limited_capability": UKUCLimitedCapabilityStageTransform(
                 stage=stages["uc_limited_capability"], engine=engine
+            ),
+            "uc_housing_costs_claim": UKUCHousingCostsClaimStageTransform(
+                stage=stages["uc_housing_costs_claim"], engine=engine
             ),
             "uc_take_up": UKUCTakeUpStageTransform(
                 stage=stages["uc_take_up"], engine=engine

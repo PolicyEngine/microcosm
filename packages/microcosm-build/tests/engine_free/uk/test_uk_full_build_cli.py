@@ -108,6 +108,10 @@ def test_release_role_is_required_and_supplies_the_dense_posture(tmp_path):
         (["--allow-unpinned-feed"], "--allow-unpinned-feed"),
         (["--reference-h5", "reference.h5"], "--reference-h5"),
         (["--target-weight-rule", "family_equal"], "--target-weight-rule family_equal"),
+        (
+            ["--target-weight-rule", "loss_family_equal"],
+            "--target-weight-rule loss_family_equal",
+        ),
     ],
 )
 def test_dense_role_refuses_the_national_knobs(tmp_path, extra, needle):

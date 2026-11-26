@@ -751,7 +751,7 @@ def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
     assert national._posture is posture
     assert national.n_clones is None
     assert (national.seed, national.epochs, national.learning_rate) == (0, 1500, 0.02)
-    assert national.target_weight_rule == "family_equal"
+    assert national.target_weight_rule == "loss_family_equal"
     assert national.expected_constituency_vintage is None
     builder._validate_cli_args(national)
     explicit = builder._parse_args(_role_argv(tmp_path, "national", "--epochs", "5"))
@@ -769,6 +769,10 @@ def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
         (["--target-loss-cap", "5"], "--target-loss-cap"),
         (["--allow-unpinned-feed"], "--allow-unpinned-feed"),
         (["--target-weight-rule", "family_equal"], "--target-weight-rule family_equal"),
+        (
+            ["--target-weight-rule", "loss_family_equal"],
+            "--target-weight-rule loss_family_equal",
+        ),
     ],
 )
 def test_dense_role_refusal_table(tmp_path, extra, needle) -> None:

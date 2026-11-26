@@ -39,6 +39,31 @@ families for any remainder. Neither contract opts out reporters or nonclaimants,
 and units without eligible children keep their early claim draw. Identity-keyed
 random draws and claim-rate solving remain unchanged.
 
+## The family key and the SPI copies' reports
+
+Two parts of the stage changed in [Microcosm #1508](https://github.com/PolicyEngine/microcosm/issues/1508):
+
+- The claim draw keys each family on its eldest eligible child under 16, or on
+  its eldest eligible child when none is under 16, and solves the claim rates
+  for ages 15 down to 0 before 19 down to 16. A family whose young person's
+  claim lapses keeps claiming for its younger children, so the young person's
+  low claim rate no longer applies to them.
+- The SPI copies' Child Benefit reports are redrawn before the claim draw reads
+  them. The SPI income chain gives a copy its benefit reports without seeing
+  its children, and a reporter always claims and is never opted out. A copy
+  family now reports at the weighted share of FRS families that report in its
+  cell, eligible children (1, 2, 3 or more) by the charge band of its highest
+  adjusted net income, coupled to its FRS twin so that a copy in its twin's cell
+  keeps the twin's report. A copy without an eligible child takes its twin's
+  reports. FRS rows are unchanged.
+
+The receipt's `copy_reports` records each cell's FRS reporting rate and the FRS
+source households it rests on, and the copy families' reporting share before
+the redraw, expected from their cells and after it. A figure resting on one or
+two households is withheld. The stage gate requires FRS rows unchanged, every
+cell on the declared support, and the copies' share within 0.05 of its
+expectation.
+
 The stage's `claims`, `opt_outs` and `in_payment` statistics describe the draws
 against HMRC targets. `in_payment` counts claims excluding drawn opt-outs, whose
 selection now matches the installed baseline payment-suppression rule. It does

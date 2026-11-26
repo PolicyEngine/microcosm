@@ -2,7 +2,7 @@
 
 The stage's rules are tested engine-free in
 tests/engine_free/uk/test_uk_uc_new_claimant_draw.py. Here, on the locked
-engine (2.179.2), the stage reads the award with its LCWRA element at the
+engine (2.180.0), the stage reads the award with its LCWRA element at the
 calibration year, orders the draw by claim recency, and the engine gives the
 new-claimant rate in each rebalancing year to the units whose stored
 survey-year draw falls below that year's share.
