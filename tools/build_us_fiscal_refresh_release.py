@@ -122,6 +122,7 @@ from microcosm.build.us_runtime import (
     SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS,
     SOI_VARIABLE_MAP,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_MEDICAID_ENROLLMENT_TARGET_TABLE,
@@ -359,10 +360,14 @@ from microcosm.build.us_runtime.population_structure_holdout import (
     population_structure_holdout_unavailable,
     write_population_structure_holdout,
 )
+from microcosm.build.us_runtime.post_export_requests import (
+    RECORDS_REQUESTS_ONLY,
+    PostExportRequest,
+    check_post_export_reform,
+)
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
-from microcosm.build.us_runtime.reform_coverage_smoke import RECORDS_REQUESTS_ONLY
 from microcosm.build.us_runtime.reform_validation import (
     US_RELEASE_SPM_SELECTION,
     default_baseline_level_specs,
@@ -1826,7 +1831,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional local path to the sha-pinned SIPP 2023 slim CSV that "
             "feeds tip_income and Treasury tipped-occupation coverage. When "
-            "omitted the immutable donor revision is fetched and verified."
+            "omitted the donor is fetched from tag 1.115.5 and verified."
         ),
     )
     parser.add_argument(
@@ -1836,7 +1841,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Optional local path to the sha-pinned full SIPP 2023 public-use "
             "file that feeds financial assets, SSI disability criteria, "
             "household vehicle count/value, and measured voluntary tax filing. "
-            "When omitted the immutable donor revision is fetched and verified."
+            "When omitted the donor is fetched from tag 1.115.5 and verified."
         ),
     )
     parser.add_argument(
@@ -5271,20 +5276,31 @@ def _post_export_values_and_weights(result, key: PostExportKey):
 
 
 class _RecordingPostExportSimulation:
-    """Engine-free stand-in that records the keys a consumer asks for.
+    """Engine-free stand-in that records each key one simulation is asked for.
 
-    A reformed simulation's recorder also gets ``reform_passes``, a list it
-    appends each batched pass to: when the consumer runs for real, each
-    ``calculate`` or ``prefetch`` that asks for a key not asked before is one
-    pass of ``_BatchedPostExportReform``.
+    ``asked`` is shared by every recorder of one dry run: it collects
+    ``(simulation, key)`` in the order the serial scorer computes them, where
+    ``simulation`` is the reformed simulation's number, or ``None`` for the
+    baseline. ``reforms`` is the dry run's list of the reforms opened so far,
+    also shared, so a reformed simulation's recorder refuses every key once a
+    later one is opened, as the scorer refuses a finished
+    ``_BatchedPostExportReform``. ``reform_passes``, also shared, gets one
+    entry per batched reform pass: when the consumer runs for real, each
+    ``calculate`` or ``prefetch`` that asks a reformed simulation for a key it
+    was not asked before is one pass of ``_BatchedPostExportReform``, which
+    computes the new keys in ascending period order.
     """
 
     def __init__(
         self,
-        keys: dict[PostExportKey, None] | None,
-        reform_passes: list[tuple[PostExportKey, ...]] | None = None,
+        asked: dict[tuple[int | None, PostExportKey], None],
+        simulation: int | None,
+        reforms: Sequence[object],
+        reform_passes: list[int],
     ) -> None:
-        self._keys = keys
+        self._asked = asked
+        self._simulation = simulation
+        self._reforms = reforms
         self._reform_passes = reform_passes
 
     def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
@@ -5296,46 +5312,139 @@ class _RecordingPostExportSimulation:
         self._record(tuple(_post_export_key(*request) for request in requests))
 
     def _record(self, keys: Sequence[PostExportKey]) -> None:
-        if self._keys is None:
-            return
-        new_keys = tuple(key for key in dict.fromkeys(keys) if key not in self._keys)
-        self._keys.update(dict.fromkeys(new_keys))
-        if new_keys and self._reform_passes is not None:
-            self._reform_passes.append(new_keys)
+        latest = len(self._reforms) - 1
+        if self._simulation is not None and self._simulation != latest:
+            asked_for = keys[0] if len(keys) == 1 else tuple(keys)
+            raise RuntimeError(
+                f"A post-export consumer asked reformed simulation "
+                f"{self._simulation} for {asked_for} after opening reformed "
+                f"simulation {latest}. The scorer finishes a reformed simulation "
+                "when the consumer opens the next one and refuses it further "
+                "keys, so a consumer asks each reformed simulation for all its "
+                "keys before opening the next."
+            )
+        new_keys = _ascending_period_plan(
+            key for key in keys if (self._simulation, key) not in self._asked
+        )
+        self._asked.update(dict.fromkeys((self._simulation, key) for key in new_keys))
+        if new_keys and self._simulation is not None:
+            self._reform_passes.append(self._simulation)
+
+
+def _dry_run_post_export_requests(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[tuple[int | None, object, PostExportKey], ...]:
+    """Every request ``consumer`` makes, learned from engine-free recorders.
+
+    Returns ``(simulation, reform, key)`` for each request, in the order the
+    serial scorer runs them: the baseline plan first (``reform`` and
+    ``simulation`` None; ``_ascending_period_plan`` order), then the reform
+    requests. When the consumer runs for real, each ``calculate`` or
+    ``prefetch`` that asks a reformed simulation for keys it was not asked
+    before is one batched pass (``_BatchedPostExportReform``), which computes
+    those keys in ascending period order, so the reform requests follow that
+    order; ``simulation`` numbers the consumer's ``simulate(reform)`` calls
+    from 0. ``_dry_run_post_export`` also counts the passes.
+
+    No engine is constructed: ``simulate(None)`` returns a recorder that logs
+    every baseline request, and each ``simulate(reform)`` a recorder of its
+    own. The consumers ask for the same keys whatever values they get back,
+    and the served baseline refuses any key this dry run did not see, so a
+    value-dependent request cannot slip past the plan. ``simulate`` carries
+    ``RECORDS_REQUESTS_ONLY``, so each consumer hands it the description it
+    builds a reform from instead of building the reform (the reform-coverage
+    smoke check's probe, a reform-validation spec or a cumulative OBBBA
+    state's parameter changes), and the dry run resolves no list edit against
+    an engine. A reform given as anything else is refused
+    (``check_post_export_reform``): a worker process could not rebuild it.
+    So is a key asked of a reformed simulation after the consumer opened the
+    next one, which the scorer refuses too (``_BatchedPostExportReform``).
+    """
+    return _dry_run_post_export(consumer)[0]
+
+
+def _dry_run_post_export(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[tuple[tuple[int | None, object, PostExportKey], ...], int]:
+    """``_dry_run_post_export_requests``'s requests and the number of batched
+    reform passes the scorer runs for them: one per ``calculate`` or
+    ``prefetch`` that asks a reformed simulation for a key not asked of it
+    before, so a ``prefetch`` of several keys is one pass."""
+    asked: dict[tuple[int | None, PostExportKey], None] = {}
+    reforms: list[object] = []
+    reform_passes: list[int] = []
+
+    def simulate(reform):
+        if reform is None:
+            return _RecordingPostExportSimulation(asked, None, reforms, reform_passes)
+        check_post_export_reform(reform)
+        reforms.append(reform)
+        return _RecordingPostExportSimulation(
+            asked, len(reforms) - 1, reforms, reform_passes
+        )
+
+    setattr(simulate, RECORDS_REQUESTS_ONLY, True)
+    consumer(simulate)
+    baseline = _ascending_period_plan(
+        key for simulation, key in asked if simulation is None
+    )
+    requests = (
+        *((None, None, key) for key in baseline),
+        *(
+            (simulation, reforms[simulation], key)
+            for simulation, key in asked
+            if simulation is not None
+        ),
+    )
+    return requests, len(reform_passes)
+
+
+def _record_post_export_request_descriptors(
+    name: str, consumer: Callable[[Callable[[Any], Any]], object]
+) -> tuple[PostExportRequest, ...]:
+    """Every request of the consumer ``name`` as a picklable descriptor.
+
+    One ``PostExportRequest`` per request of the engine-free dry run
+    (``_dry_run_post_export_requests``), in the order the serial scorer runs
+    them, so a spawned worker process can run each request. The results are
+    the values each request calculates; a consumer's output also holds what
+    it reads off the reforms it builds itself (the smoke check records each
+    list-edit probe's resolved lists from its built reform), so rebuilding an
+    output means running the consumer again over the results. Nothing records
+    the descriptors: the plan in ``calibration_diagnostics.json`` keeps its
+    keys only.
+    """
+    return tuple(
+        PostExportRequest(
+            consumer=name,
+            position=position,
+            variable=variable,
+            period=period,
+            map_to=map_to,
+            reform=reform,
+            reformed_simulation=simulation,
+        )
+        for position, (simulation, reform, (variable, period, map_to)) in enumerate(
+            _dry_run_post_export_requests(consumer)
+        )
+    )
 
 
 def _record_post_export_requests(
     consumer: Callable[[Callable[[Any], Any]], object],
 ) -> tuple[tuple[PostExportKey, ...], int]:
-    """Learn a consumer's baseline keys and reform pass count from recorders.
+    """Learn a consumer's baseline keys and reform pass count from its dry run.
 
-    No engine is constructed: ``simulate(None)`` returns a recorder that
-    logs every baseline request, and each ``simulate(reform)`` a recorder of
-    its own. The consumers ask for the same keys whatever values they get
-    back, and the served baseline refuses any key this dry run did not see,
-    so a value-dependent request cannot slip past the plan. ``simulate``
-    carries ``RECORDS_REQUESTS_ONLY``, so the reform-coverage smoke gate hands
-    it each probe instead of building the probe's reform, and the dry run
-    resolves no list edit against an engine.
-
-    When the consumer runs for real, each ``calculate`` or ``prefetch`` that
-    asks a reformed simulation for a key it was not asked before is one
-    batched pass (``_BatchedPostExportReform``), so the pass count is those
-    requests, summed over the reformed simulations. Progress reporting alone
-    uses it: a consumer that runs more passes than counted reports no outer
-    counter on the extra ones.
+    The baseline keys are the plan the served baseline scores. The pass count
+    is the batched reform passes the scorer runs for the dry run's reform
+    requests (``_dry_run_post_export``): a ``prefetch`` of several keys of one
+    reformed simulation is one pass. Progress reporting alone uses the count:
+    a consumer that runs more passes than counted reports no outer counter on
+    the extra ones.
     """
-    keys: dict[PostExportKey, None] = {}
-    reform_passes: list[tuple[PostExportKey, ...]] = []
-
-    def simulate(reform):
-        if reform is None:
-            return _RecordingPostExportSimulation(keys)
-        return _RecordingPostExportSimulation({}, reform_passes)
-
-    setattr(simulate, RECORDS_REQUESTS_ONLY, True)
-    consumer(simulate)
-    return _ascending_period_plan(keys), len(reform_passes)
+    requests, reform_passes = _dry_run_post_export(consumer)
+    baseline = tuple(key for simulation, _, key in requests if simulation is None)
+    return baseline, reform_passes
 
 
 def _record_post_export_baseline_plan(
@@ -19849,6 +19958,16 @@ def _certify_us_build(
         {"source_record_id": source_record_id, "reason": reason}
         for source_record_id, reason in sorted(
             US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
+        )
+    ]
+    coverage["fiscal_target_source_column_exclusions"] = [
+        {
+            "measure_id": measure_id,
+            "source_column_id": source_column_id,
+            "reason": reason,
+        }
+        for (measure_id, source_column_id), reason in sorted(
+            US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS.items()
         )
     ]
     coverage[US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY] = fiscal_target_exclusion_receipt

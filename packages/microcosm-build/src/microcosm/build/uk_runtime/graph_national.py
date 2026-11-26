@@ -474,6 +474,7 @@ class _NationalKernel(KernelBase):
     def implementation_hash(self) -> str:
         import microcosm.calibrate.artifacts as calibrate_artifacts
         import microcosm.calibrate.matrix as calibrate_matrix
+        import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
 
         from . import receipt_counts, weighted_integrity
         from .target_compile_modules import uk_target_compile_modules
@@ -492,6 +493,10 @@ class _NationalKernel(KernelBase):
             measure_simulation,
             national_calibration,
             national_doctrine,
+            # national_doctrine computes the problem's loss weights with the
+            # shared rules (microcosm#1729): an edit to a shared rule must
+            # re-key the national problem.
+            calibrate_target_loss_rules,
             support_floor_rules,
             # The constraint matrices and their encoding, as the dense kernels
             # hash them (microcosm#1492). Not calibrate.solve: neither the

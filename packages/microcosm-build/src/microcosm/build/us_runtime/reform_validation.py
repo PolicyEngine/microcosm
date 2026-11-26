@@ -753,7 +753,21 @@ def reform_validation_payload(
     incremental effect given the lines above it — so the per-line effects sum to
     the bill total, matching JCT (see ``stacked_obbba_effects``). The shape
     matches the calibration-diagnostics dashboard's reform_validation reader.
+
+    A ``simulate`` whose
+    :data:`~microcosm.build.us_runtime.post_export_requests.RECORDS_REQUESTS_ONLY`
+    attribute is true only records requests (the release tool's post-export
+    dry run). It receives each reform's description in place of the built
+    reform: the spec for a row simulated on its own, and a
+    :class:`~microcosm.build.us_runtime.post_export_requests.ParameterChangesReform`
+    for each cumulative OBBBA state. No reform is built.
     """
+    # Imported here: post_export_requests imports ReformValidationSpec.
+    from microcosm.build.us_runtime.post_export_requests import (
+        RECORDS_REQUESTS_ONLY,
+        ParameterChangesReform,
+    )
+
     estimates = in_sample_estimates or {}
     targets = in_sample_targets or {}
     baseline: Any = None
@@ -761,6 +775,7 @@ def reform_validation_payload(
     obbba_specs = tuple(spec for spec in specs if _is_obbba_spec(spec))
     obbba_pre_baseline_changes = _merged_parameter_changes(obbba_specs)
     obbba_stacked: dict[str, tuple[float, float, float]] | None = None
+    records_requests_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
 
     def baseline_total(measure: str, at_period: int) -> float:
         nonlocal baseline
@@ -772,8 +787,11 @@ def reform_validation_payload(
         return baseline_totals[key]
 
     def simulation_for_parameter_changes(changes: dict[str, Any]) -> Any:
-        reform = None if not changes else _build_parameter_reform(changes)
-        return simulate(reform)  # type: ignore[misc]
+        if not changes:
+            return simulate(None)  # type: ignore[misc]
+        if records_requests_only:
+            return simulate(ParameterChangesReform(changes))  # type: ignore[misc]
+        return simulate(_build_parameter_reform(changes))  # type: ignore[misc]
 
     def released_weighted_totals(
         transient_simulation: Any, requests: tuple[tuple[str, int], ...]
@@ -880,8 +898,9 @@ def reform_validation_payload(
                 obbba_stacked = stacked_obbba_effects()
             return obbba_stacked.get(spec.id, (None, None, None))
         base = baseline_total(spec.budget_measure, spec.period)
+        reform = spec if records_requests_only else spec.build_reform()
         reform_total = released_weighted_total(
-            simulate(spec.build_reform()), spec.budget_measure, spec.period
+            simulate(reform), spec.budget_measure, spec.period
         )
         raw = reform_total - base
         # A counterfactual revert measures the provision as baseline − reform.

@@ -4,6 +4,12 @@
 import weakref
 from collections.abc import Iterator
 
+from microcosm.build.us_runtime.post_export_requests import (
+    RECORDS_REQUESTS_ONLY,
+    ParameterChangesReform,
+    PostExportRequest,
+    build_post_export_reform,
+)
 from microcosm.calibrate import DroppedConstraintMatrix
 from test_support.microcosm_build.us_post_export_scoring import *
 
@@ -1650,29 +1656,35 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
         "reform_validation": 75,
         "demographics": 1,
     }
+    # The sweep records the release's descriptors: each names its consumer and
+    # rebuilds its reform from the description the consumer recorded.
+    assert all(isinstance(request, PostExportRequest) for request in requests)
+    assert all(request.reform is not None for request in requests)
     smoke_requests = [
-        request for request in requests if request[0] == "reform_coverage_smoke"
+        request for request in requests if request.consumer == "reform_coverage_smoke"
     ]
-    assert [reform.label for _, reform, _ in smoke_requests] == [
-        probe.id for probe in us_release_reform_coverage_probes()
-    ]
+    assert [request.reform for request in smoke_requests] == list(
+        us_release_reform_coverage_probes()
+    )
     validation_requests = [
-        request for request in requests if request[0] == "reform_validation"
+        request for request in requests if request.consumer == "reform_validation"
     ]
     ordinary_specs = [
         spec for spec in specs if not reform_validation_module._is_obbba_spec(spec)
     ]
-    assert {spec.id for spec in ordinary_specs}.issubset(
-        {reform.label for _, reform, _ in validation_requests}
-    )
+    assert [
+        request.reform
+        for request in validation_requests
+        if isinstance(request.reform, ReformValidationSpec)
+    ] == ordinary_specs
     obbba_specs = [
         spec for spec in specs if reform_validation_module._is_obbba_spec(spec)
     ]
-    pre_baseline = reform_validation_module._merged_parameter_changes(obbba_specs)
+    pre_baseline = ParameterChangesReform(
+        reform_validation_module._merged_parameter_changes(obbba_specs)
+    )
     pre_baseline_requests = [
-        key
-        for _, reform, key in validation_requests
-        if reform.label == json.dumps(pre_baseline, sort_keys=True, default=str)
+        request.key for request in validation_requests if request.reform == pre_baseline
     ]
     obbba_groups = {(spec.budget_measure, spec.period) for spec in obbba_specs}
     assert {(key[0], key[1]) for key in pre_baseline_requests} == obbba_groups
@@ -2408,15 +2420,19 @@ def test_the_consumer_log_names_the_merged_pass(builder, tmp_path, capsys) -> No
 # ---------------------------------------------------------------------------
 
 
-def test_a_prefetched_reform_scores_its_keys_in_one_pass(builder, tmp_path) -> None:
+def test_a_prefetched_reform_scores_its_keys_in_one_pass(
+    builder, fake_reforms, tmp_path
+) -> None:
     """``prefetch`` scores every key a reformed simulation has not scored in
     one batch-outer pass, in ascending period order. The dry run counts that
     pass once, a later ``calculate`` of a prefetched key costs no pass, and
     the totals equal those of one pass per key."""
-    reform = _FakeReform("two keys")
+    description = ParameterChangesReform({"gov.fixture.two_keys": {"2026-01-01": 1}})
+    reform = build_post_export_reform(description)
 
     def consumer(simulate):
-        reformed = simulate(reform)
+        records_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
+        reformed = simulate(description if records_only else reform)
         reformed.prefetch((("income_tax", 2027), ("estate_tax", 2026)))
         reformed.prefetch((("estate_tax", 2026),))
         return (

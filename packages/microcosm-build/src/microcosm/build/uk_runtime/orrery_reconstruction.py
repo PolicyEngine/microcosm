@@ -1,15 +1,19 @@
-"""Rebuild a declaration-only Orrery publication for a UK build before #1144.
+"""Rebuild a declaration-only graph schema for a UK build before #1144.
 
 UK dense and national builds from before microcosm#1144 wrote their graph
 declaration (``graph.json``) and their code pin, but no run binding, so their
-recorded execution cannot be validated. This module projects the recorded
-declaration alone into the normal publication layout, marked as reconstructed
-by :mod:`microcosm.graph.reconstruction`. Only the declaration's bytes come
-from the build: the schema's compiled sections and the Orrery document are
-computed by the code running this module, whose revision the marker records
-beside the build's. It reads only the build directory, executes no kernel and
-uploads nothing: the publication directory is submitted later, if at all,
-through the usual publication path.
+recorded execution cannot be validated. This module compiles the recorded
+declaration alone into a graph schema (``graph.schema.json``) marked as
+reconstructed by :mod:`microcosm.graph.reconstruction`, and writes a summary
+report beside it. Only the declaration's bytes come from the build: the
+schema's compiled sections are computed by the code running this module,
+whose revision the marker records beside the build's. It reads only the build
+directory, executes no kernel and uploads nothing.
+
+The collector makes the Orrery document from the schema, as it does from the
+schema a build hands over; the marker stays in the schema, so the document
+shows it. The schema has no execution overlay, so it is submitted separately
+from the builds' staged bundles.
 """
 
 from __future__ import annotations
@@ -28,7 +32,6 @@ from typing import Any, NoReturn
 
 from microcosm.build.staging_dataset import SHA256SUMS_FILENAME, parse_sha256sums
 from microcosm.graph.canonical import canonical_json
-from microcosm.graph.orrery import orrery_json_from_schema
 from microcosm.graph.reconstruction import (
     DECLARATION_ONLY,
     DECLARATION_ROLE,
@@ -38,16 +41,14 @@ from microcosm.graph.reconstruction import (
     reconstruction_marker,
 )
 
-from .orrery_publication import INVENTORY_NAME
 from .rowwise_cli import MANIFEST_FILENAME, json_text
 
 __all__ = [
-    "GRAPH_NAME",
     "REPORT_NAME",
     "REPORT_PROTOCOL",
     "SCHEMA_NAME",
     "main",
-    "reconstruct_uk_publication",
+    "reconstruct_uk_schema",
     "summary_text",
 ]
 
@@ -55,11 +56,9 @@ DECLARATION_NAME = "graph.json"
 COMPLETION_NAME = "build.json"
 SCHEMA_NAME = "graph.schema.json"
 EVIDENCE_INDEX_NAME = "execution.evidence.json"
-GRAPH_NAME = "graph.orrery.json"
 REPORT_NAME = "orrery.reconstruction.json"
-REPORT_PROTOCOL = "microcosm.uk.orrery-reconstruction-report.v1"
-PUBLICATION_ID_PREFIX = "reconstructed-"
-# The bound the Orrery command applies to a declaration or schema input.
+REPORT_PROTOCOL = "microcosm.uk.orrery-reconstruction-report.v2"
+# The bound the collector's projection applies to a schema input.
 _MAX_INPUT_BYTES = 32 * 1024 * 1024
 # Every build file the reconstruction reads, with its role in the marker.
 _INPUT_ROLES = {
@@ -87,7 +86,7 @@ _UNUSED_REASONS = {
         "declaration-only reconstruction"
     ),
     "operations.json": (
-        "operation inventory written beside the declaration; not needed to project it"
+        "operation inventory written beside the declaration; not needed to compile it"
     ),
 }
 _RUN_MANIFEST_SUFFIX = ".graph.json"
@@ -354,16 +353,7 @@ def _unused_evidence(build: Path) -> list[dict[str, str]]:
     return found
 
 
-def _published_file(name: str, role: str, payload: bytes) -> dict[str, object]:
-    return {
-        "name": name,
-        "role": role,
-        "bytes": len(payload),
-        "sha256": hashlib.sha256(payload).hexdigest(),
-    }
-
-
-def _write_publication(output: Path, files: Mapping[str, bytes]) -> None:
+def _write_new_directory(output: Path, files: Mapping[str, bytes]) -> None:
     """Write every file into a hidden sibling, then move it into place whole."""
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -380,16 +370,16 @@ def _write_publication(output: Path, files: Mapping[str, bytes]) -> None:
         raise
 
 
-def reconstruct_uk_publication(
+def reconstruct_uk_schema(
     build: Path, output: Path, *, revision: str | None = None
 ) -> dict[str, object]:
-    """Write a declaration-only publication for ``build`` into a new ``output``.
+    """Write a reconstructed schema for ``build`` into a new ``output`` directory.
 
     ``build`` is a UK build's output directory from before run bindings; it is
     only read. ``revision`` must equal the code revision the build recorded,
     or supplies one (marked as caller-asserted) when the build recorded none.
-    The returned summary report is also written as ``orrery.reconstruction.json``
-    beside the publication files, outside the upload inventory.
+    The new directory holds the marked ``graph.schema.json`` and the summary
+    report, which is also returned, as ``orrery.reconstruction.json``.
     """
 
     build, requested_output = Path(build), Path(output)
@@ -414,8 +404,8 @@ def reconstruct_uk_publication(
     ]
     _require(
         not recorded_evidence,
-        f"{build} records Orrery evidence ({', '.join(recorded_evidence)}); export "
-        "it with python -m microcosm.graph.orrery instead",
+        f"{build} records Orrery evidence ({', '.join(recorded_evidence)}); write "
+        "its inputs with python -m microcosm.build.uk_runtime.orrery_inputs instead",
     )
     present = [name for name in sorted(_INPUT_ROLES) if os.path.lexists(build / name)]
     _require(
@@ -442,7 +432,7 @@ def reconstruct_uk_publication(
     git_commit, git_dirty, origin = _source_revision(
         build, _recorded_code(manifest), revision
     )
-    # The code computing the schema's sections and the Orrery projection,
+    # The code computing the schema's sections,
     # identified from this module's file rather than the working directory.
     reconstructing = code_revision(Path(__file__))
     marker = reconstruction_marker(
@@ -464,21 +454,6 @@ def reconstruct_uk_publication(
     schema = reconstructed_schema(payloads[DECLARATION_NAME], marker)
     country = str(schema["country"])
     schema_bytes = canonical_json(schema)
-    graph_bytes = orrery_json_from_schema(
-        schema,
-        title=f"{country.upper()} · reconstructed declaration ({git_commit[:12]})",
-    ).encode("utf-8")
-    published = [
-        _published_file(GRAPH_NAME, "graph", graph_bytes),
-        _published_file(SCHEMA_NAME, "schema", schema_bytes),
-    ]
-    # Derived from the published bytes, so reconstructing the same build twice
-    # yields the same publication rather than a second one.
-    publication_id = (
-        PUBLICATION_ID_PREFIX
-        + hashlib.sha256(canonical_json(published)).hexdigest()[:32]
-    )
-    inventory = {"version": 1, "publication_id": publication_id, "files": published}
     warnings = []
     if origin == "caller_asserted":
         warnings.append(
@@ -507,7 +482,7 @@ def reconstruct_uk_publication(
         warnings.append(
             "This reconstruction ran from a working tree with uncommitted changes, "
             "so its reconstruction revision does not fully identify the code that "
-            "compiled the schema and projected the Orrery document."
+            "compiled the schema."
         )
     warnings.extend(_stale_digest_warning(stale) for stale in stale_digests)
     if verification[DECLARATION_NAME] == "no_recorded_digest":
@@ -520,8 +495,7 @@ def reconstruct_uk_publication(
         "protocol": REPORT_PROTOCOL,
         "status": "reconstructed",
         "basis": DECLARATION_ONLY,
-        "publication_id": publication_id,
-        "published_files": [item["name"] for item in published] + [INVENTORY_NAME],
+        "files": [SCHEMA_NAME],
         "source_revision": marker["source_revision"],
         "reconstruction_revision": marker["reconstruction_revision"],
         "build": _build_identity(manifest, records.get(COMPLETION_NAME, {})),
@@ -542,12 +516,10 @@ def reconstruct_uk_publication(
         "unused_evidence": _unused_evidence(build),
         "warnings": warnings,
     }
-    _write_publication(
+    _write_new_directory(
         output,
         {
             SCHEMA_NAME: schema_bytes,
-            GRAPH_NAME: graph_bytes,
-            INVENTORY_NAME: canonical_json(inventory),
             REPORT_NAME: json_text(report).encode("utf-8"),
         },
     )
@@ -576,7 +548,7 @@ def summary_text(report: Mapping[str, Any], output: Path) -> str:
         )
         reconstructed_by = f"{reconstructing['git_commit']} ({tree})"
     lines = [
-        f"Wrote a reconstructed Orrery publication (declaration only) to {output}",
+        f"Wrote a reconstructed graph schema (declaration only) to {output}",
         f"  revision: {revision['git_commit']} ({origin})",
         f"  reconstructed by: {reconstructed_by}",
         f"  declaration: {declaration['name']}, "
@@ -598,7 +570,7 @@ def summary_text(report: Mapping[str, Any], output: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Write a declaration-only Orrery publication for a UK build before #1144."""
+    """Write a reconstructed, declaration-only graph schema for a UK build before #1144."""
 
     parser = argparse.ArgumentParser(
         prog="python -m microcosm.build.uk_runtime.orrery_reconstruction",
@@ -615,7 +587,8 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         required=True,
         help=(
-            "new publication directory, outside the build directory; it must not exist"
+            "new directory for the schema and its report, outside the build "
+            "directory; it must not exist"
         ),
     )
     parser.add_argument(
@@ -627,16 +600,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        # The publication is written at the resolved path, which the given
+        # The schema is written at the resolved path, which the given
         # spelling need not reach: ``<build>/missing/../../publication``
         # resolves beside the build, but ``missing`` cannot be entered.
-        # Resolve before the write, as ``reconstruct_uk_publication`` does,
+        # Resolve before the write, as ``reconstruct_uk_schema`` does,
         # and print that path. The given spelling is still what is passed, so
         # that the checks on it run.
         written_output = args.output.resolve()
-        report = reconstruct_uk_publication(
-            args.build, args.output, revision=args.revision
-        )
+        report = reconstruct_uk_schema(args.build, args.output, revision=args.revision)
     except (OSError, ValueError, RecursionError) as error:
         parser.error(str(error))
     print(summary_text(report, written_output))

@@ -8,11 +8,11 @@ binds every input file by digest. It names two code revisions: the one that
 declared the graph (``source_revision``) and the one that performed the
 reconstruction (``reconstruction_revision``). Only the declaration's bytes come
 from the build. The schema's ``compiled``, ``fields`` and ``input_bindings``
-sections, and any Orrery projection of it, are computed by the reconstructing
-code. Because the marker lives in ``graph.schema.json``, any later projection
-of the saved schema keeps it, and Orrery documents show it under
-``metadata.microcosm.extensions``. Nothing here presents an operation as
-executed; no receipt, cache or gate state is attached.
+sections are computed by the reconstructing code. Because the marker lives in
+``graph.schema.json``, the collector's projection of the saved schema keeps
+it, and Orrery documents show it under ``metadata.microcosm.extensions``.
+Nothing here presents an operation as executed; no receipt, cache or
+validation-check state is attached.
 """
 
 from __future__ import annotations
@@ -69,9 +69,9 @@ INPUT_VERIFICATIONS = frozenset(
 )
 RECONSTRUCTION_SCOPE = (
     "Rebuilt after the build from its recorded graph declaration, the only part "
-    "taken from the build: the compiled sections and this projection come from "
-    "the code at reconstruction_revision. Operations carry no execution, cache "
-    "or gate state; nothing here was observed running."
+    "taken from the build: the compiled sections come from the code at "
+    "reconstruction_revision. Operations carry no execution, cache or "
+    "validation-check state; nothing here was observed running."
 )
 _MARKER_FIELDS = frozenset(
     {

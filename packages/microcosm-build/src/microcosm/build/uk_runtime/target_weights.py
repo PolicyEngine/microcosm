@@ -10,6 +10,12 @@ carrier is built the same way from the declared targets
 from a stored ordered problem (:func:`uk_target_rows_from_problem`, used by
 the size-experiment harness), so a rule computed either way is one vector.
 
+The arithmetic of every rule is the shared, country-agnostic one of
+:mod:`microcosm.calibrate.target_loss_rules` (microcosm#1729). This module
+says what a UK row is (its weighting grain, its family, its value basis) and
+declares each UK rule name as a shared rule with its parameters
+(:data:`UK_LOCAL_TARGET_WEIGHT_RULE_DECLARATIONS`).
+
 Rules (G grains, F_g families in grain g, n rows in a (grain, family) cell;
 every vector sums to one):
 
@@ -66,14 +72,22 @@ from microcosm.build.uk_runtime.local_doctrine import (
 )
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES, area_groups_from_codes
 from microcosm.calibrate.geography_constants import UK_WIDE_GEOGRAPHY_IDS
+from microcosm.calibrate.target_loss_rules import (
+    TargetLossRows,
+    TargetWeightRule,
+    target_loss_weights_for_rule,
+)
 
 __all__ = [
     "NATIONAL_GRAIN",
     "NATION_REGION_GRAIN",
+    "UK_LOCAL_NATION_LEVEL_RULES",
+    "UK_LOCAL_TARGET_WEIGHT_RULE_DECLARATIONS",
     "UK_TARGET_WEIGHT_RULE_VERSION",
     "UKStageTargetWeighting",
     "UKTargetRows",
     "uk_rule_loss_weights",
+    "uk_target_loss_rows",
     "uk_target_loss_weight_receipt",
     "uk_target_loss_weights_for_rows",
     "uk_target_loss_weights_sha256",
@@ -95,6 +109,35 @@ UK_TARGET_WEIGHT_RULE_VERSION = 1
 LOCAL_SURFACE_MATERIALIZATION = "uk_local_surface"
 
 _COUNT, _AMOUNT = "count", "amount"
+#: The UK count-row power inside a (level, family) cell: the square root, as
+#: the US value weight (microcosm#1104, microcosm#1124).
+UK_LOCAL_COUNT_POWER = 0.5
+#: Each UK local rule name as a shared rule with its parameters: the UK's
+#: declaration (microcosm#1729). The shared rule reads each row's level,
+#: family, basis and value, which :func:`uk_target_loss_rows` supplies.
+UK_LOCAL_TARGET_WEIGHT_RULE_DECLARATIONS: Mapping[str, TargetWeightRule] = (
+    MappingProxyType(
+        {
+            "uniform": TargetWeightRule("uniform"),
+            "grain_equal": TargetWeightRule("level_equal"),
+            "grain_family_equal": TargetWeightRule("level_family_equal"),
+            "grain_family_equal_sqrt_count": TargetWeightRule(
+                "level_family_equal", {"count_power": UK_LOCAL_COUNT_POWER}
+            ),
+            "nation_grain_family_equal": TargetWeightRule("level_family_equal"),
+            "nation_grain_family_equal_sqrt_count": TargetWeightRule(
+                "level_family_equal", {"count_power": UK_LOCAL_COUNT_POWER}
+            ),
+        }
+    )
+)
+#: The rules under which a national row that is not a UK-wide aggregate (a
+#: nation or an English region) weighs in a level of its own,
+#: ``nation_region``. Under the others every national row weighs in the
+#: national level.
+UK_LOCAL_NATION_LEVEL_RULES = frozenset(
+    {"nation_grain_family_equal", "nation_grain_family_equal_sqrt_count"}
+)
 #: The reviewed scale rule of the UK local solve: the canonical target-defined
 #: default (``max(|target|, 1)``) with a floor per local count family whose
 #: cells are too thin for a unit-scale miss to mean anything. microcosm#1240
@@ -444,40 +487,47 @@ def uk_family_floored_loss_scales(
     return scales, receipt
 
 
+def uk_target_loss_rows(rows: UKTargetRows, *, rule: str) -> TargetLossRows:
+    """What each UK row is, as the shared rule ``rule`` names reads it.
+
+    The level is the row's weighting grain (a BRMA row weighs in the
+    local-authority grain; under a nation rule a nation or region row leaves
+    the national grain). The basis is read only for a rule with a count
+    power, so a rule without one still accepts a row whose basis is not
+    declared.
+    """
+
+    if rule not in UK_LOCAL_TARGET_WEIGHT_RULES:
+        raise ValueError(
+            f"target_weight_rule must be one of {UK_LOCAL_TARGET_WEIGHT_RULES}, "
+            f"got {rule!r}."
+        )
+    declaration = UK_LOCAL_TARGET_WEIGHT_RULE_DECLARATIONS[rule]
+    return TargetLossRows(
+        values=rows.values,
+        levels=_rule_grains(rows, nation=rule in UK_LOCAL_NATION_LEVEL_RULES),
+        families=rows.family,
+        bases=(
+            uk_target_value_basis(rows)
+            if declaration.parameters.get("count_power") is not None
+            else None
+        ),
+    )
+
+
 def uk_target_loss_weights_for_rows(rows: UKTargetRows, *, rule: str) -> np.ndarray:
-    """The loss-weight vector of a row-metadata rule (sums to one)."""
+    """The loss-weight vector of a row-metadata rule (sums to one).
+
+    Computed by the shared rule the UK declares for ``rule``.
+    """
 
     _check_row_rule(rule)
     if not len(rows):
         raise ValueError("target weighting requires at least one target.")
-    nation = rule.startswith("nation_")
-    sqrt_count = rule.endswith("_sqrt_count")
-    grains = np.asarray(_rule_grains(rows, nation=nation), dtype=object)
-    families = np.asarray(rows.family, dtype=object)
-    bases = (
-        np.asarray(uk_target_value_basis(rows), dtype=object) if sqrt_count else None
+    return target_loss_weights_for_rule(
+        uk_target_loss_rows(rows, rule=rule),
+        UK_LOCAL_TARGET_WEIGHT_RULE_DECLARATIONS[rule],
     )
-    magnitudes = np.maximum(np.abs(rows.values), 1.0) ** 0.5 if sqrt_count else None
-    grain_order = list(dict.fromkeys(grains.tolist()))
-    weights = np.zeros(len(rows), dtype=np.float64)
-    for grain in grain_order:
-        in_grain = grains == grain
-        family_order = list(dict.fromkeys(families[in_grain].tolist()))
-        budget = 1.0 / (len(grain_order) * len(family_order))
-        for family in family_order:
-            cell = np.flatnonzero(in_grain & (families == family))
-            if bases is None:
-                weights[cell] = budget / cell.size
-                continue
-            counts = cell[bases[cell] == _COUNT]
-            amounts = cell[bases[cell] == _AMOUNT]
-            weights[amounts] = budget / cell.size
-            if counts.size:
-                share = magnitudes[counts]
-                weights[counts] = (
-                    (budget * counts.size / cell.size) * share / share.sum()
-                )
-    return weights
 
 
 def uk_rule_loss_weights(rows: UKTargetRows, *, rule: str) -> np.ndarray:

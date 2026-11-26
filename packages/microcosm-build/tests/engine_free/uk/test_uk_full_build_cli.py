@@ -444,7 +444,7 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
         collect_execution_evidence,
         load_run_evidence,
     )
-    from microcosm.graph.orrery import orrery_document_from_schema
+    from microcosm.graph.execution_overlay import load_execution_overlay
 
     schema = json.loads((out / "graph.schema.json").read_bytes())
     store = ContentStore(out / ".graph-store", create=False)
@@ -453,13 +453,13 @@ def test_cli_cold_and_required_replay_recreate_dataset_and_sidecars(
         runs=load_run_evidence(out / "execution.evidence.json", store=store),
         store=store,
     )
-    snapshot = orrery_document_from_schema(schema, execution=overlay)
     assert any(
-        json.loads(node["id"]) == ["operation", "uk.full.export.readback"]
-        for node in snapshot["nodes"]
+        node["id"] == "uk.full.export.readback" for node in schema["graph"]["nodes"]
     )
     assert [phase["phase"] for phase in overlay["phases"]][-2:] == ["export", "final"]
-    assert json.loads((out / "graph.orrery.json").read_bytes()) == snapshot
+    # The build writes the overlay the collector projects; it projects nothing.
+    assert load_execution_overlay(out / "graph.execution.json") == overlay
+    assert not (out / "graph.orrery.json").exists()
     assert (out / f"{STEM}.targets.csv").read_text().startswith("name,target_name")
     cold = json.loads((out / cli.MANIFEST_FILENAME).read_text())["execution"]
     assert cold["nodes_total"] > 0 and cold["nodes_reused"] == 0
@@ -1659,7 +1659,7 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
     assert roles["graph.execution.json"] == "execution_overlay"
     upstream = {name for name in roles if name.startswith("upstream-")}
     assert {roles[name] for name in upstream} <= {"orrery_upstream"}
-    assert roles["graph.orrery.json"] == "orrery_graph_orrery_json"
+    assert "graph.orrery.json" not in roles
     for item in request.files:
         assert Path(item.local_path) == out / item.name
         committed = hub.files[

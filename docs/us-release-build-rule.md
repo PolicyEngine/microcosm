@@ -473,6 +473,21 @@ one Microsimulation over the whole file.
     times include none.
   - A shared pass that fails costs the time it ran in addition to every
     stage's own pass.
+- `_record_post_export_request_descriptors` runs the same dry run and returns
+  every request, baseline and reform, as a picklable `PostExportRequest`
+  (`microcosm.build.us_runtime.post_export_requests`), which a process started
+  with `spawn` can unpickle; the release itself still takes only the baseline
+  plans and reform-pass counts. A `prefetch` of several keys of one reformed
+  simulation is one pass, and its keys follow in ascending period order, as
+  the scorer computes them. A reform request holds
+  the description its stage builds the reform from: the smoke probe, the
+  reform-validation spec, or a cumulative OBBBA state's parameter changes. The
+  dry run builds no reform, and refuses a reform it cannot describe or pickle.
+  It also refuses a key asked of a reformed simulation after its stage opened
+  the next one: the scorer finishes a reformed simulation when the next opens
+  and refuses it further keys, so the plan fails before the export instead.
+  Nothing records the descriptors; the guard sweep below rebuilds each reform
+  from its descriptor in the worker that scores it.
 - Each batch engine keeps policyengine-us's projection of the release year to
   its last CPI-U year (2035), because the plans request keys in later years
   (reform validation reaches past 2025). The build's own simulations hold

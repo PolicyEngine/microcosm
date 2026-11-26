@@ -31,7 +31,15 @@ def _load_builder():
 
 
 def _record_requests(builder):
-    """Record OBBBA stacks and validation's missing-estimate fallback passes."""
+    """Record OBBBA stacks and validation's missing-estimate fallback passes.
+
+    ``_record_post_export_request_descriptors`` returns each consumer's
+    requests from the release's engine-free dry run as picklable descriptors:
+    the baseline plans, and the reform requests, from which each worker
+    rebuilds the reforms it scores. A worker scores each reform request as a
+    pass of its own; the release scores the requests of one ``prefetch``
+    (reform validation's shared pre-OBBBA state) in one pass.
+    """
     specs = builder.load_default_reform_specs(period=builder.PERIOD)
 
     def validation(simulate):
@@ -50,32 +58,19 @@ def _record_requests(builder):
     }
     plans, requests = {}, []
     for name, consume in consumers.items():
-        baseline = {}
-
-        class RecordingSimulation:
-            def __init__(self, reform, *, name=name, baseline=baseline):
-                self.reform = reform
-                self.name = name
-                self.baseline = baseline
-                self.keys = set()
-
-            def calculate(self, variable, period=None, map_to=None):
-                key = builder._post_export_key(variable, period, map_to)
-                if self.reform is None:
-                    self.baseline.setdefault(key, None)
-                elif key not in self.keys:
-                    requests.append((self.name, self.reform, key))
-                    self.keys.add(key)
-                return builder._RecordingPostExportSimulation(None).calculate(*key)
-
-        consume(RecordingSimulation)
-        plans[name] = builder._ascending_period_plan(baseline)
+        recorded = builder._record_post_export_request_descriptors(name, consume)
+        plans[name] = tuple(
+            request.key for request in recorded if request.reform is None
+        )
+        requests.extend(request for request in recorded if request.reform is not None)
     counts = {
-        "smoke_probes": sum(name == "reform_coverage_smoke" for name, _, _ in requests),
+        "smoke_probes": sum(
+            request.consumer == "reform_coverage_smoke" for request in requests
+        ),
         "validation_specs": sum(not spec.in_sample for spec in specs),
         "in_sample_fallback_specs": sum(spec.in_sample for spec in specs),
         "validation_reform_passes": sum(
-            name == "reform_validation" for name, _, _ in requests
+            request.consumer == "reform_validation" for request in requests
         ),
         "baseline_keys": {name: len(plan) for name, plan in plans.items()},
     }
@@ -124,9 +119,9 @@ def _score_baselines(builder, scorer, path, plans):
 def _comparison_indices(requests):
     """Compare the first two reform passes of each consumer to a whole file."""
     seen, selected = {}, set()
-    for index, (name, _, _) in enumerate(requests):
-        seen[name] = seen.get(name, 0) + 1
-        if seen[name] <= 2:
+    for index, request in enumerate(requests):
+        seen[request.consumer] = seen.get(request.consumer, 0) + 1
+        if seen[request.consumer] <= 2:
             selected.add(index)
     return selected
 
@@ -138,7 +133,8 @@ def _score_reforms(builder, scorer, path, requests, start, count):
     comparisons = _comparison_indices(requests)
     compared = []
     for index in range(start, min(start + count, len(requests))):
-        name, reform, key = requests[index]
+        request = requests[index]
+        name, reform, key = request.consumer, request.build_reform(), request.key
         observed = consumer.simulate(reform).calculate(*key)
         if index in comparisons:
             whole = default_simulate_factory(path)(reform)

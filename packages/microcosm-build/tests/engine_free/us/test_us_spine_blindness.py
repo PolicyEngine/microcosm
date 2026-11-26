@@ -378,6 +378,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Reviewed held-out population-structure diagnostic over the written
         # H5; no population treatment.
         "population_structure_holdout.py",
+        # Picklable descriptions of the release's post-export scoring requests
+        # and the reforms they carry; reads no frame and treats no population.
+        "post_export_requests.py",
         "pregnancy.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
@@ -429,6 +432,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "snap_take_up.py",
         "source_coverage.py",
         "source_runtime.py",
+        # Restamped-fact period correction over compiled target specs
+        # (chronicle#117); reads Ledger facts only, no population treatment.
+        "source_vintage.py",
         "sources.py",
         "spine_agreement.py",
         "spine_assembly.py",

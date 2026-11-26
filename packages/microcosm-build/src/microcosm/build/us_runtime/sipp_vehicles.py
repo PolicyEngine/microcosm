@@ -16,10 +16,10 @@ therefore create a false partial measure.
 
 The final archived implementation moved to a mutable Census SIPP 2024 URL.
 For a hermetic build, this port uses the archived pipeline's full SIPP 2023
-artifact at an immutable Hugging Face revision and verifies both byte length
-and SHA-256.  The 65.6 MB ``pu2023_slim.csv`` used by the tip stage cannot be
-reused: it omits the vehicle targets, allocation flags, asset-income fields,
-and home value required here.
+artifact, downloaded from Hugging Face tag ``1.115.5``, and verifies both byte
+length and SHA-256.  The 65.6 MB ``pu2023_slim.csv`` used by the tip stage
+cannot be reused: it omits the vehicle targets, allocation flags, asset-income
+fields, and home value required here.
 """
 
 from __future__ import annotations
@@ -46,6 +46,7 @@ __all__ = [
     "ARCHIVED_SIPP_VEHICLE_RECEIVER_URL",
     "ARCHIVED_SIPP_VEHICLE_SOURCE_URL",
     "ARCHIVED_SIPP_VEHICLE_TRANSFORM_URL",
+    "SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION",
     "SIPP_2023_VEHICLE_DONOR_REVISION",
     "SIPP_2023_VEHICLE_DONOR_SHA256",
     "SIPP_2023_VEHICLE_DONOR_SIZE_BYTES",
@@ -84,7 +85,12 @@ ARCHIVED_SIPP_VEHICLE_RECEIVER_URL = (
     f"{_RETIRED_PACKAGE_PATH}/utils/asset_imputation.py#L503-L603"
 )
 
+# SIPP_2023_VEHICLE_DONOR_REVISION is the recorded coordinate these bytes were
+# pinned and measured at, kept as the record key.
+# SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION is where the same bytes are served
+# now.  Both name bytes identified by the SHA-256 and size below.
 SIPP_2023_VEHICLE_DONOR_REVISION = "21280dca5995e978d706740a8a4b9b7860cfd7b6"
+SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION = "1.115.5"
 SIPP_2023_VEHICLE_DONOR_SHA256 = (
     "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2"
 )
@@ -92,7 +98,7 @@ SIPP_2023_VEHICLE_DONOR_SIZE_BYTES = 3_726_010_471
 SIPP_2023_VEHICLE_DONOR_URL = (
     "https://huggingface.co/policyengine/"
     f"{_RETIRED_DATA_REPOSITORY}/resolve/"
-    f"{SIPP_2023_VEHICLE_DONOR_REVISION}/pu2023.csv"
+    f"{SIPP_2023_VEHICLE_DONOR_DOWNLOAD_REVISION}/pu2023.csv"
 )
 
 SIPP_VEHICLE_SOURCE_COLUMNS: tuple[str, ...] = (
