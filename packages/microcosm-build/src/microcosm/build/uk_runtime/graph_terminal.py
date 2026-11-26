@@ -823,7 +823,7 @@ class UKFullGateKernel(KernelBase):
         # The gate evaluators (``gates``) and the register loaders
         # (``terminal_gates``) decide the report as much as the bindings do,
         # so an edit to either re-keys the gate nodes (microcosm#1301).
-        from .. import gate_battery, gates
+        from .. import declared_registers, gate_battery, gates
         from . import (
             battery_bindings,
             diagnostics,
@@ -845,6 +845,9 @@ class UKFullGateKernel(KernelBase):
                         local_rowwise,
                         terminal_gates,
                         weighted_integrity,
+                        # The reviewed exclusions' strict reader and windows
+                        # (microcosm#1759).
+                        declared_registers,
                         diagnostics,
                     ),
                     "country_resources": self._country_resources(),

@@ -1028,7 +1028,7 @@ class UKNationalGateKernel(_NationalKernel):
     )
 
     def implementation_hash(self) -> str:
-        from .. import gate_battery
+        from .. import declared_registers, gate_battery
         from . import battery_bindings, diagnostics, receipt_counts, weighted_integrity
 
         return hashlib.sha256(
@@ -1041,6 +1041,9 @@ class UKNationalGateKernel(_NationalKernel):
                         battery_bindings,
                         calibration_run,
                         weighted_integrity,
+                        # The reviewed exclusions' strict reader and windows
+                        # (microcosm#1759).
+                        declared_registers,
                         # The input-mass gate's source-household counts.
                         receipt_counts,
                         diagnostics,
