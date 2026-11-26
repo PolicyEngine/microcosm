@@ -12,8 +12,11 @@ access, and the workspace lock pins only its interface. So the image installs
 the emitter on its own, at or above the release
 ``minimum_emitter_version.json`` names in the checkout that launches the app,
 as the US Modal image does. The build enforces the minimum of the commit it
-clones, so a commit that needs a newer emitter than a cached image holds stops
-at preflight; launch from a checkout at or after the commit.
+clones, so the plan refuses a commit whose minimum is higher than the
+launching checkout's; launch from a checkout at or after the commit. As in the
+US image, the image first drops the compromised eMudhra certificate
+authorities (an upgraded CA store, a hash-pinned pip, uv 0.13.4) before it
+downloads anything else.
 
 Processing UK Data Service microdata on Modal needs the data owners' OK
 before first use (``docs/uk-cut-anyone.md``). The volume keeps UKDS inputs
@@ -61,7 +64,19 @@ WORK = "/work"
 REPO_URL = "https://github.com/PolicyEngine/microcosm.git"
 CHECKOUT = "/microcosm"
 PYTHON_VERSION = "3.13"  # the version PR CI tests the lock with
-UV_VERSION = "0.11.7"
+# The compromised eMudhra (emSign) roots, whose intermediate keys were
+# disclosed on 2026-10-20, are dropped as in the US Modal image
+# (tools/modal_us_stage_plan.py, whose values the tests compare with these).
+# uv verifies HTTPS against a CA list compiled into it, and 0.13.4 is the
+# first release whose list drops them.
+UV_VERSION = "0.13.4"
+# Modal's cached debian_slim base carries pip 25.3, whose bundled certifi
+# still contains emSign ECC Root CA - G3, so the image replaces it with this
+# pip before downloading anything else. The wheel's sha256, as PyPI publishes
+# it, not the connection, makes that one download authentic.
+PIP_VERSION = "26.2.2"
+PIP_WHEEL_SHA256 = "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
+PIP_BOOTSTRAP_REQUIREMENTS = "/tmp/pip-bootstrap.txt"
 SHA = re.compile(r"^[0-9a-f]{40}$")
 #: The launcher's opt-in for attaching credentials to a ``modal run``.
 RUN_OPT_IN = "MICROCOSM_UK_CUT_MODAL_RUN"
@@ -74,9 +89,12 @@ REGISTRY_REMOTE = "/root/gate_signing_keys.py"
 #: The oldest emitter release a build starts, written once in microcosm-build's
 #: package data (``MINIMUM_EMITTER_VERSION`` in
 #: ``microcosm.build.telemetry_emitter``); read by its path, since the launcher
-#: cannot import microcosm.
-MINIMUM_EMITTER_VERSION_FILE = Path(__file__).resolve().parents[1] / (
+#: cannot import microcosm. ``plan`` also reads the cloned commit's copy.
+MINIMUM_EMITTER_VERSION_PATH = (
     "packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json"
+)
+MINIMUM_EMITTER_VERSION_FILE = (
+    Path(__file__).resolve().parents[1] / MINIMUM_EMITTER_VERSION_PATH
 )
 EMITTER_RELEASE = re.compile(r"\d+\.\d+\.\d+")
 #: Where the image installs the emitter command, outside the environment the
@@ -112,26 +130,86 @@ def load_gate_signing_keys(path: Path | None = None) -> ModuleType:
 registry = load_gate_signing_keys()
 
 
-def emitter_requirement() -> str:
-    """What the image installs: at least the oldest emitter release a build starts.
+def pip_bootstrap_command() -> str:
+    """The shell step that replaces the base's pip before any package download.
 
-    Read from ``MINIMUM_EMITTER_VERSION_FILE`` in the launching checkout.
-    Refuses a file that is missing or does not hold
-    ``{"minimum_emitter_version": "X.Y.Z"}``.
+    ``--require-hashes`` refuses any file whose sha256 is not
+    ``PIP_WHEEL_SHA256``, whatever index or certificate answers the request.
+    """
+
+    requirement = f"pip=={PIP_VERSION} --hash=sha256:{PIP_WHEEL_SHA256}"
+    path = shlex.quote(PIP_BOOTSTRAP_REQUIREMENTS)
+    return (
+        f"printf '%s\\n' {shlex.quote(requirement)} > {path}"
+        f" && python -m pip install --require-hashes --no-deps -r {path}"
+        f" && rm {path}"
+    )
+
+
+def _minimum_release(text: str, source: str) -> str:
+    """The release a ``minimum_emitter_version.json`` text names; ``source`` names it."""
+
+    try:
+        data = json.loads(text)
+    except ValueError as error:
+        raise SystemExit(
+            f"cannot read the emitter's minimum release from {source} "
+            f"({type(error).__name__})."
+        ) from None
+    version = data.get("minimum_emitter_version") if isinstance(data, dict) else None
+    if not isinstance(version, str) or EMITTER_RELEASE.fullmatch(version) is None:
+        raise SystemExit(f'{source} must hold {{"minimum_emitter_version": "X.Y.Z"}}.')
+    return version
+
+
+def minimum_emitter_version() -> str:
+    """The oldest emitter release a build starts, as the launching checkout says.
+
+    Refuses a ``MINIMUM_EMITTER_VERSION_FILE`` that is missing or does not
+    hold ``{"minimum_emitter_version": "X.Y.Z"}``.
     """
 
     path = MINIMUM_EMITTER_VERSION_FILE
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
     except (OSError, ValueError) as error:
         raise SystemExit(
             f"cannot read the emitter's minimum release from {path} "
             f"({type(error).__name__})."
         ) from None
-    version = data.get("minimum_emitter_version") if isinstance(data, dict) else None
-    if not isinstance(version, str) or EMITTER_RELEASE.fullmatch(version) is None:
-        raise SystemExit(f'{path} must hold {{"minimum_emitter_version": "X.Y.Z"}}.')
-    return f"microcosm-emitter>={version}"
+    return _minimum_release(text, str(path))
+
+
+def emitter_requirement() -> str:
+    """What the image installs: at least the oldest emitter release a build starts."""
+
+    return f"microcosm-emitter>={minimum_emitter_version()}"
+
+
+def commit_minimum_emitter_version(commit: str) -> str | None:
+    """The oldest emitter release the build at ``commit`` starts.
+
+    ``None`` when the commit has no ``minimum_emitter_version.json``: commits
+    before microcosm#1522 kept an older minimum in code. ``commit`` must be
+    in the launching checkout, as ``plan`` has checked.
+    """
+
+    shown = subprocess.run(
+        ["git", "show", f"{commit}:{MINIMUM_EMITTER_VERSION_PATH}"],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if shown.returncode != 0:
+        return None
+    return _minimum_release(
+        shown.stdout, f"{MINIMUM_EMITTER_VERSION_PATH} at {commit[:9]}"
+    )
+
+
+def _release_order(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
 
 
 def _secrets() -> list[modal.Secret]:
@@ -152,12 +230,19 @@ def _secrets() -> list[modal.Secret]:
 def _image() -> modal.Image:
     image = (
         modal.Image.debian_slim(python_version=PYTHON_VERSION)
-        .apt_install("git", "build-essential", "libhdf5-dev")
+        # Naming ca-certificates upgrades the base's CA store, which git and
+        # the standard library's ssl module read, to the distribution's
+        # current release, without the eMudhra roots.
+        .apt_install("git", "build-essential", "libhdf5-dev", "ca-certificates")
+        # Before the base's pip downloads anything else.
+        .run_commands(pip_bootstrap_command())
         .pip_install(f"uv=={UV_VERSION}")
         .env(
             {
                 "UV_LINK_MODE": "copy",
                 "PYTHONDONTWRITEBYTECODE": "1",
+                # The image's Python meets the lock and the emitter.
+                "UV_PYTHON_DOWNLOADS": "never",
                 EMITTER_COMMAND_ENV: EMITTER_COMMAND,
             }
         )
@@ -250,6 +335,20 @@ def plan(commit: str, label: str, *, publish: bool = False) -> list[str]:
             f"{commit} is not on origin/main here (git fetch first); Modal cuts "
             "build only from main."
         )
+    # The image installs this checkout's minimum and the build enforces the
+    # commit's, so a higher one at the commit would stop preflight in the
+    # paid container, where the emitter's upgrade advice cannot be followed.
+    image_minimum = minimum_emitter_version()
+    commit_minimum = commit_minimum_emitter_version(commit)
+    if commit_minimum is not None and (
+        _release_order(commit_minimum) > _release_order(image_minimum)
+    ):
+        raise SystemExit(
+            f"{commit[:9]} needs microcosm-emitter>={commit_minimum}, but this "
+            f"checkout's image installs microcosm-emitter>={image_minimum}, which "
+            "the build's preflight would refuse; launch from a checkout at or "
+            f"after {commit[:9]}."
+        )
     missing = [
         name
         for name in ("HF_TOKEN", registry.UK_GATE_SIGNING_KEY_ENV)
@@ -257,7 +356,7 @@ def plan(commit: str, label: str, *, publish: bool = False) -> list[str]:
     ]
     print(
         f"cut {label} at {commit[:9]} on Modal; publish={publish}; "
-        f"work dir {VOLUME_NAME}:{WORK}; emitter {emitter_requirement()}; "
+        f"work dir {VOLUME_NAME}:{WORK}; emitter microcosm-emitter>={image_minimum}; "
         f"missing credentials: {missing or 'none'}"
     )
     return missing

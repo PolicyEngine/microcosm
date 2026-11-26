@@ -146,8 +146,11 @@ Hugging Face.
 (`>=0.16.0,<1`), the dependency-free package of typed calls, which `uv.lock`
 records with its hashes. The emitter itself, `microcosm-emitter`, is not a
 workspace dependency: each machine installs it on its own with
-`uv tool install microcosm-emitter`, and the Modal image installs the newest
-release when it is built for a plan commit. A running build keeps the
+`uv tool install microcosm-emitter`. The US Modal stage runner's image
+installs the newest release when it is built for a plan commit; the UK
+launcher's image (`tools/modal_uk_cut.py`), which clones its commit only at
+run time, installs the newest release when Modal first builds that step and
+keeps it until the minimum below rises. A running build keeps the
 emitter it started; the next build uses whichever release is installed then.
 So an emitter release needs no Microcosm change. The socket protocol carries
 its own version (`PROTOCOL_VERSION`), every emitter release accepts the
@@ -155,19 +158,22 @@ versions interfaces still send, and an emitter that lacks a module the build
 asks for starts without it.
 
 A build does not start an emitter older than `MINIMUM_EMITTER_VERSION` in
-`microcosm.build.telemetry_emitter`, now 0.17.0, and the Modal image installs
-at least the same release (`image_emitter_requirement()` in
-`tools/modal_us_stage_plan.py`, `microcosm-emitter>=0.17.0`), as does the UK
-launcher's image (`emitter_requirement()` in `tools/modal_uk_cut.py`). The release is
+`microcosm.build.telemetry_emitter`, now 0.17.0, and both Modal images install
+at least the same release (`microcosm-emitter>=0.17.0`): the US stage
+runner's through `image_emitter_requirement()` in
+`tools/modal_us_stage_plan.py`, the UK launcher's through
+`emitter_requirement()` in `tools/modal_uk_cut.py`. The release is
 written once, in microcosm-build's package data,
 `packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`:
-the adapter reads it as package data, and the runner, which imports nothing
-from the workspace, reads it by its path in the checkout that launches the
-app. The image adds that checkout's file beside the runner's copy of the
-plan module, so the check, which runs in the container, reads the same
-file. At a Modal launch the install step therefore comes from the launching
-checkout and the minimum from the commit the plan pins (see the
-[US Modal stage runbook](us-modal-stage-runbook.md)). Releases
+the adapter reads it as package data, and both launchers, which import
+nothing from the workspace, read it by its path in the checkout that
+launches the app. At a Modal launch the install step therefore comes from
+the launching checkout and the minimum from the commit the build runs. The
+US runner's image adds the launching checkout's file beside its copy of the
+plan module, so its check, which runs in the container, reads the same file
+(see the [US Modal stage runbook](us-modal-stage-runbook.md)). The UK
+launcher's plan reads the commit's file with `git show` and refuses a
+commit whose minimum is higher than the launching checkout's. Releases
 before 0.10.0 send telemetry to the collector's Cloud Run address, which
 changes when the collector moves to another Google Cloud project. From 0.10.0
 on, the emitter's default collector address is the collector's hostname,
