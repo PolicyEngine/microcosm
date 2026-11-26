@@ -15,8 +15,8 @@ as the US Modal image does. The build enforces the minimum of the commit it
 clones, so the plan refuses a commit whose minimum is higher than the
 launching checkout's; launch from a checkout at or after the commit. As in the
 US image, the image first drops the compromised eMudhra certificate
-authorities (an upgraded CA store, a hash-pinned pip, uv 0.13.4) before it
-downloads anything else.
+authorities (an upgraded CA store, a hash-pinned pip, uv 0.13.4 and a certifi
+floor) before it downloads anything else.
 
 Processing UK Data Service microdata on Modal needs the data owners' OK
 before first use (``docs/uk-cut-anyone.md``). The volume keeps UKDS inputs
@@ -77,6 +77,10 @@ UV_VERSION = "0.13.4"
 PIP_VERSION = "26.2.2"
 PIP_WHEEL_SHA256 = "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
 PIP_BOOTSTRAP_REQUIREMENTS = "/tmp/pip-bootstrap.txt"
+# The first certifi release without emSign ECC Root CA - G3, for the image's
+# own Python, which Modal's client in the container runs on. Stated, since
+# Modal reuses a cached layer while its definition is unchanged.
+CERTIFI_MINIMUM_VERSION = "2026.10.19"
 SHA = re.compile(r"^[0-9a-f]{40}$")
 #: The launcher's opt-in for attaching credentials to a ``modal run``.
 RUN_OPT_IN = "MICROCOSM_UK_CUT_MODAL_RUN"
@@ -190,19 +194,39 @@ def commit_minimum_emitter_version(commit: str) -> str | None:
     """The oldest emitter release the build at ``commit`` starts.
 
     ``None`` when the commit has no ``minimum_emitter_version.json``: commits
-    before microcosm#1522 kept an older minimum in code. ``commit`` must be
-    in the launching checkout, as ``plan`` has checked.
+    before microcosm#1522 kept an older minimum in code. Refuses a commit
+    whose tree or file git cannot read here: ``git show`` exits 128 alike
+    for a missing path and an unreadable commit, so ``git ls-tree``, which
+    lists nothing for a missing path, tells them apart first.
     """
 
+    checkout = Path(__file__).resolve().parents[1]
+    listed = subprocess.run(
+        ["git", "ls-tree", "--name-only", commit, "--", MINIMUM_EMITTER_VERSION_PATH],
+        cwd=checkout,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listed.returncode != 0:
+        raise SystemExit(
+            f"cannot read {commit[:9]}'s tree here (git ls-tree exited "
+            f"{listed.returncode}); fetch it, then plan again."
+        )
+    if not listed.stdout.strip():
+        return None
     shown = subprocess.run(
         ["git", "show", f"{commit}:{MINIMUM_EMITTER_VERSION_PATH}"],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=checkout,
         capture_output=True,
         text=True,
         check=False,
     )
     if shown.returncode != 0:
-        return None
+        raise SystemExit(
+            f"cannot read {MINIMUM_EMITTER_VERSION_PATH} at {commit[:9]} here "
+            f"(git show exited {shown.returncode}); fetch it, then plan again."
+        )
     return _minimum_release(
         shown.stdout, f"{MINIMUM_EMITTER_VERSION_PATH} at {commit[:9]}"
     )
@@ -236,7 +260,7 @@ def _image() -> modal.Image:
         .apt_install("git", "build-essential", "libhdf5-dev", "ca-certificates")
         # Before the base's pip downloads anything else.
         .run_commands(pip_bootstrap_command())
-        .pip_install(f"uv=={UV_VERSION}")
+        .pip_install(f"uv=={UV_VERSION}", f"certifi>={CERTIFI_MINIMUM_VERSION}")
         .env(
             {
                 "UV_LINK_MODE": "copy",

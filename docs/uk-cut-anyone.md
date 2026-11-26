@@ -133,7 +133,8 @@ the Mac is busy, short of disk or asleep. The container:
   clones, so the plan refuses a commit whose minimum is higher: launch from
   a checkout at or after that commit. Like the US image, the image first
   drops the compromised eMudhra certificate authorities (an upgraded CA
-  store, a hash-pinned pip and uv 0.13.4) before it downloads anything;
+  store, a hash-pinned pip, uv 0.13.4 and a certifi floor) before it
+  downloads anything;
 - keeps the work directory, with its inputs and every step's outputs, on the
   `microcosm-uk-cuts` volume, so a rerun resumes.
 

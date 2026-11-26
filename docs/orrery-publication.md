@@ -150,7 +150,9 @@ workspace dependency: each machine installs it on its own with
 installs the newest release when it is built for a plan commit; the UK
 launcher's image (`tools/modal_uk_cut.py`), which clones its commit only at
 run time, installs the newest release when Modal first builds that step and
-keeps it until the minimum below rises. A running build keeps the
+keeps it until the minimum below rises or Modal rebuilds the layer, as it
+does when an earlier step of the image or Modal's image builder version
+changes. A running build keeps the
 emitter it started; the next build uses whichever release is installed then.
 So an emitter release needs no Microcosm change. The socket protocol carries
 its own version (`PROTOCOL_VERSION`), every emitter release accepts the
