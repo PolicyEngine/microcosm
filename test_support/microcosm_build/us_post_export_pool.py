@@ -18,7 +18,9 @@ environment, which spawned workers inherit:
 - :data:`ENGINE_LOG`: a directory; each process appends one JSON line per
   engine construction and per calculation to ``<pid>.jsonl`` there;
 - :data:`MEMORY_KEYS`: the most distinct keys one engine computes before it
-  raises ``MemoryError``, as an engine that ran out of memory would.
+  raises ``MemoryError``, as an engine that ran out of memory would;
+- :data:`SLOW`: JSON mapping a variable to the seconds each engine sleeps
+  before it computes that variable.
 
 Each fake reform carries the description it was built from, as the
 consumers' own builders mark the reforms they build.
@@ -28,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -53,6 +56,7 @@ FAIL_ON = "MICROCOSM_TEST_POST_EXPORT_FAIL_ON"
 COMPUTES = "MICROCOSM_TEST_POST_EXPORT_COMPUTES"
 ENGINE_LOG = "MICROCOSM_TEST_POST_EXPORT_ENGINE_LOG"
 MEMORY_KEYS = "MICROCOSM_TEST_POST_EXPORT_MEMORY_KEYS"
+SLOW = "MICROCOSM_TEST_POST_EXPORT_SLOW"
 
 #: Parameter paths a fake reform sets from a ``ParameterChangesReform``
 #: payload, so a reform can move a behavioral-response parameter.
@@ -185,6 +189,9 @@ class FakeMicrosimulation:
         limit = os.environ.get(MEMORY_KEYS)
         if limit and len(self.asked) > int(limit):
             raise MemoryError(f"fixture engine holds more than {limit} keys")
+        delay = json.loads(os.environ.get(SLOW) or "{}").get(variable)
+        if delay:
+            time.sleep(float(delay))
         computes = json.loads(os.environ.get(COMPUTES) or "{}")
         for computed in (variable, *computes.get(variable, ())):
             self.known.setdefault(computed, set()).add(period)

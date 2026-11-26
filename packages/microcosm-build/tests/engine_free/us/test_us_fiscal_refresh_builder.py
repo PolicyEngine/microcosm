@@ -52,6 +52,17 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 
+@pytest.fixture(autouse=True)
+def _serial_post_export_scoring(monkeypatch):
+    """Certification here runs with the post-export scorer stood in for, or
+    with its body stubbed, so none of these tests sizes a worker pool from
+    the machine it runs on: certification refuses a machine with no room for
+    one worker unless MICROCOSM_POST_EXPORT_WORKERS names a count or serial,
+    and the stand-in scorer is the serial one (pooled scoring is the default,
+    tracker task 1.4 · 7)."""
+    monkeypatch.setenv("MICROCOSM_POST_EXPORT_WORKERS", "serial")
+
+
 def _load_builder_module():
     root = _TEST_PATHS.repository
     path = root / "tools" / "build_us_fiscal_refresh_release.py"
@@ -7295,9 +7306,6 @@ def _run_green_register_release(
             captured["scorer_closed"] = True
 
     monkeypatch.setattr(builder, "_HouseholdBatchedPostExportScorer", WrittenH5Scorer)
-    # The stand-in is the serial scorer; certification uses it only when the
-    # operator asks for serial scoring (pooled scoring is the default).
-    monkeypatch.setenv("MICROCOSM_POST_EXPORT_WORKERS", "serial")
     read_population_structure = builder.population_structure_holdout_from_h5
 
     def population_structure_from_h5(dataset_path, **kwargs):

@@ -1501,3 +1501,40 @@ def test_engine_options_and_pool_settings_are_not_given_together(
         post_export_pooling=pooling,
     )
     assert probe.scorer_options == {}
+
+
+def test_a_held_out_report_whose_dry_run_fails_is_recorded(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """The held-out reports have no stage of their own in the probe; one whose
+    dry run fails leaves the probe's merged pass unlike certification's, which
+    the open_scorer stage records and a fidelity verdict names."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+
+    def broken(simulate):
+        raise ValueError("fixture held-out dry run refused")
+
+    monkeypatch.setattr(builder, "_ssi_social_security_holdout_consumer", broken)
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        stages=("demographics",),
+    )
+    record = report["stages"]["open_scorer"]
+    assert record["registered_consumers"] == ["demographics", "medicare_irmaa_holdout"]
+    assert record["unregistered_consumers"] == {
+        "ssi_social_security_holdout": "ValueError: fixture held-out dry run refused"
+    }
+    (verdict,) = [
+        row
+        for row in report["verdicts"]
+        if row["stage"] == "open_scorer"
+        and "ssi_social_security_holdout" in row["check"]
+    ]
+    assert verdict["verdict"] == "error"
+    assert verdict["release_consequence"] == "fidelity of this probe to the release"
+    assert report["stages"]["demographics"]["status"] == "completed"

@@ -47,6 +47,7 @@ from test_support.microcosm_build.us_post_export_pool import (
     ENGINE_LOG,
     FAIL_ON,
     MEMORY_KEYS,
+    SLOW,
     FakeMicrosimulation,
     build_fake_parameter_reform,
     build_fake_reform,
@@ -84,7 +85,7 @@ def pooled_reforms(monkeypatch, builder):
     monkeypatch.setattr(
         builder, "geography_coverage_payload", lambda path: {"h5": Path(path).name}
     )
-    for name in (FAIL_ON, COMPUTES, ENGINE_LOG, MEMORY_KEYS):
+    for name in (FAIL_ON, COMPUTES, ENGINE_LOG, MEMORY_KEYS, SLOW):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -276,6 +277,7 @@ def test_pooled_scoring_writes_the_serial_scorers_bytes_at_any_worker_count(
             "worker_environment_variables": [],
             "units": {"baseline": workers, "reform": reform_units},
             "resources": None,
+            "merged_baseline_fallback": None,
         }
         assert report["units_completed"] == workers + reform_units
         assert report["failed_attempts"] == []
@@ -796,10 +798,27 @@ def test_the_probe_command_scores_as_certification_does(builder) -> None:
 
     probe_tool = _load_tool("probe_us_post_export", "probe_us_post_export.py")
     source = inspect.getsource(probe_tool.main)
-    chosen = source.index(
-        "post_export_pooling = load_builder()._post_export_pooling_from_environment()"
-    )
+    chosen = source.index("post_export_pooling = post_export_pooling_for(stages)")
     assert chosen < source.index("report = probe_export(")
+    # Only a run with an engine stage reads the setting, so a probe of the
+    # frame-based stages alone runs on any machine.
+    calls = []
+
+    class Recording:
+        def _post_export_pooling_from_environment(self):
+            calls.append(True)
+            return "pooling"
+
+    assert (
+        probe_tool.post_export_pooling_for(
+            ("stored_inputs", "qrf_tail_concentration"), Recording()
+        )
+        is None
+    )
+    assert calls == []
+    assert probe_tool.post_export_pooling_for(("demographics",), Recording()) == (
+        "pooling"
+    )
     (call,) = [
         node
         for node in ast.walk(ast.parse(source))
@@ -919,6 +938,8 @@ def test_a_merged_pass_a_worker_cannot_finish_falls_back_as_the_serial_scorer_do
         consumers=consumers,
     )
 
+    executions = []
+
     def run(scorer):
         try:
             outputs = {}
@@ -929,7 +950,7 @@ def test_a_merged_pass_a_worker_cannot_finish_falls_back_as_the_serial_scorer_do
             block = scorer.manifest_record()
         finally:
             scorer.close()
-        block.pop("execution")
+        executions.append(block.pop("execution"))
         return outputs, block
 
     serial = run(_serial_scorer(builder, plan, tmp_path / "serial"))
@@ -937,18 +958,29 @@ def test_a_merged_pass_a_worker_cannot_finish_falls_back_as_the_serial_scorer_do
     pooled = run(_pooled_scorer(builder, plan, tmp_path / "pooled", 1))
     assert "merged baseline plan failed" in capsys.readouterr().out
     assert canonical_result_bytes(pooled) == canonical_result_bytes(serial)
+    # The record keeps the failed pool's report: the attempts that failed and
+    # the workers they started, with the fallback's units.
+    execution = executions[1]
+    assert execution["merged_baseline_fallback"].startswith("WorkerPoolUnitError")
+    assert execution["units"] == {"baseline": 1, "reform": 0, "fallback_baseline": 2}
+    report = execution["report"]
+    assert report["pools"] == 2
+    assert len(report["failed_attempts"]) == 2
+    assert report["worker_starts"] >= 3
+    assert report["units_completed"] == 2
 
 
-def test_a_stopped_pool_still_serves_what_it_already_scored(
+def test_a_unit_the_pool_cannot_finish_fails_its_own_consumer_alone(
     builder,
     pooled_reforms,
     tmp_path,
     monkeypatch,
 ) -> None:
-    """A reform unit that fails on every attempt stops the pool. A consumer
-    served from the merged pass's values is still served; one that needs the
-    pool is refused with a WorkerPoolError, which the held-out reports pass
-    on instead of recording an unavailable measurement."""
+    """A reform unit that fails on every attempt fails the consumer that asks
+    for it, with the pool's error, which the held-out reports pass on instead
+    of recording an unavailable measurement. The pool then goes on in fresh
+    workers: a consumer served from the merged pass and one with a reform
+    unit of its own are served what the serial scorer serves them."""
     monkeypatch.setenv(MEMORY_KEYS, "2")
 
     def prefetching(simulate):
@@ -974,9 +1006,16 @@ def test_a_stopped_pool_still_serves_what_it_already_scored(
     )
     serial = _serial_scorer(builder, plan, tmp_path / "serial")
     try:
-        expected = consumers["second"](
-            serial.open_consumer("second", plan.baseline_plan("second")).simulate
-        )
+        with pytest.raises(MemoryError):
+            prefetching(
+                serial.open_consumer("first", plan.baseline_plan("first")).simulate
+            )
+        expected = {
+            name: consumers[name](
+                serial.open_consumer(name, plan.baseline_plan(name)).simulate
+            )
+            for name in ("second", "third")
+        }
     finally:
         serial.close()
     scorer = _pooled_scorer(builder, plan, tmp_path / "pooled", 1)
@@ -984,13 +1023,92 @@ def test_a_stopped_pool_still_serves_what_it_already_scored(
         first = scorer.open_consumer("first", plan.baseline_plan("first"))
         with pytest.raises(WorkerPoolUnitError, match="MemoryError"):
             prefetching(first.simulate)
-        second = scorer.open_consumer("second", plan.baseline_plan("second"))
-        assert consumers["second"](second.simulate) == expected
-        scorer.finish_consumer(second)
-        third = scorer.open_consumer("third", plan.baseline_plan("third"))
-        with pytest.raises(builder.PostExportPoolStoppedError) as stopped:
-            consumers["third"](third.simulate)
-        assert isinstance(stopped.value, WorkerPoolError)
+        for name in ("second", "third"):
+            scoring = scorer.open_consumer(name, plan.baseline_plan(name))
+            assert consumers[name](scoring.simulate) == expected[name], name
+            scorer.finish_consumer(scoring)
+        report = scorer.execution_record()["report"]
+    finally:
+        scorer.close()
+    assert report["pools"] == 2
+    assert len(report["failed_attempts"]) == 2
+
+
+def test_a_later_units_failure_waits_for_its_own_consumer(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Workers run ahead of the consumers. A later consumer's unit that fails
+    on every attempt while an earlier, slower unit is still running is that
+    later consumer's failure, not the earlier one's."""
+    monkeypatch.setenv(MEMORY_KEYS, "2")
+    monkeypatch.setenv(SLOW, json.dumps({"snap": 15}))
+
+    def prefetching(simulate):
+        records_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
+        simulate(None).calculate("age", 2024)
+        reformed = simulate(
+            OTHER_REFORM if records_only else build_fake_reform(OTHER_REFORM)
+        )
+        reformed.prefetch((("income_tax", 2024), ("ssi", 2024), ("wic", 2024)))
+        return reformed.calculate("income_tax", 2024).sum()
+
+    consumers = {
+        "slow": _fixture_consumer(lambda total: [(FIXTURE_REFORM, [("snap", 2024)])]),
+        "failing": prefetching,
+    }
+    plan = builder._post_export_scoring_plan(
+        n_households=N_HOUSEHOLDS,
+        maximum_microsim_batch_size=BATCH_SIZE,
+        consumers=consumers,
+    )
+    monkeypatch.setenv(SLOW, "{}")
+    serial = _serial_scorer(builder, plan, tmp_path / "serial")
+    try:
+        expected = consumers["slow"](
+            serial.open_consumer("slow", plan.baseline_plan("slow")).simulate
+        )
+    finally:
+        serial.close()
+    monkeypatch.setenv(SLOW, json.dumps({"snap": 15}))
+    scorer = _pooled_scorer(builder, plan, tmp_path / "pooled", 2)
+    try:
+        slow = scorer.open_consumer("slow", plan.baseline_plan("slow"))
+        assert consumers["slow"](slow.simulate) == expected
+        scorer.finish_consumer(slow)
+        failing = scorer.open_consumer("failing", plan.baseline_plan("failing"))
+        with pytest.raises(WorkerPoolUnitError, match="failing reformed simulation 0"):
+            prefetching(failing.simulate)
+    finally:
+        scorer.close()
+
+
+def test_a_pool_that_cannot_start_refuses_every_consumer(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Workers start only with the parent's release tool: given another
+    digest, none starts, and every consumer is refused with a WorkerPoolError
+    that names the refusal."""
+    monkeypatch.setattr(builder, "_RELEASE_TOOL_SHA256", "0" * 64)
+    plan = builder._post_export_scoring_plan(
+        n_households=N_HOUSEHOLDS,
+        maximum_microsim_batch_size=BATCH_SIZE,
+        consumers={
+            "first": _baseline_consumer("age"),
+            "second": _baseline_consumer("snap"),
+        },
+    )
+    scorer = _pooled_scorer(builder, plan, tmp_path, 1)
+    try:
+        with pytest.raises(WorkerPoolError, match="SHA-256"):
+            scorer.open_consumer("first", plan.baseline_plan("first"))
+        with pytest.raises(builder.PostExportPoolStoppedError):
+            scorer.open_consumer("second", plan.baseline_plan("second"))
     finally:
         scorer.close()
 
@@ -1010,9 +1128,9 @@ def test_asking_again_after_a_failed_pass_raises_what_the_serial_scorer_raises(
             FIXTURE_REFORM if records_only else build_fake_reform(FIXTURE_REFORM)
         )
         errors = []
-        for _ in range(2):
+        for period in (2024, 2024, 2025, 2024):
             try:
-                reformed.calculate("income_tax", 2024)
+                reformed.calculate("income_tax", period)
             except RuntimeError as error:
                 errors.append(f"{type(error).__name__}: {error}")
         return errors
@@ -1031,7 +1149,7 @@ def test_asking_again_after_a_failed_pass_raises_what_the_serial_scorer_raises(
             observed[mode] = (errors, scoring.reform_systems, scoring.reform_passes)
         finally:
             scorer.close()
-    assert len(observed["serial"][0]) == 2
+    assert len(observed["serial"][0]) == 4
     assert observed["pooled"] == observed["serial"]
 
 
