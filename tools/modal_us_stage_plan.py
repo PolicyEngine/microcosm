@@ -889,8 +889,10 @@ RUNNER_SMOKE = ToolSpec(
 #                      tail manifest; the release reads this directory
 #
 # After a stop or a failure the checkpoints are mirrored, deliberately.
-# `--stage all` runs each outer stage in a fresh interpreter and resumes
-# from the completed prefix (_run_staged_all), with its whole run config
+# `--stage all` runs its outer stages in fresh interpreters (one each,
+# except that the 16 from capital_gains_tail_transfer to
+# education_inputs_post_clone share one) and resumes from the completed
+# prefix (_run_staged_all), with its whole run config
 # (input paths and digests, settings, code identity, thread variables)
 # locked in stage_run_context.json; a resume whose config differs is
 # refused. At 4b57d15a2 that covers every thread variable; code containing
