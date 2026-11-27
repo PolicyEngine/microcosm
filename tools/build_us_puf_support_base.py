@@ -428,6 +428,14 @@ ALL_STAGE_NAMES = (*STAGE_NAMES, HOUSEHOLD_LOCATION_STAGE_NAME)
 #: which a frame read from disk does not have: a step that wrote into shared
 #: column memory in place would be refused at its checkpoint write here,
 #: where a step that read its input from disk would not. No step does that.
+#: Reading a checkpoint also turns NumPy scalars in object columns into
+#: Python values, so before a step takes a frame from memory the child stops
+#: if it holds any (``_refuse_values_a_checkpoint_read_changes``). A frame
+#: handed over keeps its columns' memory layout, where a checkpoint read
+#: gives contiguous arrays. pandas 3 copies a column into new, contiguous
+#: memory when it builds a table unless given ``copy=False``, and a review
+#: of the 16 steps' code found no table built that way, so this is not
+#: checked.
 ONE_PROCESS_STEPS = PIPELINE_STEPS[
     PIPELINE_STEPS.index(PUF_CAPITAL_GAINS_TAIL_STAGE_NAME) : (
         PIPELINE_STEPS.index("education_inputs_post_clone") + 1
@@ -3327,7 +3335,61 @@ def _predecessor_checkpoint(
             f"step {args.stage!r} was handed {handed_over.stage!r}'s frame, "
             f"not {previous!r}'s."
         )
+    _refuse_values_a_checkpoint_read_changes(
+        handed_over.frame, step=previous, next_step=args.stage
+    )
     return handed_over
+
+
+#: The types of the values that reading a frame checkpoint gives an object
+#: column, an object index or object strata (``frame_checkpoint``'s object
+#: codec). It writes a NumPy integer, float, bool, string or bytes scalar as
+#: the matching Python value, so a frame read from disk holds only these.
+_CHECKPOINT_READ_OBJECT_VALUE_TYPES = frozenset(
+    {str, int, float, bool, bytes, type(None), type(pd.NA), type(pd.NaT)}
+)
+
+
+def _refuse_values_a_checkpoint_read_changes(
+    frame: Frame, *, step: str, next_step: str
+) -> None:
+    """Stop before ``next_step`` takes ``frame`` from memory if reading
+    ``step``'s checkpoint would give it other values.
+
+    Reading a checkpoint turns NumPy scalars in object columns, an object
+    index or object strata into Python values (``np.float32`` into a 64-bit
+    ``float``, ``np.str_`` into ``str``), and a frame handed over in memory
+    keeps them. ``next_step`` would then compute on other values than in a
+    run with one process per step. ``step`` has completed, so a resume reads
+    its checkpoint and goes on. Checking the values of the post-clone
+    frame's object series takes about 30 ms.
+    """
+
+    places: list[tuple[str, object]] = []
+    for name in (*frame.entities, *frame.links):
+        table = frame.table(name) if name in frame.entities else frame.link(name)
+        if pd.api.types.is_object_dtype(table.index.dtype):
+            places.append((f"{name} index", table.index))
+        for column in table.columns:
+            if pd.api.types.is_object_dtype(table[column].dtype):
+                places.append((f"{name} column {column!r}", table[column]))
+    if pd.api.types.is_object_dtype(frame.strata.dtype):
+        places.append(("strata", frame.strata))
+    for place, values in places:
+        found = set(map(type, values.to_numpy(dtype=object, copy=False)))
+        changed = found - _CHECKPOINT_READ_OBJECT_VALUE_TYPES
+        if changed:
+            type_names = ", ".join(
+                sorted(f"{kind.__module__}.{kind.__qualname__}" for kind in changed)
+            )
+            raise RuntimeError(
+                f"Step {step!r} left {type_names} values in the {place}. Reading "
+                f"its checkpoint gives Python values there, but {next_step!r} would "
+                "take the frame from memory as it is, so the checkpoints from "
+                f"{next_step!r} on could differ from a run with one process per "
+                f"step. Store Python values in {step!r}, or resume the run: a "
+                f"resume reads {step!r}'s checkpoint."
+            )
 
 
 def _run_outer_step(
