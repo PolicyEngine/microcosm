@@ -59,8 +59,8 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: The shared exclusion-expiry clock, fixed inside the committed registers'
 #: validity window so the suite never drifts across an approval or expiry
 #: boundary: on the latest approval (2026-11-27: the renewals of the entries
-#: lapsing by 2026-12-11, microcosm#1736) and before the earliest expiry still
-#: ahead (2026-12-14, local-line entries of both target-fit registers). Move it
+#: lapsing by 2026-12-15, microcosm#1736) and before the earliest expiry still
+#: ahead (2026-12-20, local-line entries of both target-fit registers). Move it
 #: forward when a register gains a later approval.
 CLOCK = date(2026, 11, 27)
 
