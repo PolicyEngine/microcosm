@@ -823,7 +823,7 @@ class UKFullGateKernel(KernelBase):
         # The gate evaluators (``gates``) and the register loaders
         # (``terminal_gates``) decide the report as much as the bindings do,
         # so an edit to either re-keys the gate nodes (microcosm#1301).
-        from .. import gate_battery, gates
+        from .. import declared_registers, gate_battery, gates
         from . import (
             battery_bindings,
             diagnostics,
@@ -845,6 +845,9 @@ class UKFullGateKernel(KernelBase):
                         local_rowwise,
                         terminal_gates,
                         weighted_integrity,
+                        # The reviewed exclusions' strict reader and windows
+                        # (microcosm#1759).
+                        declared_registers,
                         diagnostics,
                     ),
                     "country_resources": self._country_resources(),
@@ -1353,14 +1356,18 @@ class UKFullHoldoutKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        import microcosm.build.holdout as shared_holdout
         import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
+        import microcosm.calibrate.target_sets as calibrate_target_sets
 
+        from .. import declared_registers
         from . import (
             dataset_size,
             graph_targets,
             local_doctrine,
             local_rowwise,
             national_doctrine,
+            target_sets,
             target_weights,
         )
         from .solve_scope import uk_solve_fingerprint
@@ -1379,6 +1386,17 @@ class UKFullHoldoutKernel(KernelBase):
                         # The shared rules that compute the weights the
                         # holdout re-applies (microcosm#1729).
                         calibrate_target_loss_rules,
+                        # The folds and the held rows' estimates
+                        # (fold_splits, held_estimates; microcosm#1759).
+                        shared_holdout,
+                        # The holdout rebuilds the problem inputs
+                        # (graph_targets.reconstruct_uk_full_problem_inputs):
+                        # each row's level comes from the declared level rule
+                        # (calibrate.target_sets through the UK adapter), and
+                        # the support floor's window from the review core.
+                        calibrate_target_sets,
+                        target_sets,
+                        declared_registers,
                         dependencies=self.capabilities.dependencies,
                     ),
                     # The holdout repeats the solve: it keys on the solve

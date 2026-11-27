@@ -91,11 +91,11 @@ def test_a_package_import_with_no_name_read_reads_the_package(scratch_package):
 def test_a_submodule_resolves_the_same_before_it_is_imported(monkeypatch):
     """A function-level ``from package import submodule`` names the submodule
     whether or not an earlier test imported it."""
-    name = "microcosm.calibrate.target_selection"
-    assert defining_module("microcosm.calibrate", "target_selection") == name
+    name = "microcosm.calibrate.target_sets"
+    assert defining_module("microcosm.calibrate", "target_sets") == name
     monkeypatch.delitem(sys.modules, name, raising=False)
-    monkeypatch.delattr(microcosm.calibrate, "target_selection", raising=False)
-    assert defining_module("microcosm.calibrate", "target_selection") == name
+    monkeypatch.delattr(microcosm.calibrate, "target_sets", raising=False)
+    assert defining_module("microcosm.calibrate", "target_sets") == name
 
 
 def test_the_walk_follows_an_exclusion_but_not_its_imports(scratch_package):

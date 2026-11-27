@@ -1,0 +1,105 @@
+# The targets each UK build calibrates to (microcosm#1759).
+# Schema: spec_engine/schema/target_sets.schema.json. Reader: microcosm.calibrate.target_sets.
+# docs/uk-target-sets.md explains it.
+version: 1
+country: uk
+description: 'The targets each UK build calibrates to (microcosm#1759): the level rule that places every
+  compiled UK target at one geography level, the full build''s selection of its solve surface by level,
+  and the two calibration lines. microcosm.calibrate.target_sets reads this file; microcosm.build.uk_runtime.target_sets
+  names its products; docs/uk-target-sets.md explains it. The US declares its target sets the same way,
+  in us/spec/target_sets.yaml (microcosm#1728).'
+level_rule:
+  keys:
+  - geography_level
+  - ledger_geography_level
+  values:
+  - country
+  - region
+  - constituency
+  - la
+  - brma
+  conflict: refuse
+  rationale: A compiled UK target names its level in its local metadata (geography_level), in the Ledger's
+    (ledger_geography_level), or in both. Both must then agree, and the level must be one of the five
+    grains a UK build calibrates at; any other target is refused, not placed by a guess. This is the rule
+    the UK resolver uk_runtime.graph_targets.target_geography applied in code before microcosm#1759.
+products:
+- id: full
+  tool: packages/microcosm-build/src/microcosm/build/uk_runtime/full_build_cli.py
+  option: --target-geographies
+  default_mode: levels
+  modes:
+  - id: levels
+    description: 'The full (local-line) build''s solve surface: the compiled targets of the levels the
+      build requests, all of them by default, in compile order, with a receipt that lists every target
+      (uk.full.target_selection@1). The node first applies the build''s family filter (--households-only)
+      and, with no area BRMAs, drops the brma rows.'
+    compiled:
+    - id: country
+      families: '*'
+      levels:
+      - country
+      rationale: The country-level rows. Kept when the build requests this level; a build requests every
+        level unless --target-geographies names a subset.
+    - id: region
+      families: '*'
+      levels:
+      - region
+      rationale: The region-level rows. Kept when the build requests this level; a build requests every
+        level unless --target-geographies names a subset.
+    - id: constituency
+      families: '*'
+      levels:
+      - constituency
+      rationale: The Westminster constituency cells. Kept when the build requests this level; a build
+        requests every level unless --target-geographies names a subset.
+    - id: la
+      families: '*'
+      levels:
+      - la
+      rationale: The local-authority cells. Kept when the build requests this level; a build requests
+        every level unless --target-geographies names a subset.
+    - id: brma
+      families: '*'
+      levels:
+      - brma
+      rationale: The Broad Rental Market Area cells. Kept when the build requests this level; a build
+        requests every level unless --target-geographies names a subset. With no area BRMAs (--brma-localisation
+        none) the node drops these rows before it selects, because they would bind on the spine's regional
+        BRMA draw (microcosm#1305).
+- id: calibration_line
+  tool: packages/microcosm-build/src/microcosm/build/uk_runtime/full_targets.py
+  option: line (uk_runtime.ledger_targets.uk_registry_on_calibration_line)
+  default_mode: local
+  modes:
+  - id: national
+    description: 'The national line''s solve surface (load_uk_national_target_inputs and the release-cut
+      certifier): the compiled national registry less the references whose contract target binds on the
+      local line only. They leave right after the compile, before reconciliation, the measure exclusions
+      and the frozen-register check (microcosm#1301).'
+    compiled:
+    - id: on_line
+      families: '*'
+      levels: '*'
+      exclude:
+      - off_calibration_line
+      rationale: 'A contract target binds on every line unless its calibration_lines field in uk/uk_population_targets.json
+        narrows it; the field and its reason stay with the target, and uk_runtime.ledger_targets passes
+        this clause the targets it leaves out. The high-value homes region rows bind on the local line
+        only (microcosm#1240, microcosm#1301): on the national line they would move the national registry
+        and solve while the Land Registry knots'' tails place more homes in the top bands than the derived
+        stock (microcosm#1112).'
+  - id: local
+    description: 'The local line''s national rows (load_uk_full_target_inputs; the full dense build binds
+      them beside the local surface): the compiled national registry less the references whose contract
+      target binds on the national line only, dropped at the same point.'
+    compiled:
+    - id: on_line
+      families: '*'
+      levels: '*'
+      exclude:
+      - off_calibration_line
+      rationale: A contract target binds on every line unless its calibration_lines field in uk/uk_population_targets.json
+        narrows it; the field and its reason stay with the target, and uk_runtime.ledger_targets passes
+        this clause the targets it leaves out. The CenTax childcare-parent bands bind on the national
+        line only (microcosm#1399).

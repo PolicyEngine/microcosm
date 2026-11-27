@@ -1287,6 +1287,9 @@ class TestExistingPackagesGeneralize:
             "spec/geography.yaml",
             "spec/sources.yaml",
             "spec/spine.yaml",
+            # microcosm#1759: the UK level rule, the full build's selection
+            # by level and the calibration lines, as a typed resource.
+            "spec/target_sets.yaml",
             "spec/vintages.yaml",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",

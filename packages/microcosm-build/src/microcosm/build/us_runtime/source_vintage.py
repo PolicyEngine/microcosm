@@ -70,6 +70,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from types import MappingProxyType
 
+from microcosm.build.us_runtime.fiscal_target_registers import (
+    us_fiscal_target_register,
+)
 from microcosm.build.us_runtime.target_aging import (
     _cbo_projection_series,
     _period_year,
@@ -150,66 +153,43 @@ def _restamped(
     )
 
 
-# Reviewed against consumer_facts_us_c5e5bf8.jsonl (Chronicle c5e5bf8, sha256
-# b8543739...): these are the 26,893 facts both rules detect. Each data year
-# was confirmed from the file itself (title cell or content match), not from
-# Chronicle labels. "Newest" claims were checked on irs.gov on 2026-09-25.
+#: Declared in ``us/fiscal_target_registers.json``
+#: (``restamped_source_packages``); its description and each package's reason
+#: give the review evidence.
 US_RESTAMPED_SOURCE_PACKAGES: Mapping[str, RestampedSourcePackage] = MappingProxyType(
     dict(
-        (
-            _restamped(
-                "soi-w2-statistics-2020",
-                2020,
-                "20in04w2all.xlsx",
-                "1178d77618cc1d2f873506909eeec660f36e3599854f31337f9dcaec6cfc442f",
-                "IRS SOI Form W-2 statistics Table 4.B, titled 'Tax Year 2020'. "
-                "The ty2023 tips return_count, taxpayer_count and amount share "
-                "their source cells, bytes and values with the ty2020 twins; "
-                "the ty2023 401(k) and designated Roth 401(k) amounts are cells "
-                "D22 and D41 of the same table. As of 2026-09-25 TY2020 is the "
-                "newest W-2 table on irs.gov.",
-            ),
-            _restamped(
-                "soi-congressional-district-2022",
-                2022,
-                "22incd.csv",
-                "137522878af78d624cfddc0e17cd36ae76a21b7bed166c7bb96ad3243a18a668",
-                "IRS SOI congressional district data for tax year 2022 (the "
-                "newest CD release as of 2026-09-25). The single-district "
-                "states match the TY2022 county file (for example WY N1 "
-                "280,740), and the US taxable interest is 92.7% of TY2022 "
-                "Table 1.4 against 39.4% of TY2023 (PolicyEngine/chronicle#117).",
-            ),
-            _restamped(
-                "soi-state-2022",
-                2022,
-                "22in54us.xlsx",
-                "5e58050449c07c2e941f280c60d597784047f02ee1fa93dc1aed64fc1ea493f6",
-                "IRS SOI Historic Table 2 US totals, titled 'Tax Year 2022'.",
-            ),
-            _restamped(
-                "soi-ira-roth-contributions-2022",
-                2022,
-                "22in06ira.xlsx",
-                "c1fb0894cb09d2486be4510b7e6ce0b8597787725b928ab8813f577d9fb13183",
-                "IRS SOI IRA Table 6 (Roth contributions), titled 'Tax Year 2022'.",
-            ),
-            _restamped(
-                "soi-ira-traditional-contributions-2022",
-                2022,
-                "22in05ira.xlsx",
-                "31ce9dd2fe631b336170af339bd7e9de86901cd20dbfd4cb8fb1c9a1d55cd90f",
-                "IRS SOI IRA Table 5 (traditional contributions), titled "
-                "'Tax Year 2022'.",
-            ),
+        _restamped(
+            package_id,
+            data_year,
+            source_file,
+            source_sha256,
+            reason,
+            stamped_periods=stamped_periods,
         )
+        for package_id, (
+            data_year,
+            stamped_periods,
+            source_file,
+            source_sha256,
+            reason,
+        ) in us_fiscal_target_register("restamped_source_packages").items()
     )
 )
 
-# None on the pinned feed: no package there observes a year after its key.
+#: Declared in ``us/fiscal_target_registers.json``
+#: (``later_period_observation_exemptions``).
 US_LATER_PERIOD_OBSERVATION_EXEMPTIONS: Mapping[
     str, LaterPeriodObservationExemption
-] = MappingProxyType({})
+] = MappingProxyType(
+    {
+        package_id: LaterPeriodObservationExemption(
+            package_id=package_id, periods=frozenset(periods), reason=reason
+        )
+        for package_id, (periods, reason) in us_fiscal_target_register(
+            "later_period_observation_exemptions"
+        ).items()
+    }
+)
 
 
 @dataclass(frozen=True)

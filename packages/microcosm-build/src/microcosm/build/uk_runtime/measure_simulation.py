@@ -15,6 +15,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.declared_registers import (
+    ReviewWindow,
+    canonical_date,
+    stale_entries,
+)
 from microcosm.build.target_materialization import (
     evaluate_named_term,
     named_term_leaves,
@@ -2110,16 +2115,14 @@ def load_uk_calibration_measure_exclusions(
                     "resolved, who approved it, and for how long."
                 )
         for field in ("approved_on", "expires_on"):
-            try:
-                parsed = date.fromisoformat(record[field])
-            except ValueError:
-                parsed = None
-            if parsed is None or parsed.isoformat() != record[field]:
+            if canonical_date(record[field]) is None:
                 raise ValueError(
                     f"UK calibration measure exclusion {name!r} {field} must be "
                     f"canonical ISO (YYYY-MM-DD), got {record[field]!r}."
                 )
-        if record["expires_on"] <= record["approved_on"]:
+        if canonical_date(record["expires_on"]) <= canonical_date(
+            record["approved_on"]
+        ):
             raise ValueError(
                 f"UK calibration measure exclusion {name!r} expires_on must be "
                 "after approved_on."
@@ -2147,9 +2150,11 @@ def apply_uk_calibration_measure_exclusions(
 
     evaluated_on = exclusion_evaluation_date(now)
     for entry in exclusions:
-        approved = date.fromisoformat(entry["approved_on"])
-        expires = date.fromisoformat(entry["expires_on"])
-        if not approved <= evaluated_on <= expires:
+        window = ReviewWindow(
+            date.fromisoformat(entry["approved_on"]),
+            date.fromisoformat(entry["expires_on"]),
+        )
+        if not window.in_force(evaluated_on):
             raise ValueError(
                 f"UK calibration measure exclusion {entry['name']!r} is outside "
                 f"its reviewed window ({entry['approved_on']}..{entry['expires_on']}, "
@@ -2157,7 +2162,7 @@ def apply_uk_calibration_measure_exclusions(
                 f"gap ({entry['tracking']}) or renew the adjudication with a new "
                 "approval and expiry."
             )
-        if (expires - evaluated_on).days <= 7:
+        if window.days_left(evaluated_on) <= 7:
             warnings.warn(
                 f"UK calibration measure exclusion {entry['name']!r} expires "
                 f"{entry['expires_on']} — within one week of the evaluation "
@@ -2169,7 +2174,7 @@ def apply_uk_calibration_measure_exclusions(
             )
     declared = {entry["name"]: entry for entry in exclusions}
     matched = {spec.name for spec in registry.specs if spec.name in declared}
-    stale = sorted(set(declared) - matched)
+    stale = stale_entries(declared, matched)
     if stale:
         raise ValueError(
             "UK calibration measure exclusion matched zero registry specs: "

@@ -934,6 +934,7 @@ def _materialize_county_fixture(
         registry=TargetRegistry(parents, country="us"),
         ri_substitutions=[],
         soi_receipt={},
+        levels_left_out=[],
     )
     populations = {
         "state": {1: 200.0},

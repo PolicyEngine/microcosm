@@ -166,8 +166,12 @@ _NATIONAL_GRAPH = tuple(
 #: microcosm#1492, and the kernels that now hash it. All four full-graph
 #: kernels share one hash, so what one of them runs re-keys all four.
 _RUN_MODULES = {
-    # uk.full.target_selection@1 calls select_targets.
-    "microcosm.calibrate.target_selection": _FULL_GRAPH,
+    # uk.full.target_selection@1 calls select_by_levels, and every target
+    # kernel's level reader (graph_targets.target_geography) reads the
+    # declared level rule through the UK adapter (microcosm#1759).
+    # The national problem writes each row's level by the same rule.
+    "microcosm.calibrate.target_sets": _FULL_GRAPH + _NATIONAL_GRAPH,
+    "microcosm.build.uk_runtime.target_sets": _FULL_GRAPH + _NATIONAL_GRAPH,
     # The measures and problem kernels build and encode constraint matrices.
     "microcosm.calibrate.matrix": _FULL_GRAPH + _NATIONAL_GRAPH,
     "microcosm.calibrate.artifacts": _FULL_GRAPH + _NATIONAL_GRAPH,

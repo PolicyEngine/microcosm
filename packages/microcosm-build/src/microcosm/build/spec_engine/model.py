@@ -95,6 +95,7 @@ class ResourceKind(StrEnum):
     PUBLICATION = "publication"
     VINTAGES = "vintages"
     CATALOGS = "catalogs"
+    TARGET_SETS = "target_sets"
     SCHEMA = "schema"
     LEGACY_JSON = "legacy_json"
 
@@ -233,6 +234,11 @@ class CatalogsSpec(DomainSpec):
     pass
 
 
+@dataclass(frozen=True, slots=True)
+class TargetSetsSpec(DomainSpec):
+    pass
+
+
 DOMAIN_TYPE_BY_KIND: Mapping[ResourceKind, type[DomainSpec]] = {
     ResourceKind.BUNDLE: BundleSpec,
     ResourceKind.SOURCES: SourcesSpec,
@@ -246,6 +252,7 @@ DOMAIN_TYPE_BY_KIND: Mapping[ResourceKind, type[DomainSpec]] = {
     ResourceKind.PUBLICATION: PublicationSpec,
     ResourceKind.VINTAGES: VintagesSpec,
     ResourceKind.CATALOGS: CatalogsSpec,
+    ResourceKind.TARGET_SETS: TargetSetsSpec,
     ResourceKind.SCHEMA: DomainSpec,
     ResourceKind.LEGACY_JSON: DomainSpec,
 }

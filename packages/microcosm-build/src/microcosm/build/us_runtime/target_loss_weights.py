@@ -76,6 +76,8 @@ from microcosm.calibrate.target_loss_rules import (
     value_basis_weights,
 )
 
+from .target_sets import us_target_level
+
 #: The loss formula's identifier, recorded in release diagnostics.
 US_FISCAL_TARGET_LOSS_WEIGHTING = (
     "sqrt_value_concept_budget_weighted_mape_50_50_amount_count_target_scale_cap_100pct"
@@ -769,14 +771,14 @@ def target_loss_weights_sha256(names: Sequence[str], weights: np.ndarray) -> str
 
 
 def target_geography_level(spec) -> str:
-    """A spec's geography level for summaries (ledger or ladder metadata)."""
+    """A spec's geography level, by the level rule of ``us/spec/target_sets.yaml``.
 
-    metadata = spec.metadata
-    return str(
-        metadata.get("ledger_geography_level")
-        or metadata.get("geography_level")
-        or "unspecified"
-    )
+    The declared target sets place a target by the same rule
+    (:func:`~.target_sets.us_target_level`), so a US target has one level in
+    the selection, in the loss weights and in the summaries.
+    """
+
+    return us_target_level(spec)
 
 
 def target_loss_weight_distribution(

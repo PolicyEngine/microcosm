@@ -78,8 +78,10 @@ __all__ = [
     "country_stage_plan",
     "country_engine_abi_lock_check_environment",
     "load_country_take_up_contract_projection",
+    "load_country_target_sets",
     "load_country_spec",
     "load_gates_manifest",
+    "typed_resource_content_sha256",
 ]
 
 #: Resource kinds admitted by the binding ``resource_manifest.schema.json``.
@@ -100,12 +102,16 @@ ALLOWED_COUNTRY_RESOURCE_KINDS = frozenset(
         "publication",
         "vintages",
         "catalogs",
+        "target_sets",
         "schema",
         "legacy_json",
     }
 )
 
 _LEGACY_RESOURCE_SCHEMA_ID = "legacy_json"
+#: The domain tag of a typed resource's content hash
+#: (:func:`typed_resource_content_sha256`).
+_CONTENT_HASH_DOMAIN = "microcosm-country-spec/normative-content/1"
 _GENERATED_LOCK_FILENAMES = frozenset(
     {"bundle.lock.json", "engine_abi.lock.json", "plan.lock.json"}
 )
@@ -1630,6 +1636,16 @@ class ResolvedCountrySpec:
             migration evidence only.
         resource_hashes: Resource filename -> sha256 of its bytes (includes
             ``country_package.json`` itself).
+        content_hashes: Typed resource path -> sha256 of its normative
+            projection, for a generation-1 bundle. The spec engine separates
+            each typed resource's normative content from its documentation
+            (the fields its schema marks ``x-spec-surface: documentation``),
+            and ``spec_sha256`` covers the normative content alone. This is
+            that content for one resource. A cache key can use it in place of
+            the byte hash (:meth:`fingerprint_excluding`), so that an edit to
+            a description or a layout does not change the key; release
+            manifests keep the byte hash. A ``legacy_json`` resource has no
+            content hash: it has no schema to say what is documentation.
         resolved_spec: The canonical spec-engine object for a generation-1
             bundle, when compiled. It remains ``None`` for generation-0
             compatibility packages.
@@ -1649,6 +1665,9 @@ class ResolvedCountrySpec:
     take_up_contract: Mapping[str, Any] | None
     resource_hashes: Mapping[str, str]
     resolved_spec: object | None = None
+    content_hashes: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
     @property
     def resources(self) -> tuple[str, ...]:
@@ -1666,7 +1685,9 @@ class ResolvedCountrySpec:
         """
         return compute_composition_fingerprint(self.resource_hashes.values())
 
-    def fingerprint_excluding(self, excluded: Collection[str]) -> str:
+    def fingerprint_excluding(
+        self, excluded: Collection[str], *, by_content: Collection[str] = ()
+    ) -> str:
         """Composition fingerprint over every resource hash but ``excluded``.
 
         A node whose computation reads none of the excluded resources keys on
@@ -1677,14 +1698,24 @@ class ResolvedCountrySpec:
         lacks those resources, and another exclusion set is another value.
         Release manifests keep recording :attr:`fingerprint`.
 
+        A resource in ``by_content`` enters by its content hash
+        (:attr:`content_hashes`), not by its byte hash. An edit to its
+        documentation, or a new layout of the file, then leaves the value as
+        it was, and an edit to its content changes it. Those names are bound
+        under a second domain tag, so the value is never one that hashes the
+        same resources by their bytes.
+
         Raises:
-            TypeError: If ``excluded`` is a single string.
+            TypeError: If ``excluded`` or ``by_content`` is a single string.
             ValueError: If a name is not a declared resource, or is
-                ``country_package.json``, which declares the roster itself.
+                ``country_package.json``, which declares the roster itself;
+                if a ``by_content`` name has no content hash, or is also
+                excluded.
         """
-        if isinstance(excluded, str):
+        if isinstance(excluded, str) or isinstance(by_content, str):
             raise TypeError("fingerprint_excluding takes a collection of names.")
         names = frozenset(excluded)
+        content_names = frozenset(by_content)
         if "country_package.json" in names:
             raise ValueError(
                 "country_package.json declares the resource roster and cannot "
@@ -1696,18 +1727,37 @@ class ResolvedCountrySpec:
                 f"{self.country}: cannot exclude undeclared resource(s) "
                 f"{undeclared} from the fingerprint."
             )
-        tag = hashlib.sha256(
-            b"microcosm-country-spec/excluding/1\n"
-            + "\n".join(sorted(names)).encode("utf-8")
-        ).hexdigest()
+        if content_names & names:
+            raise ValueError(
+                f"{self.country}: resource(s) {sorted(content_names & names)} "
+                "cannot be both excluded and hashed by content."
+            )
+        without_content = sorted(content_names - set(self.content_hashes))
+        if without_content:
+            raise ValueError(
+                f"{self.country}: resource(s) {without_content} have no content hash."
+            )
+        tags = [
+            hashlib.sha256(
+                b"microcosm-country-spec/excluding/1\n"
+                + "\n".join(sorted(names)).encode("utf-8")
+            ).hexdigest()
+        ]
+        if content_names:
+            tags.append(
+                hashlib.sha256(
+                    b"microcosm-country-spec/by-content/1\n"
+                    + "\n".join(sorted(content_names)).encode("utf-8")
+                ).hexdigest()
+            )
         return compute_composition_fingerprint(
             (
                 *(
-                    digest
+                    self.content_hashes[name] if name in content_names else digest
                     for name, digest in self.resource_hashes.items()
                     if name not in names
                 ),
-                tag,
+                *tags,
             )
         )
 
@@ -2179,6 +2229,142 @@ def load_country_take_up_contract_projection(
     return projection
 
 
+def _normalized_typed_resource(
+    resource_path: Path, schema_id: str
+) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    """One typed resource as the bundle loader reads it, without the bundle.
+
+    The same strict YAML 1.2 parser, schema check, default injection and
+    normalizer as :func:`microcosm.build.spec_engine.load_bundle`. Returns
+    the normalized object and its projection onto each surface.
+    """
+
+    from microcosm.build.spec_engine import load_schema_registry, load_yaml12_file
+    from microcosm.build.spec_engine.canonical import normalize_and_project
+    from microcosm.build.spec_engine.model import thaw_json
+
+    registry = load_schema_registry()
+    value = load_yaml12_file(resource_path)
+    registry.validate(value, schema_id)
+    defaulted = registry.validate_and_inject_defaults(value, schema_id)
+    normalized, projections = normalize_and_project(
+        defaulted, schema_id=schema_id, registry=registry
+    )
+    thawed, surfaces = thaw_json(normalized), thaw_json(projections)
+    if not isinstance(thawed, Mapping) or not isinstance(surfaces, Mapping):
+        raise ValueError(f"{resource_path.name}: normalized resource is not an object.")
+    return thawed, surfaces
+
+
+def _normative_content_sha256(normative: object) -> str:
+    from microcosm.build.spec_engine.canonical import sha256_json
+
+    return sha256_json({"domain": _CONTENT_HASH_DOMAIN, "normative": normative})
+
+
+def typed_resource_content_sha256(resource_path: str | Path, schema_id: str) -> str:
+    """The content hash of one typed resource file: its normative projection.
+
+    This is the value :attr:`ResolvedCountrySpec.content_hashes` holds for a
+    typed resource of a loaded package. A change to a field that the schema
+    marks as documentation, a new layout of the file, or another order of the
+    fields of an object leaves it as it was.
+    """
+
+    _normalized, surfaces = _normalized_typed_resource(Path(resource_path), schema_id)
+    return _normative_content_sha256(surfaces.get("normative", {}))
+
+
+def _typed_content_hashes(resolved_spec: Any) -> dict[str, str]:
+    """Each typed resource's content hash, from the resolved bundle."""
+
+    from microcosm.build.spec_engine.model import ResourceKind, Surface, thaw_json
+
+    return {
+        resource.descriptor.path.as_posix(): _normative_content_sha256(
+            thaw_json(resource.surface(Surface.NORMATIVE))
+        )
+        for resource in resolved_spec.resources
+        if resource.descriptor.kind
+        not in {ResourceKind.SCHEMA, ResourceKind.LEGACY_JSON}
+    }
+
+
+def _checked_target_sets(document: Mapping[str, Any], *, country: str) -> None:
+    """Refuse declared target sets that the shared reader cannot use."""
+
+    from microcosm.calibrate.target_sets import load_target_set_declarations
+
+    declarations = load_target_set_declarations(document)
+    if declarations.country != country:
+        raise ValueError(
+            f"target_sets declares country {declarations.country!r} but lives "
+            f"in the {country!r} package."
+        )
+
+
+def _validate_declared_target_sets(resolved_spec: Any, *, country: str) -> None:
+    """Check a bundle's ``target_sets`` domain, when it declares one.
+
+    The schema states the form. The shared reader
+    (``microcosm.calibrate.target_sets``) adds what a schema cannot: unique
+    ids and a declared default mode. A package whose declared target sets
+    cannot be read does not load.
+    """
+
+    try:
+        domain = resolved_spec.domain("target_sets")
+    except KeyError:
+        return
+    document = domain.to_wire()
+    if not isinstance(document, Mapping):  # pragma: no cover - schema invariant
+        raise ValueError("target_sets: normalized typed domain is not an object.")
+    _checked_target_sets(document, country=country)
+
+
+def load_country_target_sets(country: str | Path) -> Mapping[str, Any] | None:
+    """Load only the manifest-declared ``target_sets`` resource of a package.
+
+    The declared target sets say which compiled targets each product of a
+    country calibrates to (``microcosm.calibrate.target_sets``). Country
+    modules read them when they are imported, so this narrow seam reads the
+    one typed resource and not the whole bundle, as
+    :func:`load_country_take_up_contract_projection` does for take-up. It
+    uses the same strict parser, schema check, defaults and normalizer as the
+    bundle loader, so it returns the object the loaded bundle holds.
+
+    Returns ``None`` for a package that declares no ``target_sets`` resource.
+    """
+
+    if isinstance(country, Path):
+        root = country
+    else:
+        root = Path(str(importlib_resources.files("microcosm.build").joinpath(country)))
+    package = _require_mapping(
+        json.loads((root / "country_package.json").read_text(encoding="utf-8")),
+        context="country_package.json",
+    )
+    rows = [
+        row
+        for row in _resolve_country_resource_rows(package.get("resources", []))
+        if row.kind == "target_sets"
+    ]
+    if not rows:
+        return None
+    if len(rows) != 1:
+        raise ValueError(
+            "country_package.json: a package declares at most one target_sets resource."
+        )
+    document, _surfaces = _normalized_typed_resource(
+        _country_resource_path(root, rows[0].path), rows[0].schema_id
+    )
+    declared_country = _require_non_empty_string(
+        package.get("country"), field_name="country", context="country_package.json"
+    )
+    _checked_target_sets(document, country=declared_country)
+    return document
+
+
 def country_resource(country: str, name: str) -> Traversable:
     """The packaged resource ``name`` of ``country``'s spec package.
 
@@ -2353,6 +2539,7 @@ def _load_country_spec(root: Path) -> ResolvedCountrySpec:
         )
 
     hashes: dict[str, str] = {"country_package.json": sha256_file(package_path)}
+    content_hashes: dict[str, str] = {}
     payloads: dict[str, Mapping[str, Any]] = {}
     for row in resource_rows:
         name = row.path
@@ -2387,6 +2574,8 @@ def _load_country_spec(root: Path) -> ResolvedCountrySpec:
         from microcosm.build.spec_engine import load_bundle
 
         resolved_spec = load_bundle(root)
+        content_hashes = _typed_content_hashes(resolved_spec)
+        _validate_declared_target_sets(resolved_spec, country=declared_country)
 
     source_payload = _select_compatibility_payload(
         resolved_spec=resolved_spec,
@@ -2499,6 +2688,7 @@ def _load_country_spec(root: Path) -> ResolvedCountrySpec:
         # Read-only: a cached spec is shared by every caller in the process.
         resource_hashes=MappingProxyType(hashes),
         resolved_spec=resolved_spec,
+        content_hashes=MappingProxyType(content_hashes),
     )
 
 

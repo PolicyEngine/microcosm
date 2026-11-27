@@ -129,6 +129,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.declared_registers import (
+    DeclaredRegisterError,
+    ReviewWindow,
+    canonical_date,
+    read_strict_json,
+)
 from microcosm.build.gates import (
     GateResult,
     input_mass_parity_gate,
@@ -385,18 +391,11 @@ class UKReviewedExclusion:
         parsed: dict[str, date] = {}
         for name in ("approved_on", "expires_on"):
             value = getattr(self, name)
-            try:
-                parsed[name] = date.fromisoformat(value)
-            except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"UK reviewed exclusion {name} must be an ISO date "
-                    f"(YYYY-MM-DD), got {value!r}."
-                ) from exc
-            # fromisoformat also accepts compact (20270210) and week-date
-            # forms; the receipt pins the canonical rendering because the
-            # raw string is sealed into the policy digest — two spellings
-            # of one date must not produce two digests.
-            if parsed[name].isoformat() != value:
+            # Only the canonical spelling counts (canonical_date): the receipt
+            # pins it because the raw string is sealed into the policy digest
+            # — two spellings of one date must not produce two digests.
+            parsed[name] = canonical_date(value)
+            if parsed[name] is None:
                 raise ValueError(
                     f"UK reviewed exclusion {name} must be an ISO date "
                     f"(YYYY-MM-DD), got {value!r}."
@@ -408,15 +407,22 @@ class UKReviewedExclusion:
                 f"expires_on={self.expires_on!r}."
             )
 
+    def window(self) -> ReviewWindow:
+        """The entry's review window (both days in force)."""
+
+        return ReviewWindow(
+            date.fromisoformat(self.approved_on), date.fromisoformat(self.expires_on)
+        )
+
     def expired(self, now: date) -> bool:
         """Honored through ``expires_on``; expired strictly after it."""
 
-        return now > date.fromisoformat(self.expires_on)
+        return self.window().expired(now)
 
     def premature(self, now: date) -> bool:
         """In force from ``approved_on``; premature strictly before it."""
 
-        return now < date.fromisoformat(self.approved_on)
+        return self.window().premature(now)
 
     def applies_on(self, line: str | None) -> bool:
         """Whether the entry is in scope on a release line.
@@ -652,28 +658,14 @@ def _read_register_payload(
         raw = Path(source).read_text(encoding="utf-8")
         label = str(source)
 
-    def strict_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-        result: dict[str, object] = {}
-        duplicates: set[str] = set()
-        for name, value in pairs:
-            if name in result:
-                duplicates.add(name)
-            result[name] = value
-        if duplicates:
-            raise ValueError(f"{label}: duplicate JSON key(s): {sorted(duplicates)}.")
-        return result
-
-    def reject_nonfinite_json(value: str) -> object:
-        raise ValueError(f"{label}: non-finite JSON value {value!r} is invalid.")
-
+    # Duplicate keys, non-finite numbers and malformed text are refused
+    # (microcosm#1759: the shared strict reader). A gate that fails closed
+    # records the class of the error (gate_battery, ``evaluation_error.type``),
+    # so the refusal stays a plain ValueError with the reader's text.
     try:
-        payload = json.loads(
-            raw,
-            object_pairs_hook=strict_object,
-            parse_constant=reject_nonfinite_json,
-        )
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"{label}: malformed JSON: {exc.msg}.") from exc
+        payload = read_strict_json(raw, label=label)
+    except DeclaredRegisterError as error:
+        raise ValueError(str(error)) from error
     if not isinstance(payload, Mapping):
         raise ValueError(f"{label}: exclusion register must be a JSON object.")
     return payload, label

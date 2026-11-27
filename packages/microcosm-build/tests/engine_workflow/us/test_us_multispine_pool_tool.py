@@ -376,7 +376,9 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # Importing torch inside the solve functions that use it, and the
             # QRF chain passing its workers a lock-file check record, move it
             # again.
-            "spec_sha256": '7e282f7fd459c63a25f1ad8b57fc88cb118088c353e81dce26080ad87f266375',
+            # microcosm#1728's three declared US resources (target sets, local
+            # target construction and compile registers) move it again.
+            "spec_sha256": "e76daa6c13870a3d09a3201321ffbd5d55e27023578c69e3be20ed7685c0c220",
         },
     }
 

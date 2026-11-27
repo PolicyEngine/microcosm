@@ -150,7 +150,8 @@ def test_typed_domains_are_exact_legacy_compatibility_projections(
 ) -> None:
     __import__("policyengine_us")
     documents = {
-        f"{kind}.yaml": _domain(resolved_us_spec, kind) for kind in TYPED_DOMAIN_KINDS
+        f"{kind}.yaml": _domain(resolved_us_spec, kind)
+        for kind in GENERATED_DOMAIN_KINDS
     }
     projections = generator.legacy_compatibility_projections(documents)
     for name, projection in projections.items():
@@ -442,7 +443,11 @@ def test_generator_reproduces_every_checked_in_bundle_byte(
     generated_documents: dict[str, dict[str, object]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert set(generated_documents) == {f"{kind}.yaml" for kind in TYPED_DOMAIN_KINDS}
+    assert set(generated_documents) == {
+        f"{kind}.yaml" for kind in GENERATED_DOMAIN_KINDS
+    }
+    assert set(generator.AUTHORED_DOMAIN_KINDS) == AUTHORED_DOMAIN_KINDS
+    assert set(generator.DOMAIN_KINDS) == GENERATED_DOMAIN_KINDS
     for filename, expected in generated_documents.items():
         path = US_SPEC_ROOT / filename
         assert load_yaml12_file(path) == expected

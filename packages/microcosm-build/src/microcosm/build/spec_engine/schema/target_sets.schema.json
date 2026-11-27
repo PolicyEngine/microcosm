@@ -1,0 +1,300 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "target_sets.schema.json",
+ "title": "Declared target sets: the compiled targets each product calibrates to, for each mode",
+ "x-spec-surface": "normative",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "version",
+  "country",
+  "level_rule",
+  "products"
+ ],
+ "properties": {
+  "version": {
+   "const": 1
+  },
+  "country": {
+   "$ref": "defs.schema.json#/$defs/identifier"
+  },
+  "description": {
+   "type": "string",
+   "minLength": 1,
+   "x-spec-surface": "documentation",
+   "description": "What the file declares. No selection reads it."
+  },
+  "level_rule": {
+   "$ref": "#/$defs/level_rule"
+  },
+  "products": {
+   "type": "array",
+   "minItems": 1,
+   "description": "In declared order. Each id is unique.",
+   "items": {
+    "$ref": "#/$defs/product"
+   }
+  }
+ },
+ "$defs": {
+  "name": {
+   "type": "string",
+   "minLength": 1,
+   "pattern": "^\\S(.*\\S)?$"
+  },
+  "names_or_any": {
+   "oneOf": [
+    {
+     "const": "*"
+    },
+    {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "x-canonical-order": "set",
+     "items": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(.*\\S)?$"
+     }
+    }
+   ]
+  },
+  "level_rule": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "keys",
+    "values",
+    "conflict",
+    "rationale"
+   ],
+   "description": "How a target's geography level is read from its metadata.",
+   "properties": {
+    "keys": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "description": "Metadata keys in reading order: the first one that has a value gives the level.",
+     "items": {
+      "$ref": "#/$defs/name"
+     }
+    },
+    "values": {
+     "$ref": "#/$defs/names_or_any",
+     "description": "The closed set of levels, or \"*\" for any level."
+    },
+    "conflict": {
+     "enum": [
+      "first",
+      "refuse"
+     ]
+    },
+    "rationale": {
+     "type": "string",
+     "minLength": 1,
+     "x-spec-surface": "documentation"
+    }
+   }
+  },
+  "product": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "tool",
+    "option",
+    "default_mode",
+    "modes"
+   ],
+   "properties": {
+    "id": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "tool": {
+     "$ref": "#/$defs/name"
+    },
+    "option": {
+     "$ref": "#/$defs/name"
+    },
+    "default_mode": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "modes": {
+     "type": "array",
+     "minItems": 1,
+     "description": "In declared order. Each id is unique in its product.",
+     "items": {
+      "$ref": "#/$defs/mode"
+     }
+    }
+   }
+  },
+  "mode": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "description",
+    "compiled"
+   ],
+   "properties": {
+    "id": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "description": {
+     "type": "string",
+     "minLength": 1,
+     "x-spec-surface": "documentation"
+    },
+    "compiled": {
+     "type": "array",
+     "minItems": 1,
+     "description": "Clauses in selection order.",
+     "items": {
+      "$ref": "#/$defs/clause"
+     }
+    },
+    "built": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/built_rows"
+     }
+    }
+   }
+  },
+  "clause": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "families",
+    "levels",
+    "rationale"
+   ],
+   "properties": {
+    "id": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "families": {
+     "$ref": "#/$defs/names_or_any"
+    },
+    "levels": {
+     "$ref": "#/$defs/names_or_any"
+    },
+    "metadata": {
+     "type": "object",
+     "description": "One test for each metadata key; every test must pass.",
+     "additionalProperties": {
+      "$ref": "#/$defs/metadata_test"
+     }
+    },
+    "exclude": {
+     "type": "array",
+     "uniqueItems": true,
+     "description": "Names of country predicates; a target that any of them accepts is dropped.",
+     "items": {
+      "$ref": "#/$defs/name"
+     }
+    },
+    "rule": {
+     "$ref": "#/$defs/name"
+    },
+    "rationale": {
+     "type": "string",
+     "minLength": 1,
+     "x-spec-surface": "documentation"
+    }
+   }
+  },
+  "metadata_test": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "present"
+     ],
+     "properties": {
+      "present": {
+       "type": "boolean"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "equals"
+     ],
+     "properties": {
+      "equals": {}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "not_equals"
+     ],
+     "properties": {
+      "not_equals": {}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "not_prefix"
+     ],
+     "properties": {
+      "not_prefix": {
+       "type": "string",
+       "minLength": 1,
+       "pattern": "^\\S(.*\\S)?$"
+      }
+     }
+    }
+   ]
+  },
+  "built_rows": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "family",
+    "levels",
+    "source",
+    "rationale"
+   ],
+   "description": "Rows a tool makes outside the compile. The selector does not make them.",
+   "properties": {
+    "id": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "family": {
+     "$ref": "#/$defs/name"
+    },
+    "option": {
+     "$ref": "#/$defs/name"
+    },
+    "levels": {
+     "type": "object",
+     "minProperties": 1,
+     "description": "The level that each value of the option gives.",
+     "additionalProperties": {
+      "$ref": "#/$defs/name"
+     }
+    },
+    "source": {
+     "$ref": "#/$defs/name"
+    },
+    "rationale": {
+     "type": "string",
+     "minLength": 1,
+     "x-spec-surface": "documentation"
+    }
+   }
+  }
+ }
+}

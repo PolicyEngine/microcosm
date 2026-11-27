@@ -58,6 +58,11 @@
       "schema_id": "take_up.schema.json"
     },
     {
+      "path": "spec/target_sets.yaml",
+      "kind": "target_sets",
+      "schema_id": "target_sets.schema.json"
+    },
+    {
       "path": "spec/vintages.yaml",
       "kind": "vintages",
       "schema_id": "vintages.schema.json"
@@ -103,7 +108,17 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "fiscal_target_registers.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "gates.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_target_construction.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

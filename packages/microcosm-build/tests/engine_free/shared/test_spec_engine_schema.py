@@ -34,7 +34,7 @@ def test_schema_registry_loads_only_the_approved_closed_world() -> None:
     catalog = load_schema_registry()
 
     assert frozenset(catalog.schemas) == SCHEMA_IDS
-    assert len(catalog.schemas) == 15
+    assert len(catalog.schemas) == 16
     assert catalog.schema("locks.schema.json#/$defs/bundle_lock")["required"] == [
         "grammar_receipt",
         "files",

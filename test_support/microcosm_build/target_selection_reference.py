@@ -1,3 +1,8 @@
+# Verbatim copy of microcosm.calibrate.target_selection at 508351658 (the head
+# of microcosm#1755 before microcosm#1759 moved the UK selection onto the
+# declared target sets). Tests hold the shared selector to it; do not edit.
+# ruff: noqa
+
 """Explicit target-scope selection, independent of country and pool sizing.
 
 Selection does not admit unsupported targets, adjudicate source authority, or
@@ -12,7 +17,7 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from .registry import TargetRegistry, TargetSpec
+from microcosm.calibrate.registry import TargetRegistry, TargetSpec
 
 
 @dataclass(frozen=True)
@@ -121,3 +126,21 @@ def select_targets(
         selected,
         json.dumps(receipt, sort_keys=True, separators=(",", ":"), allow_nan=False),
     )
+
+
+# Verbatim copy of microcosm.build.uk_runtime.graph_targets.target_geography at
+# 508351658: the UK resolver the full build passed to select_targets.
+def target_geography(spec: TargetSpec) -> str:
+    """Resolve explicit metadata without interpreting legacy registry buckets."""
+
+    metadata = spec.metadata
+    local = metadata.get("geography_level")
+    ledger = metadata.get("ledger_geography_level")
+    if local and ledger and local != ledger:
+        raise ValueError(f"Target {spec.name!r} has contradictory geography levels.")
+    level = local or ledger
+    if level not in {"country", "region", "constituency", "la", "brma"}:
+        raise ValueError(
+            f"Target {spec.name!r} has unsupported geography level {level!r}."
+        )
+    return str(level)

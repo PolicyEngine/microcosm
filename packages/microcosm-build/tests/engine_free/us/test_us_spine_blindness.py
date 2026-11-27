@@ -370,6 +370,16 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "household_batches.py",
         "immigration.py",
         "input_mass.py",
+        # The national materializer's ledger filter rules (moved from the
+        # release tool, microcosm#1728); reads spec metadata only, no frame.
+        "ledger_filter_rules.py",
+        # Names and loads the ACS local release's declared target
+        # construction (us/local_target_construction.json, microcosm#1728);
+        # reads no frame and treats no population.
+        "local_target_construction.py",
+        # Names the reviewed registers of the fiscal target compile
+        # (us/fiscal_target_registers.json, microcosm#1728); reads no frame.
+        "fiscal_target_registers.py",
         "l0_refit_export.py",
         "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
         "medicaid_take_up.py",
@@ -480,6 +490,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Calibration loss weights computed from target specs alone; reads no
         # frame and treats no population.
         "target_loss_weights.py",
+        # Names and loads the declared US target sets (us/spec/target_sets.yaml);
+        # selects target specs only, reads no frame and treats no population.
+        "target_sets.py",
         # Data-only final-owner matrix; provenance owner above.
         "us_late_overlap_ownership.py",
         # Data-only late input/output registry; provenance owner above.

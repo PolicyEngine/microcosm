@@ -656,6 +656,11 @@ def _load_json(path: Path) -> dict:
 def soi_surface_predicate(soi_mode: str):
     """The ``irs_soi`` spec filter for one ``--soi-mode``.
 
+    It is the level and metadata tests of the mode's ``soi`` clause in
+    ``us/spec/target_sets.yaml``, product ``local`` (microcosm#1728); the caller
+    selects the family. A spec's level is its ``ledger_geography_level``
+    (else its ``geography_level``), which every compiled spec carries.
+
     Every mode keeps only specs carrying ``state_fips`` (state rows, and the
     congressional-district rows that also carry their state).
 
@@ -671,41 +676,29 @@ def soi_surface_predicate(soi_mode: str):
     - ``full`` keeps them all.
     - ``state_cd`` is not a filter: this returns the ``full`` candidates it
       starts from, and :func:`state_admin_surface` reconciles them.
+    - ``state_county`` keeps the ``state`` rows; the county rows split them.
     """
 
+    from microcosm.build.us_runtime.target_sets import (
+        LOCAL_PRODUCT,
+        us_target_set_declaration,
+    )
+    from microcosm.calibrate.target_sets import clause_predicate
+
     _require_soi_mode(soi_mode)
-    if soi_mode == SOI_MODE_STATE_CD:
-        soi_mode = SOI_MODE_FULL
-    elif soi_mode == SOI_MODE_STATE_COUNTY:
-        soi_mode = SOI_MODE_STATE
-
-    def selected(spec) -> bool:
-        metadata = spec.metadata
-        if "state_fips" not in metadata:
-            return False
-        if soi_mode == SOI_MODE_STATE:
-            record_set_spec = metadata.get("ledger_layout_record_set_spec_id")
-            return (
-                metadata.get("ledger_geography_level") == "state"
-                and isinstance(record_set_spec, str)
-                and bool(record_set_spec)
-                and not record_set_spec.startswith(
-                    CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX
-                )
-            )
-        return (
-            soi_mode == SOI_MODE_FULL
-            or metadata.get("target_role") != "soi_fiscal_distribution"
-        )
-
-    return selected
+    return clause_predicate(
+        us_target_set_declaration(LOCAL_PRODUCT, soi_mode), "soi", test_family=False
+    )
 
 
-def _compiled_fiscal_registry(feed: str | Path):
+def _compiled_fiscal_registry(feed: str | Path, *, crosswalk=None):
     """The production compile path and its reviewed substitution records.
 
     feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
     ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44).
+    ``crosswalk`` is the congressional-district vintage crosswalk the compile
+    reads; by default the reviewed one. :func:`state_admin_surface` passes the
+    one it also gives the ``state_cd`` rule, so the tool compiles in one place.
     """
 
     from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
@@ -721,14 +714,14 @@ def _compiled_fiscal_registry(feed: str | Path):
     )
 
     artifact = load_ledger_consumer_artifact(str(feed))
+    if crosswalk is None:
+        crosswalk = load_congressional_district_vintage_crosswalk(
+            default_congressional_district_vintage_crosswalk_path()
+        )
     registry = compile_us_fiscal_target_registry(
         artifact.facts,
         target_period=PERIOD,
-        congressional_district_vintage_crosswalk=(
-            load_congressional_district_vintage_crosswalk(
-                default_congressional_district_vintage_crosswalk_path()
-            )
-        ),
+        congressional_district_vintage_crosswalk=crosswalk,
         age_targets=True,
     )
     return apply_us_medicaid_enrollment_substitutions(registry)
@@ -748,12 +741,24 @@ def state_admin_specs(
 
 
 class AdminSurface:
-    """The compiled admin registry plus how its SOI slice was chosen."""
+    """The compiled admin registry plus how its SOI slice was chosen.
 
-    def __init__(self, registry, ri_substitutions, soi_receipt: dict) -> None:
+    ``levels_left_out`` lists the compiled targets of the selected families
+    that the mode does not keep because of their level: one record for each
+    family and level, with the number of targets.
+    """
+
+    def __init__(
+        self,
+        registry,
+        ri_substitutions,
+        soi_receipt: dict,
+        levels_left_out: list[dict] | None = None,
+    ) -> None:
         self.registry = registry
         self.ri_substitutions = ri_substitutions
         self.soi_receipt = soi_receipt
+        self.levels_left_out = list(levels_left_out or [])
 
 
 def state_admin_surface(
@@ -763,72 +768,68 @@ def state_admin_surface(
 
     feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
     ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44) -> state-level
-    {usda_snap, cms_medicaid[enrollment], irs_soi}. The SOI slice follows
+    {usda_snap, cms_medicaid[enrollment], irs_soi}. The clauses ``snap``,
+    ``medicaid`` and ``soi`` of the mode's declaration in
+    ``us/spec/target_sets.yaml`` (product ``local``, microcosm#1728) pick them, in
+    that order; ``families`` turns clauses on by id. The SOI slice follows
     :func:`soi_surface_predicate` for ``state`` (the default), ``totals`` and
     ``full``; ``state_cd`` adds the reconciled congressional-district rows
-    (:func:`us_acs_local_cd_surface.state_cd_soi_surface`).
+    (:func:`us_acs_local_cd_surface.state_cd_soi_surface`). The surface also
+    lists the compiled targets of those families that the mode leaves out
+    because of their level (``levels_left_out``); the materialize stage
+    writes the list in ``materialize_rss.json``.
     """
 
     # Refuse an unknown mode before loading the feed and compiling the registry.
     _require_soi_mode(soi_mode)
 
-    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
     from microcosm.build.us_runtime import (
         default_congressional_district_vintage_crosswalk_path,
         load_congressional_district_vintage_crosswalk,
     )
-    from microcosm.build.us_runtime.fiscal_targets import (
-        compile_us_fiscal_target_registry,
-    )
-    from microcosm.build.us_runtime.medicaid_take_up import (
-        apply_us_medicaid_enrollment_substitutions,
+    from microcosm.build.us_runtime.target_sets import (
+        LOCAL_PRODUCT,
+        STATE_CD_RULE,
+        us_target_set_declaration,
     )
     from microcosm.calibrate.registry import TargetRegistry
+    from microcosm.calibrate.target_sets import select_target_set
 
-    artifact = load_ledger_consumer_artifact(str(feed))
     crosswalk_path = default_congressional_district_vintage_crosswalk_path()
     crosswalk = load_congressional_district_vintage_crosswalk(crosswalk_path)
-    registry = compile_us_fiscal_target_registry(
-        artifact.facts,
-        target_period=PERIOD,
-        congressional_district_vintage_crosswalk=crosswalk,
-        age_targets=True,
+    registry, ri_substitutions = _compiled_fiscal_registry(feed, crosswalk=crosswalk)
+
+    def state_cd_district_shares(candidates):
+        surface = cd_surface.state_cd_soi_surface(
+            candidates,
+            state_surface_predicate=soi_surface_predicate(SOI_MODE_STATE),
+            crosswalk=crosswalk,
+            crosswalk_sha256=_sha256(crosswalk_path),
+        )
+        return surface.specs, surface.receipt
+
+    declaration = us_target_set_declaration(LOCAL_PRODUCT, soi_mode)
+    selection = select_target_set(
+        declaration,
+        registry.specs,
+        clause_ids=[
+            clause_id for clause_id in declaration.clause_ids if clause_id in families
+        ],
+        rules={STATE_CD_RULE: state_cd_district_shares},
     )
-    registry, ri_substitutions = apply_us_medicaid_enrollment_substitutions(registry)
-
-    def state_level(spec) -> bool:
-        return "state_fips" in spec.metadata
-
-    picked = []
-    if "snap" in families:
-        picked += registry.select(family="usda_snap", predicate=state_level).specs
-    if "medicaid" in families:
-        picked += registry.select(
-            family="cms_medicaid",
-            predicate=lambda spec: (
-                state_level(spec)
-                and spec.metadata.get("target_role") == "medicaid_enrollment"
-            ),
-        ).specs
     soi_receipt: dict = {"soi_mode": soi_mode}
-    if "soi" in families:
-        candidates = registry.select(
-            family="irs_soi", predicate=soi_surface_predicate(soi_mode)
-        ).specs
-        if soi_mode == SOI_MODE_STATE_CD:
-            surface = cd_surface.state_cd_soi_surface(
-                candidates,
-                state_surface_predicate=soi_surface_predicate(SOI_MODE_STATE),
-                crosswalk=crosswalk,
-                crosswalk_sha256=_sha256(crosswalk_path),
-            )
-            picked += list(surface.specs)
-            soi_receipt.update(surface.receipt)
-        else:
-            picked += candidates
-            soi_receipt["counts"] = {"total": len(candidates)}
+    if "soi" in selection.rule_receipts:
+        soi_receipt.update(selection.rule_receipts["soi"])
+    elif "soi" in selection.clause_counts:
+        soi_receipt["counts"] = {"total": selection.clause_counts["soi"]}
     return AdminSurface(
-        TargetRegistry(list(picked), country="us"), ri_substitutions, soi_receipt
+        TargetRegistry(list(selection.specs), country="us"),
+        ri_substitutions,
+        soi_receipt,
+        [
+            {"family": family, "geography_level": level, "targets": count}
+            for (family, level), count in selection.left_out_by_level.items()
+        ],
     )
 
 
@@ -1665,10 +1666,17 @@ def population_targets(
     involved. A ladder cell with no supporting household is DROPPED from the
     surface and returned in the third element: the caller decides whether a
     shrunken surface is acceptable (a capped smoke) or a defect (release).
-    Returns ``(target records, CSR rows, dropped cell names)``.
+    Returns ``(target records, CSR rows, dropped cell names)``. A county run
+    takes its rows from the county rung, which adds the county rows to the
+    state and district rows.
     """
 
-    return cd_surface.population_rows(
+    rows = (
+        county_surface.population_rows
+        if "county" in geographies
+        else cd_surface.population_rows
+    )
+    return rows(
         frame.table("household"),
         household_sizes(frame),
         ladder_populations,
@@ -1684,71 +1692,49 @@ def population_target_specs(names, values):
     same id: a state its Census name, the name the ledger targets take from
     their facts ("Maine"), and a district the Census Bureau's name, which
     the IRS SOI district rows carry too. A registry refuses one US geography
-    with two labels (microcosm#1335).
+    with two labels (microcosm#1335). The state and district specs are the
+    shared :func:`microcosm.build.ladder_population_targets.population_target_specs`
+    over the declared US levels (microcosm#1728); county specs are the county
+    rung's.
     """
 
-    from microcosm.build.us_runtime.congressional_district_vintage import (
-        CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
-        congressional_district_label,
+    from microcosm.build.ladder_population_targets import (
+        population_target_specs as ladder_population_specs,
     )
-    from microcosm.calibrate import TargetSpec
-    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
-    from microcosm.calibrate.hierarchy import (
-        CalibrationHierarchy,
-        HierarchyCategory,
-        HierarchyGeography,
-        HierarchyNode,
+    from microcosm.build.us_runtime.local_target_construction import (
+        us_ladder_population,
+        us_population_labels,
     )
 
-    provider = HierarchyNode("census_population", "Census population")
-    category = HierarchyCategory(
-        "census_population.resident_population",
-        "Resident population",
-        provider.id,
-    )
-    specs = []
-    for name, value in zip(names, values, strict=True):
-        if name.startswith("pop_county_"):
-            specs.append(county_surface.population_spec(name, value, period=PERIOD))
-            continue
-        if name.startswith("pop_state_"):
-            fips = name.removeprefix("pop_state_")
-            label = US_STATE_FIPS_TO_NAME.get(fips)
-            if label is None:
-                raise ValueError(
-                    f"Population target {name!r} names no US state FIPS code."
-                )
-            geography = HierarchyGeography(f"0400000US{fips}", label, "state")
-        elif name.startswith("pop_cd_"):
-            geoid = name.removeprefix("pop_cd_")
-            # The ladder's districts are the 119th Congress plan.
-            geography_id = f"{CURRENT_CONGRESSIONAL_DISTRICT_PREFIX}{geoid}"
-            label = congressional_district_label(geography_id)
-            geography = HierarchyGeography(
-                geography_id, label, "congressional_district"
-            )
-        else:  # pragma: no cover - names originate in population_measure_arrays
-            raise ValueError(f"Unknown population target name {name!r}.")
-        specs.append(
-            TargetSpec(
-                name=name,
-                entity="household",
-                measure=name,
-                value=value,
-                period=PERIOD,
-                source="US Census Bureau 2020 PUMA population ladder",
-                family="census_population",
-                metadata={"geography_level": geography.level},
-                hierarchy=CalibrationHierarchy(
-                    provider=provider,
-                    category=category,
-                    geography=geography,
-                    dimensions=(),
-                    target=HierarchyNode(name, f"{label} resident population"),
-                ),
-            )
+    names, values = list(names), list(values)
+    if len(names) != len(values):
+        raise ValueError(
+            f"{len(names)} population target names but {len(values)} values."
         )
-    return tuple(specs)
+    county = [name.startswith("pop_county_") for name in names]
+    ladder_specs = iter(
+        ladder_population_specs(
+            [
+                name
+                for name, is_county in zip(names, county, strict=True)
+                if not is_county
+            ],
+            [
+                value
+                for value, is_county in zip(values, county, strict=True)
+                if not is_county
+            ],
+            us_ladder_population(),
+            period=PERIOD,
+            labels=us_population_labels(),
+        )
+    )
+    return tuple(
+        county_surface.population_spec(name, value, period=PERIOD)
+        if is_county
+        else next(ladder_specs)
+        for name, value, is_county in zip(names, values, county, strict=True)
+    )
 
 
 def ladder_population_target_specs(ladder_populations, geographies):
@@ -2271,34 +2257,34 @@ def _attach_pro_rata_populations(targets: list[dict], cd_populations: dict) -> N
 
     The pro-rata baseline allocates the state parent by these; both come
     from the PUMA ladder's 119th-plan district overlap populations, so a
-    state's district shares sum to one.
+    state's district shares sum to one. The shared
+    :func:`microcosm.build.target_holdouts.attach_population_shares` reads the
+    district hold-out's declared fields (microcosm#1728).
     """
 
-    state_population: dict[int, float] = {}
-    for district, population in cd_populations.items():
-        state = int(district) // 100
-        state_population[state] = state_population.get(state, 0.0) + float(population)
-    for target in targets:
-        geoid = target.get("congressional_district_geoid")
-        if target.get("family") != "irs_soi" or not geoid:
-            continue
-        district = int(geoid)
-        target["cd_population"] = float(cd_populations.get(district, 0.0))
-        target["state_population"] = float(state_population.get(district // 100, 0.0))
+    from microcosm.build.target_holdouts import attach_population_shares
+    from microcosm.build.us_runtime.local_target_construction import (
+        DISTRICT_HOLDOUT,
+        us_holdout_scoring,
+    )
+
+    attach_population_shares(
+        targets, cd_populations, us_holdout_scoring(DISTRICT_HOLDOUT)
+    )
 
 
 def _require_pro_rata_populations(targets: list[dict]) -> None:
     """Refuse, before any solve, a district row the baseline cannot score."""
 
-    unpopulated = [
-        target["name"]
-        for target in targets
-        if target.get("family") == "irs_soi"
-        and target.get("congressional_district_geoid")
-        and not (
-            target.get("cd_population", 0) > 0 and target.get("state_population", 0) > 0
-        )
-    ]
+    from microcosm.build.target_holdouts import missing_population_shares
+    from microcosm.build.us_runtime.local_target_construction import (
+        DISTRICT_HOLDOUT,
+        us_holdout_scoring,
+    )
+
+    unpopulated = missing_population_shares(
+        targets, us_holdout_scoring(DISTRICT_HOLDOUT)
+    )
     if unpopulated:
         raise SystemExit(
             f"{len(unpopulated)} district SOI target(s) have no positive "
@@ -2551,6 +2537,7 @@ def do_materialize(args) -> None:
                 "target_matrix": {"shape": matrix_shape, "nnz": matrix_nnz},
                 "carrier_check": materialized.carrier_check,
                 "soi_surface": surface.soi_receipt,
+                "target_levels_left_out": surface.levels_left_out,
                 "cd_holdout": holdout,
                 **county_surface.run_metadata(args, county_holdout),
                 "sampling": sampling,

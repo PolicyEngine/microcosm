@@ -1,8 +1,8 @@
 """Closed-world JSON Schema registry for country specification bundles.
 
 The registry deliberately has no filesystem or network retrieval fallback.
-Every reference must resolve inside the fifteen schemas shipped with the
-compiler.  Keeping that boundary here makes both authored resources and
+Every reference must resolve inside the schemas shipped with the compiler
+(``SCHEMA_FILENAMES``).  Keeping that boundary here makes both authored resources and
 emitted lock fragments use the same draft-2020-12 implementation.
 """
 
@@ -49,12 +49,13 @@ SCHEMA_FILENAMES = (
     "sources.schema.json",
     "spine.schema.json",
     "take_up.schema.json",
+    "target_sets.schema.json",
     "vintages.schema.json",
 )
 SCHEMA_IDS = frozenset(SCHEMA_FILENAMES)
 
 # Resource kinds with a single schema authority.  ``schema`` is handled by
-# ``SCHEMA_IDS_BY_KIND`` because each of the fifteen schema files is a valid
+# ``SCHEMA_IDS_BY_KIND`` because each of the schema files is a valid
 # resource of that kind.  ``legacy_json`` is an explicit generation-0
 # compatibility sentinel and is never passed to the draft-2020 validator.
 SCHEMA_ID_BY_KIND: Mapping[str, str] = MappingProxyType(
@@ -71,6 +72,7 @@ SCHEMA_ID_BY_KIND: Mapping[str, str] = MappingProxyType(
         "publication": "publication.schema.json",
         "vintages": "vintages.schema.json",
         "catalogs": "catalogs.schema.json",
+        "target_sets": "target_sets.schema.json",
         "legacy_json": "legacy_json",
     }
 )
@@ -171,7 +173,7 @@ class SchemaRegistry:
         cls,
         schema_root: Traversable | Path | None = None,
     ) -> SchemaRegistry:
-        """Load and verify exactly the approved fifteen-schema catalog.
+        """Load and verify exactly the approved schema catalog.
 
         An explicit ``schema_root`` is useful for golden and mutation tests.
         The catalog has exactly one home — package data at
@@ -200,8 +202,8 @@ class SchemaRegistry:
             if unexpected:
                 details.append(f"unexpected={unexpected!r}")
             raise SpecSchemaError(
-                "schema catalog must contain exactly the approved 15 JSON "
-                f"schemas ({'; '.join(details)})"
+                "schema catalog must contain exactly the approved "
+                f"{len(SCHEMA_FILENAMES)} JSON schemas ({'; '.join(details)})"
             )
 
         ids: dict[str, str] = {}
@@ -447,7 +449,7 @@ def _schema_data_root() -> Traversable | Path:
     if packaged.is_dir():
         return packaged
     raise SpecSchemaError(
-        "approved schema package data is absent; the fifteen-schema catalog "
+        "approved schema package data is absent; the schema catalog "
         "ships inside microcosm.build.spec_engine.schema (one copy — the "
         "former specs/schema fallback and its wheel force-include are retired)"
     )

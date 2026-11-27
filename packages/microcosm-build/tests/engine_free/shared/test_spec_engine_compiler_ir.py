@@ -166,6 +166,7 @@ def test_ir_retains_all_typed_resolution_products(compiled_us: CompiledSpecIR) -
         "sources",
         "spine",
         "take_up",
+        "target_sets",
         "vintages",
     }
 
