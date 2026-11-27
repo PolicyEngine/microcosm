@@ -3020,9 +3020,17 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             after, metadata = _capital_gain_distributions_stage(args, before)
             assert_unchanged_identity(before, after, stage=args.stage)
         elif args.stage == "final_export":
-            after = before
-            metadata = _export_staged_result(args, after, stage_metadata)
-            assert_unchanged_identity(before, after, stage=args.stage)
+            # The export reads the frame and changes no table, so this step
+            # writes no checkpoint of its own: its record names the previous
+            # step's checkpoint file, SHA-256 and identity, and the alias is a
+            # hard link to that file.
+            metadata = _export_staged_result(args, before, stage_metadata)
+            save_gate_shadow()
+            previous_checkpoint = runtime.complete_without_frame(
+                args.stage, metadata=metadata
+            )
+            _link_all_stage_checkpoint(args.checkpoint_dir, previous_checkpoint)
+            return
         elif args.stage == HOUSEHOLD_LOCATION_STAGE_NAME:
             after, household_location = _block_v1_household_location(args, before)
             metadata = {"household_location": household_location}
@@ -3038,9 +3046,7 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             )
             assert_unchanged_identity(before, after, stage=args.stage)
         save_gate_shadow()
-        completed = runtime.complete(args.stage, after, metadata=metadata)
-        if args.stage == "final_export":
-            _link_all_stage_checkpoint(args.checkpoint_dir, completed.path)
+        runtime.complete(args.stage, after, metadata=metadata)
 
 
 def _link_all_stage_checkpoint(checkpoint_dir: Path, source: Path) -> None:
@@ -3056,6 +3062,16 @@ def _repair_completed_final_stage(
     args: argparse.Namespace,
     runtime: StageRuntime,
 ) -> None:
+    """Re-create a missing or changed export and relink the alias.
+
+    ``runtime.load`` follows the ``final_export`` record to the checkpoint it
+    names, the previous step's, and checks that file against the record. A
+    record in which ``final_export`` wrote its own ``NNN_final_export.frame.h5``
+    is read the same way, although this command does not resume such a
+    directory with later builder code: the recorded run config holds the
+    builder's source digest, and a resume compares it.
+    """
+
     _ensure_capital_gains_tail_manifest(
         runtime.metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
     )
