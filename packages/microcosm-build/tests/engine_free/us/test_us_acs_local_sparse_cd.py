@@ -24,7 +24,13 @@ from scipy import sparse
 from microcosm.calibrate import TargetSpec
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.calibrate.target import TargetSet
-from microcosm.frame import US_SCHEMA, Frame, SharedColumnChangedError
+from microcosm.frame import (
+    US_SCHEMA,
+    Frame,
+    SharedColumnChangedError,
+    WeightKind,
+    Weights,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -177,10 +183,24 @@ def _identity(digests: dict, *, households: int) -> dict:
     }
 
 
+def _install_fake_materialization(module, fixtures, release, monkeypatch):
+    """The fake engine, with the projection and null fill as no-ops.
+
+    Returns the fake engine's ledger of the engines it builds.
+    """
+
+    ledger = fixtures._install_fake_engine(
+        release, monkeypatch, reform_specs=fixtures._REFORMS
+    )
+    monkeypatch.setattr(
+        module, "project_input_only", lambda frame, **options: (frame, {})
+    )
+    monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *args, **options: None)
+    return ledger
+
+
 def _materialize(module, fixtures, release, monkeypatch, tmp_path, specs, hh_chunk):
-    fixtures._install_fake_engine(release, monkeypatch, reform_specs=fixtures._REFORMS)
-    monkeypatch.setattr(module, "project_input_only", lambda frame, **kw: (frame, {}))
-    monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *args, **kw: None)
+    _install_fake_materialization(module, fixtures, release, monkeypatch)
     return module.materialize_chunked(
         fixtures._nested_frame(),
         specs,
@@ -544,6 +564,312 @@ def test_other_modes_check_each_district_row_against_a_same_concept_state_row(
         _materialize(
             module, fixtures, release, monkeypatch, tmp_path, specs, hh_chunk=2
         )
+
+
+# ---------------------------------------------------------------------------
+# Chunk independence: every chunk and batch size gives the one-chunk matrix
+# ---------------------------------------------------------------------------
+
+#: Copies of the nested fixture's five households in :func:`_copied_frame`.
+_COPIES = 3
+#: An id ``k`` of the fixture becomes ``_ID_STRIDE * k + copy``.
+_ID_STRIDE = 4
+_COPIED_HOUSEHOLDS = 5 * _COPIES
+#: Copy 1 of the fixture's Maryland household 4 moves to New York district
+#: 3601, which then has the most households of any district.
+_MOVED_HOUSEHOLD_ID = _ID_STRIDE * 4 + 1
+#: Declared rows that hold no value in the reference: no household lives in
+#: Texas, and no Maryland tax unit of the fixture files jointly with wages.
+_EMPTY_ROWS = {"cd_4801_agi", "cd_2401_joint_wages"}
+#: A target whose engine variable the fake engine does not define, so it does
+#: not compile and ``materialize_chunked`` drops its row (``sparse_rows``).
+_UNCOMPILED_TARGET = "unmodelled_benefit_total"
+
+
+def _copied_frame(fixtures) -> Frame:
+    """Fifteen households: three copies of the nested fixture, ids interleaved.
+
+    - Every id ``k`` of the fixture becomes ``4k + copy``. The fake engine
+      computes each value from its record's own id, so the copies' values
+      differ.
+    - Group tables stay sorted by id, as ``Frame`` requires, so household rows
+      cycle through the copies, and a chunk boundary can fall inside a state
+      or a district.
+    - The person rows are in a fixed shuffled order, so a household's people
+      are not adjacent rows.
+    - One copied Maryland household moves to New York district 3601. 3601 then
+      has the most households, so chunk 0's direct check of one district row
+      per carrier picks 3601 rows in a one-chunk run, but 0601 rows in a chunk
+      0 that starts with the 0601 households and is not the whole frame.
+    """
+
+    base = fixtures._nested_frame()
+    tables = {}
+    for entity in base.entities:
+        copies = []
+        for copy_number in range(_COPIES):
+            table = base.table(entity).copy()
+            id_columns = [
+                column
+                for column in table.columns
+                if column == f"{entity}_id"
+                or (entity == "person" and column.startswith("person_"))
+            ]
+            table[id_columns] = _ID_STRIDE * table[id_columns] + copy_number
+            copies.append(table)
+        combined = pd.concat(copies, ignore_index=True)
+        if entity == "person":
+            order = np.random.default_rng(0).permutation(len(combined))
+            combined = combined.iloc[order]
+        else:
+            combined = combined.sort_values(f"{entity}_id")
+        tables[entity] = combined.reset_index(drop=True)
+    household = tables["household"]
+    moved = household["household_id"] == _MOVED_HOUSEHOLD_ID
+    assert int(moved.sum()) == 1
+    household.loc[moved, "state_fips"] = 36
+    household.loc[moved, "congressional_district_geoid"] = "3601"
+    weights = household["household_id"].to_numpy(dtype=np.float64)
+    assert len(weights) == _COPIED_HOUSEHOLDS
+    return Frame(tables, US_SCHEMA, {"household": Weights(weights, WeightKind.DESIGN)})
+
+
+#: Fake-engine variables whose values stay whole: statuses, flags, counts, ages.
+_WHOLE_VALUED_VARIABLES = frozenset(
+    {"filing_status", "tax_unit_itemizes", "eitc_child_count", "age"}
+)
+
+
+def _with_fractional_fake_values(monkeypatch) -> None:
+    """Divide the fake engine's amounts by 7, so most are not whole numbers.
+
+    The fake engine's own values are whole, and float32 holds those exactly;
+    sevenths make the float64-to-float32 conversion round. Call it once per
+    test: a second call would divide by 7 again.
+    """
+
+    from test_support.microcosm_build import (
+        us_batched_target_materialization as fake_engine,
+    )
+
+    whole_value = fake_engine._record_value
+
+    def fractional_value(variable: str, record_id: int):
+        value = whole_value(variable, record_id)
+        if variable in _WHOLE_VALUED_VARIABLES:
+            return value
+        return value / 7.0
+
+    monkeypatch.setattr(fake_engine, "_record_value", fractional_value)
+
+
+def _materialize_layout(
+    module,
+    fixtures,
+    release,
+    monkeypatch,
+    tmp_path,
+    *,
+    hh_chunk,
+    batch,
+):
+    """``materialize_chunked`` on :func:`_copied_frame`, with its engine ledger."""
+
+    ledger = _install_fake_materialization(module, fixtures, release, monkeypatch)
+    specs = (
+        *_parented_surface_specs(fixtures),
+        fixtures._variable(_UNCOMPILED_TARGET, base_variable="unmodelled_benefit"),
+    )
+    materialized = module.materialize_chunked(
+        _copied_frame(fixtures),
+        specs,
+        hh_chunk=hh_chunk,
+        batch=batch,
+        summary_path=tmp_path / "summary.json",
+    )
+    return materialized, ledger
+
+
+def _engine_batches(chunk_sizes, batch) -> list[int]:
+    """The households of each engine the fake engine builds, in order.
+
+    Each chunk runs the base pass, then the one JCT reform family, each in
+    batches of at most ``batch`` households.
+    """
+
+    sizes = []
+    for chunk in chunk_sizes:
+        batches = [batch] * (chunk // batch) + (
+            [chunk % batch] if chunk % batch else []
+        )
+        sizes += batches * 2
+    return sizes
+
+
+def _directly_checked_districts(materialized) -> set[str]:
+    """Districts of the rows chunk 0 materialized directly, one per carrier."""
+
+    return {
+        entry["target"].split("_")[1] for entry in materialized.carrier_check["checked"]
+    }
+
+
+#: (hh_chunk, batch, chunk sizes) over the fifteen households.
+_CHUNK_LAYOUTS = {
+    "one-chunk-several-batches": (15, 4, (15,)),
+    "chunk-larger-than-the-frame": (24, 6, (15,)),
+    "three-equal-chunks": (5, 5, (5, 5, 5)),
+    "five-equal-chunks-one-household-batches": (3, 1, (3,) * 5),
+    "uneven-last-chunk": (4, 3, (4, 4, 4, 3)),
+    "last-chunk-of-one-household": (7, 2, (7, 7, 1)),
+    "uneven-batches-in-uneven-chunks": (6, 4, (6, 6, 3)),
+    "one-household-per-chunk": (1, 1, (1,) * 15),
+}
+
+
+@pytest.mark.parametrize(
+    ("hh_chunk", "batch", "chunk_sizes"),
+    list(_CHUNK_LAYOUTS.values()),
+    ids=list(_CHUNK_LAYOUTS),
+)
+def test_every_chunk_and_batch_size_gives_the_one_chunk_target_matrix(
+    monkeypatch, tmp_path, hh_chunk, batch, chunk_sizes
+) -> None:
+    """The matrix ``materialize_chunked`` returns does not depend on
+    ``--hh-chunk`` or ``--batch``.
+
+    The reference is one chunk in one engine batch. Each layout must give the
+    same compiled target names in order and the same CSR matrix bit for bit:
+    type, shape, and the dtype and bytes of ``data``, ``indices`` and
+    ``indptr``, so also the same bytes from ``save_target_matrix``.
+
+    The surface holds district SOI rows split from geography-free carriers
+    under state parents, one district row with no state (the split that does
+    not mask by state), and a target that does not compile. Chunk 0 also
+    materializes one district row per carrier directly, and in a layout of
+    several chunks it picks other rows than the reference does.
+
+    This shows that the assembly does not depend on the chunk or batch size.
+    The fake engine computes each value from its own record, so it cannot
+    show whether policyengine-us formulas read other households;
+    ``engine_workflow/us/test_us_acs_local_materialize_chunks.py`` runs the
+    real engine on a small frame.
+    """
+
+    from test_support.microcosm_build.us_local_materialize_chunks import (
+        assert_same_surface,
+    )
+
+    module = _load_tool_module()
+    import build_us_fiscal_refresh_release as release
+
+    fixtures = _load_fixtures()
+    _with_fractional_fake_values(monkeypatch)
+    reference, reference_ledger = _materialize_layout(
+        module,
+        fixtures,
+        release,
+        monkeypatch,
+        tmp_path,
+        hh_chunk=_COPIED_HOUSEHOLDS,
+        batch=_COPIED_HOUSEHOLDS,
+    )
+    materialized, ledger = _materialize_layout(
+        module, fixtures, release, monkeypatch, tmp_path, hh_chunk=hh_chunk, batch=batch
+    )
+
+    # The reference ran one chunk, each engine over every household.
+    assert [stat["households"] for stat in reference.chunk_stats] == [15]
+    assert [len(run["households"]) for run in reference_ledger.constructions] == [
+        15,
+        15,
+    ]
+    # The layout ran its chunks, and each engine over one batch of a chunk.
+    assert [stat["households"] for stat in materialized.chunk_stats] == list(
+        chunk_sizes
+    )
+    assert [len(run["households"]) for run in ledger.constructions] == (
+        _engine_batches(chunk_sizes, batch)
+    )
+    # Chunk 0's direct check covered other rows than the reference's when the
+    # layout has several chunks (0601 against 3601).
+    assert "3601" in _directly_checked_districts(reference)
+    if len(chunk_sizes) > 1:
+        assert _directly_checked_districts(materialized) == {"0601"}
+    assert materialized.carrier_check["all_equal"] is True
+    assert materialized.carrier_check["parent_blocks_checked"] == 3 * len(chunk_sizes)
+
+    # No part of the comparison is empty: every household holds a value, every
+    # declared row but the two of _EMPTY_ROWS holds one, the uncompiled target
+    # is dropped, and float32 rounding changed some values.
+    assert np.all(np.diff(reference.matrix.tocsc().indptr) > 0)
+    assert _UNCOMPILED_TARGET not in reference.names
+    empty = {
+        name
+        for row, name in enumerate(reference.names)
+        if reference.matrix[[row]].nnz == 0
+    }
+    assert empty == _EMPTY_ROWS
+    assert np.any(reference.matrix.data % 1 != 0)
+
+    assert_same_surface(
+        reference, materialized, label=f"hh_chunk={hh_chunk}, batch={batch}"
+    )
+    save = module.cd_surface.save_target_matrix
+    assert save(tmp_path / "layout.npz", materialized.matrix) == save(
+        tmp_path / "reference.npz", reference.matrix
+    )
+
+
+def test_the_chunk_comparison_reports_a_value_read_from_other_households(
+    monkeypatch, tmp_path
+) -> None:
+    """A control: a column that adds how many households its engine holds
+    differs between chunk sizes, and the comparison names the column, how
+    many households differ, by how much, and the first of them."""
+
+    from test_support.microcosm_build.us_local_materialize_chunks import (
+        assert_same_surface,
+    )
+
+    module = _load_tool_module()
+    import build_us_fiscal_refresh_release as release
+
+    fixtures = _load_fixtures()
+    own_columns = release._base_simulation_household_columns
+
+    def columns_reading_the_whole_batch(frame, target_specs, *, simulation, system):
+        columns = own_columns(frame, target_specs, simulation=simulation, system=system)
+        columns["tanf"] = columns["tanf"] + frame.n("household")
+        return columns
+
+    monkeypatch.setattr(
+        release, "_base_simulation_household_columns", columns_reading_the_whole_batch
+    )
+
+    def run(hh_chunk):
+        materialized, _ = _materialize_layout(
+            module,
+            fixtures,
+            release,
+            monkeypatch,
+            tmp_path,
+            hh_chunk=hh_chunk,
+            batch=hh_chunk,
+        )
+        return materialized
+
+    reference, chunked = run(_COPIED_HOUSEHOLDS), run(5)
+
+    with pytest.raises(
+        AssertionError,
+        match=(
+            r"three chunks: the target matrix differs from the reference run\.\n"
+            r"1 target\(s\) hold different values:\n  tanf: 15 household\(s\), "
+            r"largest absolute difference 10\.0 \(household 0: "
+        ),
+    ):
+        assert_same_surface(reference, chunked, label="three chunks")
 
 
 def test_a_state_cd_row_without_a_compiled_parent_is_refused() -> None:
