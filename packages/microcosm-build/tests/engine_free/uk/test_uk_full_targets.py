@@ -276,19 +276,19 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
     assert (
         national.facts_sha256
         == local["facts_sha256"]
-        == ("9fc0715e59c561ca3838cbd95fd24afbf85d5c8ad2d5316769db52cf23524b62")
+        == ("7a6a83b0396cce0662f7eadd1db343a6ab8793d2b74814c6bfcbc6ebe12f9297")
     )
     assert (
         national.manifest_sha256
         == local["manifest_sha256"]
-        == ("4b05b3b637bec0ebcfbac0d358af0da8429f3d77b68ad0eba215036324c9198e")
+        == ("7488dbf86b546eafeacb2b560aeb09ca894353e7f25ee55efad614d62b660397")
     )
     assert (
         national.source_commit
         == local["source_commit"]
-        == "15040ea53a131ee09f713459554f5f22a4afc6bd"
+        == "e4d46c93112f69da0c9cea5ce89a43bd8adf0cf9"
     )
-    assert national.fact_row_count == local["fact_row_count"] == 2160350
+    assert national.fact_row_count == local["fact_row_count"] == 2160837
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):

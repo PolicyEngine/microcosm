@@ -497,9 +497,12 @@ RUNNER_OVERHEAD_SECONDS = 15 * 60
 BASE_RUNNER_OVERHEAD_SECONDS = 30 * 60
 # The state the base leaves to hash and mirror, for the check's write probe:
 # about 44 GB of frame checkpoints and the 2.35 GB H5 locally (route_a.sh
-# section 4), plus the final checkpoint's hard-linked alias
-# (_link_all_stage_checkpoint), which the mirror copies as a second file. An
-# allowance from the local figures, not a measurement.
+# section 4), plus stage_all.frame.h5, a hard link to the last frame
+# checkpoint (_link_all_stage_checkpoint), which the mirror copies as a
+# second file. At 4b57d15a2 that last checkpoint is final_export's own copy
+# of the frame, about 2 GB of the 44 GB; in code where final_export writes no
+# checkpoint, the alias links the previous stage's and the state is about
+# 2 GB smaller. An allowance from the local figures, not a measurement.
 BASE_MIRRORED_STATE_GIB = 50
 # Staging has no frame checkpoints: its 10.7 GB H5 (~10 GiB), summary and
 # logs fit in a 12 GiB mirror allowance. Thirty minutes reserves 60 s for
@@ -877,9 +880,11 @@ RUNNER_SMOKE = ToolSpec(
 # them should be a reviewed registry change rather than a plan edit.
 #
 # State layout, all under the mirrored state directory:
-#   base-checkpoints/  the frame checkpoint after every outer stage (about
-#                      44 GB in the 2026-09-16 run), stage_run_context.json
-#                      and stage_profile.json
+#   base-checkpoints/  a frame checkpoint after each outer stage, about
+#                      44 GB in the 2026-09-16 run (primary_qrf_chain writes
+#                      none; neither does final_export in code where it
+#                      records the previous stage's checkpoint, about 2 GB
+#                      less), stage_run_context.json and stage_profile.json
 #   base-out/          the base H5, its summary JSON and the capital-gains
 #                      tail manifest; the release reads this directory
 #
@@ -912,8 +917,9 @@ RUNNER_SMOKE = ToolSpec(
 # output, the logs, the run context and profile, and the two checkpoints
 # compare-lineage checks against the local run. After a clean exit nothing
 # else is copied: a completed `--stage all` has nothing to resume, so the
-# other checkpoints (about 42 GB) are hashed into the receipt and left in the
-# container (rest_is_resume_state). That push is about 4 GB, not about 50.
+# other checkpoints (about 42 GB at 4b57d15a2, about 2 GB less in code where
+# final_export writes no checkpoint) are hashed into the receipt and left in
+# the container (rest_is_resume_state). That push is about 4 GB, not about 50.
 PUF_SUPPORT_BASE_CHECKPOINTS = "base-checkpoints"
 PUF_SUPPORT_BASE_OUT = "base-out"
 PUF_SUPPORT_BASE_MIRROR_FIRST = (
@@ -2336,6 +2342,11 @@ def request_telemetry_token(
 ) -> TelemetryToken | None:
     """At launch, on the operator's machine: a telemetry token for the stage.
 
+    It runs the command itself, not through microcosm-emitter-interface's
+    ``telemetry_token``: this module uses only the standard library, and the
+    launch runs under the Modal client's own interpreter, which the runbook
+    asks only to have Modal, not the interface.
+
     Runs the installed emitter's ``telemetry-token`` (``MICROCOSM_EMITTER_COMMAND``,
     then ``PATH``) with this machine's environment, so it exchanges the
     operator's Hugging Face login, for the class timeout plus
@@ -2523,6 +2534,10 @@ def undelivered_events_from_status(
     returncode: int, stdout: str, stderr: str
 ) -> UndeliveredEventsRecord:
     """What a receipt records of the image emitter's ``status`` answer.
+
+    The runner parses ``status`` here, not through microcosm-emitter-interface's
+    ``emitter_status``: it runs on the image's interpreter, which does not have
+    the interface (only the build's environment does).
 
     Exit 0 gives the runs it printed, as printed; exit 8 (no event queue
     file) an empty list. Any other exit code gives a problem naming the code

@@ -36,9 +36,10 @@ convenience of people outside PolicyEngine who run Microcosm without access
 to the collector; PolicyEngine's own builds keep telemetry required.
 
 The adapter never starts an emitter older than ``MINIMUM_EMITTER_VERSION``.
-It reads the version from ``microcosm-emitter version`` first, because the
-emitter's telemetry module records the run's start as soon as the emitter
-starts, before its ``hello`` answer can name its release.
+It reads the version first, through the interface's ``emitter_version``
+(which runs ``microcosm-emitter version``), because the emitter's telemetry
+module records the run's start as soon as the emitter starts, before its
+``hello`` answer can name its release.
 """
 
 from __future__ import annotations
@@ -46,7 +47,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from importlib import resources as importlib_resources
@@ -57,14 +57,17 @@ from microcosm_emitter_interface import (
     COMMAND_ENVIRONMENT_VARIABLE,
     DEFAULT_COMMAND,
     PROTOCOL_VERSION,
+    CommandFailure,
     EmitterClient,
     EmitterStartupError,
+    EmitterVersion,
     HuggingFaceSettings,
     RequestFailure,
     StageDatasetBundle,
     TelemetryRun,
     TelemetrySettings,
     default_spool_path,
+    emitter_version,
 )
 from microcosm_emitter_interface.bundles import DatasetBundleReceipt, WriteAccess
 from microcosm_emitter_interface.launcher import StartupFailureReason, resolve_command
@@ -105,9 +108,10 @@ SETUP_WARNING = (
 STARTUP_TIMEOUT_SECONDS = 15.0
 #: The package data file that holds the oldest emitter release a build
 #: starts, ``MINIMUM_EMITTER_VERSION``. It is the one place the release is
-#: written: the Modal stage runner (``tools/modal_us_stage_plan.py``), which
-#: imports nothing from the workspace, reads the same file by its path in the
-#: checkout that launches it, and installs at least that release in its image.
+#: written: the US Modal stage runner (``tools/modal_us_stage_plan.py``) and
+#: the UK Modal launcher (``tools/modal_uk_cut.py``), which import nothing
+#: from the workspace, read the same file by its path in the checkout that
+#: launches them, and install at least that release in their images.
 MINIMUM_EMITTER_VERSION_RESOURCE = "minimum_emitter_version.json"
 _RELEASE_NUMBER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 
@@ -132,47 +136,16 @@ def _packaged_minimum_emitter_version() -> str:
 
 
 #: The oldest emitter release a build starts: 0.17.0 since 2026-11-19, the
-#: newest release then. 0.17.0 includes ``parent_build_manifest.json`` and
-#: ``reform_validation.json``, which a release publication hands over under
-#: the roles ``parent_build_manifest`` and ``reform_validation`` when the
-#: release has them (some US releases, and every BE build), in the build's
-#: ``calibration-diagnostics`` submission to the collector; 0.16.0 leaves
-#: both out. 0.16.0, from 2026-11-16, added collector provenance on a
-#: promotion or withdrawal: once the change lands, it submits
-#: ``releases.json`` at the commit its receipt reports (for a change that
-#: writes nothing, the commit that last changed the file), and the collector
-#: points the country's latest calibration tree at its default release's
-#: current build when it has that build's tree. 0.15.0 accepts that
-#: provenance but drops it, so it would submit no ``releases.json``. 0.15.0,
-#: from 2026-11-13, added the Hugging Face module's setting that switches
-#: collector submissions on (``hugging_face_settings``), collector
-#: provenance on a release publication, which it submits after the release
-#: commit, and a ``skipped`` collector receipt with an error code when it
-#: refuses its collector settings; an emitter before it accepts the setting
-#: but drops a publication's provenance, and its hand-over ID differs from
-#: the interface's. 0.14.0, from 2026-11-09, added the build machine's
-#: readings. 0.13.0, from 2026-11-05, added ``microcosm-emitter status``,
-#: which the Modal stage runner runs in the container after a stage's tool
-#: to record how many telemetry events each run left undelivered, so the
-#: image needs it; a build requires the same release, so that the release is
-#: written once (``MINIMUM_EMITTER_VERSION_RESOURCE``). Practically no
-#: machine ran the separately installed emitter at any of these rises, so
-#: refusing the releases before them cost nothing. Earlier floors: 0.11.9
-#: from 2026-11-02, because since 0.10.0 the emitter sends to the
-#: collector's hostname by default, which stays the same when the collector
-#: moves to another Google Cloud project, while earlier releases send to its
-#: Cloud Run address, which changes with the move; 0.11.1 fixed two cases in
-#: which the telemetry module stopped. A refused emitter costs a build its
+#: newest release then. It is the first that hands a release's
+#: ``parent_build_manifest.json`` and ``reform_validation.json``, which some
+#: US releases and every BE build have, to the collector with its
+#: ``calibration-diagnostics`` submission. The changelog of microcosm-emitter
+#: says what each earlier release added. A refused emitter costs a build its
 #: hosted telemetry and its staging hand-overs, including the Orrery inputs
-#: in its staged bundle, fails a UK build given ``--staging-read-back``, and refuses
-#: a UK build that asks for remote staging of its dataset bundle
+#: in its staged bundle, fails a UK build given ``--staging-read-back``, and
+#: refuses a UK build that asks for remote staging of its dataset bundle
 #: (``OUTDATED_EMITTER_WARNING``), so a later rise weighs that against how
-#: many machines would have to upgrade. 0.6.0 added the Hugging Face module
-#: (``stage_run_files``, ``run_files_receipt`` and ``read_back_run_files``
-#: for staging run files; ``stage_dataset_bundle``,
-#: ``dataset_bundle_receipt`` and ``check_write_access`` for staged dataset
-#: bundles) and its queue in ``events.handovers.sqlite3``; releases 0.4.0 to
-#: 0.5.1 accept the same protocol version but start without that module.
+#: many machines would have to upgrade.
 MINIMUM_EMITTER_VERSION = _packaged_minimum_emitter_version()
 UPGRADE_EMITTER_COMMAND = (
     f"uv tool install --upgrade 'microcosm-emitter>={MINIMUM_EMITTER_VERSION}'"
@@ -282,9 +255,12 @@ _REASONS_AFTER_VERSION_CHECK: Mapping[StartupFailureReason, AdapterFailureReason
     "unsupported_protocol_version": "hello_failed"
 }
 #: How ``microcosm-emitter version`` gave no usable answer: it did not answer
-#: in time, did not run, exited with an error, or answered with something no
-#: emitter release prints.
-type VersionFailureKind = Literal["timeout", "not_run", "exited", "not_an_answer"]
+#: in time, did not run, exited with an error, answered with something no
+#: emitter release prints, or was not run because the interface refused the
+#: request (a time limit that is not more than 0 s and at most a day).
+type VersionFailureKind = Literal[
+    "timeout", "not_run", "exited", "not_an_answer", "refused_request"
+]
 _NOT_STARTED = "so the emitter was not started"
 #: For a ``version`` that ran and answered with something no emitter
 #: release prints: the command may be another program.
@@ -404,36 +380,38 @@ def _release_number(version: object) -> tuple[int, ...] | None:
 
 def _version_description(
     command: str, timeout: float
-) -> tuple[dict[str, Any] | None, tuple[VersionFailureKind, str] | None]:
-    """``command version``'s answer, or None and how ``version`` failed.
+) -> tuple[EmitterVersion | None, tuple[VersionFailureKind, str] | None]:
+    """What ``command version`` reports, or None and how ``version`` failed.
 
-    ``microcosm-emitter version`` (every release since 0.4.0, the first with
-    the command) prints the same description as the emitter's ``hello``
-    answer, and starts none of its modules. A failure is its kind and a
-    phrase for an error message.
+    The interface's ``emitter_version`` runs ``microcosm-emitter version``
+    (every release since 0.4.0, the first with the command), which prints
+    the same description as the emitter's ``hello`` answer and starts none
+    of its modules. A failure is its kind and a phrase for an error message.
     """
-    try:
-        answer = subprocess.run(
-            [command, "version"],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
+    answer = emitter_version(command=command, timeout=timeout)
+    if isinstance(answer, EmitterVersion):
+        return answer, None
+    return None, _version_failure(answer, timeout)
+
+
+def _version_failure(
+    failure: CommandFailure, timeout: float
+) -> tuple[VersionFailureKind, str]:
+    """The kind and phrase for a ``version`` the interface got no answer from."""
+    if failure.reason == "timed_out":
+        return "timeout", f"did not answer within {timeout:g} s"
+    if failure.reason == "unusable_output":
+        return "not_an_answer", "printed no JSON object"
+    if failure.reason == "invalid_arguments":
+        return "refused_request", (
+            f"was not run: its time limit of {timeout:g} s is outside what "
+            "microcosm-emitter-interface accepts (more than 0 s, at most a day)"
         )
-    except subprocess.TimeoutExpired:
-        return None, ("timeout", f"did not answer within {timeout:g} s")
-    except Exception as error:
-        return None, ("not_run", f"could not be run ({type(error).__name__})")
-    if answer.returncode != 0:
-        return None, ("exited", f"exited {answer.returncode}")
-    try:
-        description = json.loads(answer.stdout)
-    except ValueError:
-        description = None
-    if not isinstance(description, dict):
-        return None, ("not_an_answer", "printed no JSON object")
-    return description, None
+    if failure.exit_code is not None:
+        return "exited", f"exited {failure.exit_code}"
+    if failure.reason == "command_not_found":
+        return "not_run", "could not be run (the command was not found)"
+    return "not_run", f"could not be run ({failure.error_type or failure.reason})"
 
 
 def _version_refusal(
@@ -466,6 +444,10 @@ def _version_refusal(
         return TelemetryRequiredError(
             "version_timeout", f"`{command} version` {detail}, {_NOT_STARTED}."
         )
+    if kind == "refused_request":
+        return TelemetryRequiredError(
+            "version_failed", f"`{command} version` {detail}, {_NOT_STARTED}."
+        )
     if kind == "not_run":
         advice = f"Check that `{command}` runs on this machine."
     elif kind == "exited":
@@ -482,13 +464,15 @@ def _version_refusal(
 
 
 def _protocol_refusal(
-    command: str, description: Mapping[str, Any]
+    command: str, description: EmitterVersion
 ) -> TelemetryRequiredError | None:
-    """A required build's refusal of an emitter that lists no protocol version 1."""
-    versions = description.get("protocol_versions")
-    if not isinstance(versions, list) or not all(
-        type(version) is int for version in versions
-    ):
+    """A required build's refusal of an emitter that lists no protocol version 1.
+
+    The interface reports ``protocol_versions`` as None unless ``version``
+    printed a list of integers.
+    """
+    versions = description.protocol_versions
+    if versions is None:
         return TelemetryRequiredError(
             "version_failed",
             f"`{command} version` ran but printed no list of protocol versions, "
@@ -497,8 +481,9 @@ def _protocol_refusal(
     if PROTOCOL_VERSION not in versions:
         return TelemetryRequiredError(
             "unsupported_protocol_version",
-            f"`{command} version` lists protocol versions {versions}, not protocol "
-            f"version {PROTOCOL_VERSION}, the one this build sends, {_NOT_STARTED}.",
+            f"`{command} version` lists protocol versions {list(versions)}, not "
+            f"protocol version {PROTOCOL_VERSION}, the one this build sends, "
+            f"{_NOT_STARTED}.",
         )
     return None
 
@@ -541,10 +526,7 @@ def _start_emitter(*, required: bool = False, **options: Any) -> EmitterClient:
         return EmitterClient.start(**options)
     timeout = options.get("startup_timeout", STARTUP_TIMEOUT_SECONDS)
     description, failure = _version_description(command, timeout)
-    reported_version = (
-        None if description is None else description.get("emitter_version")
-    )
-    version = reported_version if isinstance(reported_version, str) else None
+    version = None if description is None else description.emitter_version
     installed = _release_number(version)
     if installed is not None and installed >= _MINIMUM_RELEASE:
         if required and description is not None:

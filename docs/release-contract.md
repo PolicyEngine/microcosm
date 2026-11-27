@@ -1144,14 +1144,12 @@ work.
     without looking for `releases.json`, and `publish_release`, which writes
     it. They leave once no registered repository lacks `releases.json`. The
     plan names no owner or milestone for them yet.
-  - *The UK cut runner.* `tools/run_uk_cut.py` still builds the tagged
-    publisher's arguments for the UK national release, and
-    `docs/uk-cut-anyone.md` still describes them; `prepare_release` refuses
-    that release. Moving the runner to `microcosm-publish-release-build` falls
-    to the UK cut's owner.
   - *policyengine.py's pins.* Its bundle, read on 2026-11-11 at 5b6d7901c,
     pins builds by tag; version 1 pins each by release and build in its
-    folder.
+    folder. Its UK national and local-area builds have been pinned that way
+    since policyengine.py#759 (merged 2026-11-16), and
+    `tools/certify_uk_cut_in_policyengine_py.py` certifies a UK build only
+    from its folder (#1762).
   - *The default.* The loader takes each country's default release from the
     registry. `releases.json` also names a `default`: in this repository only
     the switch tool sets it, and no loader reads it. The gap: no check at
@@ -1447,7 +1445,7 @@ fixtures:
   roles or retired fields;
 - the emitter interface's `add_build`, `make_current` or
   `ReleasesRecord.serialize` (the repository requires
-  `microcosm-emitter-interface>=0.16.0,<1`);
+  `microcosm-emitter-interface>=0.18.0,<1`);
 - the registry;
 - the generator's `WRITERS` table, or one of its synthetic inputs, such as a
   build name, the fixture instant or a runtime version. A change of that kind

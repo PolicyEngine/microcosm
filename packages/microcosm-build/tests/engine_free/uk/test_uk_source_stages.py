@@ -744,7 +744,7 @@ class TestE3ManifestLockstep:
             "iterative_proportional_fit",
             "assign_binary_from_rate",
             "materialize_rules_engine_predictors",
-            "fit_weighted_qrf_chain",
+            "draw_budget_and_mix",
             "support_clip",
             "impute_prepayment_meter",
             "iterative_proportional_fit",
@@ -894,6 +894,7 @@ class TestE3ManifestLockstep:
             UK_TAKE_UP_ANCHOR_AGGREGATES,
         )
         from microcosm.build.uk_runtime.lcfs_consumption import (
+            UK_LCFS_COICOP_DIVISION_COLUMNS,
             UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_PREDICTORS,
@@ -968,17 +969,21 @@ class TestE3ManifestLockstep:
             == UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS
         )
         assert (
-            tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["predictors"])
+            tuple(lcfs_ops["draw_budget_and_mix"].parameters["predictors"])
             == UK_LCFS_CONSUMPTION_PREDICTORS
         )
         # The spend targets, then the excise shares, which are scratch and no
-        # output (microcosm#1359).
-        assert tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"]) == (
+        # output (microcosm#1359); the budget is the twelve COICOP divisions
+        # each household's mix is scaled to (microcosm#1717).
+        assert tuple(lcfs_ops["draw_budget_and_mix"].parameters["targets"]) == (
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
             *UK_LCFS_EXCISE_SHARES,
         )
+        assert tuple(lcfs_ops["draw_budget_and_mix"].parameters["budget"]) == (
+            UK_LCFS_COICOP_DIVISION_COLUMNS
+        )
         assert not set(UK_LCFS_EXCISE_SHARES) & set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS)
-        # The rake's kWh are outputs the chain never draws: the stage keeps
+        # The rake's kWh are outputs the draw never gives: the stage keeps
         # the kWh it priced the spend from.
         assert UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS == (
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
@@ -989,7 +994,7 @@ class TestE3ManifestLockstep:
             *UK_LCFS_EXCISE_DECLARED_OUTPUTS,
         )
         assert not {"electricity_kwh", "gas_kwh"} & set(
-            lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"]
+            lcfs_ops["draw_budget_and_mix"].parameters["targets"]
         )
         # The declared excise step writes exactly those inputs: its quantity
         # outputs, its draught shares and every gambling base.
@@ -1147,7 +1152,7 @@ class TestE3ManifestLockstep:
         }
         assert lcfs_seeded == {
             "assign_binary_from_rate": 0,
-            "fit_weighted_qrf_chain": 0,
+            "draw_budget_and_mix": 0,
             "price_domestic_energy": 0,
             # The road-fuel incidence redraw (microcosm#1113).
             "redraw_zero_road_fuel": 0,

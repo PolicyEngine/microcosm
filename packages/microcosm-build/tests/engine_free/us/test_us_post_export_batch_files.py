@@ -157,8 +157,8 @@ def _expected_batches(builder, frame: Frame, batch_size: int) -> list[Frame]:
     return [
         frame
         if len(positions) == frame.n("household")
-        else builder._select_households_by_position(frame, positions)
-        for positions in builder._household_position_batches(
+        else builder.select_households_by_position(frame, positions)
+        for positions in builder.household_position_batches(
             frame.n("household"), batch_size
         )
     ]
@@ -282,6 +282,61 @@ def test_a_holdout_raises_a_refused_batch_file_instead_of_reporting_it(
     finally:
         scorer.close()
     assert not (release_dir / filename).exists()
+
+
+_MERGED_PLANS = {"first_consumer": (_AGE_KEY,), "second_consumer": (_AGE_KEY,)}
+
+
+def test_the_merged_baseline_pass_raises_a_changed_batch_file_without_falling_back(
+    builder, tmp_path, capsys
+) -> None:
+    """A batch file that changed stops the merged baseline pass at once: the
+    scorer neither logs a fallback nor scores each consumer's plan again."""
+
+    scorer = _open_scorer(
+        builder, _nested_frame(), tmp_path, baseline_plans=_MERGED_PLANS
+    )
+    try:
+        first_file = sorted(scorer.batch_directory.iterdir())[0]
+        first_file.write_bytes(first_file.read_bytes() + b"changed")
+        capsys.readouterr()
+        with pytest.raises(builder.PostExportBatchFileError, match="SHA-256"):
+            scorer.open_consumer("first_consumer", _MERGED_PLANS["first_consumer"])
+        out = capsys.readouterr().out
+        assert "merged baseline plan failed" not in out
+        assert "first_consumer baseline plan" not in out
+        assert not scorer._merged_baseline_failed
+    finally:
+        scorer.close()
+
+
+def test_the_merged_baseline_pass_raises_a_batch_file_it_could_not_read_once(
+    builder, tmp_path, monkeypatch
+) -> None:
+    """A batch file the merged pass could not read stops certification, even
+    when a later read of the same file would succeed: the per-consumer plans
+    do not score it again in a fallback pass."""
+
+    scorer = _open_scorer(
+        builder, _nested_frame(), tmp_path, baseline_plans=_MERGED_PLANS
+    )
+    try:
+        first_file = sorted(scorer.batch_directory.iterdir())[0]
+        real_read_bytes = Path.read_bytes
+        failed_reads = []
+
+        def read_bytes_failing_once(path):
+            if path == first_file and not failed_reads:
+                failed_reads.append(path)
+                raise OSError("fixture read error")
+            return real_read_bytes(path)
+
+        monkeypatch.setattr(Path, "read_bytes", read_bytes_failing_once)
+        with pytest.raises(builder.PostExportBatchFileError, match="cannot be read"):
+            scorer.open_consumer("first_consumer", _MERGED_PLANS["first_consumer"])
+        assert failed_reads == [first_file]
+    finally:
+        scorer.close()
 
 
 def test_a_pass_frees_each_batch_before_it_reads_the_next(

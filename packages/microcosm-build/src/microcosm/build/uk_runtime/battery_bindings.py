@@ -2169,9 +2169,16 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # from the APS donors within a major group.
                 "maximum_region_share_gap",
                 "maximum_frame_share_gap",
-                # #1113 road_fuel_incidence check: the ceiling on the chain's
+                # #1113 road_fuel_incidence check: the ceiling on the draw's
                 # zero share among flagged fuel-car households.
                 "maximum_flagged_zero_share",
+                # #1717 decile_fit check (report-only): the deciles held to the
+                # donor's shape of spending by income, the donor they are held
+                # to (as surveyed, or reweighted to the frame's household mix),
+                # and how far each may move.
+                "deciles",
+                "shape_reference",
+                "maximum_shape_deviation",
                 # #1113 consumption_basis check: the one base year of every
                 # LCFS spend column.
                 "period_type",

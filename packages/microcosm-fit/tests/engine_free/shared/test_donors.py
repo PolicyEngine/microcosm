@@ -151,3 +151,122 @@ def test_bad_uniforms_are_refused() -> None:
             uniforms=np.array([1.0]),
             k=1,
         )
+
+
+def _neighbourhood_inputs(seed: int = 1):
+    rng = np.random.default_rng(seed)
+    donors = rng.normal(size=(300, 3))
+    values = 3.0 * donors[:, 0] + rng.normal(scale=0.5, size=300)
+    recipients = rng.normal(size=(120, 3))
+    weights = rng.uniform(0.5, 2.0, 300)
+    return donors, values, recipients, weights
+
+
+def test_forest_neighbourhoods_are_the_forests_donor_weights() -> None:
+    """Rows sum to one, follow the forest's leaves, and skip zero-weight donors."""
+
+    from microcosm.fit.donors import forest_neighbourhoods
+
+    donors, values, recipients, weights = _neighbourhood_inputs()
+    weights[:50] = 0.0
+    neighbourhoods = forest_neighbourhoods(
+        donors, values, recipients, donor_weights=weights, n_estimators=20, seed=0
+    )
+    assert neighbourhoods.shape == (120, 300)
+    assert np.allclose(np.asarray(neighbourhoods.sum(axis=1)).ravel(), 1.0)
+    assert neighbourhoods[:, :50].nnz == 0
+    again = forest_neighbourhoods(
+        donors, values, recipients, donor_weights=weights, n_estimators=20, seed=0
+    )
+    assert (neighbourhoods != again).nnz == 0
+    # The forest learned the first feature: a recipient's neighbours share it.
+    mean_neighbour = neighbourhoods @ donors[:, 0]
+    assert np.corrcoef(mean_neighbour, recipients[:, 0])[0, 1] > 0.9
+
+
+def test_keyed_neighbour_donors_follow_the_weights_at_each_recipients_uniform() -> None:
+    from scipy import sparse
+
+    from microcosm.fit.donors import keyed_neighbour_donors
+
+    neighbourhood = sparse.csr_matrix(np.array([[0.25, 0.0, 0.75]] * 4000))
+    uniforms = (np.arange(4000) + 0.5) / 4000
+    picked = keyed_neighbour_donors(neighbourhood, uniforms)
+    assert set(picked) == {0, 2}
+    assert (picked == 2).mean() == pytest.approx(0.75, abs=1e-3)
+    # A recipient's donor depends on its own row and uniform only.
+    alone = keyed_neighbour_donors(neighbourhood[10:11], uniforms[10:11])
+    assert alone[0] == picked[10]
+
+
+def test_keyed_neighbour_quantiles_read_between_neighbouring_donors() -> None:
+    """Linear between midpoints, the neighbours' extremes at either end."""
+
+    from scipy import sparse
+
+    from microcosm.fit.donors import (
+        forest_neighbourhoods,
+        keyed_neighbour_quantiles,
+    )
+
+    neighbourhood = sparse.csr_matrix(np.array([[0.5, 0.5, 0.0]] * 3))
+    values = np.array([10.0, 20.0, 99.0])
+    read = keyed_neighbour_quantiles(neighbourhood, values, np.array([0.1, 0.5, 0.9]))
+    # The donors sit at their weights' midpoints, 0.25 and 0.75.
+    assert read.tolist() == pytest.approx([10.0, 15.0, 20.0])
+
+    donors, target, recipients, weights = _neighbourhood_inputs()
+    neighbourhoods = forest_neighbourhoods(
+        donors, target, recipients, donor_weights=weights, n_estimators=20, seed=0
+    )
+    uniforms = np.random.default_rng(2).uniform(size=len(recipients))
+    quantiles = keyed_neighbour_quantiles(neighbourhoods, target, uniforms)
+    for row in range(len(recipients)):
+        lo, hi = neighbourhoods.indptr[row], neighbourhoods.indptr[row + 1]
+        held = target[neighbourhoods.indices[lo:hi]]
+        mass = neighbourhoods.data[lo:hi]
+        order = np.argsort(held, kind="stable")
+        expected = np.interp(
+            uniforms[row],
+            (np.cumsum(mass[order]) - 0.5 * mass[order]) / mass.sum(),
+            held[order],
+        )
+        assert quantiles[row] == pytest.approx(expected, abs=1e-9)
+        assert held.min() <= quantiles[row] <= held.max()
+
+
+def test_neighbourhood_draws_refuse_bad_inputs() -> None:
+    from scipy import sparse
+
+    from microcosm.fit.donors import (
+        forest_neighbourhoods,
+        keyed_neighbour_donors,
+        keyed_neighbour_quantiles,
+    )
+
+    donors, values, recipients, weights = _neighbourhood_inputs()
+    with pytest.raises(ValueError, match="non-negative"):
+        forest_neighbourhoods(
+            donors, values, recipients, donor_weights=-weights, n_estimators=5, seed=0
+        )
+    with pytest.raises(ValueError, match="feature columns"):
+        forest_neighbourhoods(
+            donors,
+            values,
+            recipients[:, :2],
+            donor_weights=weights,
+            n_estimators=5,
+            seed=0,
+        )
+    neighbourhood = sparse.csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0]]))
+    with pytest.raises(ValueError, match=r"\[0, 1\)"):
+        keyed_neighbour_donors(neighbourhood, np.array([0.5, 1.0]))
+    with pytest.raises(ValueError, match="one finite value per donor"):
+        keyed_neighbour_quantiles(
+            neighbourhood, np.array([1.0, np.nan]), np.array([0.5, 0.5])
+        )
+    with pytest.raises(ValueError, match="at least one donor"):
+        keyed_neighbour_donors(
+            sparse.csr_matrix(np.array([[1.0, 0.0], [0.0, 0.0]])),
+            np.array([0.5, 0.5]),
+        )

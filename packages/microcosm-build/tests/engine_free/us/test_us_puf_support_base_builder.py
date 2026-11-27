@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1703,8 +1704,12 @@ def test_main_checkpointed_all_dispatches_fresh_process_supervisor(
         builder,
         "_run_staged_all",
         # The parent's telemetry run comes along; its own tests are in
-        # test_us_modal_build_programs_telemetry.py.
-        lambda actual_args, telemetry: calls.append(actual_args),
+        # test_us_modal_build_programs_telemetry.py. So do the ASEC digests
+        # the pin check computed (none here); their tests are in
+        # test_us_puf_support_base_parent_digests.py.
+        lambda actual_args, telemetry, *, verified_asec_sha256: calls.append(
+            actual_args
+        ),
     )
 
     builder.main([])
@@ -1762,7 +1767,9 @@ def test_completed_final_stage_repairs_missing_artifacts_and_alias(
     tmp_path: Path,
 ) -> None:
     builder = _load_support_builder_module()
-    checkpoint = tmp_path / "021_final_export.frame.h5"
+    # final_export's record names the previous step's checkpoint, which
+    # runtime.load returns.
+    checkpoint = tmp_path / "022_block_ladder_assignment.frame.h5"
     checkpoint.write_bytes(b"valid-checkpoint")
     output = tmp_path / "output.h5"
     summary = tmp_path / "summary.json"
@@ -1803,9 +1810,310 @@ def test_completed_final_stage_repairs_missing_artifacts_and_alias(
     )
 
     assert calls == [frame]
-    alias = tmp_path / builder.ALL_STAGE_CHECKPOINT_FILENAME
-    assert alias.is_file()
-    assert alias.stat().st_ino == checkpoint.stat().st_ino
+    _assert_hard_link(tmp_path / builder.ALL_STAGE_CHECKPOINT_FILENAME, checkpoint)
+
+
+def _final_export_args(tmp_path: Path, location_rule: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        stage="final_export",
+        checkpoint_dir=tmp_path / "checkpoints",
+        location_rule=location_rule,
+    )
+
+
+_STEP_MARKER_COLUMN = "employment_income_before_lsr"
+
+
+def _frame_written_by_step(step_index: int) -> Frame:
+    """The fixture frame with two person columns set from the step's index.
+
+    ``employment_income_before_lsr`` holds the index, and ``source_row_id``
+    differs per step, so each step's frame also has its own frame identity
+    (which covers the pooled-provenance columns).
+    """
+
+    marked = _with_person_column(
+        _minimal_us_frame(),
+        _STEP_MARKER_COLUMN,
+        np.full(3, step_index, dtype="int64"),
+    )
+    return _with_person_column(
+        marked,
+        "source_row_id",
+        np.arange(3, dtype="int64") + 10 * step_index,
+    )
+
+
+def _step_markers(frame: Frame) -> list[int]:
+    return frame.table("person")[_STEP_MARKER_COLUMN].tolist()
+
+
+def _complete_steps_before_final_export(builder, args: SimpleNamespace):
+    """Complete every step before ``final_export`` as the staged build does.
+
+    ``primary_qrf_chain`` records its predecessor's checkpoint, as in the
+    build; every other step writes the fixture frame with one person column
+    set to its index, so a test can tell which step's frame it was given.
+    Returns the runtime and the names of the checkpoint files the steps
+    wrote, in pipeline order.
+    """
+
+    pipeline = builder._pipeline_for(args)
+    runtime = builder.StageRuntime(args.checkpoint_dir, pipeline, run_config={})
+    written_checkpoint_names: list[str] = []
+    for step_index, stage in enumerate(pipeline.names[:-1]):
+        if stage == "primary_qrf_chain":
+            runtime.complete_without_frame(stage)
+        else:
+            completed = runtime.complete(stage, _frame_written_by_step(step_index))
+            written_checkpoint_names.append(completed.path.name)
+    return runtime, written_checkpoint_names
+
+
+def _assert_hard_link(alias: Path, target: Path) -> None:
+    assert not alias.is_symlink()
+    assert alias.lstat().st_ino == target.stat().st_ino
+    assert alias.lstat().st_dev == target.stat().st_dev
+
+
+def _patch_final_export_dependencies(
+    monkeypatch: pytest.MonkeyPatch, builder, out_dir: Path
+) -> list[Frame]:
+    """Replace what ``final_export`` calls beyond the step runtime.
+
+    - ``_export_staged_result``: writes two small files in ``out_dir``
+      instead of the engine export, and records the frame it is given.
+    - ``_ensure_capital_gains_tail_manifest``: does nothing.
+    - ``_stage_run_config``: returns ``{}``, the run config
+      ``_complete_steps_before_final_export`` records, so the step's
+      runtime accepts the directory.
+    - ``profile_stage``: does nothing.
+
+    Returns the list that receives each frame the export is given.
+    """
+
+    exported_frames: list[Frame] = []
+
+    def export(_args, frame: Frame, _stage_metadata) -> dict[str, object]:
+        exported_frames.append(frame)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        output_h5 = out_dir / "base.h5"
+        summary_path = out_dir / "base.summary.json"
+        output_h5.write_bytes(b"fixture output h5")
+        summary_path.write_text('{"fixture": "summary"}', encoding="utf-8")
+        return {
+            "output_h5": str(output_h5),
+            "output_sha256": hashlib.sha256(output_h5.read_bytes()).hexdigest(),
+            "summary_path": str(summary_path),
+            "summary_sha256": hashlib.sha256(summary_path.read_bytes()).hexdigest(),
+        }
+
+    monkeypatch.setattr(builder, "_export_staged_result", export)
+    monkeypatch.setattr(
+        builder, "_ensure_capital_gains_tail_manifest", lambda _metadata: None
+    )
+    monkeypatch.setattr(builder, "_stage_run_config", lambda _args: {})
+    monkeypatch.setattr(
+        builder, "profile_stage", lambda *_args, **_kwargs: nullcontext()
+    )
+    return exported_frames
+
+
+@pytest.mark.parametrize("location_rule", ["legacy", "block_v1"])
+def test_staged_final_export_records_the_previous_checkpoint_without_writing_one(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    location_rule: str,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _final_export_args(tmp_path, location_rule)
+    runtime, written_checkpoint_names = _complete_steps_before_final_export(
+        builder, args
+    )
+    steps = builder._pipeline_steps_for(args)
+    previous_checkpoint = args.checkpoint_dir / written_checkpoint_names[-1]
+    assert previous_checkpoint.name == f"{len(steps) - 2:03d}_{steps[-2]}.frame.h5"
+    previous_bytes = previous_checkpoint.read_bytes()
+    exported_frames = _patch_final_export_dependencies(
+        monkeypatch, builder, tmp_path / "out"
+    )
+    events: list[str] = []
+    fake_export = builder._export_staged_result
+
+    def recording_export(*export_args):
+        events.append("export")
+        return fake_export(*export_args)
+
+    @contextmanager
+    def recording_profiler(stage_name: str, checkpoint_dir: Path):
+        assert checkpoint_dir == args.checkpoint_dir
+        events.append(f"start profiling {stage_name}")
+        yield
+        events.append(f"finish profiling {stage_name} without an error")
+
+    @contextmanager
+    def recording_gate_shadow(_args):
+        # Saved only when the step calls it, unlike the real one, which also
+        # saves on exit: a step that leaves out its own call shows here.
+        yield lambda: events.append("save gate-shadow observations")
+
+    complete_without_frame = builder.StageRuntime.complete_without_frame
+
+    def recording_complete_without_frame(self, stage_name, **kwargs):
+        events.append(f"record {stage_name} as complete")
+        return complete_without_frame(self, stage_name, **kwargs)
+
+    link_all_stage_checkpoint = builder._link_all_stage_checkpoint
+
+    def recording_link(checkpoint_dir: Path, source: Path) -> None:
+        events.append(f"link alias to {source.name}")
+        link_all_stage_checkpoint(checkpoint_dir, source)
+
+    monkeypatch.setattr(builder, "_export_staged_result", recording_export)
+    monkeypatch.setattr(builder, "profile_stage", recording_profiler)
+    monkeypatch.setattr(builder, "_armed_stage_gate_shadow", recording_gate_shadow)
+    monkeypatch.setattr(
+        builder.StageRuntime,
+        "complete_without_frame",
+        recording_complete_without_frame,
+    )
+    monkeypatch.setattr(builder, "_link_all_stage_checkpoint", recording_link)
+
+    builder._run_outer_stage(args)
+
+    # The step runs inside the profiler, and its observations are saved
+    # before it is recorded as complete.
+    assert events == [
+        "start profiling final_export",
+        "export",
+        "save gate-shadow observations",
+        "record final_export as complete",
+        f"link alias to {previous_checkpoint.name}",
+        "finish profiling final_export without an error",
+    ]
+    # The export was given the previous step's frame, and no checkpoint file
+    # for final_export exists: only the alias was added.
+    assert [_step_markers(frame) for frame in exported_frames] == [[len(steps) - 2] * 3]
+    assert sorted(path.name for path in args.checkpoint_dir.glob("*.frame.h5")) == (
+        sorted([*written_checkpoint_names, builder.ALL_STAGE_CHECKPOINT_FILENAME])
+    )
+    assert not list(args.checkpoint_dir.glob("*final_export*"))
+    assert previous_checkpoint.read_bytes() == previous_bytes
+    context = json.loads(
+        (args.checkpoint_dir / "stage_run_context.json").read_text(encoding="utf-8")
+    )
+    assert context["completed"] == list(steps)
+    # Every step's frame has its own identity, so the identity comparison
+    # below tells the previous step's record from the others.
+    written_identities = [
+        record["identity"]["sha256"]
+        for record in context["stage_records"]
+        if record["wrote_frame"]
+    ]
+    assert len(set(written_identities)) == len(written_identities)
+    previous_record, final_record = context["stage_records"][-2:]
+    assert final_record["stage"] == "final_export"
+    assert final_record["wrote_frame"] is False
+    assert final_record["checkpoint_stage"] == steps[-2]
+    assert final_record["checkpoint_filename"] == previous_checkpoint.name
+    for key in ("checkpoint_filename", "checkpoint_sha256", "identity"):
+        assert final_record[key] == previous_record[key]
+    assert set(final_record["metadata"]) == {
+        "output_h5",
+        "output_sha256",
+        "summary_path",
+        "summary_sha256",
+    }
+    loaded = runtime.load("final_export")
+    assert loaded.path == previous_checkpoint
+    assert _step_markers(loaded.frame) == [len(steps) - 2] * 3
+    _assert_hard_link(
+        args.checkpoint_dir / builder.ALL_STAGE_CHECKPOINT_FILENAME,
+        previous_checkpoint,
+    )
+
+
+@pytest.mark.parametrize("location_rule", ["legacy", "block_v1"])
+def test_completed_final_export_repair_links_the_previous_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    location_rule: str,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _final_export_args(tmp_path, location_rule)
+    _runtime, written_checkpoint_names = _complete_steps_before_final_export(
+        builder, args
+    )
+    exported_frames = _patch_final_export_dependencies(
+        monkeypatch, builder, tmp_path / "out"
+    )
+    builder._run_outer_stage(args)
+    context_path = args.checkpoint_dir / "stage_run_context.json"
+    context_bytes = context_path.read_bytes()
+    export_metadata = json.loads(context_bytes)["stage_records"][-1]["metadata"]
+    output_h5 = Path(export_metadata["output_h5"])
+    summary_path = Path(export_metadata["summary_path"])
+    alias = args.checkpoint_dir / builder.ALL_STAGE_CHECKPOINT_FILENAME
+    # A stop after the completion record was saved and before the alias was
+    # linked, with the export's files lost as well.
+    output_h5.unlink()
+    summary_path.unlink()
+    alias.unlink()
+
+    builder._run_outer_stage(args)
+
+    previous_index = len(builder._pipeline_steps_for(args)) - 2
+    assert [_step_markers(frame) for frame in exported_frames] == [
+        [previous_index] * 3,
+        [previous_index] * 3,
+    ]
+    repaired_sha256 = hashlib.sha256(output_h5.read_bytes()).hexdigest()
+    assert repaired_sha256 == export_metadata["output_sha256"]
+    assert summary_path.is_file()
+    _assert_hard_link(alias, args.checkpoint_dir / written_checkpoint_names[-1])
+    assert context_path.read_bytes() == context_bytes
+    assert not list(args.checkpoint_dir.glob("*final_export*"))
+
+
+def test_completed_final_export_that_wrote_its_own_frame_still_repairs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A record in which final_export wrote its own checkpoint still repairs.
+
+    The real command does not resume such a directory with later builder
+    code, because the recorded run config holds the builder's source digest
+    and a resume compares it. This test patches the run config so that it
+    matches, and checks the repair itself: ``runtime.load`` follows the older
+    record to ``NNN_final_export.frame.h5``.
+    """
+
+    builder = _load_support_builder_module()
+    args = _final_export_args(tmp_path, "legacy")
+    runtime, _written_checkpoint_names = _complete_steps_before_final_export(
+        builder, args
+    )
+    exported_frames = _patch_final_export_dependencies(
+        monkeypatch, builder, tmp_path / "out"
+    )
+    predecessor = runtime.load_predecessor("final_export")
+    export_metadata = builder._export_staged_result(
+        args, predecessor.frame, runtime.metadata
+    )
+    own_checkpoint = runtime.complete(
+        "final_export", predecessor.frame, metadata=export_metadata
+    ).path
+    final_index = len(builder.PIPELINE_STEPS) - 1
+    assert own_checkpoint.name == f"{final_index:03d}_final_export.frame.h5"
+    alias = args.checkpoint_dir / builder.ALL_STAGE_CHECKPOINT_FILENAME
+    alias.write_bytes(b"stale alias")
+    Path(export_metadata["output_h5"]).unlink()
+
+    builder._run_outer_stage(args)
+
+    assert len(exported_frames) == 2
+    assert Path(export_metadata["output_h5"]).is_file()
+    _assert_hard_link(alias, own_checkpoint)
 
 
 def test_staged_export_serializes_e01000_reconciliation(

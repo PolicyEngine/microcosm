@@ -114,12 +114,14 @@ def _problem(floor: str, required: bool) -> tuple[str | None, str]:
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
+            # As the release's microcosm-emitter-interface decodes it.
+            errors="replace",
             timeout=TIMEOUT_SECONDS,
             check=False,
         )
     except subprocess.TimeoutExpired:
         return f"`{command} version` did not answer within {TIMEOUT_SECONDS:g} s", ""
-    except Exception as error:  # as the release does: undecodable output too
+    except Exception as error:
         return f"`{command} version` could not be run ({type(error).__name__})", ""
     if answer.returncode != 0:
         return f"`{command} version` exited {answer.returncode}", ""
