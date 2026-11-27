@@ -56,6 +56,7 @@ import pytest
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.artifact_files import file_artifact
 from microcosm.build.transport import cli as cli_module
 from microcosm.build.transport import compose as compose_module
 from microcosm.build.transport import target_kernels as target_kernels_module
@@ -2652,9 +2653,14 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
     status = json.loads((out / "build-status.json").read_text())
     assert status["local_only"] is True
     assert status["not_yet_produced"] == list(composed.pending_outputs)
-    assert {"graph", "skeleton_dataset", "calibration_diagnostics", "explorer"} <= set(
-        status["produced"]
-    )
+    assert {
+        "graph",
+        "skeleton_dataset",
+        "calibration_diagnostics",
+        "explorer",
+        "run_manifest",
+    } <= set(status["produced"])
+    assert status["produced"]["run_manifest"] == file_artifact(out / "manifest.json")
     # The build records the code and runtime it ran on, for the release
     # assembler (tracker 5b · 13).
     provenance = transport_build_provenance()

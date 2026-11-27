@@ -335,7 +335,8 @@ def write_transport_build_folder(
         diagnostics_path,
         calibration_diagnostics(country, period=period, omit=omit_targets),
     )
-    (root / "manifest.json").write_bytes(
+    manifest_path = root / "manifest.json"
+    manifest_path.write_bytes(
         run_manifest(country, gate_outcome=gate_outcome).to_json_bytes()
     )
     status: dict[str, object] = {
@@ -347,6 +348,7 @@ def write_transport_build_folder(
         "produced": {
             "skeleton_dataset": file_artifact(dataset),
             "export_descriptor": file_artifact(root / "export-descriptor.json"),
+            "run_manifest": file_artifact(manifest_path),
             "calibration_diagnostics": file_artifact(diagnostics_path),
         },
         "not_yet_produced": list(not_yet_produced),

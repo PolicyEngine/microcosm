@@ -41,6 +41,7 @@ from test_support.microcosm_build.spec_release import (
     GATE_NODES,
     HOUSEHOLD_WEIGHTS,
     demography_references,
+    run_manifest,
     write_transport_build_folder,
 )
 
@@ -287,6 +288,20 @@ def test_assembly_refuses_an_export_descriptor_that_changed_after_the_build(
     descriptor_path.write_text(json.dumps(descriptor))
 
     with pytest.raises(SpecReleaseAssemblyError, match="export-descriptor.json"):
+        assemble_spec_release(build.path, country="be", out_dir=tmp_path / "releases")
+
+
+def test_assembly_refuses_a_run_manifest_that_changed_after_the_build(
+    tmp_path: Path,
+) -> None:
+    # The run manifest decides the gate refusal and the build's name, so it
+    # must be the one the build wrote, not merely a valid one.
+    build = write_transport_build_folder(tmp_path / "out")
+    (build.path / "manifest.json").write_bytes(
+        run_manifest("be", gate_outcome="not_applicable").to_json_bytes()
+    )
+
+    with pytest.raises(SpecReleaseAssemblyError, match="manifest.json"):
         assemble_spec_release(build.path, country="be", out_dir=tmp_path / "releases")
 
 
