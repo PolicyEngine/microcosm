@@ -1,0 +1,1 @@
+UK full builds no longer accept `--publish-orrery` or `--no-publish-orrery`, which have changed nothing since builds stopped uploading their graph (#1590); a launcher that still passes either stops with an unrecognized-argument error. `tools/run_uk_cut.py` passes neither.
