@@ -91,8 +91,25 @@ def reconcile_rows(
 
     Returns one :class:`RowOutcome` for each row, in the order of ``rows``,
     and the operator's pass receipt.
+
+    Two shapes that the operator accepts are refused here, because the
+    answer for a row would be wrong:
+
+    - a leg whose id holds ``+``: the operator's receipt joins the legs of
+      one control with ``+``, so such a leg cannot be found again;
+    - a row that two groups reconcile (a lower target under a bridge and
+      under a control of its own measurement): a row names one control and
+      one factor.
     """
 
+    for row in rows:
+        joined = [leg for leg in _row_legs(row.geography_id, rule) if "+" in leg]
+        if joined:
+            raise ValueError(
+                f"cross-grain row at {row.geography_id!r} sits on leg "
+                f"{joined[0]!r}; a leg id that holds '+' cannot be named for "
+                "each row."
+            )
     frame = pd.DataFrame(
         [
             (row.grain, row.geography_id, row.target_id, float(row.value))
@@ -156,6 +173,13 @@ def reconcile_rows(
                     for position in lower.get(
                         (target_id, group["lower_grain"], name), ()
                     ):
+                        if outcomes[position].status != UNTOUCHED:
+                            raise ValueError(
+                                f"cross-grain row {position} of target "
+                                f"{target_id!r} is reconciled by "
+                                f"{outcomes[position].control!r} and by "
+                                f"{control!r}; a row names one control."
+                            )
                         outcomes[position] = RowOutcome(
                             value=values[position],
                             status=RECONCILED,

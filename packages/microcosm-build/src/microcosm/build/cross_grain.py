@@ -1047,7 +1047,8 @@ def apply_cross_grain_reconciliation(
     cells); a leg holding only those needs no control
     (``deferred_legs_without_control``).
     ``expected_members`` maps a lower target to the geographies that each of
-    its legs must hold. A leg that holds other rows than those is refused:
+    its legs must hold, each one time. A leg that holds other rows than those,
+    or one of them two times, is refused:
     rescaling a set that is not complete would move the missing members'
     mass onto the present ones. A declared leg with no row is refused in the
     same way. A leg that declares no member holds no row, and the empty-leg
@@ -1740,7 +1741,7 @@ def _assert_expected_members(
         _contract_target_id(str(target_id)): by_leg
         for target_id, by_leg in expected_members.items()
     }
-    held: dict[tuple[str, str], set[str]] = {}
+    held: dict[tuple[str, str], list[str]] = {}
     for side, area in zip(
         local_frame[columns["target_id"]].tolist(),
         local_frame[columns["geography_id"]].tolist(),
@@ -1750,29 +1751,48 @@ def _assert_expected_members(
         if target_id not in expected:
             continue
         for leg in _row_legs(str(area), rule):
-            held.setdefault((target_id, leg), set()).add(str(area))
+            held.setdefault((target_id, leg), []).append(str(area))
     declared = {
         (target_id, str(leg))
         for target_id, by_leg in expected.items()
         for leg in by_leg
     }
     for target_id, leg in sorted(declared | held.keys()):
-        present = held.get((target_id, leg), set())
         members = expected[target_id].get(leg)
         if members is None:
             raise ValueError(
                 f"cross-grain target {target_id!r} has rows on leg {leg!r}, "
                 "which declares no members for it."
             )
-        missing = sorted(set(members) - present)
-        unexpected = sorted(present - set(members))
-        if missing or unexpected:
-            raise ValueError(
-                f"cross-grain target {target_id!r} does not hold the declared "
-                f"members of leg {leg!r}: missing {missing}, unexpected "
-                f"{unexpected}. Rescaling a set that is not complete would "
-                "misstate every member."
-            )
+        assert_leg_members(target_id, leg, held.get((target_id, leg), ()), members)
+
+
+def assert_leg_members(
+    target_id: str, leg: str, present: Iterable[str], members: Iterable[str]
+) -> None:
+    """Refuse a leg that does not hold each of its declared members one time.
+
+    ``present`` is the geography of each row of the target on the leg, with a
+    geography that two rows hold given two times. A caller that takes a leg
+    off its surface before a pass checks the leg with this function, so one
+    rule and one text hold for every leg.
+    """
+
+    counts: dict[str, int] = {}
+    for area in present:
+        counts[str(area)] = counts.get(str(area), 0) + 1
+    declared = {str(member) for member in members}
+    missing = sorted(declared - counts.keys())
+    unexpected = sorted(counts.keys() - declared)
+    repeated = sorted(area for area, count in counts.items() if count > 1)
+    if missing or unexpected or repeated:
+        twice = f", repeated {repeated}" if repeated else ""
+        raise ValueError(
+            f"cross-grain target {target_id!r} does not hold the declared "
+            f"members of leg {leg!r}: missing {missing}, unexpected "
+            f"{unexpected}{twice}. Rescaling a set that is not complete would "
+            "misstate every member."
+        )
 
 
 def _controls_agree(left: float, right: float) -> bool:

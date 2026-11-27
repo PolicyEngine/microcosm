@@ -26,6 +26,7 @@ from microcosm.build.cross_grain import (
     CrossGrainBridgeSelector,
     CrossGrainRule,
     apply_cross_grain_reconciliation,
+    assert_leg_members,
     expand_bridge_selectors,
 )
 
@@ -264,6 +265,33 @@ def test_expected_members_refuse_a_leg_that_is_not_complete() -> None:
             _rule(_bridge()),
             expected_members=_members(A=["A1", "A2"]),
         )
+
+
+def test_a_leg_holds_each_member_one_time() -> None:
+    """Two rows of one member would put that member on the surface twice."""
+
+    surface = _surface({"A": 1.1, "B": 1.1})
+    members = _members(A=["A1", "A2"], B=["B1", "B2"])
+    twice = pd.concat(
+        [surface, surface[surface["geography_id"] == "A1"]], ignore_index=True
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"leg 'A': missing \[\], unexpected \[\], repeated \['A1'\]",
+    ):
+        apply_cross_grain_reconciliation(
+            twice, ("total",), _SIGNATURES, _rule(_bridge()), expected_members=members
+        )
+    # A caller checks a leg that it takes off its surface with the same rule.
+    assert_leg_members("parts", "A", ["A1", "A2"], {"A1", "A2"})
+    assert_leg_members("parts", "A", [], set())
+    for present, message in (
+        (["A1"], r"missing \['A2'\], unexpected \[\]\."),
+        (["A1", "A2", "A3"], r"missing \[\], unexpected \['A3'\]\."),
+        (["A1", "A2", "A2"], r"unexpected \[\], repeated \['A2'\]\."),
+    ):
+        with pytest.raises(ValueError, match=message):
+            assert_leg_members("parts", "A", present, {"A1", "A2"})
 
 
 def test_a_declared_leg_holds_its_members_with_or_without_rows() -> None:

@@ -7,18 +7,27 @@ same values bit for bit, the same receipts and the same refusals.
 
 ``test_support/microcosm_build/cross_grain_reference.py`` is the module as it
 stood at ``e29843dc7``, before the hook; its sha256 is pinned here. The
-differential test runs seeded random surfaces through both modules. When the
-standing rule changes on purpose, delete the reference copy and the tests that
-read it: they prove only that the hook changed nothing.
+differential test runs seeded random surfaces through both modules. A second
+test runs the operator's own tests (``test_cross_grain.py``) with every call
+of the operator compared with the reference copy: those tests hold the shapes
+that the seeded surfaces lack (a bridge valued for each geography, rows that
+bind nothing, reviewed unbound targets, partitions). When the standing rule
+changes on purpose, delete the reference copy and the tests that read it:
+they prove only that the hook changed nothing.
 """
 
 from __future__ import annotations
 
 import ast
+import dataclasses
 import hashlib
+import importlib.util
 import inspect
 import json
 import math
+from collections import Counter
+from collections.abc import Iterator
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -60,6 +69,8 @@ ADDED = {
     "_assert_expected_members",
     # The metadata of a reconciled row, for a caller that holds target rows.
     "cross_grain_metadata",
+    # The rule of the declared members, for a leg that a caller checks itself.
+    "assert_leg_members",
 }
 
 _LEGS = ("E", "W", "S", "N")
@@ -223,6 +234,7 @@ def _outcome(module, case, *, check_factor_bounds: bool):
             concept=bridge.concept,
             higher_target_ids=bridge.higher_target_ids,
             lower_side=bridge.lower_side,
+            per_geography=bridge.per_geography,
             max_factor_shift=bridge.max_factor_shift,
         )
         for bridge in rule_arguments["bridges"]
@@ -266,6 +278,261 @@ def test_the_default_path_is_the_operator_before_the_hook_bit_for_bit() -> None:
     assert outcomes["reconciled"] >= 200
     assert outcomes["refused"] >= 100
     assert rescaled_legs >= 1_000
+
+
+def _per_geography_case(seed: int):
+    """A bridge whose higher targets are each the control of their own geography.
+
+    The UK declares such bridges (each nation's estimate over its own legs).
+    A geography can carry no estimate, a leg can be empty, and the bound is
+    sometimes close, so the draws reach the refusals too.
+    """
+
+    rng = np.random.default_rng(10_000 + seed)
+    legs = tuple(leg for leg in _LEGS if rng.random() < 0.9) or ("E",)
+    rows: list[tuple[str, str, str, float]] = []
+    signatures = {"bridged_local": _signature("bridged_local_concept")}
+    estimates: list[str] = []
+    empty: set[str] = set()
+    for leg in legs:
+        total = float(rng.lognormal(mean=math.log(1e5), sigma=1.0)) + 1.0
+        if rng.random() < 0.9:
+            estimate = f"estimate_{leg}"
+            signatures[estimate] = _signature("bridged_concept")
+            estimates.append(estimate)
+            rows.append(("region", leg, estimate, total))
+        if rng.random() < 0.06:
+            empty.add(leg)
+            continue
+        target = total * float(rng.uniform(0.6, 1.4))
+        for grain in ("constituency", "la"):
+            shares = rng.dirichlet(np.ones(int(rng.integers(1, 5))))
+            rows += [
+                (
+                    grain,
+                    f"{leg}{grain[0]}{index}",
+                    "bridged_local",
+                    float(target * share),
+                )
+                for index, share in enumerate(shares)
+            ]
+    bridge = CrossGrainBridge(
+        "estimates",
+        concept="bridged_concept",
+        higher_target_ids=tuple(estimates) or ("estimate_E",),
+        lower_side="contract:bridged_local",
+        per_geography=True,
+        max_factor_shift=(
+            None if rng.random() < 0.3 else float(rng.choice([0.2, 0.5, 0.9]))
+        ),
+    )
+    order = rng.permutation(len(rows))
+    surface = pd.DataFrame(
+        [rows[index] for index in order],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    rule_arguments = {
+        "grain_precedence": ("country", "region", "constituency", "la"),
+        "signature_fields": ("concept", "entity", "map_to", "filters"),
+        "bridges": (bridge,),
+        "leg_of_area": lambda area: area[0],
+        "parent_geography_legs": {"UK": legs, **{leg: (leg,) for leg in legs}},
+        "control_grains": ("country", "region"),
+    }
+    licences = {"bridged_local": frozenset(empty)} if rng.random() < 0.85 else {}
+    return surface, tuple(estimates), signatures, rule_arguments, licences
+
+
+def test_a_bridge_for_each_geography_is_the_operator_before_bit_for_bit() -> None:
+    outcomes = {"reconciled": 0, "refused": 0}
+    rescaled_legs = 0
+    for seed in range(200):
+        case = _per_geography_case(seed)
+        for check_factor_bounds in (True, False):
+            new = _outcome(cross_grain, case, check_factor_bounds=check_factor_bounds)
+            old = _outcome(
+                cross_grain_reference, case, check_factor_bounds=check_factor_bounds
+            )
+            assert new == old, seed
+            outcomes[new[0]] += 1
+            if new[0] == "reconciled":
+                rescaled_legs += sum(
+                    len(group["legs"]) for group in json.loads(new[2])["groups"]
+                )
+    # The draws reach both the rescaling and the refusals.
+    assert outcomes["reconciled"] >= 150
+    assert outcomes["refused"] >= 80
+    assert rescaled_legs >= 1_000
+
+
+# ---------------------------------------------------------------------------
+# The operator's own tests, with each call compared with the reference
+# ---------------------------------------------------------------------------
+
+#: Tests of ``test_cross_grain.py`` that change the operator itself with
+#: ``monkeypatch``: the reference copy would not have the change.
+_NOT_REPLAYED = {"test_off_control_reconciliation_is_refused"}
+
+
+def _as_reference(value):
+    """``value`` as the reference module's class, field for field."""
+
+    for name in ("CrossGrainRule", "CrossGrainBridge", "CrossGrainPartition"):
+        if isinstance(value, getattr(cross_grain, name)):
+            old_class = getattr(cross_grain_reference, name)
+            return old_class(
+                **{
+                    field.name: _as_reference(getattr(value, field.name))
+                    for field in dataclasses.fields(old_class)
+                }
+            )
+    if isinstance(value, tuple):
+        return tuple(_as_reference(item) for item in value)
+    if isinstance(value, pd.DataFrame):
+        return value.copy()
+    return value
+
+
+def _uses_a_general_option(arguments) -> bool:
+    """A call that the reference cannot run: it has options the branch added."""
+
+    rules = [value for value in arguments if isinstance(value, CrossGrainRule)]
+    return any(
+        rule.allocator is not None
+        or any(
+            bridge.min_factor_shift is not None
+            or bridge.shift_around != "one"
+            or bridge.out_of_bound != "refuse"
+            for bridge in rule.bridges
+        )
+        for rule in rules
+    )
+
+
+def _call_image(function, arguments, keywords) -> tuple:
+    try:
+        result = function(*arguments, **keywords)
+    except Exception as error:  # the refusal is part of the result
+        return ("raised", type(error).__name__, str(error)), error
+    if isinstance(result, tuple) and isinstance(result[0], pd.DataFrame):
+        frame, receipt = result
+        image = (
+            "returned",
+            frame.to_json(double_precision=15),
+            frame["value"].to_numpy(dtype=np.float64).tobytes(),
+            json.dumps(receipt, default=str),
+        )
+    else:
+        # Detected groups: frozen dataclasses with the same name in both
+        # modules, so their text is the same when their content is.
+        image = ("returned", repr(result))
+    return image, result
+
+
+def _compared_with_the_reference(name: str, stats: Counter):
+    new_function = getattr(cross_grain, name)
+    old_function = getattr(cross_grain_reference, name)
+
+    def run(*arguments, **keywords):
+        arguments = tuple(
+            tuple(value) if isinstance(value, Iterator) else value
+            for value in arguments
+        )
+        keywords = {
+            key: tuple(value) if isinstance(value, Iterator) else value
+            for key, value in keywords.items()
+        }
+        assert not _uses_a_general_option(arguments) and (
+            "expected_members" not in keywords
+        ), "test_cross_grain.py uses an option that the reference does not have"
+        new_image, result = _call_image(new_function, arguments, keywords)
+        old_image, _ = _call_image(
+            old_function,
+            tuple(_as_reference(value) for value in arguments),
+            {key: _as_reference(value) for key, value in keywords.items()},
+        )
+        assert new_image == old_image, name
+        stats[name] += 1
+        stats[new_image[0]] += 1
+        for value in arguments:
+            if isinstance(value, CrossGrainRule):
+                stats["a bounded bridge"] += any(
+                    bridge.max_factor_shift is not None for bridge in value.bridges
+                )
+        for key in (
+            "frame_only_positions",
+            "reviewed_unbound_higher_targets",
+            "licensed_empty_legs",
+        ):
+            stats[key] += bool(keywords.get(key))
+        stats["bounds not checked"] += keywords.get("check_factor_bounds") is False
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    return run
+
+
+def _parameter_sets(test) -> list[dict]:
+    """The arguments of each case of a test: its ``parametrize`` mark, or none."""
+
+    marks = [
+        mark for mark in getattr(test, "pytestmark", []) if mark.name == "parametrize"
+    ]
+    if not marks:
+        return [{}]
+    (mark,) = marks
+    names, cases = mark.args
+    if isinstance(names, str):
+        names = [name.strip() for name in names.split(",")]
+    return [
+        dict(zip(names, case if len(names) > 1 else (case,), strict=True))
+        for case in cases
+    ]
+
+
+def test_the_operators_own_tests_give_the_reference_results(monkeypatch) -> None:
+    """Every operator call of ``test_cross_grain.py`` is the reference's result."""
+
+    path = Path(__file__).with_name("test_cross_grain.py")
+    spec = importlib.util.spec_from_file_location("cross_grain_suite_replay", path)
+    suite = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(suite)
+    stats: Counter = Counter()
+    for name in (
+        "apply_cross_grain_reconciliation",
+        "apply_cross_grain_partitions",
+        "detect_cross_grain_inconsistencies",
+    ):
+        monkeypatch.setattr(suite, name, _compared_with_the_reference(name, stats))
+    tests = {
+        name: test
+        for name, test in vars(suite).items()
+        if name.startswith("test_") and callable(test)
+    }
+    assert _NOT_REPLAYED <= set(tests)
+    for name, test in tests.items():
+        if name in _NOT_REPLAYED:
+            continue
+        for case in _parameter_sets(test):
+            test(**case)
+            stats["cases"] += 1
+    # The replay reached the operator, with both results and refusals, and
+    # with each shape that the seeded surfaces above do not have.
+    assert stats["cases"] >= 40
+    assert stats["apply_cross_grain_reconciliation"] >= 40
+    assert stats["returned"] >= 15 and stats["raised"] >= 15
+    for shape in (
+        "apply_cross_grain_partitions",
+        "detect_cross_grain_inconsistencies",
+        "a bounded bridge",
+        "frame_only_positions",
+        "reviewed_unbound_higher_targets",
+        "licensed_empty_legs",
+        "bounds not checked",
+    ):
+        assert stats[shape] >= 1, shape
 
 
 def _fsum_allocator(raw_values, parent_value):

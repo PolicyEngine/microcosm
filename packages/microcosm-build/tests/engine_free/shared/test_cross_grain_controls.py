@@ -314,6 +314,56 @@ def test_reconcile_rows_leaves_a_row_that_no_group_covers() -> None:
     assert outcomes[-1] == controls.RowOutcome(value=7.0)
 
 
+def test_reconcile_rows_refuses_a_row_under_two_controls() -> None:
+    """A row names one control and one factor."""
+
+    signatures = {
+        "bridged": {"measurement": {"concept": "source one"}},
+        "total": {"measurement": {"concept": "quantity"}},
+        "parts": {"measurement": {"concept": "quantity"}},
+    }
+    bridge = CrossGrainBridge(
+        "bridged_vs_parts",
+        concept="one quantity",
+        higher_target_ids=("bridged",),
+        lower_side="parts",
+    )
+    rows = [
+        controls.SurfaceRow("state", "A", "bridged", 120.0),
+        controls.SurfaceRow("state", "A", "total", 120.0),
+        controls.SurfaceRow("district", "A1", "parts", 20.0),
+        controls.SurfaceRow("district", "A2", "parts", 40.0),
+    ]
+    with pytest.raises(ValueError, match="a row names one control"):
+        controls.reconcile_rows(
+            rows, ("bridged", "total"), signatures, _row_rule(bridge)
+        )
+
+
+def test_reconcile_rows_refuses_a_leg_id_that_holds_a_plus() -> None:
+    """The operator's receipt joins the legs of one control with ``+``."""
+
+    signatures = {
+        "total": {"measurement": {"concept": "quantity"}},
+        "parts": {"measurement": {"concept": "quantity"}},
+    }
+    rule = CrossGrainRule(
+        grain_precedence=("nation", "state", "district"),
+        signature_fields=("concept",),
+        bridges=(),
+        leg_of_area=lambda area: "A+B",
+        parent_geography_legs={"A+B": ("A+B",)},
+        control_grains=("nation", "state"),
+    )
+    rows = [
+        controls.SurfaceRow("state", "A+B", "total", 120.0),
+        controls.SurfaceRow("district", "A+B-1", "parts", 20.0),
+        controls.SurfaceRow("district", "A+B-2", "parts", 40.0),
+    ]
+    with pytest.raises(ValueError, match=r"a leg id that holds '\+'"):
+        controls.reconcile_rows(rows, ("total",), signatures, rule)
+
+
 def test_the_module_holds_no_country_and_the_operator_does_not_import_it() -> None:
     from microcosm.build import cross_grain
 
