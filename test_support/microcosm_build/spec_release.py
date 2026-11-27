@@ -312,6 +312,8 @@ def write_transport_build_folder(
     not_yet_produced: Sequence[str] = (),
     gate_outcome: str = "pass",
     omit_targets: Sequence[str] = (),
+    record_spec: bool = True,
+    spec_hash_changes: Mapping[str, str] | None = None,
 ) -> TransportBuildFolder:
     """Write a transport build folder under ``root`` and describe it.
 
@@ -319,7 +321,9 @@ def write_transport_build_folder(
     ran on (by default a clean checkout at :data:`BUILD_COMMIT`); None
     leaves a record out, as a build before tracker 5b · 13 did.
     ``not_yet_produced`` lists the outputs the build says it still owes, and
-    ``gate_outcome`` is every gate node's outcome.
+    ``gate_outcome`` is every gate node's outcome. The build records the
+    digests of the country's spec resources it ran on, those of the current
+    spec with ``spec_hash_changes`` applied, unless ``record_spec`` is false.
     """
     root.mkdir(parents=True, exist_ok=True)
     tables = _tables()
@@ -350,6 +354,10 @@ def write_transport_build_folder(
         status["code"] = dict(code)
     if runtime is not None:
         status["runtime"] = dict(runtime)
+    if record_spec:
+        hashes = dict(load_transport_spec(country)["resource_hashes"])
+        hashes.update(spec_hash_changes or {})
+        status["spec"] = {"country": country, "resource_hashes": hashes}
     _write_json(root / "build-status.json", status)
     return TransportBuildFolder(
         path=root,

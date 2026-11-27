@@ -2631,6 +2631,7 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
         "pending_outputs": composed.pending_outputs,
     }
     inputs = _inventory(composed.root)
+    spec_hashes = {"target_references": "a" * 64, "release_contract": "b" * 64}
     manifest = execute_transport_graph(
         graph,
         composed.registry,
@@ -2638,6 +2639,7 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
         out=out,
         endpoints=endpoints,
         pending_outputs=composed.pending_outputs,
+        spec_resource_hashes=spec_hashes,
     )
     assert _inventory(composed.root) == inputs
     assert set(manifest.nodes) == {node.id for node in graph.nodes}
@@ -2658,6 +2660,8 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
     provenance = transport_build_provenance()
     assert status.get("code") == provenance["code"]
     assert status.get("runtime") == provenance["runtime"]
+    # And the digests of the spec resources it ran on.
+    assert status["spec"] == {"country": graph.country, "resource_hashes": spec_hashes}
     for name in (
         "checkpoint-geography.json",
         "checkpoint-calibration.json",

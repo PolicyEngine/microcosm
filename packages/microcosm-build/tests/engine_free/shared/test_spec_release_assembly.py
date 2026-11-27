@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from microcosm.build import release_publication
+from microcosm.build import release_publication, spec_release_assembly
 from microcosm.build.spec_release_assembly import (
     SpecReleaseAssemblyError,
     assemble_spec_release,
@@ -26,7 +26,11 @@ from microcosm.build.spec_release_assembly import (
 )
 from microcosm.build.transport.cli import EXPORT_FILENAME
 from microcosm.build.transport.compose import load_transport_spec
-from microcosm.data.contract import BE_REQUIRED_RELEASE_FILES, validate_release_dir
+from microcosm.data.contract import (
+    BE_REQUIRED_RELEASE_FILES,
+    ReleaseContractError,
+    validate_release_dir,
+)
 from test_support.microcosm_build.emitter import FakeEmitterClient
 from test_support.microcosm_build.spec_release import (
     BUILD_COMMIT,
@@ -153,6 +157,7 @@ def test_the_build_manifest_records_what_the_build_ran_on(
         == (be_spec["resources"]["chronicle_feed"]["source_commit"])
     )
     assert manifest["created_at"] == CREATED_AT
+    assert manifest["spec"]["resource_hashes"] == be_spec["resource_hashes"]
     assert manifest["dataset"] == {
         "filename": "populace_be_2026.h5",
         "sha256": _sha256(build.path / EXPORT_FILENAME),
@@ -261,6 +266,44 @@ def test_assembly_refuses_a_build_that_left_out_an_active_reference(
     # build did not calibrate stops the assembly.
     with pytest.raises(SpecReleaseAssemblyError, match=omitted):
         assemble_spec_release(build.path, country="be", out_dir=tmp_path / "releases")
+
+
+def test_assembly_refuses_a_build_of_another_spec(tmp_path: Path) -> None:
+    # The release files, the build's name and the source coverage check read
+    # the spec the assembler loads, so it must be the spec the build ran on.
+    build = write_transport_build_folder(
+        tmp_path / "out", spec_hash_changes={"target_references": "0" * 64}
+    )
+
+    with pytest.raises(SpecReleaseAssemblyError, match="target_references"):
+        assemble_spec_release(build.path, country="be", out_dir=tmp_path / "releases")
+
+
+def test_assembly_refuses_a_build_that_records_no_spec(tmp_path: Path) -> None:
+    build = write_transport_build_folder(tmp_path / "out", record_spec=False)
+
+    with pytest.raises(SpecReleaseAssemblyError, match="spec"):
+        assemble_spec_release(build.path, country="be", out_dir=tmp_path / "releases")
+
+
+def test_a_refusal_by_the_release_contract_leaves_nothing_behind(
+    tmp_path: Path, monkeypatch
+) -> None:
+    build = write_transport_build_folder(tmp_path / "out")
+    releases = tmp_path / "releases"
+    before = sorted(path.name for path in build.path.iterdir())
+
+    def refuse(release_dir, **_options):
+        raise ReleaseContractError(Path(release_dir), ["fixture refusal"])
+
+    monkeypatch.setattr(spec_release_assembly, "validate_release_dir", refuse)
+
+    with pytest.raises(SpecReleaseAssemblyError, match="fixture refusal"):
+        assemble_spec_release(build.path, country="be", out_dir=releases)
+
+    # The staged directory, the H5 copy and the weights are all removed.
+    assert list(releases.iterdir()) == []
+    assert sorted(path.name for path in build.path.iterdir()) == before
 
 
 def test_assembly_refuses_to_replace_an_earlier_assembly(tmp_path: Path) -> None:

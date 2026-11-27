@@ -45,7 +45,7 @@ def _repository(root: Path) -> Path:
 def test_a_clean_checkout_records_its_commit_as_clean(tmp_path: Path) -> None:
     repository = _repository(tmp_path / "checkout")
 
-    provenance = transport_build_provenance(checkout=repository)
+    provenance = transport_build_provenance(code_file=repository / "module.py")
 
     assert provenance["code"] == {
         "repository": "PolicyEngine/microcosm",
@@ -58,7 +58,7 @@ def test_a_tracked_change_records_the_checkout_as_dirty(tmp_path: Path) -> None:
     repository = _repository(tmp_path / "checkout")
     (repository / "module.py").write_text("VALUE = 2\n")
 
-    provenance = transport_build_provenance(checkout=repository)
+    provenance = transport_build_provenance(code_file=repository / "module.py")
 
     assert provenance["code"]["git_dirty"] is True
 
@@ -68,16 +68,54 @@ def test_a_directory_outside_git_records_the_commit_as_unmeasured(
 ) -> None:
     outside = tmp_path / "not-a-checkout"
     outside.mkdir()
+    (outside / "module.py").write_text("VALUE = 1\n")
 
-    provenance = transport_build_provenance(checkout=outside)
+    provenance = transport_build_provenance(code_file=outside / "module.py")
 
     # Unmeasured, never asserted clean: the assembler refuses it.
     assert provenance["code"]["git_commit"] is None
     assert provenance["code"]["git_dirty"] is None
 
 
+def test_an_untracked_copy_inside_another_checkout_records_no_commit(
+    tmp_path: Path,
+) -> None:
+    # An installed copy in a virtual environment inside some other repository
+    # is not that repository's code: its commit is not the build's.
+    repository = _repository(tmp_path / "checkout")
+    installed = repository / ".venv" / "cli.py"
+    installed.parent.mkdir()
+    installed.write_text("VALUE = 1\n")
+
+    provenance = transport_build_provenance(code_file=installed)
+
+    assert provenance["code"]["git_commit"] is None
+    assert provenance["code"]["git_dirty"] is None
+
+
+def test_a_repository_named_by_the_environment_is_not_measured(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repository = _repository(tmp_path / "checkout")
+    other = _repository(tmp_path / "other")
+    (other / "module.py").write_text("VALUE = 3\n")
+    expected = _git(repository, "rev-parse", "HEAD")
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other))
+
+    provenance = transport_build_provenance(code_file=repository / "module.py")
+
+    # Measured in the checkout that tracks the file, not the one the
+    # environment names, which is dirty and at another commit.
+    assert provenance["code"]["git_commit"] == expected
+    assert provenance["code"]["git_dirty"] is False
+
+
 def test_the_runtime_records_python_and_each_distribution(tmp_path: Path) -> None:
-    provenance = transport_build_provenance(checkout=tmp_path)
+    code_file = tmp_path / "module.py"
+    code_file.write_text("VALUE = 1\n")
+
+    provenance = transport_build_provenance(code_file=code_file)
 
     runtime = provenance["runtime"]
     assert runtime.get("python") == platform.python_version()

@@ -11,11 +11,13 @@ from __future__ import annotations
 import pytest
 
 from microcosm.build.spec_release_files import (
+    SPEC_RELEASE_FILES,
     demographics_payload,
     reform_validation_payload,
     source_coverage_payload,
 )
 from microcosm.build.transport.compose import load_transport_spec
+from microcosm.data import contract as contract_module
 from test_support.microcosm_build.spec_release import (
     calibration_diagnostics,
     demography_estimate,
@@ -216,6 +218,12 @@ def test_source_coverage_fails_when_the_build_calibrated_a_held_out_reference(
     assert SOURCE_COVERAGE_FIELDS <= set(payload)
     assert payload["gate"]["passed"] is False
     assert holdout["category_id"] in payload["validation_only_activated"]
+
+
+def test_the_added_files_are_the_ones_the_be_contract_declares() -> None:
+    # The data shard names BE's added files by artifact key; the build
+    # shard's writers must write the same files under the same keys.
+    assert dict(SPEC_RELEASE_FILES) == contract_module._BE_ADDED_RELEASE_ARTIFACTS
 
 
 def test_reform_validation_carries_no_reforms_yet() -> None:
