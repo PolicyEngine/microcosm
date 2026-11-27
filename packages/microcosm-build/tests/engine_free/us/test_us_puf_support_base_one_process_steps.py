@@ -21,8 +21,12 @@ replaced with deterministic ones that read every table's numeric and text
 values, every column's dtype, the strata, the weights and the frame
 metadata, so a frame passed in memory that differed from the one a
 checkpoint read gives would write different bytes.
-``capital_gain_distributions`` runs its real code. The parent-side tests
-replace ``subprocess.run`` and ``subprocess.Popen``; one starts a real child.
+``capital_gain_distributions`` runs its real code, and the stand-ins
+evaluate each step's ``us/gates.json`` check through the shadow evaluation,
+so the saved observations hold entries. One test runs the 16 steps in 16
+real step processes and in one real child, and compares every file they
+write. The parent-side tests replace ``subprocess.run`` and
+``subprocess.Popen``; one starts a real child.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import sys
 import weakref
 from collections.abc import Callable, Iterator
@@ -44,7 +49,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build import outer_stage_runtime
+from microcosm.build import GateResult, outer_stage_runtime
 from microcosm.build.frame_checkpoint import load_frame_checkpoint
 from microcosm.build.outer_stage_runtime import (
     OUTER_STAGE_CONTEXT_FILENAME,
@@ -229,6 +234,24 @@ def _value_read_from_everything(frame: Frame, extra: float) -> np.ndarray:
     )
 
 
+#: The ``us/gates.json`` entry each stand-in step evaluates, one per step that
+#: evaluates any in ``_post_qrf_frame_stage``.
+_CHECK_ENTRY_BY_STEP = {
+    "wic_post_clone": "us_base_wic_claim_post_clone",
+    "prior_year_income_post_clone": "us_base_prior_year_income",
+    "child_support_post_clone": "us_base_child_support",
+    "disability_benefits_post_clone": "us_base_disability_benefits",
+    "workers_compensation_post_clone": "us_base_workers_compensation",
+    "weeks_unemployed_post_clone": "us_base_weeks_unemployed",
+    "childcare_post_clone": "us_base_childcare",
+    "adult_care_post_clone": "us_base_adult_care",
+    "energy_subsidy_post_clone": "us_base_energy_subsidy",
+    "retirement_contributions_post_clone": "us_base_retirement_contributions",
+    "retirement_distributions_post_clone": "us_base_retirement_distributions",
+    "education_inputs_post_clone": "us_base_education_inputs",
+}
+
+
 class _StandInSteps:
     """Deterministic stand-ins for the step functions that need real inputs.
 
@@ -268,6 +291,17 @@ class _StandInSteps:
 
         def post_qrf_step(stage, _args, frame, stage_metadata):
             self._record_input(stage, frame)
+            entry_id = _CHECK_ENTRY_BY_STEP.get(stage)
+            if entry_id is not None:
+                # Today's verdict is a stand-in; the shadow evaluates the
+                # entry's own binding on the frame and saves what it saw.
+                builder._shadow_frame_gate(
+                    entry_id,
+                    lambda: GateResult(
+                        name=entry_id, passed=True, failures=(), details={}
+                    ),
+                    frame,
+                )
             result = _with_person_columns(
                 frame,
                 {
@@ -408,12 +442,39 @@ def _assert_frames_identical(in_memory: Frame, read_back: Frame) -> None:
     assert frame_identity(in_memory) == frame_identity(read_back)
 
 
-def test_one_child_writes_the_same_files_as_one_process_per_step(
+def _observation_names(builder: ModuleType) -> list[str]:
+    return [
+        f"checkpoints/{builder.GATE_BATTERY_SHADOW_DIRECTORY}/{stage}.observations.json"
+        for stage in _ONE_PROCESS_STEPS
+    ]
+
+
+def _checkpoint_names(builder: ModuleType) -> list[str]:
+    pipeline = builder.OUTER_STAGE_PIPELINE
+    return [
+        f"checkpoints/{pipeline.index(stage):03d}_{stage}.frame.h5"
+        for stage in _ONE_PROCESS_STEPS
+    ]
+
+
+def _assert_observations_saved(run_dir: Path, builder: ModuleType) -> None:
+    """Each stand-in step that evaluates a check saved what the shadow saw."""
+
+    for stage, name in zip(
+        _ONE_PROCESS_STEPS, _observation_names(builder), strict=True
+    ):
+        payload = json.loads((run_dir / name).read_text())
+        assert bool(payload["observations"]) == (stage in _CHECK_ENTRY_BY_STEP), stage
+
+
+def test_one_child_hands_each_step_the_frame_its_checkpoint_holds(
     builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # Both runs use the same directory, so the paths in the run context and
-    # the saved observations are the same. The saved check observations are
-    # written (the shadow evaluation is on) and compared too.
+    # In this process, so the frames can be compared: the 16 steps run once
+    # one at a time, each reading its input from disk as a step process
+    # does, and once as the one child runs them. Both runs use the same
+    # directory, so the paths in the run context and the saved observations
+    # are the same.
     arm_us_tool_gate_shadows(monkeypatch)
     monkeypatch.delenv(_REPORT_VARIABLE, raising=False)
     monkeypatch.setattr(builder, "_stage_run_config", lambda _args: {})
@@ -444,16 +505,11 @@ def test_one_child_writes_the_same_files_as_one_process_per_step(
     files_one_child = _files_and_digests(tmp_path / "run")
 
     pipeline = builder.OUTER_STAGE_PIPELINE
-    checkpoint_names = [
-        f"checkpoints/{pipeline.index(stage):03d}_{stage}.frame.h5"
-        for stage in _ONE_PROCESS_STEPS
-    ]
-    observation_names = [
-        f"checkpoints/{builder.GATE_BATTERY_SHADOW_DIRECTORY}/{stage}.observations.json"
-        for stage in _ONE_PROCESS_STEPS
-    ]
-    assert set(checkpoint_names) | set(observation_names) <= set(files_one_child)
+    assert set(_checkpoint_names(builder)) | set(_observation_names(builder)) <= set(
+        files_one_child
+    )
     assert f"checkpoints/{OUTER_STAGE_CONTEXT_FILENAME}" in files_one_child
+    _assert_observations_saved(tmp_path / "run", builder)
     assert files_one_child == files_one_per_step
     assert (
         _completed_steps(builder, checkpoint_dir)
@@ -471,6 +527,94 @@ def test_one_child_writes_the_same_files_as_one_process_per_step(
             checkpoint_dir / f"{pipeline.index(previous):03d}_{previous}.frame.h5"
         ).frame
         _assert_frames_identical(one_child.inputs[stage], read_back)
+
+
+#: Run in a real step process: load the builder and this test module, put in
+#: the stand-in steps, and run ``_run_outer_stage`` for one ``--stage``, as
+#: the tool's command does after parsing its arguments.
+_STAND_IN_STEP_PROCESS = """
+import importlib.util, sys
+from contextlib import nullcontext
+from pathlib import Path
+
+import pytest
+
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+builder = load("build_us_puf_support_base", sys.argv[1])
+tests = load("one_process_steps_test_module", sys.argv[2])
+patch = pytest.MonkeyPatch()
+tests._StandInSteps(builder, patch, record=False)
+patch.setattr(builder, "_stage_run_config", lambda _args: {})
+patch.setattr(builder, "profile_stage", lambda *_args, **_kwargs: nullcontext())
+builder._run_outer_stage(tests._step_args(builder, Path(sys.argv[3]), sys.argv[4]))
+"""
+
+
+def test_one_child_writes_the_same_files_as_16_separate_step_processes(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The finish condition of task 1.5 · 7: the 16 steps in 16 real step
+    # processes, each reading its input checkpoint from disk, and in one
+    # real child started through the parent's own code, which reads only the
+    # first step's input from disk. Every file they write (the 16
+    # checkpoints, the run context and the 16 saved observation files) has
+    # the same SHA-256. Each process gets this process's policyengine-us
+    # lock-file check record, as a --stage all parent's step processes do,
+    # so it starts without repeating the check.
+    arm_us_tool_gate_shadows(monkeypatch)
+    monkeypatch.delenv(_REPORT_VARIABLE, raising=False)
+    repository = str(paths_for("microcosm-build").repository)
+    environment = builder._staged_subprocess_environment()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        path for path in (repository, environment.get("PYTHONPATH")) if path
+    )
+    run_dir = tmp_path / "run"
+    checkpoint_dir = run_dir / "checkpoints"
+
+    def step_process(stage: str) -> list[str]:
+        return [
+            sys.executable,
+            "-c",
+            _STAND_IN_STEP_PROCESS,
+            str(_TOOL),
+            str(Path(__file__).resolve()),
+            str(checkpoint_dir),
+            stage,
+        ]
+
+    _complete_steps_before_the_16(builder, checkpoint_dir)
+    for stage in _ONE_PROCESS_STEPS:
+        subprocess.run(step_process(stage), env=environment, check=True)
+    files_16_processes = _files_and_digests(run_dir)
+    shutil.rmtree(run_dir)
+
+    _complete_steps_before_the_16(builder, checkpoint_dir)
+    telemetry = _Telemetry()
+    stages_run: list[str] = []
+    builder._run_one_process_steps(
+        step_process(_ONE_PROCESS_STEPS[0]),
+        environment,
+        _ONE_PROCESS_STEPS,
+        telemetry=telemetry,
+        stages_run=stages_run,
+    )
+    files_one_child = _files_and_digests(run_dir)
+
+    assert telemetry.stages == stages_run == list(_ONE_PROCESS_STEPS)
+    assert set(_checkpoint_names(builder)) | set(_observation_names(builder)) <= set(
+        files_one_child
+    )
+    assert f"checkpoints/{OUTER_STAGE_CONTEXT_FILENAME}" in files_one_child
+    _assert_observations_saved(run_dir, builder)
+    assert files_one_child == files_16_processes
 
 
 def test_the_child_reports_profiles_saves_and_records_each_step_in_order(
@@ -878,6 +1022,7 @@ class _ChildProcesses:
         self.reports: list[str] | None = None
         self.popen_returncode = 0
         self.killed = False
+        self.events: list[tuple[str, float | None]] = []
         processes = self
 
         def run(command, *, check, env):
@@ -909,11 +1054,13 @@ class _ChildProcesses:
             def __exit__(self, *_exc_info) -> bool:
                 return False
 
-            def wait(self) -> int:
+            def wait(self, timeout: float | None = None) -> int:
+                processes.events.append(("wait", timeout))
                 self.returncode = processes.popen_returncode
                 return self.returncode
 
             def kill(self) -> None:
+                processes.events.append(("kill", None))
                 processes.killed = True
 
         monkeypatch.setattr(builder.subprocess, "run", run)
@@ -1130,6 +1277,55 @@ def test_a_child_that_reports_no_step_is_refused(
         builder._run_staged_all(SimpleNamespace(checkpoint_dir=tmp_path), _Telemetry())
 
     assert processes.first_steps() == [_ONE_PROCESS_STEPS[0]]
+
+
+def test_after_a_ctrl_c_the_parent_gives_its_child_a_moment_before_stopping_it(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # As subprocess.run does: the child got the same SIGINT, so the parent
+    # waits briefly for it to finish its own handling (the failing step
+    # saving its observations and profile record) before stopping it.
+    steps = builder.PIPELINE_STEPS
+    _stand_in_parent(builder, monkeypatch, steps[: steps.index(_ONE_PROCESS_STEPS[0])])
+    processes = _ChildProcesses(builder, monkeypatch)
+
+    class InterruptedTelemetry(_Telemetry):
+        def transition_stage(self, stage_id: str, **details: object) -> None:
+            super().transition_stage(stage_id, **details)
+            if stage_id == _ONE_PROCESS_STEPS[2]:
+                raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        builder._run_staged_all(
+            SimpleNamespace(checkpoint_dir=tmp_path), InterruptedTelemetry()
+        )
+    assert processes.events == [("wait", 0.25), ("kill", None)]
+
+
+def test_the_report_pipe_never_takes_a_standard_stream_descriptor(
+    builder: ModuleType,
+) -> None:
+    # os.pipe returns the lowest free descriptors. In a parent started with
+    # standard output and error closed, those are 1 and 2, and a write end
+    # at 2 would become the child's standard error.
+    saved = {fd: os.dup(fd) for fd in (1, 2)}
+    try:
+        os.close(1)
+        os.close(2)
+        read_fd, write_fd = builder._report_pipe_fds()
+    finally:
+        for fd, copy_of_fd in saved.items():
+            os.dup2(copy_of_fd, fd)
+            os.close(copy_of_fd)
+    try:
+        assert min(read_fd, write_fd) > 2
+        assert not os.get_inheritable(read_fd)
+        assert not os.get_inheritable(write_fd)
+        os.write(write_fd, b"step\n")
+        assert os.read(read_fd, 5) == b"step\n"
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
 
 
 #: Run in a real child process: load the builder, find the report pipe the
