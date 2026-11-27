@@ -342,11 +342,20 @@ class StageRuntime:
         if not isinstance(frame, Frame):
             raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
         stage_index = self._pipeline.index(stage_name)
-        identity = (
-            frame_identity(frame)
-            if expected_identity is None
-            else assert_expected_identity(expected_identity, frame, stage=stage_name)
-        )
+        if expected_identity is None:
+            identity = frame_identity(frame)
+        else:
+            try:
+                identity = assert_expected_identity(
+                    expected_identity, frame, stage=stage_name
+                )
+            except AssertionError:
+                # A raw write into column memory the frame shares with another
+                # frame can change its identity. The shared-column check names
+                # the changed column, and the checkpoint writer would raise
+                # that error on its own, so it runs before the identity error.
+                frame.check_shared_columns()
+                raise
         stage_metadata = _normalize_json_mapping(metadata or {}, label="metadata")
         checkpoint_path = self._checkpoint_path(stage_index, stage_name)
         write_frame_checkpoint(

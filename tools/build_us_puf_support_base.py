@@ -2996,8 +2996,9 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
         # StageRuntime.load computed this identity from the loaded frame and
         # checked it against the run context. Each step whose result must keep
         # the input's identity and row order passes it to runtime.complete,
-        # which compares the result with it before writing anything, so the
-        # input frame is not needed once the step (and the clone check) ran.
+        # which compares the result with it before writing the checkpoint or
+        # recording the step, so the input frame is not needed once the step
+        # (and the clone check) ran.
         input_identity = predecessor.identity
         del predecessor
         expected_identity: FrameIdentity | None = None
