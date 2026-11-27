@@ -15,7 +15,12 @@ through it on the scoring tests' fake engine, in spawned workers, and require:
   behavioral-response parameter;
 - the merged baseline pass's failure to fall back to each consumer's own pass,
   as the serial scorer does, a changed batch file to stop scoring, and a
-  request the dry run did not record to be refused.
+  request the dry run did not record to be refused;
+- certification (``_certify_us_build``) to close the scorer when an error
+  stops it during scoring (tracker task 1.4 · 8): the reform-coverage check's
+  reform units run first, and its refusal, or any stage's error, kills the
+  units still running and removes the batch files, while a failed check that
+  certification goes on past cancels nothing.
 """
 
 # The ``builder`` fixture is imported, and each test takes it by name.
@@ -1554,11 +1559,11 @@ def test_a_failed_check_that_stops_certification_stops_the_pools_workers(
 
 
 @pytest.mark.parametrize(
-    ("pooled", "error"),
+    ("pooled", "error_type"),
     [
-        (True, RuntimeError("the demographics writer broke")),
-        (False, RuntimeError("the demographics writer broke")),
-        (True, BuildTerminatedError()),
+        (True, RuntimeError),
+        (False, RuntimeError),
+        (True, BuildTerminatedError),
     ],
     ids=["pooled", "serial", "pooled_sigterm"],
 )
@@ -1568,7 +1573,7 @@ def test_any_error_during_scoring_closes_the_scorer(
     tmp_path,
     monkeypatch,
     pooled,
-    error,
+    error_type,
 ) -> None:
     """An error in any post-export stage, not only the check's refusal, stops
     certification with the scorer closed: no worker is left running and the
@@ -1577,6 +1582,7 @@ def test_any_error_during_scoring_closes_the_scorer(
     ``Exception``). The serial scorer is closed the same way."""
     _use_probes(monkeypatch, passing=True)
     plan, fit = _release_plan(builder)
+    error = error_type("the demographics writer broke")
 
     def make_scorer(batch_parent):
         if pooled:
@@ -1615,20 +1621,41 @@ def test_any_error_during_scoring_closes_the_scorer(
         _close_opened(builder, opened)
 
 
+class _UnprintableError(Exception):
+    def __str__(self) -> str:
+        raise ValueError("this error cannot be printed")
+
+
+@pytest.mark.parametrize(
+    ("close_error_type", "close_error_arguments", "printed"),
+    [
+        (
+            OSError,
+            ("the batch directory is gone",),
+            "OSError: the batch directory is gone",
+        ),
+        (_UnprintableError, (), "_UnprintableError"),
+    ],
+    ids=["ordinary", "unprintable"],
+)
 def test_an_error_closing_the_scorer_does_not_replace_the_one_that_stopped_it(
     builder,
     pooled_reforms,
     tmp_path,
     monkeypatch,
     capsys,
+    close_error_type,
+    close_error_arguments,
+    printed,
 ) -> None:
-    """If closing the scorer after an error raises too, certification prints
-    that second error and raises the first, the check's refusal."""
+    """If closing the scorer after an error raises an ``Exception`` too,
+    certification prints that second error, even one that cannot be turned
+    into text, and raises the first, the check's refusal."""
     _use_probes(monkeypatch, passing=False)
     plan, fit = _release_plan(builder)
 
     def failing_close():
-        raise OSError("the batch directory is gone")
+        raise close_error_type(*close_error_arguments)
 
     def make_scorer(batch_parent):
         scorer = _serial_scorer(
@@ -1648,10 +1675,138 @@ def test_an_error_closing_the_scorer_does_not_replace_the_one_that_stopped_it(
                 _certification(builder, tmp_path, evidence_release=False),
                 opened,
             )
-        assert "OSError: the batch directory is gone" in capsys.readouterr().err
+        assert printed in capsys.readouterr().err
     finally:
         for scorer in opened:
             type(scorer).close(scorer)
+
+
+def test_an_interrupt_while_closing_the_scorer_is_raised(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """An interrupt while closing the scorer after an error (Ctrl-C, or a
+    first SIGTERM) is raised in place of that error, which it carries as its
+    context: certification then ends as an interrupted run."""
+    _use_probes(monkeypatch, passing=False)
+    plan, fit = _release_plan(builder)
+
+    def interrupted_close():
+        raise BuildTerminatedError()
+
+    def make_scorer(batch_parent):
+        scorer = _serial_scorer(
+            builder, plan, tmp_path / "scoring", batch_parent=batch_parent
+        )
+        monkeypatch.setattr(scorer, "close", interrupted_close)
+        return scorer
+
+    opened: list = []
+    try:
+        with pytest.raises(BuildTerminatedError) as raised:
+            _certify_with(
+                builder,
+                monkeypatch,
+                make_scorer,
+                _record_for_certification(builder, plan, fit, tmp_path),
+                _certification(builder, tmp_path, evidence_release=False),
+                opened,
+            )
+        assert isinstance(raised.value.__context__, RuntimeError)
+        assert "Release gates failed" in str(raised.value.__context__)
+    finally:
+        for scorer in opened:
+            type(scorer).close(scorer)
+
+
+def test_a_stage_error_kills_the_units_still_running(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A stage's own error while workers are still running its later units
+    stops certification with those units killed at once: here reform
+    validation fails as it builds its second reform, while the worker runs
+    that reformed simulation's unit."""
+    probes = _use_probes(monkeypatch, passing=True)
+    plan, fit = _release_plan(builder)
+    validation = plan.consumer_requests["reform_validation"]
+    assert len(validation.simulations) >= 2
+    first_validation = build_fake_reform(
+        validation.reforms[validation.simulations[0]]
+    ).label
+    held = [probe.id for probe in probes] + [first_validation]
+    log = tmp_path / "engine-log"
+    log.mkdir()
+    monkeypatch.setenv(ENGINE_LOG, str(log))
+    # Every reform after reform validation's first waits for a file nobody
+    # writes, so its second unit is still running when the stage fails.
+    monkeypatch.setenv(
+        WAIT_FOR_OTHER_REFORMS,
+        json.dumps({"file": str(tmp_path / "never-written"), "except": held}),
+    )
+    built: list[object] = []
+    failed: list[float] = []
+
+    def failing_on_the_second(build):
+        def build_reform(*arguments, **options):
+            built.append(build)
+            if len(built) < 2:
+                return build(*arguments, **options)
+            # Wait until the worker has started the second unit's engine.
+            deadline = time.monotonic() + 60
+            while not any(
+                event["event"] == "construct" and event["reform"] not in (None, *held)
+                for event in _engine_events(log)
+            ):
+                assert time.monotonic() < deadline, "the second unit never started"
+                time.sleep(0.05)
+            failed.append(time.monotonic())
+            raise RuntimeError("reform validation broke")
+
+        return build_reform
+
+    # Reform validation builds a spec's reform or a parameter reform.
+    monkeypatch.setattr(
+        ReformValidationSpec,
+        "build_reform",
+        failing_on_the_second(ReformValidationSpec.build_reform),
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        failing_on_the_second(reform_validation_module._build_parameter_reform),
+    )
+    children_before = _child_processes()
+    opened: list = []
+    try:
+        with pytest.raises(RuntimeError, match="reform validation broke"):
+            _certify_with(
+                builder,
+                monkeypatch,
+                lambda batch_parent: _pooled_scorer(
+                    builder, plan, tmp_path / "scoring", 1, batch_parent=batch_parent
+                ),
+                _record_for_certification(builder, plan, fit, tmp_path),
+                _certification(builder, tmp_path, evidence_release=False),
+                opened,
+            )
+        # The busy worker was killed: the pool waits 10 seconds for a worker
+        # it has told to stop, and the unit it ran waits two minutes.
+        assert time.monotonic() - failed[0] < 8.0
+        assert _child_processes() - children_before == set()
+        [scorer] = opened
+        assert not scorer.batch_directory.exists()
+        execution = scorer.execution_record()
+        assert execution["report"]["units_completed"] == (
+            execution["units"]["baseline"] + len(probes) + 1
+        )
+        assert not (tmp_path / "release" / "reform_validation.json").exists()
+    finally:
+        _close_opened(builder, opened)
 
 
 @pytest.mark.parametrize(
@@ -1712,5 +1867,11 @@ def test_a_failed_check_that_does_not_stop_certification_cancels_nothing(
         assert smoke["enforced"] is not settings.get(
             "allow_reform_coverage_smoke_failures", False
         )
+        # One worker ran every unit once: none was killed and run again.
+        [scorer] = opened
+        report = scorer.execution_record()["report"]
+        assert report["pools"] == 1
+        assert report["worker_starts"] == 1
+        assert report["failed_attempts"] == []
     finally:
         _close_opened(builder, opened)

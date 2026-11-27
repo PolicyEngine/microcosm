@@ -25,7 +25,7 @@ environment, which spawned workers inherit:
   (two minutes at most) before it computes that variable;
 - :data:`WAIT_FOR_OTHER_REFORMS`: JSON ``{"file": path, "except": [labels]}``;
   an engine whose reform's label is not listed waits for the file (two minutes
-  at most) before it computes anything, so a test can keep one stage's
+  at most) before each variable it computes, so a test can keep one stage's
   reformed simulations running while another stage's finish;
 - :data:`FAIL_ON_HOUSEHOLDS` and :data:`MEMORY_ON_HOUSEHOLDS`: JSON mapping a
   variable to household ids; an engine whose batch holds one of them raises
