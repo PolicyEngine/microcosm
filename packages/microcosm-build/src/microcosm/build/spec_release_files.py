@@ -26,7 +26,9 @@ release directory.
   that calibrates its demography, as BE does, publishes in-sample fit here,
   where the US publishes an uncalibrated age distribution.
 - ``reform_validation.json`` has the US file's schema 1 fields with no
-  reforms until the country has scored ones (microcosm#264 for BE).
+  reforms until the country has scored ones (microcosm#264 for BE), and
+  ``out_of_sample_simulated`` true, as the US writer records it when there is
+  no out-of-sample reform.
 """
 
 from __future__ import annotations
@@ -376,15 +378,16 @@ def demographics_payload(
 def reform_validation_payload(*, country: str, period: int) -> dict[str, object]:
     """``reform_validation.json`` with no reforms: none is scored yet.
 
-    ``out_of_sample_simulated`` is false because nothing was simulated, so a
-    consumer cannot read the empty list as a build that passed a fidelity
-    test.
+    ``out_of_sample_simulated`` is true, as the US writer records it when
+    there is no out-of-sample reform: no reform was left unsimulated. The
+    publisher refuses a false flag, which means out-of-sample reforms were
+    skipped (``microcosm.data.publish_cli.publication_refusal``).
     """
     return {
         "schema_version": REFORM_VALIDATION_SCHEMA_VERSION,
         "country": country,
         "baseline_period": int(period),
         "scoring_window": None,
-        "out_of_sample_simulated": False,
+        "out_of_sample_simulated": True,
         "reforms": [],
     }

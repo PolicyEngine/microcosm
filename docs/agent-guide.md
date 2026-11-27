@@ -712,8 +712,9 @@ The transport build driver (`tools/build_transport.py`, a shim over
 `transport_graph.json` spec resource and runs it locally: every file it
 writes, including its `.graph-store`, lies under `--out`, and it has no
 upload or staging path. Its `build-status.json` records the Microcosm
-commit, whether a tracked file differed from it, and the Python and package
-versions the build ran on, which the release step reads. Before it opens the store it refuses any link in an
+commit, whether a tracked file differed from it, the Python and package
+versions and the digests of the spec resources the build ran on, which the
+release step reads. Before it opens the store it refuses any link in an
 existing store tree (the root, `objects`, `tmp` or a shard), because the
 store creates those directories by following links; it does not guard
 against links planted while a build is running. Activation checks run before
