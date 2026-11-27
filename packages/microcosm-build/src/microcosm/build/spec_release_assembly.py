@@ -8,8 +8,10 @@ transport command (:mod:`microcosm.build.transport.cli`), as
 command wrote under ``--out``:
 
 - ``build-status.json``: the outputs the build still owes (it refuses unless
-  there are none), the Microcosm commit and the Python and package versions
-  the build ran on, and the digests of the H5 and the diagnostics it wrote;
+  there are none), the Microcosm commit, the Python and package versions and
+  the digest of each JSON spec resource the build ran on (they must equal
+  those of the spec this step loads), and the digests of the H5, its
+  descriptor and the diagnostics it wrote;
 - ``skeleton.h5`` and ``export-descriptor.json``: the population, read back
   against its descriptor, and its period and weight entity;
 - ``calibration-diagnostics.json``: the calibration's diagnostics;
@@ -243,8 +245,8 @@ def _require_build_spec(
     if differing:
         raise SpecReleaseAssemblyError(
             f"The build ran on another {country!r} spec: {differing} differ from "
-            "this checkout's. Assemble from a checkout at the build's commit "
-            f"{commit}."
+            "the spec this step loaded. Assemble with the spec the build ran "
+            f"on, from a checkout at the build's commit {commit}."
         )
 
 
@@ -295,16 +297,16 @@ def _run_record(path: Path, country: str) -> tuple[RunManifest, dict[str, str]]:
         raise SpecReleaseAssemblyError(
             f"{path.name} is a run of {run.country!r}, not {country!r}."
         )
-    failures = run.known_failures
+    try:
+        failures = run.known_failures
+        tier = run.tier
+    except ValueError as error:
+        raise SpecReleaseAssemblyError(f"{path.name}: {error}.") from error
     if failures:
         raise SpecReleaseAssemblyError(
             f"The run's gate or rejected nodes {list(failures)} did not pass; a "
             "build whose gates failed is not publishable."
         )
-    try:
-        tier = run.tier
-    except ValueError as error:
-        raise SpecReleaseAssemblyError(f"{path.name}: {error}.") from error
     if tier not in (None, "certified"):
         raise SpecReleaseAssemblyError(
             f"{path.name} records the release tier {tier!r}, not 'certified'."
@@ -546,10 +548,13 @@ def assemble_spec_release(
 
     Raises:
         SpecReleaseAssemblyError: If the build cannot be published: it owes
-            outputs, records no clean commit or no runtime, a file changed
-            after the build wrote it, a gate failed, its year has no release,
-            its source coverage fails, or the release contract refuses the
-            assembled directory. Nothing is written then.
+            outputs; records no clean commit, no runtime or no spec digests;
+            ran on another spec; a file changed after the build wrote it; a
+            gate failed; its year has no release; its source coverage fails;
+            an earlier assembly is in the way; or the release contract
+            refuses the assembled directory. Nothing is left in the build
+            folder or the release directory then; ``out_dir`` itself may
+            have been created.
     """
     build_dir = Path(build_dir).absolute()
     out_dir = Path(out_dir).absolute()
@@ -585,6 +590,7 @@ def assemble_spec_release(
     diagnostics_source = build_dir / BUILD_DIAGNOSTICS_FILE
     _require_produced(produced, "skeleton_dataset", dataset_source)
     _require_produced(produced, "calibration_diagnostics", diagnostics_source)
+    _require_produced(produced, "export_descriptor", build_dir / EXPORT_DESCRIPTOR_FILE)
 
     descriptor = _load_json(build_dir / EXPORT_DESCRIPTOR_FILE)
     try:
@@ -769,11 +775,9 @@ def assemble_spec_release(
                 "commit": chronicle_commit,
             },
             spec_resource_hashes=resource_hashes,
-            run={
-                "key": run.key,
-                "started_at": run.started_at,
-                "finished_at": run.finished_at,
-            },
+            # The manifest's start is that of the command's last pass over
+            # the stored graph, not of the build, so it is not recorded.
+            run={"key": run.key, "finished_at": run.finished_at},
             created_at=created_at,
             release_manifest_country=(
                 country_label if isinstance(country_label, str) else None

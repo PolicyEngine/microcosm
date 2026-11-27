@@ -13,9 +13,10 @@ release directory.
 - ``source_coverage.json`` has the US file's fields
   (:mod:`microcosm.build.us_runtime.source_coverage`), from the shared
   :func:`microcosm.build.gates.source_coverage_gate`. Its source families are
-  the spec's target categories: a category with an executable calibration
-  reference is a hard target, one whose references are all parked is a source
-  gap, and each held-out category is validation-only. The gate fails when the
+  the spec's target categories, or each reference's ``family`` where the spec
+  declares no category for it (as NZ's does): a family with an executable
+  calibration reference is a hard target, one whose references are all parked
+  is a source gap, and each held-out family is validation-only. The gate fails when the
   build did not calibrate an executable reference, or calibrated a held-out
   one.
 - ``demographics.json`` has the US file's fields
@@ -141,19 +142,46 @@ def source_coverage_name(country: str) -> str:
     return f"{country}_source_coverage"
 
 
+def _family_of(reference: Mapping, categories: Mapping[str, Mapping]) -> str:
+    """The source family a reference counts toward: its declared category,
+    else its ``family`` (a spec that declares no categories, as NZ's)."""
+    category = reference.get("category_id")
+    if isinstance(category, str) and category in categories:
+        return category
+    family = reference.get("family")
+    return family if isinstance(family, str) and family else "uncategorised"
+
+
+def _families(document: Mapping | None) -> dict[str, tuple[str, list[Mapping]]]:
+    """Each source family of a reference document: its label and references,
+    in the order the document first names each."""
+    categories = _categories(document)
+    families: dict[str, tuple[str, list[Mapping]]] = {}
+    for reference in _references(document):
+        family = _family_of(reference, categories)
+        category = categories.get(family, {})
+        label = (
+            category.get("label", family) if isinstance(category, Mapping) else family
+        )
+        families.setdefault(family, (str(label), []))[1].append(reference)
+    for family, category in categories.items():
+        label = (
+            category.get("label", family) if isinstance(category, Mapping) else family
+        )
+        families.setdefault(family, (str(label), []))
+    return families
+
+
 def _coverage_entries(
     target_references: Mapping, holdout_references: Mapping | None
 ) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
-    references = _references(target_references)
-    for category_id, category in _categories(target_references).items():
-        members = [ref for ref in references if ref.get("category_id") == category_id]
-        label = category.get("label", category_id)
+    for family, (label, members) in _families(target_references).items():
         executable = tuple(str(ref["name"]) for ref in members if _executable(ref))
         if executable:
             entries.append(
                 {
-                    "family_id": category_id,
+                    "family_id": family,
                     "label": label,
                     "role": "hard_target",
                     "package_aliases": executable,
@@ -162,7 +190,7 @@ def _coverage_entries(
         else:
             entries.append(
                 {
-                    "family_id": category_id,
+                    "family_id": family,
                     "label": label,
                     "role": "source_gap",
                     "missing_source_packages": tuple(
@@ -171,18 +199,13 @@ def _coverage_entries(
                     ),
                 }
             )
-    holdouts = _references(holdout_references)
-    for category_id, category in _categories(holdout_references).items():
+    for family, (label, members) in _families(holdout_references).items():
         entries.append(
             {
-                "family_id": category_id,
-                "label": category.get("label", category_id),
+                "family_id": family,
+                "label": label,
                 "role": "validation_only",
-                "package_aliases": tuple(
-                    str(ref["name"])
-                    for ref in holdouts
-                    if ref.get("category_id") == category_id
-                ),
+                "package_aliases": tuple(str(ref["name"]) for ref in members),
             }
         )
     return entries
@@ -209,8 +232,9 @@ def source_coverage_payload(
             contract's name and country.
     """
     category_of = {
-        str(ref["name"]): ref.get("category_id")
-        for ref in (*_references(target_references), *_references(holdout_references))
+        str(ref["name"]): _family_of(ref, _categories(document))
+        for document in (target_references, holdout_references)
+        for ref in _references(document)
         if isinstance(ref.get("name"), str)
     }
     active_aliases = sorted(_calibration_rows(diagnostics))

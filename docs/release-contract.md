@@ -1127,29 +1127,31 @@ work.
     three added files come from `microcosm.build.spec_release_files`, which
     reads only the country's spec and the build's calibration diagnostics:
     `source_coverage.json` has the US file's fields under the contract name
-    `be_source_coverage`, with the spec's target categories as its source
-    families; `demographics.json` has the US file's fields (each age band
-    without `min_age` and `max_age`, which the spec does not give) for the
-    spec's demography references, whose fit is in-sample because BE
-    calibrates them; and `reform_validation.json` lists no reforms, with
+    `be_source_coverage`, with the spec's target categories (or, where it
+    declares none, each reference's `family`) as its source families;
+    `demographics.json` has the US file's fields (each age band without
+    `min_age` and `max_age`, which the spec does not give) for the spec's
+    demography references, whose fit is in-sample because BE calibrates
+    them; and `reform_validation.json` lists no reforms, with
     `out_of_sample_simulated` true as the US writer records it when no
-    out-of-sample reform exists, until microcosm#264. The release step
-    for a transport build, `tools/assemble_spec_release_dir.py`
+    out-of-sample reform exists, until microcosm#264. The release step for a
+    transport build, `tools/assemble_spec_release_dir.py`
     (`microcosm.build.spec_release_assembly`), reads the build's `--out`
     folder as the UK national assembler reads its candidate's outputs:
     `build-status.json` (nothing owed; a clean Microcosm commit, the runtime
-    and the digests of the spec resources, which a transport build records
-    there and which must equal those of the spec the step loads), the H5
-    read back against its export descriptor (under the pandas and NumPy
-    versions the build used, which the descriptor records), the
-    calibration diagnostics and the run manifest (every gate passed). It writes `<out-dir>/<release>/` with each
-    file the country's release contract requires, puts the H5 and a weights
-    file beside the build under the manifests' names, validates the
-    directory and prints the publish and promote commands; it uploads
-    nothing. The release is `microcosm-<country>-<year>-national` for the
-    export's year, and only a name `publishes_to_build_folder` admits is
-    taken. BE's spec declares no transport graph yet, so no BE build runs
-    through this step until it does.
+    and the digest of each JSON spec resource, which a transport build
+    records there and which must equal those of the spec the step loads),
+    the H5 read back against its export descriptor (under the pandas and
+    NumPy versions the build used, which the descriptor records), the
+    calibration diagnostics and the run manifest (every gate passed). It
+    writes `<out-dir>/<release>/` with each file the country's release
+    contract requires, puts the H5 and a weights file beside the build under
+    the manifests' names, validates the directory and prints the publish and
+    promote commands; it uploads nothing. The release is
+    `microcosm-<country>-<year>-national` for the export's year, and only a
+    name `publishes_to_build_folder` admits is taken. BE's spec declares no
+    transport graph yet, so no BE build runs through this step until it
+    does.
   - *The first build of a new UK `k`* (2026-11-13). `validate_release_dir`
     refuses every layout of a local-area release until a registry entry names
     it, and `build_folder_identity` and `microcosm-publish-release-build`

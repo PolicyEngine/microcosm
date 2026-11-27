@@ -12,9 +12,10 @@ Everything is written under ``--out``: ``graph.json``, ``manifest.json``, a
 manifest per checkpoint, each opaque artifact and an index of them, the
 skeleton H5 and its descriptor, the calibration diagnostics file, the graph
 explorer page and ``build-status.json``. The status file lists the outputs
-the spec declares as still owed by a later package, and the Microcosm commit
-and the Python and package versions the build ran on, which the spec release
-assembler (``microcosm.build.spec_release_assembly``) reads. There is no upload,
+the spec declares as still owed by a later package, and the Microcosm commit,
+the Python and package versions and the digest of each JSON spec resource the
+build ran on, which the spec release assembler
+(``microcosm.build.spec_release_assembly``) reads. There is no upload,
 staging or publication path; ``--local-only`` is the only mode.
 
 The currency check guards new runs only: ``auto`` and ``forbid`` require
