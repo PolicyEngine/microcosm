@@ -430,7 +430,12 @@ ALL_STAGE_NAMES = (*STAGE_NAMES, HOUSEHOLD_LOCATION_STAGE_NAME)
 #: where a step that read its input from disk would not. No step does that.
 #: Reading a checkpoint also turns NumPy scalars in object columns into
 #: Python values, so before a step takes a frame from memory the child stops
-#: if it holds any (``_refuse_values_a_checkpoint_read_changes``). A frame
+#: if it holds any (``_refuse_values_a_checkpoint_read_changes``). Two other
+#: differences are not checked, since a check could stop a run whose output
+#: would be the same: reading gives each missing value in an object column
+#: its own NaN object, where a frame in memory may repeat one (so ``set``
+#: and ``in`` on the raw values can differ), and it gives each table's
+#: column labels the ``str`` dtype a new table gets. A frame
 #: handed over keeps its columns' memory layout, where a checkpoint read
 #: gives contiguous arrays. pandas 3 copies a column into new, contiguous
 #: memory when it builds a table unless given ``copy=False``, and a review
@@ -3350,33 +3355,46 @@ _CHECKPOINT_READ_OBJECT_VALUE_TYPES = frozenset(
 )
 
 
+def _holds_python_objects(dtype: object) -> bool:
+    """Whether a series or index of ``dtype`` stores one Python object per
+    value: the object dtype, and the python-backed ``str`` dtype, which
+    keeps the ``np.str_`` values it is given."""
+
+    return pd.api.types.is_object_dtype(dtype) or (
+        isinstance(dtype, pd.StringDtype) and dtype.storage == "python"
+    )
+
+
 def _refuse_values_a_checkpoint_read_changes(
     frame: Frame, *, step: str, next_step: str
 ) -> None:
     """Stop before ``next_step`` takes ``frame`` from memory if reading
-    ``step``'s checkpoint would give it other values.
+    ``step``'s checkpoint would give it values of other types.
 
-    Reading a checkpoint turns NumPy scalars in object columns, an object
-    index or object strata into Python values (``np.float32`` into a 64-bit
-    ``float``, ``np.str_`` into ``str``), and a frame handed over in memory
-    keeps them. ``next_step`` would then compute on other values than in a
-    run with one process per step. ``step`` has completed, so a resume reads
-    its checkpoint and goes on. Checking the values of the post-clone
-    frame's object series takes about 30 ms.
+    Reading a checkpoint turns NumPy scalars into Python values
+    (``np.float32`` into a 64-bit ``float``, ``np.str_`` into ``str``) in
+    object columns and indexes, python-backed ``str`` columns and indexes,
+    the strata and the strata's index; a frame handed over in memory keeps
+    them. ``next_step`` would then compute on other values than in a run
+    with one process per step. ``step`` has completed, so a resume reads
+    its checkpoint and goes on. Checking the post-clone frame's 2.3 million
+    such values took 30 ms, and 117 ms on a heavily loaded machine.
     """
 
-    places: list[tuple[str, object]] = []
+    places: list[tuple[str, pd.Series | pd.Index]] = []
     for name in (*frame.entities, *frame.links):
         table = frame.table(name) if name in frame.entities else frame.link(name)
-        if pd.api.types.is_object_dtype(table.index.dtype):
+        if _holds_python_objects(table.index.dtype):
             places.append((f"{name} index", table.index))
         for column in table.columns:
-            if pd.api.types.is_object_dtype(table[column].dtype):
+            if _holds_python_objects(table[column].dtype):
                 places.append((f"{name} column {column!r}", table[column]))
-    if pd.api.types.is_object_dtype(frame.strata.dtype):
+    if _holds_python_objects(frame.strata.dtype):
         places.append(("strata", frame.strata))
+    if _holds_python_objects(frame.strata.index.dtype):
+        places.append(("strata index", frame.strata.index))
     for place, values in places:
-        found = set(map(type, values.to_numpy(dtype=object, copy=False)))
+        found = set(map(type, values.to_numpy(dtype=object)))
         changed = found - _CHECKPOINT_READ_OBJECT_VALUE_TYPES
         if changed:
             type_names = ", ".join(
