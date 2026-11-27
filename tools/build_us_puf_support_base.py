@@ -45,6 +45,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 from collections.abc import (
     Callable,
@@ -414,11 +415,18 @@ ALL_STAGE_NAMES = (*STAGE_NAMES, HOUSEHOLD_LOCATION_STAGE_NAME)
 #: predecessor checkpoint and hands each later step the frame the step before
 #: it completed. Each step still writes its checkpoint, completion record,
 #: profile record and saved check observations, so a stopped run resumes
-#: after the last finished step. What sharing a process gives up: memory is
-#: not returned to the system between these steps; on macOS each step's
-#: recorded peak is the process's peak so far; and a frame handed over in
-#: memory is not read back, so its checkpoint's SHA-256 and identity are next
-#: checked when a later process reads the file.
+#: after the last finished step. Before each step the child compares the run
+#: config with the locked one, as each step process does when it starts, so
+#: a change to the builder's source files during the run stops it before the
+#: next step. What sharing a process gives up: memory is not returned to the
+#: system between these steps; on macOS each step's recorded peak is the
+#: process's peak so far; and a frame handed over in memory is not read back,
+#: so its checkpoint's SHA-256 and identity are next checked when a later
+#: process reads the file. A frame handed over also keeps the records of the
+#: column memory it shares with earlier frames (``Frame.check_shared_columns``),
+#: which a frame read from disk does not have: a step that wrote into shared
+#: column memory in place would be refused at its checkpoint write here,
+#: where a step that read its input from disk would not. No step does that.
 ONE_PROCESS_STEPS = PIPELINE_STEPS[
     PIPELINE_STEPS.index(PUF_CAPITAL_GAINS_TAIL_STAGE_NAME) : (
         PIPELINE_STEPS.index("education_inputs_post_clone") + 1
@@ -1167,6 +1175,13 @@ def _run_one_process_steps(
             f"Checkpointed stage {steps[max(reported - 1, 0)]!r} failed with "
             f"exit code {returncode}."
         )
+    if reported == 0:
+        raise RuntimeError(
+            f"The step process for {steps[0]!r} through {steps[-1]!r} exited "
+            "cleanly without reporting any step: a step process that finds no "
+            f"report pipe in {STEP_REPORT_VARIABLE} runs one step and reports "
+            "nothing."
+        )
     if reported < len(steps):
         raise RuntimeError(
             f"The step process for {steps[0]!r} through {steps[-1]!r} exited "
@@ -1219,7 +1234,11 @@ def _follow_step_reports(
 #: ``--stage`` is one of ``ONE_PROCESS_STEPS``. It then runs from that step
 #: through the last of them, writing each step's name and a newline to the
 #: pipe as the step starts. Otherwise it runs its one step, as a named
-#: ``--stage`` run by hand does. A malformed variable stops the process.
+#: ``--stage`` run by hand does. A malformed variable stops the process, and
+#: so does one that names a descriptor that is not an open pipe. The
+#: process-ID comparison does not identify the run: a copy of the variable
+#: used where process IDs repeat (a fresh container) can match, as
+#: ``MICROCOSM_TELEMETRY_PARENT_PID`` can.
 STEP_REPORT_VARIABLE = "MICROCOSM_US_BASE_STEP_REPORT"
 _STEP_REPORT_SCHEMA_VERSION = 1
 _STEP_REPORT_KEYS = frozenset({"fd", "parent_pid", "schema_version"})
@@ -1240,7 +1259,8 @@ def _step_report_fd(stage: str) -> int | None:
     """The pipe this step process reports its steps on, or ``None``.
 
     ``None`` unless this process's parent set ``STEP_REPORT_VARIABLE`` and
-    ``stage`` is one of ``ONE_PROCESS_STEPS``.
+    ``stage`` is one of ``ONE_PROCESS_STEPS``. A variable that names a
+    descriptor that is not an open pipe stops the process.
     """
 
     raw = os.environ.get(STEP_REPORT_VARIABLE)
@@ -1249,7 +1269,19 @@ def _step_report_fd(stage: str) -> int | None:
     payload = _parse_step_report(raw)
     if payload["parent_pid"] != os.getppid() or stage not in ONE_PROCESS_STEPS:
         return None
-    return payload["fd"]
+    report_fd = payload["fd"]
+    try:
+        mode = os.fstat(report_fd).st_mode
+    except OSError:
+        mode = None
+    if mode is None or not stat.S_ISFIFO(mode):
+        raise SystemExit(
+            f"{STEP_REPORT_VARIABLE} names file descriptor {report_fd}, which is "
+            f"{'not open' if mode is None else 'not a pipe'} in this process. A "
+            "--stage all run sets it for its step processes; unset it to run a "
+            "named --stage by hand."
+        )
+    return report_fd
 
 
 def _parse_step_report(raw: str) -> dict[str, int]:
@@ -3201,11 +3233,20 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
         file=sys.stderr,
         flush=True,
     )
+    # A process a step starts gets no copy of the write end, so the reports
+    # end when this process exits.
+    os.set_inheritable(report_fd, False)
     carried = _CarriedCheckpoint()
     for step in steps:
         _report_step_start(report_fd, step)
         step_args = copy.copy(args)
         step_args.stage = step
+        if step != steps[0]:
+            # As each step process does when it starts (_open_stage_runtime
+            # above, for the first): a change to the builder's source files,
+            # its dependencies or its thread settings since the run started
+            # stops the run before this step.
+            runtime.require_run_config(_stage_run_config(step_args))
         _run_outer_step(step_args, runtime, carried)
 
 
