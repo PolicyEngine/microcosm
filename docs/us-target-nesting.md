@@ -31,8 +31,8 @@ One point is ruled since (27 Nov 2026): the Historic Table 2 state row is the
 state parent of a district row on every surface, and a parent that it does
 not contain is not removed. The proposed rule for all levels, with a
 recommendation for each open decision, is in
-[US target nesting rule: design for rulings](us-target-nesting-rule-design.md).
-No code applies it yet.
+[US target nesting rule: design and rulings](us-target-nesting-rule-design.md).
+Its nine decisions were accepted on 27 Nov 2026. No code applies them yet.
 
 ## One operator, one declaration
 

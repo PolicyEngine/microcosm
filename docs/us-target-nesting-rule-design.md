@@ -1,8 +1,11 @@
-# US target nesting rule: design for rulings
+# US target nesting rule: design and rulings
 
-**Status: a proposal. It is not in force, and no code reads this page.** It
-is the design step of Stage B of microcosm#1760. Stage A, which is on this
-branch, changes no target ([US target nesting](us-target-nesting.md)).
+**Status: the rule is ruled, and no code applies it yet.** The nine decisions
+of section 4 were accepted on 27 Nov 2026. Section 5, how the rulings are
+declared, is a proposal. This page is the design step of Stage B of
+microcosm#1760. Stage A, which is on this branch, changes no target
+([US target nesting](us-target-nesting.md)). The target changes wait for the
+feed re-pin after PolicyEngine/chronicle#451.
 
 Each number is one of two kinds:
 
@@ -16,10 +19,10 @@ Each number is one of two kinds:
 |---|---|---|
 | 26 Nov 2026 | Stage A uses the cross-grain operator that the UK uses. No target changes for now, so that PR #1719 keeps its behavior. | microcosm#1760 |
 | 27 Nov 2026 | The Historic Table 2 state row is the state parent of a district row on every surface, for every parent that it contains. A parent that it does not contain is not removed. | [comment on #1760](https://github.com/PolicyEngine/microcosm/issues/1760#issuecomment-7217969778) |
+| 27 Nov 2026 | The nine recommendations of section 4 are accepted. | This page |
+| 27 Nov 2026 | The way the rulings are declared must follow how the UK declares its own (section 5). | This page |
 
-Everything below is open.
-
-## 2. The proposed rule
+## 2. The rule
 
 Nine statements. Each decision in section 4 is one of them.
 
@@ -76,7 +79,10 @@ registry of the pinned feed. **(measured)**
 CHIP has 31 state rows because a reviewed rule drops the 20 M-CHIP states.
 TANF has 29 state rows in the compiled registry.
 
-## 4. Decisions, each with a recommendation
+## 4. The nine decisions
+
+**Ruled, 27 Nov 2026: the recommended option of each decision is accepted.**
+The other options stay on the page as the record of what was considered.
 
 ### Decision 1. The level holder (statements 1 to 3)
 
@@ -191,7 +197,164 @@ At the re-pin the bytes of the registry move anyway.
 
 **Recommended: yes to all three, in the re-pin PR.**
 
-## 5. What each decision changes
+## 5. How the rulings are declared
+
+**The principle.** The US declares its nesting with the constructs that the
+UK declares in `uk/cross_grain_declarations.json`, under the same key names.
+A new key is added only where the UK has no construct for the need. It then
+goes into the shared tooling, with a default that leaves the UK as it is.
+
+### 5.1 The constructs that the UK has
+
+Read in `uk/cross_grain_declarations.json` and in the UK runtime.
+
+| Construct | What it declares | The UK has |
+|---|---|---|
+| `signature_fields`, and the measurement of each target | Two targets with the same measurement at two levels are one quantity. Nothing else is declared | The regional capital-gains cells under the UK total |
+| `bridges` | **The bridge between concepts.** Two targets with different measurements that measure one quantity. Fields: `bridge_id`, `concept`, `higher_target_ids`, `lower_side`, `per_geography`, `max_factor_shift`, `reason` | 11. One example: the GB Universal Credit caseload over the area cells, with a bound of 0.02 |
+| Bridges with a derived control (`fanout_sum_bridges`, `sum_bridges`, `band_bridges`) | A control that no source publishes as one row. Code computes the control row and puts it on the surface under its own id. A bridge ties it to the lower rows. Bounds: `max_factor_shift`, `min_factor_shift`, `max_index_shift` | 30 |
+| `partitions` | Members and their parent at one geography: `exhaustive` or `share_of_parent` | 3 |
+| `relations` | A pair that is not reconciled, with a reason: `subset` (the part is at most the whole) or `independent` | 36 |
+| `local_routes` | A lower target with no higher control, with a reason | 8 |
+| Licensed empty legs | A leg that may hold no lower row of a target | From the membership file |
+| Metadata and receipt | `cross_grain_value_before`, `cross_grain_factor`, `cross_grain_control` on each reconciled row, and one pass receipt | Every build |
+
+Two more facts about the UK:
+
+- It runs the operator one time on one joint surface of all the bound
+  target cells.
+- A static check refuses a pair, or a local target, that no construct
+  covers.
+
+### 5.2 Each ruling in those constructs
+
+| Ruling | Construct | Note |
+|---|---|---|
+| The level holder and the chain (decision 1) | `grain_precedence`, `control_grains` | In the US file already |
+| One source at two levels: the ladder from state to county, the Census age bands | Exact signature | Nothing to declare |
+| State to district SOI (ruled 27 Nov), and state to county SOI. The parent and the children come from two sources | `bridges` | One bridge for each measure, written as one bridge family (5.4). The measure ids that differ between the two files are named in the family |
+| National to state SOI: rows 1 and 2, and the 14 families (decision 2) | A bridge with a derived control | The control is the national value times the states' share of their own file's US total. The `reason` of each bridge holds the verified concept match |
+| Capital gains: Form 1040 line 7 against the concept of the model | The `concept` and the `reason` of that bridge | Python constants hold it today |
+| County households (decision 5) | A bridge with a derived control: the sum of the lower rows | The UK's `sum_bridges` is the same idea |
+| SNAP, Medicaid, CHIP, TANF (decision 3) | `relations`, `subset`: the state rows are part of the national row | The UK tests that a part is at most its whole. See 5.5 for Medicaid |
+| ACA, SSI by state, state income tax | `local_routes`, `no_higher_control` | |
+| State AGI bands (row 3) | `partitions`, `share_of_parent` | When row 3 moves to the operator |
+| At-large areas and excluded states (decision 6) | Licensed empty legs | The operator records them. The adapter does not drop them on its own |
+| The bound of a bridge (decision 6) | `max_factor_shift` and `min_factor_shift`, around a common factor | One new optional key (5.4). The band of 1.25 is a shift from -0.20 to +0.25 around the median factor |
+| One set of metadata keys (decision 9) | The UK's `cross_grain_*` keys | No new US names |
+| One receipt (decision 9) | The operator's pass receipt | |
+| One allocator (decision 9) | `allocator` on the rule: `proportional_fsum` | |
+
+### 5.3 Sketches
+
+The target ids are examples. A US target id is the record set and the
+measure of a compiled row, as a UK contract target is one target with many
+cells.
+
+A bridge between two concepts, as the operator takes it (the UK's fields):
+
+```json
+{
+  "bridge_id": "historic_table_2_state_vs_district_file:qbi_amount",
+  "concept": "irs_soi.qualified_business_income_deduction",
+  "higher_target_ids": ["irs_soi.historic_table_2.state_broad_totals:qbi_amount"],
+  "lower_side": "contract:irs_soi.congressional_district_2022.all_returns:qualified_business_income_deduction_amount",
+  "reason": "Both read IRS column A04475. Historic Table 2 holds the complete state total (IRS district data guide)."
+}
+```
+
+The bridge family that makes one such bridge for each measure:
+
+```json
+{
+  "bridge_family_id": "historic_table_2_state_vs_district_file",
+  "higher": {"grain": "state", "record_set_spec_prefix": "irs_soi.historic_table_2."},
+  "lower": {"grain": "congressional_district", "record_set_spec_prefix": "irs_soi.congressional_district_"},
+  "match_on": ["source_measure_id", "agi_lower_bound", "agi_upper_bound", "filing_status"],
+  "measure_id_map": {"qbi_amount": "qualified_business_income_deduction_amount"},
+  "common_factor": "median_across_legs",
+  "max_factor_shift": 0.25,
+  "min_factor_shift": -0.2,
+  "on_out_of_bound": "unbind_lower_rows",
+  "reason": "The district file gives each district's share of its state. Historic Table 2 gives the complete state total."
+}
+```
+
+A bridge with a derived control, for national to state:
+
+```json
+{
+  "bridge_id": "table_1_4_vs_historic_table_2_states:taxable_pension_income_amount",
+  "higher_target_id": "irs_soi.table_1_4:taxable_pension_income_amount",
+  "lower_target_id": "irs_soi.historic_table_2.state_broad_totals:taxable_pension_income_amount",
+  "coverage_total_target_id": "irs_soi.historic_table_2.us:taxable_pension_income_amount",
+  "reason": "The same Form 1040 line in both tables (microcosm#1243). The states keep their shares of the Historic Table 2 US total."
+}
+```
+
+A pair that is not reconciled:
+
+```json
+{
+  "targets": ["usda_snap.state:total_benefits", "usda_snap.national:total_benefits"],
+  "relation": "subset",
+  "part": "usda_snap.state:total_benefits",
+  "whole": "usda_snap.national:total_benefits",
+  "reason": "Cells of one publication. The national row may count areas outside the 50 states and DC."
+}
+```
+
+### 5.4 What the shared tooling needs
+
+Each addition is optional, has no country in it, and has a default that
+leaves the UK as it is.
+
+1. **Bridge families.** One declared entry that expands to one bridge for
+   each measure. The UK wrote its 24 band bridges one by one; a family is
+   the same thing as data.
+2. **Two kinds of derived control** in `microcosm.build.cross_grain_controls`:
+   the sum of the lower rows (it exists since Stage A) and the coverage
+   control of statement 6.
+3. **A bound around a common factor.** The UK bounds a factor around one, or
+   around a declared index. The US needs the bound around the median factor
+   across the legs of a bridge, because two files of two vintages differ by
+   a common gap. It also needs a second answer when a leg is out of bound:
+   the UK refuses the build, and the US unbinds the lower rows of that leg
+   and records it.
+4. **A US contract.** The UK has a written contract with a measurement for
+   each target. The US rows come from the feed, so the adapter derives the
+   target id and the measurement of each compiled row from declared metadata
+   fields.
+
+**Where they go: beside the operator, not in it.** The four additions fit in
+`cross_grain_controls` and in the US adapter. `cross_grain.py` then needs no
+other edit, so the UK graph re-keys one time for this branch (the allocator
+of Stage A) and not again.
+
+### 5.5 What changes in the Stage A files
+
+Stage A kept the old bytes. For that it runs the operator one block at a
+time, on a surface that the adapter builds, and it holds the US choices
+under two keys that the UK does not have (`mechanisms` and `inventory`). At
+the re-pin:
+
+- `mechanisms` becomes `bridges` (as families) and the lists of bridges with
+  a derived control.
+- The routes of `inventory` become `relations` and `local_routes`. The
+  entries of rows 1 to 4 stay until those rows move to the operator.
+- The four passes become one pass on one joint surface, as in the UK.
+- The coverage test reads the same keys as the UK check. One shared check
+  for both countries belongs with microcosm#1759.
+
+Two points to settle when the code is written:
+
+- **Medicaid.** The state rows sum to 1.0038 of the national row, so a
+  `subset` relation needs a declared allowance, or the pair is `independent`.
+- **The surface rows that bind nothing.** The UK puts cells that do not bind
+  on the surface so that they take their share of a control. The US has the
+  same need for a state row that a surface leaves out of its loss.
+
+## 6. What each decision changes
 
 | Decision | Data | Code | Targets move |
 |---|---|---|---|
@@ -205,14 +368,14 @@ At the re-pin the bytes of the registry move anyway.
 | 8 | None | None | No |
 | 9 | Allocator names, key names | Three readers | Last bits, and key names |
 
-## 6. Order
+## 7. Order
 
-1. Rulings on section 4.
+1. Agreement on section 5, the way the rulings are declared.
 2. Chronicle PR #451 merges. Microcosm re-pins its feed.
 3. One set of commits on this branch for the ruled decisions and the re-pin,
    with one build. Decisions 4 and 7 can come later in their own PRs.
 
-## 7. Not measured
+## 8. Not measured
 
 - The county factors. The pinned county facts file is not on this machine.
 - Anything on a feed after Chronicle PR #451.
