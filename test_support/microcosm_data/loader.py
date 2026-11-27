@@ -59,7 +59,12 @@ def _hf_offline() -> bool:
 
 
 def _is_offline_error(exc: Exception) -> bool:
-    """Recognize transport/offline failures without hiding bad release metadata."""
+    """Recognize transport/offline failures without hiding bad release metadata.
+
+    The check applies to ``exc`` and to each exception in its ``__cause__``
+    chain, each once: offline, the loader refuses a ``releases.json`` never
+    cached with a ``ValueError`` whose cause is the Hub client's error.
+    """
     offline_names = {
         "ConnectError",
         "ConnectTimeout",
@@ -69,27 +74,20 @@ def _is_offline_error(exc: Exception) -> bool:
         "ProxyError",
         "ReadTimeout",
     }
-    closed_after_retry = isinstance(exc, RuntimeError) and str(exc) == (
-        "Cannot send a request, as the client has been closed."
-    )
-    if (
-        isinstance(exc, (ConnectionError, TimeoutError))
-        or closed_after_retry
-        or any(cls.__name__ in offline_names for cls in type(exc).__mro__)
-    ):
-        return True
-    # Offline, the loader refuses a releases.json never cached with a
-    # ValueError whose cause is the Hub client's error; follow the causes,
-    # each once.
-    seen = {id(exc)}
-    cause = exc.__cause__
-    while isinstance(cause, Exception) and id(cause) not in seen:
-        seen.add(id(cause))
-        if isinstance(cause, (ConnectionError, TimeoutError)) or any(
-            cls.__name__ in offline_names for cls in type(cause).__mro__
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while isinstance(current, Exception) and id(current) not in seen:
+        seen.add(id(current))
+        closed_after_retry = isinstance(current, RuntimeError) and str(current) == (
+            "Cannot send a request, as the client has been closed."
+        )
+        if (
+            isinstance(current, (ConnectionError, TimeoutError))
+            or closed_after_retry
+            or any(cls.__name__ in offline_names for cls in type(current).__mro__)
         ):
             return True
-        cause = cause.__cause__
+        current = current.__cause__
     return False
 
 

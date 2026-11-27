@@ -71,8 +71,8 @@ class DatasetSpec:
     engine_class: str
     engine_package: str
     variant: str = DEFAULT_VARIANT
-    # Keyword-only, so the fields after the required ones keep their
-    # positions now that every entry must name its release.
+    # Keyword-only, so ``variant`` stays the eighth positional argument now
+    # that every entry must name its release.
     release: str = field(kw_only=True)
     build_folder_filename: str | None = None
 

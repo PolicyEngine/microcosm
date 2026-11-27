@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 from importlib import metadata
 from pathlib import Path
@@ -31,6 +30,7 @@ from test_support.microcosm_data.build_folders import (
     build_folder_release_manifest,
 )
 from test_support.microcosm_data.hub_errors import hub_unreachable, missing_on_hub
+from test_support.microcosm_data.loader import _hf_offline, _is_offline_error
 
 #: A US build served by the hub fixtures. Any well-formed name works: nothing
 #: in this suite may assert which build is current on the live Hub, because a
@@ -749,45 +749,6 @@ def test_loader_refuses_an_unknown_dataset_role(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unknown dataset_role 'research_preview'"):
         loader._resolve_certified_release(resolve("uk", 2025), hub_download=hub)
-
-
-def _hf_offline() -> bool:
-    return os.environ.get("HF_HUB_OFFLINE", "").lower() in {"1", "true", "yes"}
-
-
-def _is_offline_error(exc: Exception) -> bool:
-    """Recognize transport/offline failures without hiding bad release metadata."""
-    offline_names = {
-        "ConnectError",
-        "ConnectTimeout",
-        "ConnectionError",
-        "LocalEntryNotFoundError",
-        "OfflineModeIsEnabled",
-        "ProxyError",
-        "ReadTimeout",
-    }
-    closed_after_retry = isinstance(exc, RuntimeError) and str(exc) == (
-        "Cannot send a request, as the client has been closed."
-    )
-    if (
-        isinstance(exc, (ConnectionError, TimeoutError))
-        or closed_after_retry
-        or any(cls.__name__ in offline_names for cls in type(exc).__mro__)
-    ):
-        return True
-    # Offline, the loader refuses a releases.json never cached with a
-    # ValueError whose cause is the Hub client's error; follow the causes,
-    # each once.
-    seen = {id(exc)}
-    cause = exc.__cause__
-    while isinstance(cause, Exception) and id(cause) not in seen:
-        seen.add(id(cause))
-        if isinstance(cause, (ConnectionError, TimeoutError)) or any(
-            cls.__name__ in offline_names for cls in type(cause).__mro__
-        ):
-            return True
-        cause = cause.__cause__
-    return False
 
 
 def test_the_national_release_refuses_a_local_area_manifest(tmp_path: Path):

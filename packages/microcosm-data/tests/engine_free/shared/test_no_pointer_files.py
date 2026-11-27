@@ -99,8 +99,8 @@ def test_a_dataset_spec_must_name_its_release() -> None:
 
 
 def test_a_dataset_spec_takes_its_release_by_keyword() -> None:
-    """``release`` is keyword-only, so the fields after the required ones keep
-    their positions: ``variant`` is still the eighth positional argument."""
+    """``release`` is keyword-only, so ``variant`` is still the eighth
+    positional argument."""
     parameters = inspect.signature(DatasetSpec).parameters
     positional = [
         name

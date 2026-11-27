@@ -451,7 +451,10 @@ def _releases_record_bytes(spec: DatasetSpec, *, hub_download: _HubDownload) -> 
             raise ValueError(
                 f"{spec.hf_repo} has no {RELEASES_RECORD_PATH}, so it lists no "
                 f"build of {spec.release!r}; the loader reads builds only "
-                f"through a repository's {RELEASES_RECORD_PATH}."
+                f"through a repository's {RELEASES_RECORD_PATH}. Check that the "
+                f"registry entry {spec.key} names the right repository; a build "
+                "published before its repository switched to build folders is "
+                "read by its path at its tag."
             ) from exc
         raise
     return Path(record_path).read_bytes()
@@ -601,6 +604,11 @@ def resolve_certified(
 
     Reads only the release record and the build's manifest, with the same
     checks; the dataset itself is neither downloaded nor verified.
+
+    Raises:
+        ImportError: If ``huggingface_hub`` is not installed.
+        ValueError: If the repository has no ``releases.json``, or release
+            metadata is invalid.
     """
     spec = resolve(country, year, variant=variant)
     return _resolve_certified_release(spec, hub_download=hub_download, build=build)
@@ -625,7 +633,8 @@ def download_certified(
 
     Raises:
         ImportError: If ``huggingface_hub`` is not installed.
-        ValueError: If release metadata or the artifact digest is invalid.
+        ValueError: If the repository has no ``releases.json``, or release
+            metadata or the artifact digest is invalid.
     """
     spec = resolve(country, year, variant=variant)
     return _verified_download(spec, build=build, hub_download=hub_download)
@@ -761,7 +770,8 @@ def load(
 
     Raises:
         ImportError: If the country engine is not installed.
-        ValueError: If release verification or engine compatibility fails.
+        ValueError: If the repository has no ``releases.json``, or release
+            verification or engine compatibility fails.
     """
     spec = resolve(country, year, variant=variant)
     dataset_class = _dataset_class(spec)
