@@ -1092,10 +1092,13 @@ work.
   and an annual or local-annual build takes `<base build>-annual-<stamp>-<hex8>`.
 - **Every country and line publishes into build folders.** A new country's
   release joins `publishes_to_build_folder` and the registry in the pull
-  request that authorizes its first publication. No command publishes a
-  release outside it: the tagged publisher, which accepted one into a
-  repository without `releases.json`, has been removed. The gaps on
-  2026-11-12:
+  request that authorizes its first publication. The gaps on 2026-11-12, with
+  what has changed since:
+  - *A new country's tagged publish.* On 2026-11-12 nothing refused it: the
+    tagged publisher accepted any release outside `publishes_to_build_folder`,
+    except a UK local-area name that the registry does not name, into a
+    repository without `releases.json`. Since #1796 removed the tagged
+    publisher, no command publishes such a release.
   - *The NZ and AM declarations.* Each country's `release_contract.json`
     (under `packages/microcosm-build/src/microcosm/build/`) names
     `latest.json` in its boundary. Each country's owner changes its file
@@ -1121,11 +1124,16 @@ work.
     and `load` raises because `releases.json` does not list the release.
     `line_for_release_id` keeps its pattern, because the pointer reader still
     calls it.
+  - *The tagged publisher.* On 2026-11-12 `microcosm-publish-release` and
+    `tools/publish_release.sh` stayed installed and sat on the
+    [retire list](#retire-list-as-of-2026-10-15); #1796 removed them. Loading a
+    tagged build that never moved into a folder stays.
   - *Pointer readers.* The loader's fallback (`DatasetSpec.pointer_path`,
     `latest_release`, `latest_line_release`) and the `latest-evidence.json`
     fallback in `latest_evidence_release` still resolve through `latest*.json`.
     `microcosm.data` still exports `latest_release`, which reads `latest.json`
-    without looking for `releases.json`. They leave once no registered repository lacks `releases.json`. The
+    without looking for `releases.json`; until #1796 it also exported
+    `publish_release`, which wrote it. They leave once no registered repository lacks `releases.json`. The
     plan names no owner or milestone for them yet.
   - *The policyengine.py certification tool.*
     `tools/certify_uk_cut_in_policyengine_py.py` still reads a national
@@ -1463,7 +1471,7 @@ release and the tagged publisher joined the table on 2026-11-11.
 | `format_uk_release_id`, `apply_uk_release_identity` | This milestone deletes them, with `UKReleaseIdentity`, which builds on `format_uk_release_id`: none had a caller outside its own tests and the `uk_runtime` re-export. The tier vocabulary and the line ids stay | On main none has a caller outside its own tests and the `uk_runtime` re-export |
 | Stale text, microcosm.institute `/calibration`, the evidence tier | A separate task owns them (task_d2b70813) | Not read again. For the evidence tier, see the next row |
 | The US evidence release, `microcosm-us-2024-evidence` | On this list since 2026-10-15, as the evidence tier | A named exception: version 1 neither admits it to the contract nor retires it. microcosm#1571 made it a standing release in `US_RELEASES`, with the `national` role. `tools/certify_us_national_build.py --evidence-release` places its builds there: a build has no tier, and certification chooses it (microcosm#1585 item 11). `prepare_build_folder_release` checks them with `validate_evidence_release_dir`; they carry schema `1-evidence` and fail C1's certified contract by design. The registry names no entry for it, so `microcosm.data.load` never serves it. No module under `packages/*/src` or `tools/` calls `latest_evidence_release`. Whoever retires the release must first find, from code, the readers of the evidence release and of `latest_evidence_release` |
-| The tagged publisher: `microcosm-publish-release` and `tools/publish_release.sh` | Not on the report's list | On the list from 2026-11-11. Removed (#1796) once the US, UK and BE repositories all recorded their builds in `releases.json`: the command, the wrapper, `publish_release`, `prepare_release` and the Slack alert only `publish_release` sent. No command publishes a release that `publishes_to_build_folder` does not name. Loading a tagged build that never moved into a folder stays |
+| The tagged publisher: `microcosm-publish-release` and `tools/publish_release.sh` | Not on the report's list | On the list from 2026-11-11. Since then removed (#1796), once the US, UK and BE repositories all recorded their builds in `releases.json`: the command, the wrapper, `publish_release`, `prepare_release` and the Slack alert only `publish_release` sent. No command publishes a release that `publishes_to_build_folder` does not name. Loading a tagged build that never moved into a folder stays |
 | microcosm-benchmarks, the calibration-diagnostics evaluation harness, policyengine-data's calibrate module | Each lives in another repository; proposed as a separate task (task_18c2af98) | Not read again |
 | cos d816 | Ruled 2026-10-09 (per-country Core pins, microcosm#1143) | The same |
 | cos d928 | Parked; its 2026-10-10 note records it resolved on main (the plan-2 exclusions renewed to 2026-11-03). Nothing to rule | Still parked. On main the plan-2 exclusions read approved on 2026-10-23 and expire on 2027-01-23 |

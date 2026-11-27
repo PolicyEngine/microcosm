@@ -1,11 +1,12 @@
 """Check a release build before it publishes, and read release pointer files.
 
-Every release publishes each build into its own folder,
-``releases/<release>/<build>/``: the UK national and dense releases, each UK
-local-area release that the dataset registry names, the US releases
+A release publishes each build into its own folder,
+``releases/<release>/<build>/``, when
+:func:`~microcosm.data.contract.publishes_to_build_folder` names it: the UK
+national and dense releases, each UK local-area release that the dataset
+registry names, the US releases
 (:data:`~microcosm.data.contract.US_RELEASES`) and BE's releases
-(:data:`~microcosm.data.contract.BE_RELEASES`), which
-:func:`~microcosm.data.contract.publishes_to_build_folder` names.
+(:data:`~microcosm.data.contract.BE_RELEASES`).
 ``microcosm-publish-release-build`` (``microcosm.build.release_publication``,
 in ``microcosm-build``) hands each build to the emitter's ``publish_release``
 call, and the repository's ``releases.json`` records which build is current.

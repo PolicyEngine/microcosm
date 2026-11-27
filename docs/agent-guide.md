@@ -631,12 +631,14 @@ and writes local annual H5 files without running the base graph or publishing.
 See [the annual candidate guide](us-annual-static-aging.md). Its completion
 manifest is build evidence, not release certification.
 Optional annual release metadata invokes additional artifact, identity, and
-acceptance checks alongside the normal release checks. Annual builds pin every file
-to one `<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag, and a build folder
-pins no revision, so an annual build has no publication path in the US
-repository since its switch to `releases.json`: the tagged publisher, which
-took such builds, has been removed. Qualify source-enrichment bases before adding annual metadata,
-in the candidate guide's qualification order.
+acceptance checks alongside the normal release checks. An annual build of the
+tagged layout pins every file to one
+`<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag, so it has no publication
+path: a build folder pins no revision, and the tagged publisher, which took
+such builds, has been removed. A new annual build is a build of
+`microcosm-us-2024-annual` in its own folder, pins no revision and publishes
+with `microcosm-publish-release-build`. Qualify source-enrichment bases before
+adding annual metadata, in the candidate guide's qualification order.
 
 ## Concept schema and engine mappings
 

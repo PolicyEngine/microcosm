@@ -48,7 +48,6 @@ from test_support.microcosm_data.build_folders import (
 from test_support.microcosm_data.hub_errors import missing_on_hub
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
-JUNE_UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
 UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260920T120000Z-deadbeef"
 UK_LOCAL_RELEASE_ID = "microcosm-uk-2024-25-local-k55000"
