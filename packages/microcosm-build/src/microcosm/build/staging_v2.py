@@ -1,8 +1,9 @@
 """Version 2 staging telemetry file contract.
 
-Version 1 remains implemented by :mod:`microcosm.build.staging`.  This module
-defines a separate country-neutral repository-file contract. Country modules
-supply repository configuration and identify the country in each run record.
+The one staging run-file contract for every country's builds: country modules
+supply repository configuration and identify the country in each run record,
+and may name the result files their review found to hold tables of
+aggregates (:class:`StagingContentPolicy`).
 """
 
 from __future__ import annotations
@@ -14,8 +15,10 @@ import re
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Any, Literal, NoReturn
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -45,6 +48,10 @@ CALIBRATION_PROGRESS_SCHEMA = "microcosm.staging.calibration-progress"
 EVENT_SCHEMA = "microcosm.staging.event"
 
 DeliveryMode = Literal["local_and_remote", "local_only", "disabled"]
+#: The status of a stage event a caller records (``stage``).
+EventStatus = Literal["started", "completed", "failed", "progress"]
+#: The longest message a document or event carries.
+MAX_MESSAGE_CHARACTERS = 500
 LifecycleStatus = Literal["running", "completed", "blocked", "failed"]
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -136,6 +143,13 @@ _INDIVIDUAL_RECORD_KEYS = {
     "zip_code",
 }
 _MAX_REMOTE_FILE_BYTES = 5 * 1024 * 1024
+#: The emitter refuses a whole hand-over in which one file is larger than
+#: this, or whose files together are larger than ``EMITTER_MAX_REQUEST_BYTES``.
+EMITTER_MAX_FILE_BYTES = 32 * 1024 * 1024
+EMITTER_MAX_REQUEST_BYTES = 64 * 1024 * 1024
+#: The documents every hand-over carries: the run manifest, the progress, the
+#: events and the calibration progress.
+_RUN_DOCUMENTS = 4
 
 
 class StagingContractError(ValueError):
@@ -295,7 +309,11 @@ _FAILURE_SCHEMA: dict[str, Any] = {
     "properties": {
         "error_code": {"type": "string", "pattern": "^[A-Z0-9_]+$"},
         "error_type": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$"},
-        "message": {"type": "string", "minLength": 1, "maxLength": 500},
+        "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": MAX_MESSAGE_CHARACTERS,
+        },
         "local_diagnostic_reference": {"type": ["string", "null"], "maxLength": 200},
     },
     "required": [
@@ -431,7 +449,10 @@ def _schemas(version: int) -> dict[str, dict[str, Any]]:
                 **run_fields,
                 "sample": _SAMPLE_SCHEMA,
                 "delivery": _DELIVERY_SCHEMA,
-                "message": {"type": ["string", "null"], "maxLength": 500},
+                "message": {
+                    "type": ["string", "null"],
+                    "maxLength": MAX_MESSAGE_CHARACTERS,
+                },
                 "details": {"type": "object"},
                 "failure": failure_schema,
                 **block,
@@ -506,7 +527,10 @@ def _schemas(version: int) -> dict[str, dict[str, Any]]:
                 "run_id": _SAFE_ID_SCHEMA,
                 "stage_id": _SAFE_ID_SCHEMA,
                 "status": {"enum": _EVENT_STATUSES[version]},
-                "message": {"type": ["string", "null"], "maxLength": 500},
+                "message": {
+                    "type": ["string", "null"],
+                    "maxLength": MAX_MESSAGE_CHARACTERS,
+                },
                 "details": {"type": "object"},
             },
             [
@@ -683,22 +707,84 @@ validate_v2_document = validate_staging_document
 
 @dataclass(frozen=True)
 class StagingContentPolicy:
-    """Validate every remote file before a transport operation."""
+    """Validate every remote file before a transport operation.
+
+    ``aggregate_tables`` names, by logical name, the artifacts a review found
+    to hold tables of aggregates: each may hold lists of objects (one per
+    state, age band, program or target, say), up to its own size limit, at
+    most the emitter's ``EMITTER_MAX_FILE_BYTES``. Every other check still
+    applies to them: no sensitive or row-level field, no individual record,
+    no row collection. ``max_artifact_bytes`` sets what one run's artifacts
+    may hold together (``artifact_budget_bytes``); left unset, it is what
+    remains of the emitter's request limit once a hand-over's four documents,
+    each up to ``max_file_bytes``, are in.
+    """
 
     max_file_bytes: int = _MAX_REMOTE_FILE_BYTES
+    aggregate_tables: Mapping[str, int] = dataclass_field(default_factory=dict)
+    max_artifact_bytes: int | None = None
+
+    @property
+    def artifact_budget_bytes(self) -> int:
+        """What one run's artifacts may hold together, in bytes."""
+        if self.max_artifact_bytes is not None:
+            return self.max_artifact_bytes
+        return EMITTER_MAX_REQUEST_BYTES - _RUN_DOCUMENTS * self.max_file_bytes
+
+    def __post_init__(self) -> None:
+        if self.max_artifact_bytes is not None and (
+            isinstance(self.max_artifact_bytes, bool)
+            or not isinstance(self.max_artifact_bytes, int)
+            or self.max_artifact_bytes < 1
+        ):
+            raise StagingContractError("max_artifact_bytes must be a positive integer.")
+        if self.artifact_budget_bytes < 1:
+            raise StagingContractError(
+                f"A max_file_bytes of {self.max_file_bytes} leaves no room for "
+                "artifacts within the emitter's request limit; set "
+                "max_artifact_bytes."
+            )
+        tables: dict[str, int] = {}
+        for logical_name, limit in dict(self.aggregate_tables).items():
+            _safe_identifier(logical_name, label="aggregate table logical name")
+            if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+                raise StagingContractError(
+                    f"Aggregate table {logical_name!r} needs a positive byte limit."
+                )
+            if limit > EMITTER_MAX_FILE_BYTES:
+                raise StagingContractError(
+                    f"Aggregate table {logical_name!r} cannot be larger than the "
+                    f"emitter's {EMITTER_MAX_FILE_BYTES}-byte limit for one file."
+                )
+            tables[logical_name] = limit
+        object.__setattr__(self, "aggregate_tables", MappingProxyType(tables))
 
     def validate_payload(self, payload: Any) -> None:
         self._reject_sensitive_keys(payload)
 
-    def validate_artifact_payload(self, payload: Any) -> None:
-        """Require reviewed artifacts to use aggregate, non-tabular JSON."""
+    def validate_artifact_payload(
+        self, payload: Any, *, logical_name: str | None = None
+    ) -> None:
+        """Require reviewed artifacts to use aggregate JSON.
+
+        Only an artifact named in ``aggregate_tables`` may hold lists of
+        objects.
+        """
 
         if not isinstance(payload, Mapping):
             raise StagingContentError(
                 "Reviewed staging artifacts must contain a JSON object."
             )
         self.validate_payload(payload)
-        self._reject_record_collections(payload)
+        if logical_name not in self.aggregate_tables:
+            self._reject_record_collections(payload)
+
+    def _file_limit(self, safe_path: str) -> int:
+        """A reviewed aggregate table's own limit, else ``max_file_bytes``."""
+        path = PurePosixPath(safe_path)
+        if path.parent.name == "artifacts" and path.suffix == ".json":
+            return self.aggregate_tables.get(path.stem, self.max_file_bytes)
+        return self.max_file_bytes
 
     def validate_remote_file(self, path: str, data: bytes) -> None:
         safe_path = _safe_relative_path(path, label="remote path")
@@ -709,10 +795,9 @@ class StagingContentPolicy:
             raise StagingContentError(
                 f"Unapproved staging file type: {suffix or '<none>'}."
             )
-        if len(data) > self.max_file_bytes:
-            raise StagingContentError(
-                f"Staging file exceeds the {self.max_file_bytes}-byte limit."
-            )
+        limit = self._file_limit(safe_path)
+        if len(data) > limit:
+            raise StagingContentError(f"Staging file exceeds the {limit}-byte limit.")
         try:
             if suffix == ".ndjson":
                 values = [
@@ -750,7 +835,7 @@ class StagingContentPolicy:
                 "Reviewed staging artifact is not readable."
             ) from exc
         self.validate_remote_file(f"artifacts/{logical_name}.json", data)
-        self.validate_artifact_payload(json.loads(data))
+        self.validate_artifact_payload(json.loads(data), logical_name=logical_name)
         return data
 
     def _reject_sensitive_keys(self, value: Any) -> None:
@@ -903,11 +988,15 @@ class StagingRunBundleWriterV2:
         self.failure: dict[str, Any] | None = None
         self.block_details: dict[str, Any] | None = None
         self._artifacts: list[dict[str, Any]] = []
+        #: Each artifact's size in bytes, by logical name.
+        self._artifact_bytes: dict[str, int] = {}
         self._events: list[dict[str, Any]] = []
         self._calibration_events: list[dict[str, Any]] = []
-        #: Whether completion, failure or a block handed the final state
-        #: over; until then there is no final commit to check.
-        self._final_state_handed_over = False
+        #: Whether closing the run (completion, failure or a block)
+        #: finished: its final state is written and, for a remote run, was
+        #: handed to the emitter, accepted or not. Until then there is no
+        #: final commit to check.
+        self._closing_finished = False
         self._delivery = {
             "contract_version": STAGING_CONTRACT_VERSION,
             "enabled": True,
@@ -950,6 +1039,31 @@ class StagingRunBundleWriterV2:
     def delivery_summary(self) -> dict[str, Any]:
         return validate_staging_delivery(dict(self._delivery))
 
+    @property
+    def closing_finished(self) -> bool:
+        """Whether closing the run finished.
+
+        Its final state is written and, for a remote run, was handed to the
+        emitter, whether or not the emitter accepted it. False while the run
+        is running, and for a closed run whose closing an interrupt or an
+        error stopped first.
+        """
+        return self._closing_finished
+
+    def hand_over_final_state(self) -> None:
+        """Hand a closed run's final state over again.
+
+        For a run whose closing was interrupted after its state changed but
+        before its hand-over finished: the run keeps the state it closed
+        with, and its documents are written and handed over once more.
+        """
+        if self.status == "running":
+            raise StagingContractError(
+                "Only a completed, blocked or failed staging run has a final state."
+            )
+        self._persist_bundle()
+        self._terminal_upload()
+
     def set_sample(self, sample: Mapping[str, Any]) -> None:
         self._require_running("set sampling evidence")
         normalized = _jsonable(sample)
@@ -968,7 +1082,7 @@ class StagingRunBundleWriterV2:
         self,
         stage_id: str,
         *,
-        event_status: Literal["started", "completed", "failed", "progress"] = "started",
+        event_status: EventStatus = "started",
         message: str | None = None,
         **details: Any,
     ) -> None:
@@ -1039,6 +1153,16 @@ class StagingRunBundleWriterV2:
             classification=classification,
         )
         logical_name = _safe_identifier(logical_name, label="artifact logical name")
+        artifact_bytes = len(data) + sum(
+            size for name, size in self._artifact_bytes.items() if name != logical_name
+        )
+        if artifact_bytes > self._content_policy.artifact_budget_bytes:
+            raise StagingContentError(
+                f"Artifact {logical_name!r} would take the run's artifacts to "
+                f"{artifact_bytes} bytes, past the "
+                f"{self._content_policy.artifact_budget_bytes} bytes that keep a "
+                "hand-over within the emitter's request limit."
+            )
         relative_path = f"artifacts/{logical_name}.json"
         destination = self.run_dir / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1058,6 +1182,7 @@ class StagingRunBundleWriterV2:
         ]
         self._artifacts.append(artifact)
         self._artifacts.sort(key=lambda item: item["logical_name"])
+        self._artifact_bytes[logical_name] = len(data)
         self._persist_bundle()
         self._hand_over_run()
         return dict(artifact)
@@ -1209,7 +1334,7 @@ class StagingRunBundleWriterV2:
             raise StagingContractError(
                 "Only a completed, blocked or failed staging run has a final commit."
             )
-        if not self._final_state_handed_over:
+        if not self._closing_finished:
             # Closing the run failed before its final state was handed over
             # (its documents could not be written, say), so the emitter's
             # last commit is an earlier state of the run.
@@ -1453,10 +1578,11 @@ class StagingRunBundleWriterV2:
         """
 
         if self._hand_over is None:
+            self._closing_finished = True
             return
         self._hand_over.reopen()
         self._hand_over_run()
-        self._final_state_handed_over = True
+        self._closing_finished = True
         if self._hand_over.last_accepted is False:
             print(
                 "warning: the staging run's final state was not handed over to "
@@ -1650,7 +1776,7 @@ def validate_staging_bundle(
                 f"Reviewed staging artifact {logical_name!r} has the wrong digest."
             )
         policy.validate_remote_file(f"{prefix}/{run_id}/{relative}", data)
-        policy.validate_artifact_payload(json.loads(data))
+        policy.validate_artifact_payload(json.loads(data), logical_name=logical_name)
     documents["events"] = events
     return documents
 

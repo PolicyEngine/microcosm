@@ -19,9 +19,6 @@ dependencies = [
 [tool.uv.sources]
 microcosm-diagnostics = { workspace = true }
 
-[project.scripts]
-microcosm-publish-release = "microcosm.data.publish_cli:main"
-
 # Country engines are optional: install the one(s) you load. The extra name is
 # the country slug, matching the registry key and the loader's error message.
 [project.optional-dependencies]

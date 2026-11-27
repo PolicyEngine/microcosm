@@ -17,7 +17,7 @@ from microcosm.build.us_runtime.spm_role_source import SpmRoleSourceResult
 from microcosm.data import source_enrichment as contract
 from microcosm.data.contract import US_NATIONAL_RELEASE_ID
 from microcosm.data.h5_enrichment import file_sha256
-from microcosm.data.publish_cli import _staging_undelivered
+from microcosm.data.release import _staging_undelivered
 from tools import build_us_spm_role_enrichment as builder
 
 pytest.importorskip("tables")
@@ -450,7 +450,6 @@ def test_real_builder_manifest_certifies_and_prepares_its_build_folder(
     monkeypatch.setattr(
         contract, "_check_producer_source_identity", check_synthetic_producer
     )
-    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("must not use Hub"))
     certified = contract.certify_source_enrichment(
         candidate_release,
         tmp_path / "certified" / US_NATIONAL_RELEASE_ID,

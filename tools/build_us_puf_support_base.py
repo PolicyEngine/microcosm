@@ -57,11 +57,11 @@ from microcosm.build.frame_checkpoint import write_frame_checkpoint
 from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.outer_stage_runtime import (
+    FrameIdentity,
     Stage,
     StagePipeline,
     StageRuntime,
     assert_clone_expansion,
-    assert_unchanged_identity,
     frame_identity,
 )
 from microcosm.build.program_telemetry import (
@@ -2993,6 +2993,15 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
         if predecessor is None:
             raise AssertionError(f"stage {args.stage!r} requires a predecessor")
         before = predecessor.frame
+        # StageRuntime.load computed this identity from the loaded frame and
+        # checked it against the run context. Each step whose result must keep
+        # the input's identity and row order passes it to runtime.complete,
+        # which compares the result with it before writing the checkpoint or
+        # recording the step, so the input frame is not needed once the step
+        # (and the clone check) ran.
+        input_identity = predecessor.identity
+        del predecessor
+        expected_identity: FrameIdentity | None = None
         stage_metadata = runtime.metadata
         if args.stage == "pre_clone_enrichment":
             after, metadata = _pre_clone_enrichment_stage(
@@ -3000,7 +3009,7 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
                 before,
                 stage_metadata["source_construction"],
             )
-            assert_unchanged_identity(before, after, stage=args.stage)
+            expected_identity = input_identity
         elif args.stage == "clone_feature_extraction":
             after, metadata = _clone_feature_extraction_stage(args, before)
             assert_clone_expansion(
@@ -3013,12 +3022,12 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             )
         elif args.stage == "qrf_finalization":
             after, metadata = _qrf_finalization_stage(args, before)
-            assert_unchanged_identity(before, after, stage=args.stage)
+            expected_identity = input_identity
         elif args.stage == PUF_CAPITAL_GAINS_TAIL_STAGE_NAME:
             after, metadata = _capital_gains_tail_transfer_stage(args, before)
         elif args.stage == CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME:
             after, metadata = _capital_gain_distributions_stage(args, before)
-            assert_unchanged_identity(before, after, stage=args.stage)
+            expected_identity = input_identity
         elif args.stage == "final_export":
             # The export reads the frame and changes no table, so this step
             # writes no checkpoint of its own: its record names the previous
@@ -3036,7 +3045,7 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             metadata = {"household_location": household_location}
             # --location-clones is 1 on this line (refused at parse time), so
             # the draw adds geography columns and changes no row or id.
-            assert_unchanged_identity(before, after, stage=args.stage)
+            expected_identity = input_identity
         else:
             after, metadata = _post_qrf_frame_stage(
                 args.stage,
@@ -3044,9 +3053,17 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
                 before,
                 stage_metadata,
             )
-            assert_unchanged_identity(before, after, stage=args.stage)
+            expected_identity = input_identity
+        # Free the input frame before the checkpoint write; nothing below
+        # reads it.
+        del before
         save_gate_shadow()
-        runtime.complete(args.stage, after, metadata=metadata)
+        runtime.complete(
+            args.stage,
+            after,
+            metadata=metadata,
+            expected_identity=expected_identity,
+        )
 
 
 def _link_all_stage_checkpoint(checkpoint_dir: Path, source: Path) -> None:

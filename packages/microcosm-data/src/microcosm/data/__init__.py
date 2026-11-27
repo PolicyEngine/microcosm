@@ -44,7 +44,6 @@ from microcosm.data.loader import (
     resolve,
 )
 from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY, DatasetSpec, register
-from microcosm.data.release import publish_release
 
 __all__ = [
     "load",
@@ -67,7 +66,6 @@ __all__ = [
     "required_release_files",
     "validate_evidence_release_dir",
     "validate_release_dir",
-    "publish_release",
 ]
 
 __version__ = "0.1.0"

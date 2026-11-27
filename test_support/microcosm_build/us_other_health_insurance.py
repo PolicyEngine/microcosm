@@ -9,6 +9,7 @@ import json
 from importlib.metadata import version
 from importlib.resources import files
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -129,21 +130,54 @@ def _frame() -> Frame:
     )
 
 
-class _ZeroPremiumEngine:
-    def materialize(
+class _StandInPremiumSimulation:
+    """Stands in for a batch engine: it holds no population-aggregate values,
+    and ``release_engine_simulation`` empties its population map."""
+
+    def __init__(self, frame: Frame, period: int) -> None:
+        self.frame = frame
+        self.period = period
+        self.branches: dict[str, object] = {}
+        self.populations = {"person": SimpleNamespace(_holders={})}
+
+    def get_holder(self, variable: str):
+        return SimpleNamespace(get_known_periods=lambda: [])
+
+
+class _StandInPremiumEngine:
+    """Builds stand-in batch engines and returns :meth:`premiums` for them."""
+
+    def __init__(self) -> None:
+        self.simulations: list[_StandInPremiumSimulation] = []
+
+    def build_microsimulation(self, frame: Frame, period: int):
+        simulation = _StandInPremiumSimulation(frame, period)
+        self.simulations.append(simulation)
+        return simulation
+
+    def calculate_variables(
         self,
+        simulation: _StandInPremiumSimulation,
         frame: Frame,
         variables: list[str],
-        *,
         period: int,
     ) -> dict[str, np.ndarray]:
-        assert period == 2024
+        assert simulation.frame is frame
+        assert period == simulation.period == 2024
         assert variables == list(
             module.US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES
         )
+        return self.premiums(frame)
+
+    def premiums(self, frame: Frame) -> dict[str, np.ndarray]:
+        raise NotImplementedError
+
+
+class _ZeroPremiumEngine(_StandInPremiumEngine):
+    def premiums(self, frame: Frame) -> dict[str, np.ndarray]:
         return {
             variable: np.zeros(frame.n("tax_unit"), dtype=np.float64)
-            for variable in variables
+            for variable in module.US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES
         }
 
 

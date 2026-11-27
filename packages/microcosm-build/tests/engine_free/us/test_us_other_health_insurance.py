@@ -189,19 +189,14 @@ def test_modeled_premiums_batch_by_household_and_realign_tax_units(
     )
     frame.table("person")["person_tax_unit_id"] = person_tax_unit_ids
     calls: list[np.ndarray] = []
+    engines: list[_StandInPremiumEngine] = []
 
-    class IdPremiumEngine:
-        def materialize(
-            self,
-            batch: Frame,
-            variables: list[str],
-            *,
-            period: int,
-        ) -> dict[str, np.ndarray]:
-            assert period == 2024
-            assert variables == list(
-                module.US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES
-            )
+    class IdPremiumEngine(_StandInPremiumEngine):
+        def __init__(self) -> None:
+            super().__init__()
+            engines.append(self)
+
+        def premiums(self, batch: Frame) -> dict[str, np.ndarray]:
             tax_unit_ids = batch.table("tax_unit")["tax_unit_id"].to_numpy()
             calls.append(tax_unit_ids.copy())
             factor = tax_unit_ids.astype(np.float64) - 200.0
@@ -222,6 +217,10 @@ def test_modeled_premiums_batch_by_household_and_realign_tax_units(
 
     assert [len(call) for call in calls] == [3, 3, 3, 1]
     assert set(np.concatenate(calls)) == set(range(201, 211))
+    # One adapter for the stage; each batch engine was released.
+    (engine,) = engines
+    assert len(engine.simulations) == 4
+    assert all(simulation.populations == {} for simulation in engine.simulations)
     expected_modeled = (person_tax_unit_ids - 200.0) * 6.0
     np.testing.assert_allclose(
         result.table("person")[_OTHER],
@@ -229,6 +228,77 @@ def test_modeled_premiums_batch_by_household_and_realign_tax_units(
     )
     gate = us_other_health_insurance_signal_gate(result)
     assert gate.passed, gate.failures
+
+
+def test_premium_batches_collect_garbage_like_the_release_tools_loops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Automatic collection is off inside each batch, a youngest-generation
+    collection follows each batch, and one full collection ends the pass."""
+
+    import gc
+
+    automatic_collection_in_batches: list[bool] = []
+    collections: list[tuple] = []
+
+    class RecordingEngine(_ZeroPremiumEngine):
+        def premiums(self, batch: Frame) -> dict[str, np.ndarray]:
+            automatic_collection_in_batches.append(gc.isenabled())
+            return super().premiums(batch)
+
+    monkeypatch.setattr(module, "PolicyEngineUSEngine", RecordingEngine)
+    monkeypatch.setattr(gc, "collect", lambda *args: collections.append(args) or 0)
+    assert gc.isenabled()
+
+    module._materialize_modeled_premiums(
+        _frame(), time_period=2024, maximum_microsim_batch_size=3
+    )
+
+    assert automatic_collection_in_batches == [False] * 4
+    assert collections == [(0,)] * 4 + [()]
+    assert gc.isenabled()
+
+
+@pytest.mark.parametrize("refuse_population_aggregates", [None, True])
+def test_stage_passes_the_refusal_switch_to_its_premium_batches(
+    monkeypatch: pytest.MonkeyPatch, refuse_population_aggregates
+) -> None:
+    """One batch holds the whole pool, so by default its engine may hold a
+    population aggregate; a caller that switches the refusal on through the
+    stage gets it refused."""
+
+    class AggregateEngine(_ZeroPremiumEngine):
+        def build_microsimulation(self, frame: Frame, period: int):
+            simulation = super().build_microsimulation(frame, period)
+            simulation.get_holder = lambda variable: SimpleNamespace(
+                get_known_periods=lambda: (
+                    ["2024"] if variable == "medicaid_slcsp_state_denominator" else []
+                )
+            )
+            return simulation
+
+    monkeypatch.setattr(module, "PolicyEngineUSEngine", AggregateEngine)
+
+    def run_stage():
+        return with_us_other_health_insurance_inputs(
+            _frame(),
+            seed=0,
+            time_period=2024,
+            refuse_population_aggregates=refuse_population_aggregates,
+        )
+
+    if refuse_population_aggregates:
+        with pytest.raises(
+            ValueError,
+            match=(
+                "^The other-health-insurance premium pass is not batch-invariant: "
+                "the engine for household batch 1/1 computed "
+                "medicaid_slcsp_state_denominator@2024"
+            ),
+        ):
+            run_stage()
+    else:
+        run_stage()
 
 
 def test_joint_qrf_replaces_only_puf_and_does_not_invent_clipping(

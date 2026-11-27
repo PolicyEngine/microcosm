@@ -375,9 +375,10 @@ def publishes_to_build_folder(release_id: str) -> bool:
 def unregistered_uk_local_release(release_id: str) -> bool:
     """Whether ``release_id`` is a UK local-area name that no registry entry names.
 
-    No layout of such a release validates and neither publisher takes it: the
-    pull request that authorizes a ``k``'s first publication adds its registry
-    entry, and its builds then publish into build folders.
+    No layout of such a release validates and
+    ``microcosm-publish-release-build`` refuses it: the pull request that
+    authorizes a ``k``'s first publication adds its registry entry, and its
+    builds then publish into build folders.
     """
     return _is_uk_local_release_name(release_id) and not _uk_registry_entry_names(
         release_id

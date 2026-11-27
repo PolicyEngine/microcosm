@@ -918,8 +918,9 @@ def _publishable_parent_path(path: str) -> bool:
     """Whether the publisher wrote a parent artifact at ``path``.
 
     A release file is uploaded to the parent's directory and a root artifact
-    to its own path; neither publisher writes into another release's
-    directory, or outside the repository.
+    to its own path; neither ``microcosm-publish-release-build`` nor the
+    removed tagged publisher, which published older parents, writes into
+    another release's directory, or outside the repository.
     """
 
     return not (

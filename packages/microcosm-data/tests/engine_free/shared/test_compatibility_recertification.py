@@ -1241,37 +1241,6 @@ def test_the_publication_contract_takes_wheels_but_not_a_parent_h5(
     )
 
 
-def test_a_recertification_never_moves_latest(
-    paths_hub, parent, candidate, tmp_path, monkeypatch
-):
-    """The tagged publisher, which writes latest.json, refuses the child: it
-    is a build of a release that publishes into build folders."""
-
-    parent_dir, parent_root = parent
-    output, artifact_root = certify(candidate, tmp_path, monkeypatch)
-    seed_published_parent(paths_hub, parent_dir, parent_root)
-    monkeypatch.setattr(recert, "run_recertification_loader_replay", fake_replay())
-    monkeypatch.setattr(recert, "_check_producer", lambda code, failures, label: None)
-    wheel = tmp_path / "policyengine_us-2.60.4-py3-none-any.whl"
-    wheel.write_bytes(b"")
-    with pytest.raises(ValueError, match="publishes each build into its own folder"):
-        release_module.prepare_release(
-            output, artifact_root=artifact_root, compatibility_wheels=(wheel,)
-        )
-    events = list(paths_hub.events)
-    with pytest.raises(ValueError, match="publishes each build into its own folder"):
-        release_module.publish_release(
-            output,
-            "policyengine/populace-us",
-            api=paths_hub,
-            artifact_root=artifact_root,
-            compatibility_wheels=(wheel,),
-            notify=False,
-        )
-    assert paths_hub.events == events
-    assert "latest.json" not in dict(paths_hub.uploads)
-
-
 def test_validation_prints_the_recertification_measurement(
     candidate, tmp_path, monkeypatch, capsys
 ):

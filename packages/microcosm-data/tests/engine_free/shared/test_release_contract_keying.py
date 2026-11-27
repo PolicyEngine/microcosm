@@ -140,8 +140,9 @@ def test_the_registry_names_no_uk_local_area_release():
 def test_a_uk_local_area_release_publishes_only_once_the_registry_names_it(drawn):
     """For any positive ``k``, ``microcosm-uk-2024-25-local-k<k>`` publishes
     into build folders exactly when a registry entry names it as its release,
-    the tagged publisher refuses it either way, and its pointer line is the
-    same whatever the registry holds (microcosm#1586)."""
+    the refusal of any other directory names the registry when no entry names
+    it, and its pointer line is the same whatever the registry holds
+    (microcosm#1586)."""
 
     registered, k = drawn
     release_id = _uk_local_release_id(k)
@@ -156,14 +157,10 @@ def test_a_uk_local_area_release_publishes_only_once_the_registry_names_it(drawn
         assert contract.unregistered_uk_local_release(release_id) is (
             k not in registered
         )
-        with pytest.raises(ValueError) as refusal:
-            release_module._refuse_build_folder_release(release_id)
         reason = release_module.not_a_build_folder_release_reason(release_id)
     if k in registered:
-        assert "publishes each build into its own folder" in str(refusal.value)
         assert release_module.TAGGED_RELEASE_ADVICE in reason
     else:
-        assert release_module.UNREGISTERED_UK_LOCAL_RELEASE_ADVICE in str(refusal.value)
         assert release_module.UNREGISTERED_UK_LOCAL_RELEASE_ADVICE in reason
     # Outside the patch the shipped registry names no local-area release.
     assert not publishes_to_build_folder(release_id)

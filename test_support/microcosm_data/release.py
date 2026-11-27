@@ -1,9 +1,7 @@
-"""Publishing behavior: contract-gated uploads and a last-written pointer.
+"""Release fixtures: release directories, build folders and a fake Hub.
 
-The fake Hub client records every upload in order, so the suite asserts the
-real guarantees — an invalid release uploads nothing, and ``latest.json``
-lands strictly after the files it points at — rather than implementation
-details.
+The fake Hub client records every request, so the tests check what
+build-folder publication reads and refuses.
 """
 
 # ruff: noqa: F401
@@ -16,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from microcosm.data import ReleaseContractError, publish_cli
+from microcosm.data import ReleaseContractError
 from microcosm.data import release as release_module
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
@@ -28,14 +26,6 @@ from microcosm.data.contract import (
     required_release_files,
     stored_input_evidence_manifest_block,
 )
-from microcosm.data.release import (
-    LATEST_EVIDENCE_POINTER_PATH,
-    LATEST_POINTER_PATH,
-    LATEST_POINTER_SCHEMA_VERSION,
-    latest_evidence_pointer_payload,
-    latest_pointer_payload,
-    publish_release,
-)
 from microcosm.data.stored_inputs import register_sha256
 from test_support.microcosm_data.build_folders import (
     BE_BUILD,
@@ -45,17 +35,7 @@ from test_support.microcosm_data.build_folders import (
 )
 from test_support.microcosm_data.hub_errors import missing_on_hub
 
-
-@pytest.fixture(autouse=True)
-def _no_slack_webhook(monkeypatch):
-    """Keep publish_release's release alert hermetic: never post to a real
-    webhook if the dev/CI environment happens to have one set."""
-    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
-    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_UK", raising=False)
-
-
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
-JUNE_UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
 UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260920T120000Z-deadbeef"
 UK_LOCAL_RELEASE_ID = "microcosm-uk-2024-25-local-k55000"
@@ -540,19 +520,6 @@ class FakeHub:
         return str(local)
 
 
-class NonAtomicHub:
-    """Expose only the legacy upload/tag surface of a backing fake Hub."""
-
-    def __init__(self, backing: FakeHub) -> None:
-        self.backing = backing
-
-    def upload_file(self, **kwargs):
-        return self.backing.upload_file(**kwargs)
-
-    def create_tag(self, **kwargs):
-        return self.backing.create_tag(**kwargs)
-
-
 @pytest.fixture
 def hub(tmp_path: Path) -> FakeHub:
     fake = FakeHub()
@@ -968,33 +935,9 @@ def _as_us_national_build_folder_release(release_dir: Path) -> Path:
     return to_build_folder_layout(national, build=RELEASE_ID)
 
 
-@pytest.fixture
-def annual_release(release_dir, artifact_root):
-    from .annual_projections import _h5, add_annual_extension
-
-    dataset = artifact_root / "populace_us_2024.h5"
-    _h5(dataset, 2024)
-    sha = _sha256(dataset)
-    path = release_dir / "build_manifest.json"
-    build = json.loads(path.read_text())
-    build["dataset"]["sha256"] = sha
-    path.write_text(json.dumps(build))
-    path = release_dir / "release_manifest.json"
-    manifest = json.loads(path.read_text())
-    manifest["artifacts"]["populace_us_2024"]["sha256"] = sha
-    path.write_text(json.dumps(manifest))
-    _bind_stored_input_evidence(release_dir)
-    return add_annual_extension(release_dir, artifact_root)
-
-
 # ---------------------------------------------------------------------------
-# Evidence-tier publishing (microcosm#506)
+# Evidence-tier release directories (microcosm#506)
 # ---------------------------------------------------------------------------
-#
-# Evidence releases publish exactly like certified ones — contract-gated,
-# immutable tag first — except the pointer: they move latest-evidence.json,
-# and are structurally incapable of touching latest.json (the certified
-# pointer pe.py certification reads).
 
 EVIDENCE_RELEASE_ID = "populace-us-2024-evidence-9f1260b-20260611"
 
@@ -1048,29 +991,6 @@ def evidence_release_dir(release_dir: Path) -> Path:
         artifact["revision"] = EVIDENCE_RELEASE_ID
     (directory / "release_manifest.json").write_text(json.dumps(manifest))
     return directory
-
-
-def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
-    manifest_path = release_dir / "release_manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    manifest["artifacts"][key] = {
-        "kind": "diagnostics",
-        "path": path,
-        "repo_id": "policyengine/populace-us",
-        "revision": release_dir.name,
-        "sha256": "1" * 64,
-    }
-    manifest_path.write_text(json.dumps(manifest))
-
-
-def _uk_hub(tmp_path: Path) -> FakeHub:
-    hub = FakeHub("policyengine/populace-uk-private")
-    hub._download_dir = tmp_path / "uk-hub-cache"
-    june_pointer = latest_pointer_payload(
-        JUNE_UK_RELEASE_ID, updated_at="2026-06-19T02:38:00+00:00"
-    )
-    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(june_pointer, indent=1).encode())
-    return hub
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]
