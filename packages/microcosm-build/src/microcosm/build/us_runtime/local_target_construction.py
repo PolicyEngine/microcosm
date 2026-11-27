@@ -14,12 +14,12 @@ This module names the US file, its passes and its label lookups.
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.declared_registers import read_strict_json
 from microcosm.build.ladder_population_targets import (
     LabelLookup,
     LadderPopulation,
@@ -73,15 +73,22 @@ def us_local_target_construction_path() -> Path:
 def us_local_target_construction() -> dict[str, Any]:
     """The packaged US file, with its envelope checked."""
 
-    payload = json.loads(
-        us_local_target_construction_path().read_text(encoding="utf-8")
+    # Read strictly: a repeated JSON key (a second pass list, a second field
+    # of one name) is refused, not resolved to the last one.
+    payload = read_strict_json(
+        us_local_target_construction_path().read_text(encoding="utf-8"),
+        label=US_LOCAL_TARGET_CONSTRUCTION_RESOURCE,
     )
     if not isinstance(payload, dict) or set(payload) != _ENVELOPE_KEYS:
         raise ValueError(
             f"{US_LOCAL_TARGET_CONSTRUCTION_RESOURCE} must hold exactly the keys "
             f"{sorted(_ENVELOPE_KEYS)}."
         )
-    if payload["version"] != 1 or payload["country"] != "us":
+    if (
+        type(payload["version"]) is not int
+        or payload["version"] != 1
+        or payload["country"] != "us"
+    ):
         raise ValueError(
             f"{US_LOCAL_TARGET_CONSTRUCTION_RESOURCE} must be version 1 for country us."
         )

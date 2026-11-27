@@ -166,10 +166,37 @@ def test_declarations_load_from_a_file_and_name_products_and_modes(tmp_path) -> 
         state.clause("snap")
 
 
+def test_a_file_with_a_repeated_key_or_a_non_finite_number_is_refused(
+    tmp_path,
+) -> None:
+    # Plain json.loads keeps the last of two equal keys: a second mode of one
+    # name, or a second "levels" in a clause, would replace the first one
+    # without a word (the review of microcosm#1755).
+    text = json.dumps(DECLARATIONS)
+    path = tmp_path / "target_sets.json"
+    path.write_text('{"version": 1, ' + text[1:], encoding="utf-8")
+    with pytest.raises(
+        TargetSetDeclarationError, match=r"repeats the JSON key\(s\) \['version'\]"
+    ):
+        load_target_set_declarations(path)
+    nested = text.replace('"modes": {', '"modes": {"all": {}, ', 1)
+    assert nested != text
+    path.write_text(nested, encoding="utf-8")
+    with pytest.raises(
+        TargetSetDeclarationError, match=r"repeats the JSON key\(s\) \['all'\]"
+    ):
+        load_target_set_declarations(path)
+    path.write_text(text[:-1] + ', "extra": NaN}', encoding="utf-8")
+    with pytest.raises(TargetSetDeclarationError, match="non-finite number NaN"):
+        load_target_set_declarations(path)
+
+
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
         ({"version": 2}, "version must be 1"),
+        # True equals 1 in Python; a version is the integer.
+        ({"version": True}, "version must be 1"),
         ({"extra": True}, "unknown keys"),
         ({"level_keys": []}, "level_keys"),
         ({"products__local__default_mode": "county"}, "not a declared mode"),
@@ -181,6 +208,11 @@ def test_declarations_load_from_a_file_and_name_products_and_modes(tmp_path) -> 
         (
             {"products__local__modes__state__compiled__0__levels": ["state", "state"]},
             "repeats a name",
+        ),
+        # A list holds literal names, so ["*"] would match only a name "*".
+        (
+            {"products__local__modes__state__compiled__0__families": ["*"]},
+            "give '\\*' alone, not a list",
         ),
         (
             {"products__local__modes__state__compiled__1__id": "benefit"},

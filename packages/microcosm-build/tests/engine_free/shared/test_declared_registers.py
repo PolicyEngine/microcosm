@@ -221,3 +221,36 @@ def test_stale_entries_are_the_declared_names_not_found() -> None:
 
     assert stale_entries(["b", "a", "c", "a"], {"c"}) == ["a", "b"]
     assert stale_entries([], ["x"]) == []
+
+
+def test_a_register_file_is_read_strictly(tmp_path, monkeypatch) -> None:
+    # Plain json.loads keeps the last of two equal keys, so a second register
+    # of one name would replace the first one without a word (the review of
+    # microcosm#1755).
+    import microcosm.build.declared_registers as module
+
+    monkeypatch.setattr(module, "files", lambda _package: tmp_path)
+    envelope = '"version": 1, "country": "test", "description": "d"'
+    cases = {
+        "good.json": "{" + envelope + ', "registers": {"r": {}}}',
+        "repeated_top.json": '{"version": 1, ' + envelope + ', "registers": {"r": {}}}',
+        "repeated_register.json": "{" + envelope + ', "registers": {"r": {}, "r": {}}}',
+        "true_version.json": (
+            '{"version": true, "country": "test", "description": "d", '
+            '"registers": {"r": {}}}'
+        ),
+    }
+    for name, text in cases.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    assert module.package_registers("test.package", "good.json") == {"r": {}}
+    for name, key in (
+        ("repeated_top.json", "version"),
+        ("repeated_register.json", "r"),
+    ):
+        with pytest.raises(DeclaredRegisterError) as refusal:
+            module.package_registers("test.package", name)
+        assert str(refusal.value) == (
+            f"test.package/{name}: duplicate JSON key(s): ['{key}']."
+        )
+    with pytest.raises(DeclaredRegisterError, match="must be version 1"):
+        module.package_registers("test.package", "true_version.json")

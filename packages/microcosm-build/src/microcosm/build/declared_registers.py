@@ -167,12 +167,17 @@ def load_register(section: Mapping[str, Any], *, name: str = "register") -> Any:
 def package_registers(package: str, resource: str) -> Mapping[str, Any]:
     """The register sections of a package's JSON resource, read and checked once."""
 
-    payload = json.loads(files(package).joinpath(resource).read_text(encoding="utf-8"))
+    # Read strictly: plain json.loads keeps the last of two equal keys, so a
+    # second register of one name would replace the first without a word.
+    payload = read_strict_json(
+        files(package).joinpath(resource).read_text(encoding="utf-8"),
+        label=f"{package}/{resource}",
+    )
     if not isinstance(payload, dict) or set(payload) != _FILE_KEYS:
         raise DeclaredRegisterError(
             f"{package}/{resource} must hold exactly the keys {sorted(_FILE_KEYS)}."
         )
-    if payload["version"] != 1:
+    if type(payload["version"]) is not int or payload["version"] != 1:
         raise DeclaredRegisterError(f"{package}/{resource} must be version 1.")
     if not isinstance(payload["country"], str) or not payload["country"]:
         raise DeclaredRegisterError(f"{package}/{resource} must name its country.")

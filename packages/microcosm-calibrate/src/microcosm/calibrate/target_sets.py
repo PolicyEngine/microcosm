@@ -398,6 +398,9 @@ def _names(where: str, value: object) -> frozenset[str] | None:
     names = [_text(where, item) for item in value]
     if len(set(names)) != len(names):
         raise _fail(where, "repeats a name.")
+    if ANY in names:
+        # A list holds literal names: ["*"] would match only a name "*".
+        raise _fail(where, f"lists {ANY!r} as a name; give {ANY!r} alone, not a list.")
     return frozenset(names)
 
 
@@ -497,18 +500,49 @@ def _built(where: str, raw: object) -> BuiltRows:
     )
 
 
+def _read_declaration_file(path: Path) -> object:
+    """Read a declaration file; refuse a repeated key or a non-finite number.
+
+    Plain ``json.loads`` keeps the last of two equal keys, so a second
+    ``"state"`` mode or a second ``"levels"`` in a clause would replace the
+    first one without a word.
+    """
+
+    where = str(path)
+
+    def no_repeated_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        keys = [key for key, _value in pairs]
+        repeated = sorted({key for key in keys if keys.count(key) > 1})
+        if repeated:
+            raise _fail(where, f"repeats the JSON key(s) {repeated}.")
+        return dict(pairs)
+
+    def no_constant(value: str) -> Any:
+        raise _fail(where, f"holds the non-finite number {value}.")
+
+    return json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=no_repeated_keys,
+        parse_constant=no_constant,
+    )
+
+
 def load_target_set_declarations(
     source: str | Path | Mapping[str, Any],
 ) -> TargetSetDeclarations:
-    """Read and check one country's declarations (a path or a parsed object)."""
+    """Read and check one country's declarations (a path or a parsed object).
+
+    A file is read strictly: a repeated JSON key and a non-finite number are
+    refused.
+    """
 
     if isinstance(source, Mapping):
         raw, where = source, "target sets"
     else:
         path = Path(source)
-        raw, where = json.loads(path.read_text(encoding="utf-8")), str(path)
+        raw, where = _read_declaration_file(path), str(path)
     top = _require_keys(where, raw, _TOP_KEYS, ("version", "country", "products"))
-    if top["version"] != DECLARATION_VERSION:
+    if type(top["version"]) is not int or top["version"] != DECLARATION_VERSION:
         raise _fail(where, f"version must be {DECLARATION_VERSION}.")
     country = _text(f"{where}.country", top["country"])
     level_rule = _level_rule(where, top)
