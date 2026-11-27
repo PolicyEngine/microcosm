@@ -98,6 +98,19 @@ def test_a_dataset_spec_must_name_its_release() -> None:
         )
 
 
+def test_a_dataset_spec_takes_its_release_by_keyword() -> None:
+    """``release`` is keyword-only, so the fields after the required ones keep
+    their positions: ``variant`` is still the eighth positional argument."""
+    parameters = inspect.signature(DatasetSpec).parameters
+    positional = [
+        name
+        for name, parameter in parameters.items()
+        if parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    ]
+    assert positional[7] == "variant"
+    assert parameters["release"].kind is inspect.Parameter.KEYWORD_ONLY
+
+
 @pytest.mark.parametrize("name", POINTER_FILE_NAMES)
 def test_microcosm_data_exports_no_pointer_file_reader_or_writer(name: str) -> None:
     assert not hasattr(microcosm.data, name)
