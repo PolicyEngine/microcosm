@@ -271,10 +271,9 @@ def test_inventory_matches_the_live_contract():
     inventory = _json(FIXTURES / "c1" / "inventory.json")
     certification = inventory["certification"]
     assert inventory["release_id"] == UK_RELEASE
-    assert inventory["line"] == contract.line_for_release_id(UK_RELEASE)
-    assert inventory["dataset_role"] == contract.dataset_role_for_line(
-        inventory["line"]
-    )
+    # A build's role, not a pointer file's name, says what it is.
+    assert "line" not in inventory
+    assert inventory["dataset_role"] == contract.NATIONAL_DEFAULT_DATASET_ROLE
     assert (
         inventory["release_role"] == contract.RELEASE_ROLES[inventory["dataset_role"]]
     )
@@ -413,3 +412,11 @@ def test_registry_snapshot_matches_the_live_registry():
         {"key": list(key), **dataclasses.asdict(REGISTRY[key])}
         for key in sorted(REGISTRY)
     ], f"the dataset registry changed; {REGENERATE} (C5)"
+
+
+def test_registry_snapshot_names_no_pointer_file():
+    """Every entry is read through its repository's releases.json."""
+    snapshot = _json(FIXTURES / "c5" / "registry.json")
+    for entry in snapshot["entries"]:
+        assert "pointer_path" not in entry
+        assert entry["release"]
