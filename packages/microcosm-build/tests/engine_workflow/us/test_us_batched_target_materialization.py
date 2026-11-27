@@ -56,6 +56,7 @@ def test_real_engine_batched_base_simulation_matches_unbatched(monkeypatch) -> N
         pd.testing.assert_frame_equal(household, unbatched, check_exact=True)
         assert version == unbatched_version
 
+
 def test_real_engine_base_batches_build_no_system_and_release_engines(
     monkeypatch,
 ) -> None:
@@ -117,6 +118,7 @@ def test_real_engine_base_batches_build_no_system_and_release_engines(
     for column, values in unbatched.items():
         np.testing.assert_array_equal(batched[column], values)
 
+
 def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
     """Compare guarded materialization with unguarded one-household engines."""
 
@@ -150,7 +152,7 @@ def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
     enrolled = 0
     aggregate_periods = []
     for position in range(frame.n("household")):
-        batch_frame = builder._select_households_by_position(
+        batch_frame = builder.select_households_by_position(
             frame, np.asarray([position], dtype=np.int64)
         )
         simulation = Microsimulation(
@@ -211,6 +213,7 @@ def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
                 microsimulation_cls=Microsimulation,
                 maximum_microsim_batch_size=batch_size,
             )
+
 
 def test_population_aggregate_list_matches_installed_engine_sources() -> None:
     """Pin the guard list to weight reads and aggregation markers in US sources.
@@ -306,7 +309,9 @@ def test_forward_reads_match_the_reviewed_engine_sources() -> None:
     }
     assert {name: set(evidence) for name, evidence in found.items()} == reviewed
     reviewed_digest = hashlib.sha256(
-        "\n".join(f"{name}:{source_digests[name]}" for name in sorted(reviewed)).encode()
+        "\n".join(
+            f"{name}:{source_digests[name]}" for name in sorted(reviewed)
+        ).encode()
     ).hexdigest()
     assert reviewed_digest == (
         "4c3a61a320e3d7d57f887ba3a364293d59b9cc363e2e38e7aecd8fac13409d5e"
@@ -356,7 +361,9 @@ def test_in_build_datasets_hold_period_alone_and_match_the_projection(
     cut = builder._dataset_from_frame(
         frame, assert_no_formula_owned_columns=False, period_only=True
     )
-    projected = builder._dataset_from_frame(frame, assert_no_formula_owned_columns=False)
+    projected = builder._dataset_from_frame(
+        frame, assert_no_formula_owned_columns=False
+    )
     assert isinstance(cut, USMultiYearDataset)
     assert cut.years == [builder.PERIOD]
     assert isinstance(projected, USSingleYearDataset)

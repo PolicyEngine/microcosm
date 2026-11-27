@@ -37,7 +37,6 @@ from microcosm.data.contract import (
     validate_evidence_release_dir,
     validate_release_dir,
 )
-from microcosm.data.release import prepare_release, publish_release
 from microcosm.data.stored_inputs import register_sha256
 from test_support.microcosm_data.build_folders import (
     UK_LOCAL_BUILD,
@@ -637,14 +636,6 @@ def test_explicit_diagnostics_failure_does_not_block_local_release(
     )
 
     validate_release_dir(release_dir)
-    with pytest.warns(UserWarning, match="generation failed"):
-        prepared = prepare_release(
-            release_dir,
-            artifact_root=tmp_path,
-            update_latest=False,
-        )
-    assert prepared.calibration_diagnostics_available is False
-    assert "calibration_diagnostics.json" not in prepared.filenames
 
 
 def test_local_area_dispatch_does_not_bypass_uk_tier_identity(tmp_path: Path) -> None:
@@ -738,47 +729,6 @@ def test_tampered_diagnostics_artifact_hash_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ReleaseContractError, match="observed"):
         validate_release_dir(release_dir)
-
-
-def test_publish_refuses_pointer_update_for_local_area_role(
-    tmp_path: Path, monkeypatch
-) -> None:
-    from microcosm.data import release as release_module
-    from microcosm.data.publish_cli import main
-
-    release_dir = _write_local_bundle(tmp_path)
-    validate_release_dir(release_dir)
-    monkeypatch.setattr(
-        release_module, "_hf_api", lambda: pytest.fail("unexpected Hub construction")
-    )
-
-    with pytest.raises(ValueError, match="never update latest.json") as publication:
-        publish_release(
-            release_dir,
-            "policyengine/populace-us",
-            api=object(),
-            update_latest=True,
-        )
-
-    with pytest.raises(type(publication.value)) as preflight:
-        main([str(release_dir), "--preflight-only"])
-    assert str(preflight.value) == str(publication.value)
-
-
-def test_publish_without_pointer_passes_the_role_guard(tmp_path: Path) -> None:
-    release_dir = _write_local_bundle(tmp_path)
-
-    # A dummy backend fails the atomic-publication capability check — which
-    # sits AFTER the role guard and the artifact verification, proving
-    # --no-latest publishes proceed to the Hub surface.
-    with pytest.raises(TypeError, match="Hub backend|create_tag"):
-        publish_release(
-            release_dir,
-            "policyengine/populace-us",
-            api=object(),
-            artifact_root=tmp_path,
-            update_latest=False,
-        )
 
 
 def test_empty_checksum_ledger_is_rejected(tmp_path: Path) -> None:

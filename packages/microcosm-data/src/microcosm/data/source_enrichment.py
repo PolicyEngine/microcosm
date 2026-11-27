@@ -577,21 +577,6 @@ def _check_receipt_producers(
         failures.append(f"qualification producer source identity failed: {exc}")
 
 
-def is_receipt_enrichment(release_dir: Path | str) -> bool:
-    """Whether ``release_dir`` declares the reported-receipt operation.
-
-    A reporting probe for the publisher's latest-pointer guard; it validates
-    nothing, and an unreadable report reads as ``False``.
-    """
-    try:
-        report = json.loads((Path(release_dir) / SOURCE_ENRICHMENT_FILE).read_text())
-    except (OSError, ValueError):
-        return False
-    return isinstance(report, Mapping) and report.get("operation") == (
-        RECEIPT_OPERATION
-    )
-
-
 def validate_source_enrichment_candidate(
     release_dir: Path | str,
     *,

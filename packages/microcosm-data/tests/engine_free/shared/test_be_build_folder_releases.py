@@ -302,12 +302,6 @@ def test_a_be_build_is_prepared_with_the_role_its_dataset_role_gives(
     assert set(BE_REQUIRED_FILES) <= {item.name for item in prepared.files}
 
 
-@pytest.mark.parametrize("release_id", BE_RELEASE_IDS)
-def test_the_tagged_publisher_refuses_a_be_release(tmp_path, release_id) -> None:
-    with pytest.raises(ValueError, match="publishes each build into its own folder"):
-        release_module.prepare_release(tmp_path / release_id)
-
-
 def test_a_be_build_named_by_its_old_folder_is_pointed_at_the_be_releases() -> None:
     """The publisher's refusal of a directory that is not a build-folder
     release names the releases BE's builds now publish into."""

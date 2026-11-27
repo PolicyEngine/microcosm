@@ -54,7 +54,6 @@ from microcosm.data.release import (
     latest_evidence_release,
     latest_pointer_payload,
     latest_release,
-    publish_release,
 )
 
 __all__ = [
@@ -88,7 +87,6 @@ __all__ = [
     "latest_evidence_release",
     "latest_pointer_payload",
     "latest_release",
-    "publish_release",
 ]
 
 __version__ = "0.1.0"

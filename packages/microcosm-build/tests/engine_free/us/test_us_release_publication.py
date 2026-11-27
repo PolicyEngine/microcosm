@@ -188,6 +188,35 @@ def test_the_command_passes_the_parent_h5_and_wheels(tmp_path, monkeypatch) -> N
     assert passed["compatibility_wheels"] == (wheel,)
 
 
+def test_the_preflight_lists_the_release_contract_warnings(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """The preflight's verdict lists the release contract's warnings and still
+    passes: a warning never refuses a build (microcosm#1301, review of
+    microcosm#1307)."""
+    release_dir = tmp_path / "microcosm-us-2024-national"
+    release_dir.mkdir()
+    contract_warnings = ("synthetic.json carries a synthetic finding",)
+
+    def prepare(path, **_kwargs):
+        prepared = _prepared(path)
+        prepared.contract_warnings = contract_warnings
+        return prepared
+
+    monkeypatch.setattr(
+        release_publication, "publication_refusal", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(release_publication, "prepare_build_folder_release", prepare)
+
+    exit_code = release_publication.main([str(release_dir), "--preflight-only"])
+
+    assert exit_code == 0
+    verdict = json.loads(capsys.readouterr().out)
+    assert verdict["valid"] is True
+    assert verdict["published"] is False
+    assert verdict["contract_warnings"] == list(contract_warnings)
+
+
 def test_a_recertification_is_handed_over_only_once_its_parent_is_published(
     tmp_path, monkeypatch
 ) -> None:

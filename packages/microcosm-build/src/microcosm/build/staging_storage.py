@@ -266,15 +266,9 @@ class RunFileHandOver:
                 pass
         return self.last_receipt
 
-    def hand_over(
-        self,
-        files: Sequence[tuple[str, Path]],
-        *,
-        latest_pointer: Path | None = None,
-        run_index_entry: Mapping[str, Any] | None = None,
-    ) -> HandOverResult:
+    def hand_over(self, files: Sequence[tuple[str, Path]]) -> HandOverResult:
         """Hand over ``(relative path, local path)`` pairs under the run's folder."""
-        offered = len(files) + (latest_pointer is not None)
+        offered = len(files)
         if not self.enabled:
             return HandOverResult(
                 accepted=False,
@@ -289,8 +283,6 @@ class RunFileHandOver:
                 run_id=self.run_id,
                 files=[RunFile(relative, Path(local)) for relative, local in files],
                 prefix=self.prefix,
-                latest_pointer=latest_pointer,
-                run_index_entry=run_index_entry,
                 flush=True,
             )
         except ValueError:

@@ -2223,10 +2223,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         write_receipt(runner, {"build": build, "published": args.publish})
         print(f"\nbuild {build} assembled; receipt {paths.receipt}")
         print(
-            "Next, a separate, deliberate call once it is published:\n"
+            "Next, each a separate, deliberate call once it is published:\n"
             f"  promote: {promote_command(paths)}\n"
-            "tools/certify_uk_cut_in_policyengine_py.py reads tagged builds only, "
-            "so it cannot certify this build into policyengine.py yet."
+            "  certify in policyengine.py: tools/certify_uk_cut_in_policyengine_py.py "
+            f"--national-build {build} ..."
         )
         return 0
     except CutError as error:

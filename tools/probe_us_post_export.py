@@ -648,7 +648,7 @@ def choose_batch_size(
 ) -> int:
     """The largest batch size up to ``requested`` giving ``minimum_batches``.
 
-    ``_household_position_batches`` cuts ``n`` households into
+    ``household_batches.household_position_batches`` cuts ``n`` households into
     ``ceil(n / size)`` batches, which is at least ``m`` exactly when
     ``size < n / (m - 1)``; the largest such size is ``ceil(n / (m - 1)) - 1``
     (``n`` itself when ``m`` is 1). ``ceil(n / m)`` is not enough: four

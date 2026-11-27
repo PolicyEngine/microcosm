@@ -189,6 +189,20 @@ UK_STAGING_DELIVERY = {
     "last_error_code": None,
     "opt_out_reason": None,
 }
+#: The US build's successful version 2 staging delivery, as its staging run
+#: reports it before the final read-back (microcosm#1135).
+US_STAGING_DELIVERY = {
+    "contract_version": 2,
+    "enabled": True,
+    "mode": "local_and_remote",
+    "run_id": "us-national-release-contract-fixture",
+    "configured_repository": "policyengine/populace-us-staging",
+    "upload_attempts": 6,
+    "upload_successes": 6,
+    "read_back": "not_requested",
+    "last_error_code": None,
+    "opt_out_reason": None,
+}
 #: One synthetic spine stage that reads the SPI Public Use Tape, so the UK
 #: manifests carry the marker a tape-dependent national release restates
 #: (microcosm#1095): the flag on the microdata entry and ``licensed_data``.
@@ -417,10 +431,10 @@ def _c1_us_national(root: Path) -> None:
             ),
             staging=builder._staging_manifest_block(
                 SimpleNamespace(
-                    staging_bundle=object(),
-                    run_id="us-national-release-contract-fixture",
-                    repo_id="policyengine/populace-us-staging",
-                    uploads_succeeded=True,
+                    staging_bundle=SimpleNamespace(
+                        delivery_summary=validate_staging_delivery(US_STAGING_DELIVERY)
+                    ),
+                    staging_opt_out_reason=None,
                 )
             ),
         )
