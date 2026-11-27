@@ -1,0 +1,93 @@
+{
+  "kind": "uk_firm_supply_use_fixture",
+  "schema_version": 1,
+  "period": "calendar year 2024",
+  "accessed": "2026-11-22",
+  "method": "Figures were read from the downloaded workbook on the access date by tools/extract_uk_firm_supply_use_tables.py; none was filled from memory. Values are pounds million at current prices as published. Demand is at purchasers' prices (the 'Combined Use' matrix, domestic output and imports together); domestic output is at basic prices. The product -> SIC division rows are parsed from the CPA product codes and checked against the Industry and product map sheet; a product spanning several divisions is repeated once per division with the whole product.",
+  "identities_checked": [
+    "domestic output + imports + distributors' margins + taxes less subsidies = total supply (each product)",
+    "intermediate consumption + total final demand = total demand = total supply (each product)",
+    "final demand components sum to total final demand (each product)",
+    "Table 3 COICOP columns sum to Total (domestic concept); domestic + non-resident expenditure in the UK + resident expenditure abroad = Total HHFCE (national concept) = Table 2 households (each product)",
+    "distributors' margins sum to zero over products",
+    "products per SIC division = distinct A103 codes per division in the Industry and product map"
+  ],
+  "notes": [
+    "Table 2's households column is the national concept (includes UK residents' spending abroad, excludes non-residents' spending in the UK, which sits in exports); Table 3's COICOP columns are the domestic concept.",
+    "Table 3 publishes COICOP classes for divisions 01-09 and only division totals for 10, 11 and 12 (no 12.6.1 FISIM class).",
+    "Distributors' trading margins are negative only on the trade products CPA_G45, CPA_G46 and CPA_G47 and are spread over the goods products (and publishing products J58, J59 & J60) as positive margins; one combined column, not split by wholesale, retail and motor trade.",
+    "Table 3 footnote: COICOP data here may differ from Consumer Trends because of the CPA to COICOP correlator; at the total level they are consistent.",
+    "Table 3 has 102 product rows: it prints CPA_C27 and CPA_C28 as one row, CPA_C27 & C28, written under that code.",
+    "Zero cells of Table 3 are not written to sut_hhfce_product_coicop.csv."
+  ],
+  "source": {
+    "publisher": "Office for National Statistics",
+    "dataset_title": "Input-output supply and use tables",
+    "landing_page": "https://www.ons.gov.uk/economy/nationalaccounts/supplyandusetables/datasets/inputoutputsupplyandusetables",
+    "url": "https://www.ons.gov.uk/file?uri=/economy/nationalaccounts/supplyandusetables/datasets/inputoutputsupplyandusetables/current/supublicationtablesbb26.xlsx",
+    "edition": "Supply and Use Tables, 1997 - 2024 (consistent with UK National Accounts 2026 Blue Book), released October 2026",
+    "file": "sut_bb26.xlsx",
+    "size_bytes": 3160155,
+    "sha256": "716c9e023e95cad60d3ca6affb058540887f436ad21a2f3c0f8f01eec0bbeaa8",
+    "sheets": [
+      "Table 1 - Supply 2024",
+      "Table 2 - Int Con 2024",
+      "Table 2 - Final Demand 2024",
+      "Table 3 - HHFCE 2024",
+      "Industry and product map"
+    ],
+    "units": "pounds million, current prices",
+    "licence": "Open Government Licence v3.0"
+  },
+  "extraction_date": "2026-11-22",
+  "tool": "tools/extract_uk_firm_supply_use_tables.py",
+  "command": "uv run --no-sync python tools/extract_uk_firm_supply_use_tables.py --xlsx <download>/supublicationtablesbb26.xlsx",
+  "files": {
+    "sut_product_uses.csv": {
+      "sha256": "40b4a8b6ac88ffe6cc03528bb93ea36aec534742a6675f400b2693db828ad83c",
+      "bytes": 12185,
+      "rows": 103,
+      "columns": [
+        "product_code",
+        "product_label",
+        "intermediate_consumption",
+        "households",
+        "npish",
+        "central_government",
+        "local_government",
+        "gfcf",
+        "valuables",
+        "changes_in_inventories",
+        "exports",
+        "total_demand",
+        "domestic_output",
+        "imports",
+        "distributors_margins",
+        "taxes_less_subsidies",
+        "total_supply"
+      ]
+    },
+    "sut_hhfce_product_coicop.csv": {
+      "sha256": "48ae45bfeb5ce5bb0ae8cb9491e80d71e8e4598e0337a262627e4a1c16772cd6",
+      "bytes": 3596,
+      "rows": 192,
+      "columns": [
+        "product_code",
+        "coicop",
+        "value_gbp_million"
+      ]
+    },
+    "sut_product_sic_division.csv": {
+      "sha256": "ae8825d74bcc261208c5846089b985b24b537d866bdc6b3a53199718903d1070",
+      "bytes": 3422,
+      "rows": 110,
+      "columns": [
+        "product_code",
+        "sic_division",
+        "sic_section",
+        "map_sic_codes",
+        "map_a103_codes"
+      ]
+    }
+  }
+}

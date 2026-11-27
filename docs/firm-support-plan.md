@@ -92,6 +92,27 @@ opt-in assumed input. `uk_runtime/firm_empty_property.py` reads the MHCLG
 empty-property figures as a standalone diagnostic; the build does not set
 the empty-property inputs.
 
+The consumption link (`--consumption-dir`, `uk_runtime/firm_consumption.py`)
+splits turnover into household, intermediate and other final sales by SIC
+division from the ONS Supply and Use Tables 2024, with a division × COICOP
+share table from the household consumption bridge for matching to LCFS
+spending levelled to Consumer Trends. Household spending is at purchasers'
+prices, so trade margins sit with retail and wholesale. Firm household sales
+therefore cannot equal Consumer Trends: split in proportion to supply (an
+assumption, `uk_household_purchases_supply_decomposition`), 2024 household
+purchases outside imputed rent are about £903bn of domestic output at basic
+prices, £233bn of imports, £163bn of distributors' margins and £99bn of taxes
+less subsidies (plus £21bn bought from the motor trade directly). Imports and
+taxes are outside UK firms' output at basic prices, so outside the
+share-allocated household sales (gross trade turnover still includes resold
+imports, and turnover includes excise duties). Firm-side household sales also
+fall short because the generator's turnover is capped at £50m (unless the
+opt-in `--bpe-turnover` tail is used) and is drawn independently of
+employment, and because much of real estate, finance, insurance and health
+output is imputed, non-market or unincorporated. Trade turnover is gross,
+while SUT trade output is the margin only. The SUT year (2024) is not BPE's
+(2025).
+
 The other policyengine-uk firm inputs (capital expenditure, the other
 pay-distribution inputs and several flags) wait for sources.
 

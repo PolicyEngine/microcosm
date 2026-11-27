@@ -49,7 +49,7 @@ The groups today:
   ``firm_rateable_value.assign_uk_firm_rateable_value``), zero outside
   England. It extends ``attributes``.
 - ``sic_division``: Microcosm-only ``firm_sic_division``, the generator's
-  SIC 2007 division, a linkage key the labour groups
+  SIC 2007 division, a linkage key the labour and consumption groups both
   extend. It extends ``attributes``.
 - ``labour_link``: switched on by ``employees`` (ONS employment less the
   assumed working proprietors, ``firm_headcount.uk_firm_employees``), which
@@ -74,6 +74,12 @@ The groups today:
   (pounds, companies only, never above turnover) and ``firm_is_sme`` (from
   ``firm_rd_tax_credits.draw_uk_firm_rd_tax_credits``). It extends
   ``attributes``.
+- ``consumption``: Microcosm-only ``firm_household_sales``,
+  ``firm_intermediate_sales`` and ``firm_other_final_sales`` (pounds),
+  turnover split by the firm's SIC division's shares of total demand in the
+  ONS Supply and Use Tables 2024 (``firm_consumption.py``), the linkage keys
+  for a consumption match with household data. They sum to
+  ``firm_turnover``. It extends ``attributes`` and ``sic_division``.
 
 ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS`` records, for every formula-less
 policyengine-uk firm input, whether the fullest table (every group) sets it.
@@ -93,6 +99,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.firms import INPUT_STATUSES
+from microcosm.build.uk_runtime.firm_consumption import UK_FIRM_CONSUMPTION_COLUMNS
 from microcosm.build.uk_runtime.firm_employment_allowance import (
     UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
     uk_firm_employment_allowance_flags,
@@ -772,6 +779,31 @@ def _validate_labour_link_columns(df: pd.DataFrame) -> None:
         raise ValueError("UK firm firm_is_public_sector must follow ons_legal_status.")
 
 
+def _consumption_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    return {
+        column: ordered[column].to_numpy(np.float64)
+        for column in UK_FIRM_CONSUMPTION_COLUMNS
+    }
+
+
+def _validate_consumption_columns(df: pd.DataFrame) -> None:
+    turnover = df["firm_turnover"].to_numpy(np.float64)
+    parts = [df[column].to_numpy(np.float64) for column in UK_FIRM_CONSUMPTION_COLUMNS]
+    tolerance = np.abs(turnover) * 1e-9 + 1e-6
+    for column, values in zip(UK_FIRM_CONSUMPTION_COLUMNS, parts, strict=True):
+        if not np.all(np.isfinite(values)):
+            raise ValueError(f"UK firm {column} must be finite.")
+        if np.any(values * np.sign(turnover) < -tolerance):
+            raise ValueError(f"UK firm {column} must have firm_turnover's sign.")
+        if np.any(np.abs(values) > np.abs(turnover) * (1 + 1e-9) + 1e-6):
+            raise ValueError(f"UK firm {column} must not exceed firm_turnover.")
+    if not np.allclose(sum(parts), turnover, rtol=1e-9, atol=1e-6):
+        raise ValueError(
+            "UK firm household, intermediate and other final sales must sum "
+            "to firm_turnover."
+        )
+
+
 def _rd_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
     return {
         "firm_qualifying_rd_expenditure": ordered[
@@ -927,6 +959,15 @@ UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
         requires=("attributes",),
         columns=_rd_group_columns,
         validate=_validate_rd_columns,
+    ),
+    UKFirmExportGroup(
+        name="consumption",
+        source_columns=UK_FIRM_CONSUMPTION_COLUMNS,
+        policyengine_uk_columns=(),
+        microcosm_columns=UK_FIRM_CONSUMPTION_COLUMNS,
+        requires=("attributes", "sic_division"),
+        columns=_consumption_group_columns,
+        validate=_validate_consumption_columns,
     ),
 )
 

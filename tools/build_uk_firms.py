@@ -95,11 +95,28 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--consumption-dir",
+        type=Path,
+        help=(
+            "directory holding the ONS Supply and Use Tables 2024 extract; "
+            "splits turnover into household, intermediate and other final "
+            "sales by SIC division"
+        ),
+    )
+    parser.add_argument(
         "--bpe-mid-headcount",
         action="store_true",
         help=(
             "remap headcount inside the ONS 5-9 to 100-249 bands to BPE 2025 "
             "Table 1 shapes (needs --bpe-dir)"
+        ),
+    )
+    parser.add_argument(
+        "--bpe-turnover",
+        action="store_true",
+        help=(
+            "draw the open ONS turnover band on a tail pinned to BPE 2025 total "
+            "turnover and re-pair employment with turnover (needs --bpe-dir)"
         ),
     )
     parser.add_argument(
@@ -197,8 +214,10 @@ def main(argv: list[str] | None = None) -> int:
         pay_distribution_dir=args.pay_distribution_dir,
         bpe_dir=args.bpe_dir,
         employment_allowance_takeup_dir=args.employment_allowance_takeup_dir,
+        consumption_dir=args.consumption_dir,
         bpe_mid_headcount=args.bpe_mid_headcount,
         out_of_frame_no_employees=args.out_of_frame_no_employees,
+        bpe_turnover=args.bpe_turnover,
         bpe_large_headcount=args.bpe_large_headcount,
         rd_tax_credits_dir=args.rd_tax_credits_dir,
     )

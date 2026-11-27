@@ -638,6 +638,40 @@ def test_labour_link_build_sets_employees_and_draws_allowance_takeup(
         assert key not in builds[0]["receipt"]
 
 
+def test_consumption_build_splits_turnover_only(builds, tmp_path: Path) -> None:
+    built = _build(
+        tmp_path / "consumption", consumption_dir=FIXTURES / "firm_supply_use_2024"
+    )
+    table = built["table"]
+    base = builds[0]["table"]
+    assert tuple(table.columns) == uk_firm_table_columns(
+        ["attributes", "sic_division", "consumption"]
+    )
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    assert built["receipt"]["data_years"]["ons_supply_use"] == "2024"
+    pd.testing.assert_frame_equal(table[list(base.columns)], base)
+    parts = table[
+        ["firm_household_sales", "firm_intermediate_sales", "firm_other_final_sales"]
+    ].sum(axis=1)
+    np.testing.assert_allclose(parts, table["firm_turnover"], rtol=1e-9)
+    assert (table["firm_household_sales"] > 0).any()
+    record = built["receipt"]["uk_firm_consumption"]
+    assert record["status"] == "assumed"
+    assert all(
+        abs(row["difference"]) <= 0.5 for row in record["table3_consumer_trends"]
+    )
+    shares = pd.read_csv(
+        built["table_path"].parent / record["division_coicop_shares_file"],
+        index_col="sic_division",
+    )
+    coicop = [f"{k:02d}" for k in range(1, 13)]
+    np.testing.assert_allclose(shares[coicop].sum(axis=1), 1.0, rtol=1e-9)
+    assert set(table["firm_sic_division"]) <= set(shares.index)
+    split = record["household_purchases_by_supply_gbp_million"]
+    assert split["domestic_basic"] > split["imports"] > 0
+    assert "uk_firm_consumption" not in builds[0]["receipt"]
+
+
 def test_mid_headcount_and_out_of_frame_switches(builds, tmp_path: Path) -> None:
     built = _build(
         tmp_path / "mid",
@@ -664,6 +698,42 @@ def test_mid_headcount_and_out_of_frame_switches(builds, tmp_path: Path) -> None
     record = built["receipt"]["uk_firm_headcount"]
     assert record["mid_band_remap"]["weighted_rows_changed"] > 0
     assert record["out_of_frame_employment_removed"] > 0
+
+
+def test_bpe_turnover_lifts_the_cap_and_pairs_turnover_with_employment(
+    builds, tmp_path: Path
+) -> None:
+    """The thinned test build keeps different rows once turnover changes, so
+    only properties are compared, not rows."""
+
+    built = _build(
+        tmp_path / "bpe_turnover",
+        paybill_dir=PAYBILL,
+        bpe_dir=FIXTURES / "firm_bpe_2025",
+        bpe_turnover=True,
+    )
+    table = built["table"]
+    base = builds[0]["table"]
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    assert base["firm_turnover"].max() < 50e6
+    assert table["firm_turnover"].max() > 50e6
+    record = built["receipt"]["uk_firm_headcount"]["bpe_turnover"]
+    assert 0.0 < record["rho"] < 1.0
+    assert record["cap_k"] > 50_000
+
+    def corr(frame_table: pd.DataFrame, headcount: str) -> float:
+        rows = frame_table[
+            frame_table["in_frame"].to_numpy(bool) & (frame_table["firm_turnover"] > 0)
+        ]
+        return float(
+            np.corrcoef(np.log1p(rows["firm_turnover"]), np.log1p(rows[headcount]))[
+                0, 1
+            ]
+        )
+
+    assert corr(table, "ons_employment") > corr(base, "firm_employees") + 0.2
+    assert "bpe_turnover" not in builds[0]["receipt"]["config"]
+    assert "bpe_turnover" in built["receipt"]["config"]
 
 
 def test_rd_tax_credits_and_large_headcount_build(builds, tmp_path: Path) -> None:
@@ -722,6 +792,7 @@ def test_labour_link_sources_need_their_prerequisites(tmp_path: Path) -> None:
     ("argument", "fixture"),
     [
         ("bpe_dir", "firm_bpe_2025"),
+        ("consumption_dir", "firm_supply_use_2024"),
         ("rd_tax_credits_dir", "firm_rd_tax_credits_2024_25"),
         ("employment_allowance_takeup_dir", "firm_employment_allowance_takeup_2024_25"),
         ("public_sector_dir", "firm_public_sector_2025"),

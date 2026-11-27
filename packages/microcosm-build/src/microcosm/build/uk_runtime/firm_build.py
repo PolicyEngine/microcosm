@@ -51,6 +51,17 @@ from microcosm.build.uk_runtime.firm_attributes import (
     read_uk_firm_attribute_source_data,
     uk_firm_attribute_fallback_counts,
 )
+from microcosm.build.uk_runtime.firm_consumption import (
+    UK_FIRM_CONSUMPTION_COLUMNS,
+    UK_FIRM_CONSUMPTION_METHOD,
+    UK_FIRM_CONSUMPTION_STATUS,
+    check_uk_table3_consumer_trends,
+    read_uk_firm_supply_use_source,
+    uk_firm_consumption_sales,
+    uk_firm_division_coicop_shares,
+    uk_firm_household_sales_by_coicop,
+    uk_household_purchases_supply_decomposition,
+)
 from microcosm.build.uk_runtime.firm_employment_allowance import (
     UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS,
     UK_FIRM_EMPLOYMENT_ALLOWANCE_METHOD,
@@ -144,6 +155,9 @@ UK_FIRM_SECONDARY_THRESHOLD_GBP = 175.0 * 52
 UK_FIRM_BUILD_RECEIPT_SCHEMA_VERSION = 1
 UK_FIRM_TABLE_FILE = "uk_firms.parquet"
 UK_FIRM_RECEIPT_FILE = "uk_firms.receipt.json"
+#: With consumption_dir: the SIC division x COICOP division shares of
+#: household sales, written beside the table for the consumption match.
+UK_FIRM_DIVISION_COICOP_SHARES_FILE = "uk_firm_division_coicop_shares.csv"
 
 #: The years each input group's source describes, recorded in the receipt's
 #: ``data_years`` beside the frame's and apart from ``rule_period``. A key
@@ -170,6 +184,8 @@ UK_FIRM_INPUT_DATA_YEARS: Mapping[str, str] = MappingProxyType(
         "hmrc_rd_statistics": "2024-25",
         # VOA non-domestic rating stock at 31 March 2026, 2023 rating lists.
         "voa_rating_list": "31 Mar 2026 (2023 list)",
+        # ONS Supply and Use Tables, Blue Book 2026: calendar year 2024.
+        "ons_supply_use": "2024",
     }
 )
 
@@ -217,8 +233,10 @@ def build_uk_firm_dataset(
     pay_distribution_dir: str | Path | None = None,
     bpe_dir: str | Path | None = None,
     employment_allowance_takeup_dir: str | Path | None = None,
+    consumption_dir: str | Path | None = None,
     bpe_mid_headcount: bool = False,
     out_of_frame_no_employees: bool = False,
+    bpe_turnover: bool = False,
     bpe_large_headcount: bool = False,
     rd_tax_credits_dir: str | Path | None = None,
 ) -> dict[str, Any]:
@@ -256,11 +274,17 @@ def build_uk_firm_dataset(
     (``tests/fixtures/uk/firm_employment_allowance_takeup_2024_25``), which
     needs ``bpe_dir`` and ``employment_allowance``, draws each rule claimant's
     claim at HMRC's 2024-25 take-up by employee size band
-    (``firm_employment_allowance_takeup.py``).
+    (``firm_employment_allowance_takeup.py``). ``consumption_dir``
+    (``tests/fixtures/uk/firm_supply_use_2024``) splits turnover into
+    household, intermediate and other final sales by SIC division from the
+    ONS Supply and Use Tables 2024 (``firm_consumption.py``).
     ``bpe_mid_headcount`` (needs ``bpe_dir``) remaps headcount inside the
     ONS bands 5-9 to 100-249 to BPE 2025 Table 1 shapes by weighted rank;
     ``out_of_frame_no_employees`` (needs ``bpe_dir``) gives the rows outside
     the ONS frame no headcount, an assumption with no published pin.
+    ``bpe_turnover`` (needs ``bpe_dir``) runs the generator with the BPE
+    turnover fix (``UKFirmGenerationConfig.bpe_turnover``): an open-band
+    turnover tail pinned to BPE 2025 and employment re-paired with turnover.
     ``bpe_large_headcount`` (needs ``bpe_dir``) remaps 250+ headcounts to
     BPE 2025 Table 1's large rows. ``rd_tax_credits_dir``
     (``tests/fixtures/uk/firm_rd_tax_credits_2024_25``) adds the assumed
@@ -288,6 +312,7 @@ def build_uk_firm_dataset(
         ("pay_distribution_dir", pay_distribution_dir),
         ("bpe_dir", bpe_dir),
         ("employment_allowance_takeup_dir", employment_allowance_takeup_dir),
+        ("consumption_dir", consumption_dir),
         ("rd_tax_credits_dir", rd_tax_credits_dir),
     ):
         if directory is not None and config.data_vintage != "2024-25":
@@ -300,10 +325,13 @@ def build_uk_firm_dataset(
     if bpe_dir is not None and paybill_dir is None:
         raise ValueError("bpe_dir needs paybill_dir.")
     if (
-        bpe_mid_headcount or out_of_frame_no_employees or bpe_large_headcount
+        bpe_mid_headcount
+        or out_of_frame_no_employees
+        or bpe_turnover
+        or bpe_large_headcount
     ) and bpe_dir is None:
         raise ValueError(
-            "bpe_mid_headcount, out_of_frame_no_employees and "
+            "bpe_mid_headcount, out_of_frame_no_employees, bpe_turnover and "
             "bpe_large_headcount need bpe_dir."
         )
     if employment_allowance_takeup_dir is not None and (
@@ -318,6 +346,10 @@ def build_uk_firm_dataset(
 
     recorder = _RecordingRules(rules)
     run_config = dataclasses.replace(config, firm_rules=recorder)
+    if bpe_turnover:
+        run_config = dataclasses.replace(
+            run_config, bpe_turnover=read_uk_firm_bpe_source(bpe_dir)
+        )
     source = read_uk_firm_source_data(processed, input_files=run_config.input_files)
     result = generate_uk_firm_population(source, run_config)
     if not recorder.provenance:
@@ -427,11 +459,30 @@ def build_uk_firm_dataset(
                 in_england, rateable_value_source
             )
         )
-    if bpe_source is not None:
+    if bpe_source is not None or consumption_dir is not None:
         firms = firms.assign(
             firm_sic_division=pd.to_numeric(firms["sic_code"])
             .to_numpy()
             .astype(np.int64)
+        )
+    consumption_source = None
+    consumption = None
+    consumption_check = None
+    if consumption_dir is not None:
+        consumption_source = read_uk_firm_supply_use_source(consumption_dir)
+        # Source consistency (Table 3 totals equal Consumer Trends), checked
+        # before anything is written.
+        consumption_check = check_uk_table3_consumer_trends(consumption_source)
+        consumption = uk_firm_consumption_sales(
+            firms["sic_code"].to_numpy(),
+            firms["annual_turnover_k"].to_numpy(np.float64) * 1_000.0,
+            consumption_source,
+        )
+        firms = firms.assign(
+            **{
+                column: consumption.columns[column].to_numpy(np.float64)
+                for column in UK_FIRM_CONSUMPTION_COLUMNS
+            }
         )
     takeup_source = None
     takeup = None
@@ -502,6 +553,7 @@ def build_uk_firm_dataset(
                     "hmrc_ct_statistics": profit_dir is not None,
                     "hmrc_rd_statistics": rd_tax_credits_dir is not None,
                     "voa_rating_list": rateable_value_dir is not None,
+                    "ons_supply_use": consumption_dir is not None,
                 }
             ),
         },
@@ -636,10 +688,43 @@ def build_uk_firm_dataset(
         for key, value in (
             ("mid_band_remap", mid_headcount),
             ("large_band_remap", large_headcount),
+            ("bpe_turnover", result.bpe_turnover),
             ("out_of_frame_employment_removed", out_of_frame_employment),
         ):
             if value is not None:
                 receipt["uk_firm_headcount"][key] = value
+    if consumption_source is not None:
+        receipt["inputs"]["consumption"] = dict(consumption_source.sha256)
+        receipt["uk_firm_consumption"] = {
+            "status": UK_FIRM_CONSUMPTION_STATUS,
+            "method": UK_FIRM_CONSUMPTION_METHOD,
+            "fallback_counts": dict(consumption.fallback_counts),
+            "weighted_sales_gbp": {
+                column: float((weight * table[column]).sum())
+                for column in UK_FIRM_CONSUMPTION_COLUMNS
+            },
+            "table3_consumer_trends": _records(consumption_check.reset_index()),
+            "division_coicop_shares_file": UK_FIRM_DIVISION_COICOP_SHARES_FILE,
+            # Diagnostic only: Table 2 household purchases split by source
+            # of supply (pounds million), a supply-proportionality
+            # assumption, never a target.
+            "household_purchases_by_supply_gbp_million": {
+                column: float(value)
+                for column, value in uk_household_purchases_supply_decomposition(
+                    consumption_source
+                )
+                .sum()
+                .items()
+            },
+            "household_sales_by_coicop": _records(
+                uk_firm_household_sales_by_coicop(
+                    table["firm_sic_division"].to_numpy(),
+                    table["firm_household_sales"].to_numpy(np.float64),
+                    weight,
+                    consumption_source,
+                ).reset_index()
+            ),
+        }
     if takeup_source is not None:
         receipt["inputs"]["employment_allowance_takeup"] = dict(takeup_source.sha256)
         receipt["uk_firm_employment_allowance_takeup"] = {
@@ -668,6 +753,10 @@ def build_uk_firm_dataset(
                 (weight * table["firm_rateable_value"]).sum()
             ),
         }
+    if consumption_source is not None:
+        uk_firm_division_coicop_shares(consumption_source).to_csv(
+            output / UK_FIRM_DIVISION_COICOP_SHARES_FILE, float_format="%.12g"
+        )
     receipt = _json_safe(receipt)
     receipt_path = output / UK_FIRM_RECEIPT_FILE
     receipt_path.write_text(
@@ -727,6 +816,12 @@ def _config_record(config: UKFirmGenerationConfig) -> dict[str, Any]:
         if item.name in _RULE_CONFIG_FIELDS:
             continue
         value = getattr(config, item.name)
+        if item.name == "bpe_turnover":
+            # Opt-in: absent from the default receipt; the source's hashes
+            # stand for it.
+            if value is None:
+                continue
+            value = dict(value.sha256)
         if isinstance(value, Mapping):
             value = {str(key): str(entry) for key, entry in value.items()}
         record[item.name] = value

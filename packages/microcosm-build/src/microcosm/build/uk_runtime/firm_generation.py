@@ -50,6 +50,14 @@ from scipy import sparse
 from torch import Tensor
 
 from microcosm.build.firms import draw_in_band
+from microcosm.build.uk_runtime.firm_bpe_turnover import (
+    OPEN_BAND_LOWER_K,
+    draw_uk_firm_open_band_turnover,
+    fit_uk_firm_employment_turnover_rho,
+    repair_uk_firm_employment_turnover,
+    uk_firm_open_band_tail_parameters,
+    uk_firm_open_band_uniforms,
+)
 from microcosm.build.uk_runtime.firm_rules import (
     LegacyVATEvaluatorRules,
     UKFirmRules,
@@ -568,6 +576,17 @@ class UKFirmGenerationConfig:
     headcount below 250, so every 250+ firm is a frame firm. ``None`` (the
     default) keeps the paper's draw, in which they can reach 250+.
 
+    ``bpe_turnover`` (a ``firm_headcount.UKFirmBPESource``; ``None``, the
+    default, keeps the paper's draws) switches on the opt-in BPE turnover
+    fix (``firm_bpe_turnover.py``): the open ONS turnover band takes a
+    truncated Pareto tail pinned to DBT BPE 2025 total turnover instead of
+    the log-uniform draw capped at 50 million pounds, and frame rows'
+    employment is re-paired with turnover inside each SIC division by a
+    Gaussian copula whose ``rho`` is fitted to BPE turnover by employment
+    band. Both act before the solve and draw nothing from the generator's
+    stream; on an unthinned build its draws are unchanged, while a thinned
+    build stratifies on the new turnover and so keeps different rows.
+
     ``vat_threshold`` defaults to the ``data_vintage``'s threshold, resolved
     once at construction. ``dataclasses.replace(config, data_vintage=...)``
     therefore keeps the old vintage's threshold (it is passed back in as an
@@ -601,6 +620,7 @@ class UKFirmGenerationConfig:
     sample_cell_floor: int = 40
     firm_rules: UKFirmRules | None = None
     large_employment_mean: float | None = None
+    bpe_turnover: Any = None
 
     @classmethod
     def fast(cls, **overrides: Any) -> UKFirmGenerationConfig:
@@ -830,6 +850,7 @@ class UKFirmGenerationResult:
     calibration: UKFirmCalibrationResult
     target_diagnostics: pd.DataFrame
     config: UKFirmGenerationConfig
+    bpe_turnover: Mapping[str, Any] | None = None
 
 
 def read_uk_firm_source_data(
@@ -1042,6 +1063,11 @@ def generate_uk_firm_population(
     frame_sic, frame_turnover = generate_base_firms(data.ons_turnover, cfg.device)
     if len(frame_sic) == 0:
         raise ValueError("UK firm generation requires at least one ONS firm row.")
+    bpe_turnover: dict[str, Any] | None = None
+    if cfg.bpe_turnover is not None:
+        frame_turnover, bpe_turnover = _bpe_open_band_tail(
+            frame_sic, frame_turnover, data, hmrc_bands, cfg
+        )
     frame_input = generate_input_values(frame_turnover, frame_sic, cfg.device)
     frame_base_weights = np.ones(len(frame_sic), dtype=np.float64)
     if cfg.thinned:
@@ -1085,11 +1111,36 @@ def generate_uk_firm_population(
         in_frame=frame_mask,
     )
     employment_np = employment.detach().cpu().numpy()
-    employment_band_indices = employment_band_index_array(employment_np)
     band_idx = map_to_hmrc_band_indices(turnover, threshold_k).cpu().numpy()
     firm_ids = np.arange(1, len(sic_codes) + 1, dtype=np.int64)
     sic_np = sic_codes.detach().cpu().numpy().astype(np.int64)
     turnover_np = turnover.detach().cpu().numpy().astype(np.float64)
+    if cfg.bpe_turnover is not None and bpe_turnover is not None:
+        in_frame_np = _as_numpy(frame_mask, bool)
+        fit = fit_uk_firm_employment_turnover_rho(
+            sic_np,
+            turnover_np,
+            employment_np,
+            in_frame_np,
+            _as_numpy(base_weights, np.float64),
+            cfg.bpe_turnover,
+            seed=cfg.seed,
+            firm_ids=firm_ids,
+        )
+        employment_np = repair_uk_firm_employment_turnover(
+            sic_np,
+            turnover_np,
+            employment_np,
+            in_frame_np,
+            rho=fit.rho,
+            seed=cfg.seed,
+            firm_ids=firm_ids,
+        )
+        bpe_turnover["rho"] = fit.rho
+        bpe_turnover["rho_sse"] = fit.sse
+        bpe_turnover["rho_at_bound"] = fit.at_bound
+        bpe_turnover["rho_fit"] = fit.table.to_dict(orient="records")
+    employment_band_indices = employment_band_index_array(employment_np)
     input_np = input_values.detach().cpu().numpy().astype(np.float64)
 
     liability_if_registered_k = evaluate_vat_liability_if_registered_k(
@@ -1165,6 +1216,49 @@ def generate_uk_firm_population(
         calibration=calibration,
         target_diagnostics=diagnostics,
         config=cfg,
+        bpe_turnover=bpe_turnover,
+    )
+
+
+def _bpe_open_band_tail(
+    frame_sic: Tensor,
+    frame_turnover: Tensor,
+    data: UKFirmSourceData,
+    hmrc_bands: Mapping[str, float],
+    cfg: UKFirmGenerationConfig,
+) -> tuple[Tensor, dict[str, Any]]:
+    """Frame turnover with the open band redrawn on the BPE-pinned tail."""
+
+    sic = frame_sic.detach().cpu().numpy().astype(np.int64)
+    turnover = frame_turnover.detach().cpu().numpy().astype(np.float64)
+    open_band = turnover >= OPEN_BAND_LOWER_K
+    tail = uk_firm_open_band_tail_parameters(
+        data.ons_turnover,
+        hmrc_bands,
+        cfg.bpe_turnover,
+        sic=sic,
+        turnover_k=turnover,
+        in_frame=np.ones(len(sic), dtype=bool),
+        open_band=open_band,
+    )
+    uniforms = uk_firm_open_band_uniforms(turnover[open_band])
+    section_k = np.isin(sic[open_band], (64, 65, 66))
+    turnover[open_band] = draw_uk_firm_open_band_turnover(
+        uniforms, tail.alpha, tail.cap_k, strata=section_k
+    )
+    record = {
+        "alpha": tail.alpha,
+        "cap_k": tail.cap_k,
+        "target_mean_k": tail.target_mean_k,
+        "p_over_10m": tail.p_over_10m,
+        "model_p_over_10m": tail.model_p_over_10m,
+        "open_band_rows": int(open_band.sum()),
+    }
+    return (
+        torch.tensor(
+            turnover, dtype=frame_turnover.dtype, device=frame_turnover.device
+        ),
+        record,
     )
 
 

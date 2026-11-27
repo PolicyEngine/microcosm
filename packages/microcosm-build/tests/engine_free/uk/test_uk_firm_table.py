@@ -554,6 +554,7 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
         "labour_link",
         "employment_allowance_takeup",
         "rd_tax_credits",
+        "consumption",
     ]
     (
         attributes,
@@ -566,12 +567,19 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
         labour_link,
         takeup,
         rd,
+        consumption,
     ) = UK_FIRM_EXPORT_GROUPS
     assert rd.policyengine_uk_columns == (
         "firm_qualifying_rd_expenditure",
         "firm_is_sme",
     )
     assert rd.requires == ("attributes",)
+    assert consumption.requires == ("attributes", "sic_division")
+    assert consumption.microcosm_columns == (
+        "firm_household_sales",
+        "firm_intermediate_sales",
+        "firm_other_final_sales",
+    )
     assert labour_link.source_columns == ("employees",)
     assert labour_link.policyengine_uk_columns == ()
     assert sic_division.microcosm_columns == ("firm_sic_division",)
@@ -631,6 +639,7 @@ def test_layouts_are_the_base_and_each_closed_set_of_groups() -> None:
         "labour_link",
         "employment_allowance_takeup",
         "rd_tax_credits",
+        "consumption",
     ]
     expected = {(): UK_FIRM_TABLE_COLUMNS}
     for size in range(len(extending) + 1):
@@ -640,6 +649,8 @@ def test_layouts_are_the_base_and_each_closed_set_of_groups() -> None:
             if "labour_link" in chosen and not {"paybill", "sic_division"} <= set(
                 chosen
             ):
+                continue
+            if "consumption" in chosen and "sic_division" not in chosen:
                 continue
             if "employment_allowance_takeup" in chosen and not {
                 "employment_allowance",
