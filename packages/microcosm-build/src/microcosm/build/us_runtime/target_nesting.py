@@ -27,7 +27,7 @@ import json
 import math
 import struct
 from collections import Counter, defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -454,7 +454,7 @@ def district_soi_surface(
         )
         for key in ht2_by_key.keys() & cd_file_state_by_key.keys()
     }
-    median_ratio = controls.median_by_group(vintage_ratio, lambda key: key[1])
+    median_ratio = controls.median_by_group(vintage_ratio, _identity_of_block)
     out_of_band: list[dict] = []
 
     def within_band(
@@ -511,7 +511,7 @@ def district_soi_surface(
         if ratio is not None:
             block_factor[key] = ratio
     median_factor = controls.median_by_group(
-        block_factor, lambda key: key[1], positive_only=True
+        block_factor, _identity_of_block, positive_only=True
     )
 
     # One basis for every state level: a concept Historic Table 2 lacks keeps
@@ -873,6 +873,12 @@ def district_block_closure(specs: Sequence, *, rtol: float) -> list[dict]:
     return report
 
 
+def _identity_of_block(key: tuple) -> tuple:
+    """The concept identity of a (state, identity) block key."""
+
+    return key[1]
+
+
 def _bits(*values: float) -> bytes:
     return b"".join(struct.pack("<d", float(value)) for value in values)
 
@@ -1068,7 +1074,12 @@ def validated_combined_cells(combined_cells):
 
 
 def county_soi_surface(
-    state_specs, facts, county_populations, *, combined_cells, soi_mode
+    state_specs: Sequence,
+    facts: Iterable[Mapping[str, Any]],
+    county_populations: Mapping[int, float],
+    *,
+    combined_cells: Mapping[int, int],
+    soi_mode: str,
 ) -> NestedSurface:
     """Rebase complete county fact blocks onto existing broad state totals.
 
@@ -1350,7 +1361,14 @@ def acs_households_parent_name(state):
 
 
 def county_acs_household_surface(
-    values, county_populations, *, period, source_name, tables, family, measure
+    values: Mapping[int, tuple[float, float | None, str]],
+    county_populations: Mapping[int, float],
+    *,
+    period: int,
+    source_name: str,
+    tables: str,
+    family: str,
+    measure: str,
 ) -> NestedSurface:
     """State households parents and their county children (trained, levels).
 
