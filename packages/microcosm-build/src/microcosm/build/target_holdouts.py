@@ -21,7 +21,8 @@ them. Each pass declares:
 - ``receipt``: the receipt keys the pass writes, in order.
 - ``scoring``: how :func:`score_holdout` scores the held rows against a
   pro-rata baseline, which is a parent target times the child's share of the
-  parent's population.
+  parent's population. ``child_label`` and ``parent_label`` are the words a
+  refusal uses for the two levels.
 
 A target record is a mapping with at least ``name``, ``value``, ``family``
 and ``geography_level``, the field names the targets carry everywhere. The
@@ -128,6 +129,8 @@ _PASS_KEYS = frozenset(
 _SCORING_KEYS = frozenset(
     {
         "level",
+        "child_label",
+        "parent_label",
         "parent_name_field",
         "child_population_field",
         "parent_population_field",
@@ -209,9 +212,15 @@ class PopulationShares:
 
 @dataclass(frozen=True)
 class HoldoutScoring:
-    """How :func:`score_holdout` scores a pass's held rows."""
+    """How :func:`score_holdout` scores a pass's held rows.
+
+    ``child_label`` and ``parent_label`` name the two levels in a refusal of
+    the pro-rata baseline (for example ``county`` and ``state``).
+    """
 
     level: str
+    child_label: str
+    parent_label: str
     parent_name_field: str
     child_population_field: str
     parent_population_field: str
@@ -378,6 +387,8 @@ def _scoring(value: Any, *, context: str) -> HoldoutScoring | None:
         )
     return HoldoutScoring(
         level=_text(raw["level"], context=f"{context} level"),
+        child_label=_text(raw["child_label"], context=f"{context} child_label"),
+        parent_label=_text(raw["parent_label"], context=f"{context} parent_label"),
         parent_name_field=_text(
             raw["parent_name_field"], context=f"{context} parent_name_field"
         ),
@@ -476,13 +487,26 @@ def load_target_holdouts(section: Mapping[str, Any]) -> TargetHoldouts:
 # ---------------------------------------------------------------------------
 
 
+class _DeclaredValue:
+    """The default of an argument that takes the pass's declared value."""
+
+    def __repr__(self) -> str:
+        return "DECLARED"
+
+
+#: Leave ``fraction`` or ``salt`` out of :func:`assign_holdout_roles` to draw
+#: with the pass's declared value. ``None`` is not that: a caller that
+#: forwards an unset option is refused, not given a silent draw.
+DECLARED: Any = _DeclaredValue()
+
+
 def assign_holdout_roles(
     records: Sequence[dict],
     holdout_pass: HoldoutPass,
     concept_families: ConceptFamilyRule,
     *,
-    fraction: float | None = None,
-    salt: str | None = None,
+    fraction: float = DECLARED,
+    salt: str = DECLARED,
 ) -> dict:
     """Set ``holdout_unit`` and ``role`` on each record in scope; return the receipt.
 
@@ -490,10 +514,17 @@ def assign_holdout_roles(
     out by :func:`microcosm.build.holdout.hash_holdout_unit` on its key, once.
     A record in scope that is not eligible gets no unit and trains. A record
     out of scope keeps what it had.
+
+    The salt and then the fraction are checked before any record is read.
+    A salt that is not a non-empty string, and a fraction outside
+    ``[0, max_fraction]``, raise :class:`TargetHoldoutError`. A fraction that
+    is not a number (``None`` included) raises ``TypeError``.
     """
 
-    fraction = holdout_pass.default_fraction if fraction is None else fraction
-    salt = holdout_pass.salt if salt is None else salt
+    if fraction is DECLARED:
+        fraction = holdout_pass.default_fraction
+    if salt is DECLARED:
+        salt = holdout_pass.salt
     if not isinstance(salt, str) or not salt:
         raise TargetHoldoutError(
             f"{holdout_pass.label} holdout salt must be a non-empty string."
@@ -751,13 +782,15 @@ def pro_rata_baseline(
         if scoring.population_check == "nonzero":
             if parent is None:
                 raise TargetHoldoutError(
-                    f"{record['name']} has no bound parent for the baseline."
+                    f"{record['name']} has no bound {scoring.parent_label} parent "
+                    "for the baseline."
                 )
             child = record.get(scoring.child_population_field)
             parent_population = record.get(scoring.parent_population_field)
             if not child or not parent_population:
                 raise TargetHoldoutError(
-                    f"{record['name']} carries no child or parent population for "
+                    f"{record['name']} carries no "
+                    f"{scoring.child_label}/{scoring.parent_label} population for "
                     "the pro-rata baseline."
                 )
             values.append(
@@ -773,8 +806,9 @@ def pro_rata_baseline(
             and parent_population > 0
         ):
             raise TargetHoldoutError(
-                f"{record['name']} has no parent or positive child and parent "
-                "population for the pro-rata baseline."
+                f"{record['name']} has no {scoring.parent_label} parent or positive "
+                f"{scoring.child_label}/{scoring.parent_label} population for "
+                "pro-rata baseline."
             )
         values.append(float(parent["value"]) * child / parent_population)
     return np.asarray(values, dtype=np.float64)

@@ -37,6 +37,7 @@ def _section() -> dict:
             {
                 "geography": "region",
                 "level": "region",
+                "code_name": "region",
                 "household_column": "region_code",
                 "code_digits": 1,
                 "geography_id_prefix": "R:",
@@ -49,6 +50,7 @@ def _section() -> dict:
             {
                 "geography": "district",
                 "level": "district",
+                "code_name": "district",
                 "household_column": "district_code",
                 "code_digits": 3,
                 "geography_id_prefix": "D:",

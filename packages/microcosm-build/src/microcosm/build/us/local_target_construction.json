@@ -62,6 +62,8 @@
         "hash_description": "sha256(salt + 0x1f + unit)[:8] / 2**64 < fraction",
         "scoring": {
           "level": "congressional_district",
+          "child_label": "district",
+          "parent_label": "state",
           "parent_name_field": "state_cd_parent_target_name",
           "child_population_field": "cd_population",
           "parent_population_field": "state_population",
@@ -118,6 +120,8 @@
         "hash_description": null,
         "scoring": {
           "level": "county",
+          "child_label": "county",
+          "parent_label": "state",
           "parent_name_field": "state_county_parent_target_name",
           "child_population_field": "county_population",
           "parent_population_field": "state_population",
@@ -157,6 +161,7 @@
       {
         "geography": "state",
         "level": "state",
+        "code_name": "US state FIPS",
         "household_column": "state_fips",
         "code_digits": 2,
         "geography_id_prefix": "0400000US",
@@ -177,6 +182,7 @@
       {
         "geography": "cd",
         "level": "congressional_district",
+        "code_name": "congressional district",
         "household_column": "congressional_district_geoid",
         "code_digits": 4,
         "geography_id_prefix": "5001900US",

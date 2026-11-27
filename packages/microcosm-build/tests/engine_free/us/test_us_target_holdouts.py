@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 from scipy import sparse
 
+from microcosm.build.target_holdouts import TargetHoldoutError
 from microcosm.build.us_runtime.local_target_construction import (
     COUNTY_HOLDOUT,
     DISTRICT_HOLDOUT,
@@ -215,16 +216,164 @@ def test_roles_and_receipts_match(tool, seed: int, fraction: float) -> None:
     assert _dumps(new) == _dumps(old)
 
 
+def _refusal(call):
+    """The class and the text of a refusal, or None when the call returns."""
+
+    try:
+        call()
+    except Exception as error:  # noqa: BLE001 - the refusal is the outcome
+        return type(error), str(error)
+    return None
+
+
+def _same_text(new, old) -> bool:
+    """A shared refusal: a ValueError as before, with the replaced text."""
+
+    return (
+        old is not None
+        and new is not None
+        and old[0] is ValueError
+        and new[0] is TargetHoldoutError
+        and issubclass(TargetHoldoutError, ValueError)
+        and new[1] == old[1]
+    )
+
+
 @pytest.mark.parametrize("fraction", [-0.1, 0.51, 1.0])
-def test_out_of_range_fractions_refuse_as_before(tool, fraction: float) -> None:
+def test_out_of_range_fractions_refuse(tool, fraction: float) -> None:
+    old = _refusal(
+        lambda: reference.cd_assign_target_roles(_records(0), fraction=fraction)
+    )
+    new = _refusal(
+        lambda: tool.cd_surface.assign_target_roles(_records(0), fraction=fraction)
+    )
+    assert _same_text(new, old)
+    # One shared check writes both texts, so the county text now names the
+    # value too (docs/us-target-sets.md, "Refusals").
+    old = _refusal(
+        lambda: reference.county_assign_target_roles(_records(0), fraction=fraction)
+    )
+    new = _refusal(
+        lambda: tool.county_surface.assign_target_roles(_records(0), fraction=fraction)
+    )
+    assert old == (ValueError, "County holdout fraction must be in [0, 0.5].")
+    assert new == (
+        TargetHoldoutError,
+        f"County holdout fraction must be in [0, 0.5], got {fraction!r}.",
+    )
+
+
+def test_an_unset_fraction_or_salt_is_refused_not_defaulted(tool) -> None:
+    # None never draws the declared default: a caller that forwards an unset
+    # option must not hold targets out silently (the review of microcosm#1755).
     for old_call, new_call in (
         (reference.cd_assign_target_roles, tool.cd_surface.assign_target_roles),
         (reference.county_assign_target_roles, tool.county_surface.assign_target_roles),
     ):
-        with pytest.raises(ValueError):
-            old_call(_records(0), fraction=fraction)
-        with pytest.raises(ValueError):
-            new_call(_records(0), fraction=fraction)
+        with pytest.raises(TypeError):
+            old_call(_records(0), fraction=None)
+        with pytest.raises(TypeError):
+            new_call(_records(0), fraction=None)
+    old = _refusal(lambda: reference.county_assign_target_roles(_records(0), salt=None))
+    new = _refusal(
+        lambda: tool.county_surface.assign_target_roles(_records(0), salt=None)
+    )
+    assert _same_text(new, old)
+
+
+def test_the_district_pass_checks_its_salt_first(tool) -> None:
+    # The replaced district code left the salt to the hash of the first
+    # eligible unit: the refusal had the hash's text, and with no eligible
+    # unit an empty salt drew a receipt. One shared check now refuses first,
+    # for both passes (docs/us-target-sets.md, "Refusals").
+    old = _refusal(
+        lambda: reference.cd_assign_target_roles(_records(0), fraction=0.1, salt="")
+    )
+    assert old == (ValueError, "holdout salt must be a non-empty string, got ''.")
+    assert (
+        _refusal(lambda: reference.cd_assign_target_roles([], fraction=0.1, salt=""))
+        is None
+    )
+    for records in (_records(0), []):
+        new = _refusal(
+            lambda records=records: tool.cd_surface.assign_target_roles(
+                records, fraction=0.1, salt=""
+            )
+        )
+        assert new == (
+            TargetHoldoutError,
+            "CD holdout salt must be a non-empty string.",
+        )
+
+
+def test_the_baseline_refusals_keep_their_texts(tool) -> None:
+    parent = {"name": "p", "value": 10.0}
+    district_rows = (
+        {
+            "name": "c",
+            "state_cd_parent_target_name": "missing",
+            "cd_population": 1.0,
+            "state_population": 2.0,
+        },
+        {
+            "name": "c",
+            "state_cd_parent_target_name": "p",
+            "cd_population": 0.0,
+            "state_population": 2.0,
+        },
+        {"name": "c", "state_cd_parent_target_name": "p"},
+    )
+    for row in district_rows:
+        old = _refusal(
+            lambda row=row: reference.cd_pro_rata_baseline([parent, row], [1])
+        )
+        new = _refusal(
+            lambda row=row: tool.cd_surface.pro_rata_baseline([parent, row], [1])
+        )
+        assert _same_text(new, old)
+    county_rows = (
+        {
+            "name": "c",
+            "state_county_parent_target_name": "missing",
+            "county_population": 1.0,
+            "state_population": 2.0,
+        },
+        {
+            "name": "c",
+            "state_county_parent_target_name": "p",
+            "county_population": float("nan"),
+            "state_population": 2.0,
+        },
+        {"name": "c", "state_county_parent_target_name": "p"},
+    )
+    for row in county_rows:
+        old = _refusal(
+            lambda row=row: reference.county_pro_rata_baseline([parent, row], [1])
+        )
+        new = _refusal(
+            lambda row=row: tool.county_surface.pro_rata_baseline([parent, row], [1])
+        )
+        assert _same_text(new, old)
+
+
+def test_scoring_reads_the_role_of_every_record(tool) -> None:
+    # One shared scorer reads ``role`` at both levels, as the replaced
+    # district scorer did. The replaced county scorer skipped a record with
+    # no role. The tool never passes one: the district pass writes every
+    # record first, and the training set already needed every role.
+    records = [{"name": "s", "geography_level": "state"}]
+    matrix = sparse.csr_array(np.zeros((1, 2)))
+    common = {"design_weights": np.ones(2), "final_weights": np.ones(2), "cap": 10.0}
+    with pytest.raises(KeyError):
+        reference.score_cd_holdout(records, matrix, **common)
+    with pytest.raises(KeyError):
+        tool.cd_surface.score_cd_holdout(records, matrix, **common)
+    assert reference.score_county_holdout(records, matrix, **common) == {
+        "report_only": True,
+        "n_targets": 0,
+    }
+    with pytest.raises(KeyError):
+        tool.county_surface.score_county_holdout(records, matrix, **common)
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -382,3 +531,25 @@ def test_every_declared_pass_has_scoring() -> None:
         COUNTY_HOLDOUT,
     ]
     assert all(holdout_pass.scoring for holdout_pass in us_target_holdouts().passes)
+
+
+def test_the_us_file_is_read_strictly(tmp_path, monkeypatch) -> None:
+    # A repeated JSON key is refused, not resolved to the last one (the
+    # review of microcosm#1755).
+    from microcosm.build.us_runtime import local_target_construction as module
+
+    text = module.us_local_target_construction_path().read_text(encoding="utf-8")
+    path = tmp_path / "local_target_construction.json"
+    monkeypatch.setattr(module, "us_local_target_construction_path", lambda: path)
+    read = module.us_local_target_construction.__wrapped__
+
+    path.write_text(text, encoding="utf-8")
+    assert read() == us_local_target_construction()
+    path.write_text('{"version": 1, ' + text.lstrip()[1:], encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        read()
+    changed = text.replace('"version": 1', '"version": true', 1)
+    assert changed != text
+    path.write_text(changed, encoding="utf-8")
+    with pytest.raises(ValueError, match="must be version 1"):
+        read()

@@ -62,6 +62,8 @@ def _section() -> dict:
                 "hash_description": "a salted hash",
                 "scoring": {
                     "level": "district",
+                    "child_label": "district",
+                    "parent_label": "region",
                     "parent_name_field": "parent",
                     "child_population_field": "child_pop",
                     "parent_population_field": "parent_pop",
@@ -286,6 +288,22 @@ def test_the_role_pass_refuses_a_bad_fraction_or_salt() -> None:
         assign_holdout_roles(_records(), district, holdouts.concept_families, salt="")
 
 
+def test_an_unset_fraction_or_salt_is_refused_not_defaulted() -> None:
+    # Only an omitted argument draws with the declared value. A caller that
+    # forwards an unset option (None) must not hold targets out silently
+    # (the review of microcosm#1755).
+    holdouts = load_target_holdouts(_section())
+    district = holdouts.holdout_pass("district")
+    declared = assign_holdout_roles(_records(), district, holdouts.concept_families)
+    assert declared["fraction"] == district.default_fraction
+    with pytest.raises(TypeError):
+        assign_holdout_roles(
+            _records(), district, holdouts.concept_families, fraction=None
+        )
+    with pytest.raises(TargetHoldoutError, match="salt must be a non-empty string"):
+        assign_holdout_roles(_records(), district, holdouts.concept_families, salt=None)
+
+
 def _scored():
     holdouts = load_target_holdouts(_section())
     district = holdouts.holdout_pass("district")
@@ -395,14 +413,23 @@ def test_the_population_checks() -> None:
     strict = type(scoring)(
         **{**scoring.__dict__, "population_check": "finite_positive"}
     )
-    with pytest.raises(TargetHoldoutError):
+    # Each refusal names the declared labels of the two levels.
+    with pytest.raises(TargetHoldoutError) as refusal:
         pro_rata_baseline([parent, row], [1], strict)
+    assert str(refusal.value) == (
+        "c has no region parent or positive district/region population for "
+        "pro-rata baseline."
+    )
     row["child_pop"] = 0.0
-    with pytest.raises(TargetHoldoutError):
+    with pytest.raises(TargetHoldoutError) as refusal:
         pro_rata_baseline([parent, row], [1], scoring)
+    assert str(refusal.value) == (
+        "c carries no district/region population for the pro-rata baseline."
+    )
     row["child_pop"], row["parent"] = 2.0, "missing"
-    with pytest.raises(TargetHoldoutError):
+    with pytest.raises(TargetHoldoutError) as refusal:
         pro_rata_baseline([parent, row], [1], scoring)
+    assert str(refusal.value) == "c has no bound region parent for the baseline."
 
 
 def test_error_summary() -> None:

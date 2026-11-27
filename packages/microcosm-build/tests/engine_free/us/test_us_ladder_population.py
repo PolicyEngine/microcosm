@@ -138,10 +138,11 @@ def test_county_specs_keep_their_place(tool) -> None:
 
 
 def test_a_state_code_with_no_name_refuses(tool) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as old:
         reference.population_target_specs(["pop_state_99"], [1.0])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as new:
         tool.population_target_specs(["pop_state_99"], [1.0])
+    assert str(new.value) == str(old.value)
 
 
 class _Frame:

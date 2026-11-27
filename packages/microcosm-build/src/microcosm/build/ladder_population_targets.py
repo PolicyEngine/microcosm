@@ -13,7 +13,8 @@ makes, for each declared level:
   a smaller surface is acceptable;
 - the cell's target spec with its calibration hierarchy
   (:func:`population_target_specs`). A country gives a label lookup for each
-  declared label kind.
+  declared label kind, and each level's ``code_name``: what a refusal calls
+  a code that has no label.
 
 A country declares its levels as data, and :func:`load_ladder_population`
 reads them (microcosm#1728). Nothing here reads country code.
@@ -52,6 +53,7 @@ _LEVEL_KEYS = frozenset(
     {
         "geography",
         "level",
+        "code_name",
         "household_column",
         "code_digits",
         "geography_id_prefix",
@@ -89,6 +91,8 @@ class LadderLevel:
 
     geography: str
     level: str
+    #: What a refusal calls the level's code (for example ``US state FIPS``).
+    code_name: str
     household_column: str
     code_digits: int
     geography_id_prefix: str
@@ -196,6 +200,7 @@ def _level(raw: Any) -> LadderLevel:
     return LadderLevel(
         geography=geography,
         level=_text(raw["level"], context=f"{context} level"),
+        code_name=_text(raw["code_name"], context=f"{context} code_name"),
         household_column=_text(
             raw["household_column"], context=f"{context} household_column"
         ),
@@ -348,7 +353,7 @@ def population_target_specs(
         label = labels[level.label](code, geography_id)
         if label is None:
             raise LadderPopulationError(
-                f"Population target {name!r} names no {level.level} code."
+                f"Population target {name!r} names no {level.code_name} code."
             )
         geography = HierarchyGeography(geography_id, label, level.level)
         specs.append(
