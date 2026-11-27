@@ -587,6 +587,44 @@ def record_timing(path: Path, record: dict[str, Any]) -> None:
         handle.write(json.dumps(record) + "\n")
 
 
+def is_json_object(argument: str) -> bool:
+    if not argument.startswith("{"):
+        return False
+    try:
+        return isinstance(json.loads(argument), dict)
+    except ValueError:
+        return False
+
+
+def public_command(
+    argv: Sequence[str], worktree: Path, *, home: Path | None = None
+) -> str:
+    """A command as the pull request body shows it.
+
+    A path in the worktree is shown relative to it, since its commands run
+    there; one beside it starts ``../``, and one under the home directory
+    ``~/``, so the body names no operator's folders. A JSON object argument,
+    such as the bundle records the constant rewrite is passed, is shown as
+    its size.
+    """
+
+    home = Path.home() if home is None else home
+    prefixes = (
+        (f"{worktree}/", ""),
+        (f"{worktree.parent}/", "../"),
+        (f"{home}/", "~/"),
+    )
+    shown = []
+    for argument in argv:
+        if is_json_object(argument):
+            shown.append(f"<JSON, {len(argument)} characters>")
+            continue
+        for prefix, replacement in prefixes:
+            argument = argument.replace(prefix, replacement)
+        shown.append(argument)
+    return shlex.join(shown)
+
+
 def pytest_command(
     python: str, arguments: list[str], *, startup_timeout: float = 300.0
 ) -> list[str]:
@@ -705,6 +743,12 @@ class Shell:
         self.timings = timings or log.with_suffix(".timings.jsonl")
         self.limits = {"max_load1": max_load1, "min_free_bytes": min_free_bytes}
         self.commands: list[str] = []
+        self.argvs: list[list[str]] = []
+
+    def public_commands(self, *, home: Path | None = None) -> list[str]:
+        """Each command run, as the pull request body shows it."""
+
+        return [public_command(argv, self.cwd, home=home) for argv in self.argvs]
 
     def __call__(
         self,
@@ -717,6 +761,7 @@ class Shell:
     ) -> subprocess.CompletedProcess:
         line = shlex.join(argv)
         self.commands.append(line)
+        self.argvs.append(list(argv))
         print(f"$ {line}", flush=True)
         if self.dry_run:
             return subprocess.CompletedProcess(argv, 0, "", "")
@@ -1106,10 +1151,24 @@ def uc_floor_summary(receipt: object) -> tuple[bool, str]:
     )
 
 
+def core_summary(context: Mapping[str, Any]) -> str:
+    """The core the certificate covers, and how it binds it."""
+
+    binding = context.get("core_binding")
+    if binding == "bundle_pin":
+        return (
+            f"policyengine-core {context['core']}, the bundle's pin "
+            "(`core_binding: bundle_pin`)"
+        )
+    if binding == "certified":
+        return f"policyengine-core {context['core']} (`core_binding: certified`)"
+    return f"core {context['core']}"
+
+
 def pr_body(context: dict[str, Any]) -> str:
     lines = [
         f"Certifies Microcosm UK national build `{context['national_build']}` "
-        f"(policyengine-uk {context['model']}, core {context['core']}), from its "
+        f"(policyengine-uk {context['model']}, {core_summary(context)}), from its "
         f"folder at commit `{context['national_commit']}`.",
         "",
         "**Mechanical handoff; wrapper qualification pending** unless reviewed "
@@ -1271,7 +1330,12 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
         "of the one that published its folder",
     )
     parser.add_argument("--model-version", help="default: the build's own model")
-    parser.add_argument("--core-version", help="default: the build's own core")
+    parser.add_argument(
+        "--core-version",
+        help="bind the certificate to this policyengine-core and move the "
+        "bundle's core pin to it (core_binding: certified); default: the "
+        "certificate follows the bundle's core pin (bundle_pin)",
+    )
     parser.add_argument(
         "--pepy-repo",
         type=Path,
@@ -1451,7 +1515,6 @@ def certify(args: argparse.Namespace) -> int:
             NATIONAL_RELEASE, args.national_build, commit=args.national_data_commit
         )
     model = args.model_version or national.model
-    core = args.core_version or national.core
     if not covers(national, model):
         raise CertifyError(
             f"the national build was built with policyengine-uk {national.model} "
@@ -1471,6 +1534,14 @@ def certify(args: argparse.Namespace) -> int:
             )
         )
     record = old_bundle["data_releases"]["uk"]
+    # .py's default certificate follows the bundle's shared core pin
+    # (core_binding: bundle_pin); --core-version binds it to one core and
+    # moves the pin (certified). The audit runs the core the bundle will serve.
+    core_binding = "certified" if args.core_version else "bundle_pin"
+    pinned_core = (
+        (old_bundle.get("packages") or {}).get("policyengine-core") or {}
+    ).get("version")
+    core = args.core_version or pinned_core or national.core
     dense, mismatch, regional_artifacts = None, False, {}
     kept = kept_regional_pin(record) if args.keep_regional_release else None
     if args.dense_build or kept is not None:
@@ -1544,6 +1615,7 @@ def certify(args: argparse.Namespace) -> int:
         "national_manifest_uri": national.manifest_uri,
         "model": model,
         "core": core,
+        "core_binding": core_binding,
         "regional": regional_summary,
         "branch": branch,
         "worktree": str(worktree),
@@ -1620,7 +1692,8 @@ def certify(args: argparse.Namespace) -> int:
             "--data-producer", "populace",
             "--manifest-uri", national.manifest_uri,
             *flags,
-            "--model-version", model, "--core-version", core,
+            "--model-version", model,
+            *(["--core-version", core] if args.core_version else []),
         ], step="certify-data",
     )  # fmt: skip
     warnings = [
@@ -1726,15 +1799,16 @@ def certify(args: argparse.Namespace) -> int:
         "shared_old_commit": shared_old_commit,
         "model": model,
         "core": core,
+        "core_binding": core_binding,
         "regional_summary": f"`{regional_summary}`",
         "basis": (new_record.get("certification") or {}).get("compatibility_basis"),
         "microcosm_commit": microcosm_commit,
-        "commands": run.commands,
+        "commands": run.public_commands(),
         "uc_floor": f"`{uc_summary}`",
         "uc_floor_passed": uc_passed,
         "tests": tests_summary,
         "tests_failed": tests_failed,
-        "constants": ", ".join(constants),
+        "constants": ", ".join(dict.fromkeys(constants)),
         "dropped_overlays": overlay_diff(old_bundle, new_bundle),
         "warnings": warnings,
         "footer": args.pr_body_footer,

@@ -459,9 +459,15 @@ by hand, on a new branch from policyengine.py's main.
 
 **Then:**
 
-1. `certify-data` at the national build's own model and core, with each
-   build's folder manifest at its commit
+1. `certify-data` at the national build's own model, with each build's
+   folder manifest at its commit
    (`hf://dataset/policyengine/populace-uk-private@<commit>/releases/<release>/<build>/release_manifest.json`).
+   The certificate follows the bundle's shared core pin
+   (`core_binding: bundle_pin`), policyengine.py's default, so the pin can
+   move with another country without re-certifying the UK. `--core-version`
+   binds the certificate to one core and moves the pin to it
+   (`core_binding: certified`); use it only when the release must not run on
+   any other core.
 2. `uv lock` and `release_lock.py`.
 3. `generate --include-tros`.
 4. policyengine.py's own certified-constant rewrite, plus the local-area
@@ -475,7 +481,9 @@ by hand, on a new branch from policyengine.py's main.
 
 It commits. It pushes and opens a draft only when asked. The pull request
 body lists what needs a person: the UC floor acceptance, any dataset overlays
-certification dropped, warnings and failing tests.
+certification dropped, warnings and failing tests. Its commands show paths
+relative to the worktree and the home directory, and the bundle records the
+constant rewrite is passed only by their size.
 
 ## Regions: the dense cut
 
