@@ -3135,6 +3135,10 @@ def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
             f"materialize with the current tool. {error}"
         ) from error
     roles = json.loads(roles_path.read_text())
+    # Targets written before microcosm#1760 name their parent, their value
+    # before and their factor under keys that this code does not read.
+    cd_surface.refuse_targets_of_older_code(registry.specs, where=registry_path.name)
+    cd_surface.refuse_targets_of_older_code(roles, where=TARGET_ROLES_FILENAME)
     matrix = cd_surface.load_target_matrix(matrix_path)
     frame, design_weights = load_lean_frame(checkpoint_dir / "target_frame_lean.h5")
     n_households = frame.n("household")
@@ -5110,6 +5114,11 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
     if materialize_rss.get("soi_mode") != SOI_MODE_STATE_CD:
         return []
     surface = materialize_rss.get("soi_surface") or {}
+    # A receipt of older code names its factors under another field, and the
+    # limitation below would record nothing for them.
+    cd_surface.refuse_surface_receipt_of_older_code(
+        surface, where="materialize_rss.json (soi_surface)"
+    )
     holdout = materialize_rss.get("cd_holdout") or {}
     excluded = surface.get("excluded_cd_states") or {}
     exclusion = (
@@ -6012,6 +6021,7 @@ def do_finalize(args) -> None:
     roles_path = args.checkpoint_dir / TARGET_ROLES_FILENAME
     if roles_path.is_file():
         targets = json.loads(roles_path.read_text())
+        cd_surface.refuse_targets_of_older_code(targets, where=TARGET_ROLES_FILENAME)
     elif registry_path.is_file():
         registry = TargetRegistry.from_json(registry_path)
         targets = [

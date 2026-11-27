@@ -21,7 +21,7 @@ import pandas as pd
 import pytest
 from scipy import sparse
 
-from microcosm.calibrate import TargetSpec
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.calibrate.target import TargetSet
 from microcosm.frame import US_SCHEMA, Frame, SharedColumnChangedError
@@ -717,9 +717,68 @@ def test_checkpoint_refuses_changed_bytes_and_dense_predecessors(tmp_path) -> No
         )
     with pytest.raises(ValueError, match="row-aligned"):
         module.write_lean_checkpoint(struct, matrix, specs, records[::-1], checkpoint)
+    # Targets that older code saved (before microcosm#1760) carry the retired
+    # nesting keys. This code would read no parent from them: refuse them.
+    roles_path = checkpoint / module.TARGET_ROLES_FILENAME
+    registry_path = checkpoint / "target_registry.json"
+    saved_roles, saved_registry = roles_path.read_text(), registry_path.read_text()
+    old_roles = json.loads(saved_roles)
+    old_roles[1]["state_cd_parent_target_name"] = "t0"
+    roles_path.write_text(json.dumps(old_roles))
+    with pytest.raises(SystemExit, match="target_roles.json holds the metadata key"):
+        module.load_checkpoint_surface(checkpoint)
+    roles_path.write_text(saved_roles)
+    TargetRegistry(
+        [
+            specs[0],
+            dataclasses.replace(specs[1], metadata={"state_county_share": "0.5"}),
+        ],
+        country="us",
+    ).to_json(registry_path)
+    with pytest.raises(SystemExit, match="target_registry.json holds the metadata key"):
+        module.load_checkpoint_surface(checkpoint)
+    registry_path.write_text(saved_registry)
+    module.load_checkpoint_surface(checkpoint, identity)
     (checkpoint / module.TARGET_MATRIX_FILENAME).unlink()
     with pytest.raises(SystemExit, match="predates the sparse target matrix"):
         module.load_checkpoint_surface(checkpoint, identity)
+
+
+def test_targets_and_receipts_of_older_code_are_refused() -> None:
+    """A stage that resumes on files of older code must not read them in silence."""
+
+    module = _load_tool_module()
+    cd_surface = module.cd_surface
+    record = {"name": "cd_0601_agi", "family": "irs_soi", "role": "train"}
+    spec = TargetSpec(
+        name="county_15009__agi",
+        entity="household",
+        measure="county_15009__agi",
+        value=1.0,
+        source="x",
+        metadata={"county_fips": "15009", "cross_grain_parent": "agi"},
+    )
+    # Records and specs of this code pass.
+    cd_surface.refuse_targets_of_older_code([record, spec], where="targets")
+    for key in (
+        "state_cd_parent_target_name",
+        "state_cd_cd_file_value",
+        "state_county_parent_target_name",
+        "state_county_cell_members",
+    ):
+        old_spec = dataclasses.replace(spec, metadata={**spec.metadata, key: "x"})
+        for target in ({**record, key: "x"}, old_spec):
+            with pytest.raises(SystemExit, match=f"holds the metadata key '{key}'"):
+                cd_surface.refuse_targets_of_older_code([record, target], where="t")
+    # The district receipt of older code names its factors under other fields.
+    new_receipt = {"soi_mode": "state_cd", "soi_surface": {"factor_by_measure": {}}}
+    assert module.state_cd_reviewed_limitations(new_receipt)
+    for field in cd_surface.RETIRED_SURFACE_RECEIPT_FIELDS:
+        old_receipt = {"soi_mode": "state_cd", "soi_surface": {field: {}}}
+        with pytest.raises(SystemExit, match="materialized by older code"):
+            module.state_cd_reviewed_limitations(old_receipt)
+    # Another mode has no district receipt to read.
+    assert module.state_cd_reviewed_limitations({"soi_mode": "state"}) == []
 
 
 def test_holdout_scoring_against_the_pro_rata_baseline() -> None:

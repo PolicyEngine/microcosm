@@ -802,6 +802,53 @@ def csr_row_measure(matrix: sparse.csr_array, row: int, n: int):
 # ---------------------------------------------------------------------------
 
 
+#: The metadata keys of district and county rows until microcosm#1760, when
+#: the keys of the shared cross-grain operator (``cross_grain_*``) replaced
+#: them, and the fields of the district receipt that went with them. A saved
+#: target or receipt that still holds one was written by older code. A later
+#: stage that read it with this code would find no parent, no value before
+#: and no factor, without an error.
+RETIRED_NESTING_KEY_PREFIXES = ("state_cd_", "state_county_")
+RETIRED_SURFACE_RECEIPT_FIELDS = (
+    "rebase_factor_by_measure",
+    "factor_band",
+    "internal_consistency",
+)
+_OLDER_CODE = (
+    "it was materialized by older code, before the keys of the shared "
+    "cross-grain operator (microcosm#1760). Re-run --stage materialize with "
+    "the current tool."
+)
+
+
+def refuse_targets_of_older_code(targets, *, where: str) -> None:
+    """Refuse saved targets that carry the retired nesting keys.
+
+    ``targets`` are role records (mappings) or specs (their metadata is
+    read). ``where`` names the file, for the message.
+    """
+
+    for target in targets:
+        metadata = target if isinstance(target, Mapping) else target.metadata
+        retired = sorted(
+            key
+            for key in metadata
+            if str(key).startswith(RETIRED_NESTING_KEY_PREFIXES)
+        )
+        if retired:
+            raise SystemExit(
+                f"{where} holds the metadata key {retired[0]!r}: {_OLDER_CODE}"
+            )
+
+
+def refuse_surface_receipt_of_older_code(surface: Mapping, *, where: str) -> None:
+    """Refuse a saved district surface receipt with the retired fields."""
+
+    retired = sorted(set(RETIRED_SURFACE_RECEIPT_FIELDS) & set(surface))
+    if retired:
+        raise SystemExit(f"{where} holds the field {retired[0]!r}: {_OLDER_CODE}")
+
+
 def target_record(spec) -> dict:
     """The target_roles.json record for one admin spec (metadata subset)."""
 
