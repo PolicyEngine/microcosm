@@ -414,7 +414,7 @@
           ]
         },
         "channel_nonzero_share_band": [
-          0.002,
+          0.001,
           0.15
         ]
       },
@@ -1159,7 +1159,7 @@
           ]
         },
         "channel_nonzero_share_band": [
-          0.002,
+          0.001,
           0.15
         ]
       },

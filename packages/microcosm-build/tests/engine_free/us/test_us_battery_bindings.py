@@ -59,14 +59,15 @@ WIRED_SCOPES = ("us_base", "us_pool", "us_national", "us_local")
 #: (review of #1635, round 3).
 SCOPE_PINS: dict[str, dict[str, str]] = {
     "us_base": {
+        # Moved by the child-support channel floor (0.002 to 0.001, #1676).
         "gates_manifest_sha256": (
-            "edaac2f8318d1abb694d6e88f31e236fb13b5cce74ca8067947541d3a3509463"
+            "778bd71d98c1161bcfcccb42f256652c9817e7a5518942edd00e6189352c6722"
         ),
         "policy_sha256": (
-            "1a86c63cc20a6259c3349cc9dd831f0571d8c7e82e1ba77f06e4c4a102274e22"
+            "a88df010ae2f7a88e47717e468e6002c095ee3ffc13b003c5df90f4ee9ff1eee"
         ),
         "spec_fingerprint": (
-            "66cf423d4cf2e9685d2cb58aca3e4a3b8dfad4327a25d9889c0426230957b1b4"
+            "9522d6e80e372d467e1f7ff23a010f2f30f17ad9d8222a1767ed5e9b51c0b57f"
         ),
     },
     "us_pool": {
@@ -83,15 +84,16 @@ SCOPE_PINS: dict[str, dict[str, str]] = {
     "us_national": {
         # Moved by the SSI take-up and release-gate entries that pin the
         # thresholds they compare against (review of #1635, round 2), and by
-        # the QRF tail gate's notes, which now say it grades base weights.
+        # the QRF tail gate's notes, which now say it grades base weights, and
+        # by the child-support channel floor (0.002 to 0.001, #1676).
         "gates_manifest_sha256": (
-            "717f1daa916ec31879f1cfddba32738a98e5055ee6ad5b8451cad277ddbd055c"
+            "8fabd65c1ce270b2b0e2a6e591a07907dada5cb786355ba94cbf18d9f697e01d"
         ),
         "policy_sha256": (
-            "8be8670ce4f58b10c34d58b994645885b0d8758a4996c4f77797ddfbb698d8bb"
+            "bee124e504211d4fe2db398eaeb17e48fc7c6582e8c4ea86bfeba48ffed4d911"
         ),
         "spec_fingerprint": (
-            "417365f8ee874eebb3ce242fe3c5b95bca0f049b3ac5f2f9aa13e1e8330deb35"
+            "a3f1a2f9fcecd3dbf8fdc07fcac418ca534619ccbafba3a3b3e38912614d6350"
         ),
     },
     "us_local": {

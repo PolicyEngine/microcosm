@@ -417,8 +417,8 @@ EXPECTED_HASHES = {
     # The in-place QRF leaf array in microcosm.fit.qrf (#1682) moves both again
     # on top of the engine refresh (#1676): the forests' leaf arrays are
     # byte-identical, and no draw changes.
-    "seed_map": "9be0442207d685d3b99508c4ec4e447d1c83cd4d41d2457480bf306ea0491e37",
-    "seed_protocol": "a6f203aca42c6749ee435b9f2f0b24aa86fc4104492f30b956bae2b79e698c4e",
+    "seed_map": "879d2c18ca85f3b6d09c974737b7e03aa4218d0c852f740b05ef3e3ee20319b7",
+    "seed_protocol": "369a50bc8c387b0d0de4c30d550ebc2c21412d17b5274fdd4c6e3f0635bb98ec",
     "source_manifest": "777ba41a83bf75ee00937f694a08208e93dcd7c91c9d096d316affd67d424267",
     "take_up": "ca44532ca9e93e169e07acfd35d57efbacc1297b07006c4e546e05802efc420c",
     "tail": "f7f8282d48dbf1e01016cd551f5a0de289911140048d20812c920ace0d092936",

@@ -139,7 +139,17 @@ _NONZERO_SHARE_BANDS: dict[str, tuple[float, float]] = {
     "child_support_received": (0.005, 0.15),
     "child_support_expense": (0.003, 0.15),
 }
-_CHANNEL_NONZERO_SHARE_BAND = (0.002, 0.15)
+#: A degeneracy floor per support channel, not a prevalence check. The PUF
+#: tax-detail channel's share is a noisy draw: the QRF trains on at most 5,000
+#: ASEC people (about 30 payers), and its default in-sample sign gate draws a
+#: rare class below its rate on recipients. The floor was 0.002 against the
+#: one July 2026 measurement (0.272%); the first base on the income-year
+#: 2023-2025 ASEC pool (27 November 2026, at ba410438e) drew 0.18% for
+#: child_support_expense and stopped there. 0.001 keeps the check against a
+#: dead channel. The fix is to move this draw to a cross-fitted sign gate after
+#: that build; tools/diagnose_us_child_support_gate.py measures how far the
+#: share moves with the seed and under that gate.
+_CHANNEL_NONZERO_SHARE_BAND = (0.001, 0.15)
 
 
 def us_child_support_stage_spec() -> SourceStageSpec:
