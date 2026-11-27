@@ -22,6 +22,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from microcosm.build.country_spec import load_country_spec
 from microcosm.build.logbook import load_spool_rows
 from microcosm.build.staging_v2 import validate_v2_bundle
 from microcosm.build.uk_runtime import (
@@ -85,8 +86,9 @@ def _bound_spine(tmp_path: Path, frame) -> Path:
         **calibration_run.uk_spine_checkpoint_gate_digests(),
         "blocked_at_phase": None,
         "gates": {
-            gate_id: {"status": "passed", "criticality": "release_blocking"}
-            for gate_id in calibration_run.UK_SPINE_GATE_SCOPE
+            entry.id: {"status": "passed", "criticality": entry.criticality}
+            for entry in load_country_spec("uk").gates.gates
+            if entry.id in calibration_run.UK_SPINE_GATE_SCOPE
         },
     }
     report_path = input_h5.with_suffix(".spine_gates.json")
@@ -256,7 +258,11 @@ def _seam_weights(frame, registry, doctrine: UKNationalSolveDoctrine) -> np.ndar
         l0_lambda=doctrine.l0_lambda,
         target_loss_cap=doctrine.target_loss_cap,
         target_loss_weights=uk_national_target_loss_weights(
-            families, rule=doctrine.target_weight_rule
+            families,
+            rule=doctrine.target_weight_rule,
+            contract_target_ids=[
+                spec.metadata.get("contract_target_id") for spec in registry.specs
+            ],
         ),
     )
     return result.weights
@@ -311,7 +317,7 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
         collect_execution_evidence,
         load_run_evidence,
     )
-    from microcosm.graph.orrery import orrery_document_from_schema
+    from microcosm.graph.execution_overlay import load_execution_overlay
 
     schema = json.loads((out / "graph.schema.json").read_bytes())
     inventory = json.loads((out / "operations.json").read_bytes())
@@ -322,12 +328,12 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     store = ContentStore(out / ".graph-store", create=False)
     runs = load_run_evidence(out / "execution.evidence.json", store=store)
     evidence = collect_execution_evidence(schema, runs=runs, store=store)
-    document = orrery_document_from_schema(schema, execution=evidence)
     assert any(
-        json.loads(node["id"]) == ["operation", "uk.full.national.readback"]
-        for node in document["nodes"]
+        "uk.full.national.readback" in phase["operations"]
+        for phase in evidence["phases"]
     )
-    assert (out / "graph.orrery.json").is_file()
+    # The build wrote the same overlay beside the schema for the collector.
+    assert load_execution_overlay(out / "graph.execution.json") == evidence
 
     # The build record the release-cut certifier reads: the seam's schema.
     record = json.loads((out / "build_record.json").read_text())
@@ -344,7 +350,7 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     assert run_config["doctrine_overrides"] == {
         "epochs": {"default": 1500, "effective": 5}
     }
-    assert run_config["doctrine"]["target_weight_rule"] == "family_equal"
+    assert run_config["doctrine"]["target_weight_rule"] == "loss_family_equal"
     assert run_config["doctrine"]["seed"] == 0
     assert run_config["allow_unpinned_feed"] is False
     assert run_config["chronicle_feed_pin"] == pin.to_dict()
@@ -485,7 +491,9 @@ def test_uk_national_role_builds_through_the_graph_and_stages_locally(
     )
     assert manifest["parameters"]["n_clones"] is None
     assert manifest["parameters"]["doctrine"]["clone_count"] is None
-    assert manifest["parameters"]["doctrine"]["target_weight_rule"] == "family_equal"
+    assert (
+        manifest["parameters"]["doctrine"]["target_weight_rule"] == "loss_family_equal"
+    )
     assert manifest["fit"]["national_by_family"][0]["family"] == "dwp_universal_credit"
     assert manifest["gate"]["scope"] == list(UK_CALIBRATION_GATE_SCOPE)
     assert manifest["gate"]["posture"] == "calibration_seam"
@@ -595,14 +603,14 @@ def test_uk_national_role_records_doctrine_overrides(monkeypatch, tmp_path):
     assert record["run_config"]["doctrine_overrides"] == {
         "epochs": {"default": 1500, "effective": 5},
         "target_loss_cap": {"default": 10.0, "effective": 4.0},
-        "target_weight_rule": {"default": "family_equal", "effective": "uniform"},
+        "target_weight_rule": {"default": "loss_family_equal", "effective": "uniform"},
     }
     assert record["run_config"]["doctrine"]["target_weight_rule"] == "uniform"
     assert record["run_config"]["doctrine"]["target_loss_cap"] == 4.0
     manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
     assert manifest["solve"]["target_weight_rule"] == "uniform"
     assert manifest["solve"]["target_weight_rule_override"] == {
-        "default": "family_equal",
+        "default": "loss_family_equal",
         "effective": "uniform",
     }
     operations = json.loads((out / "operations.json").read_text())
@@ -623,14 +631,7 @@ def test_uk_national_role_publishes_telemetry_and_the_bundle_to_the_hub(
     share_fake_hub(monkeypatch, hub)
     out = tmp_path / "national"
 
-    assert (
-        builder.main(
-            _argv(
-                input_h5, out, "--epochs", "5", "--staging-upload-interval-seconds", "0"
-            )
-        )
-        == 0
-    )
+    assert builder.main(_argv(input_h5, out, "--epochs", "5")) == 0
 
     manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
     run_id = manifest["build_id"]
@@ -1085,7 +1086,7 @@ def test_uk_national_dry_run_prints_the_plan_and_writes_nothing(
     assert plan["targets"]["active"] == plan["targets"]["compiled"] == 1
     assert plan["targets"]["register_sha256"] == registry.version
     assert plan["doctrine"]["epochs"] == 1500
-    assert plan["doctrine"]["target_weight_rule"] == "family_equal"
+    assert plan["doctrine"]["target_weight_rule"] == "loss_family_equal"
     assert plan["doctrine_overrides"] == {}
     assert plan["parameters"]["release_role"] == "national"
     assert plan["engine"] == "not_run"

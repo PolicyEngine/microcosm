@@ -33,11 +33,12 @@ from test_support.microcosm_data.build_folders import uk_local_release_spec
 from test_support.microcosm_data.release import release_dir  # noqa: F401
 
 #: Names in the release grammar, ``microcosm-<country>-<vintage>-<line>``, that
-#: the contract does not list: three countries it does not know, and a US
-#: vintage outside ``contract.US_RELEASES``.
+#: the contract does not list: two countries it does not know, a BE vintage
+#: outside ``contract.BE_RELEASES`` and a US vintage outside
+#: ``contract.US_RELEASES``.
 UNLISTED_IDS = (
     "microcosm-nz-2025-national",
-    "microcosm-be-2025-national",
+    "microcosm-be-2024-national",
     "microcosm-am-2025-national",
     "microcosm-us-2025-national",
 )

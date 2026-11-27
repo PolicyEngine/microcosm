@@ -98,6 +98,12 @@ UC_COHERENCE_STAGE_NAMES = [
 UC_LIMITED_CAPABILITY_STAGE_NAMES = [
     "uc_limited_capability",
 ]
+# B1 of microcosm#1710: the UC housing costs element claim flag, from DWP's
+# award statement on linked FRS claims and a draw elsewhere, before the
+# redraw reads entitlement.
+UC_HOUSING_COSTS_CLAIM_STAGE_NAMES = [
+    "uc_housing_costs_claim",
+]
 UC_TAKE_UP_STAGE_NAMES = [
     "uc_take_up",
 ]
@@ -164,6 +170,7 @@ UK_SOURCE_STAGE_NAMES = [
     *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
     *UC_LIMITED_CAPABILITY_STAGE_NAMES,
+    *UC_HOUSING_COSTS_CLAIM_STAGE_NAMES,
     *UC_TAKE_UP_STAGE_NAMES,
     *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
@@ -238,6 +245,7 @@ class TestUKSourceStagesManifest:
             *SPI_BENEFIT_COHERENCE_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
             *UC_LIMITED_CAPABILITY_STAGE_NAMES,
+            *UC_HOUSING_COSTS_CLAIM_STAGE_NAMES,
             *UC_TAKE_UP_STAGE_NAMES,
             *UC_LEGACY_CLOSURE_TAKE_UP_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
@@ -332,6 +340,7 @@ class TestUKSourceStagesManifest:
                     "spi_benefit_coherence": _identity,
                     "uc_capital_coherence": _identity,
                     "uc_limited_capability": _identity,
+                    "uc_housing_costs_claim": _identity,
                     "uc_take_up": _identity,
                     "uc_legacy_closure_take_up": _identity,
                     "pension_credit_take_up": _identity,
@@ -735,7 +744,7 @@ class TestE3ManifestLockstep:
             "iterative_proportional_fit",
             "assign_binary_from_rate",
             "materialize_rules_engine_predictors",
-            "fit_weighted_qrf_chain",
+            "draw_budget_and_mix",
             "support_clip",
             "impute_prepayment_meter",
             "iterative_proportional_fit",
@@ -885,6 +894,7 @@ class TestE3ManifestLockstep:
             UK_TAKE_UP_ANCHOR_AGGREGATES,
         )
         from microcosm.build.uk_runtime.lcfs_consumption import (
+            UK_LCFS_COICOP_DIVISION_COLUMNS,
             UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_PREDICTORS,
@@ -959,17 +969,21 @@ class TestE3ManifestLockstep:
             == UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS
         )
         assert (
-            tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["predictors"])
+            tuple(lcfs_ops["draw_budget_and_mix"].parameters["predictors"])
             == UK_LCFS_CONSUMPTION_PREDICTORS
         )
         # The spend targets, then the excise shares, which are scratch and no
-        # output (microcosm#1359).
-        assert tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"]) == (
+        # output (microcosm#1359); the budget is the twelve COICOP divisions
+        # each household's mix is scaled to (microcosm#1717).
+        assert tuple(lcfs_ops["draw_budget_and_mix"].parameters["targets"]) == (
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
             *UK_LCFS_EXCISE_SHARES,
         )
+        assert tuple(lcfs_ops["draw_budget_and_mix"].parameters["budget"]) == (
+            UK_LCFS_COICOP_DIVISION_COLUMNS
+        )
         assert not set(UK_LCFS_EXCISE_SHARES) & set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS)
-        # The rake's kWh are outputs the chain never draws: the stage keeps
+        # The rake's kWh are outputs the draw never gives: the stage keeps
         # the kWh it priced the spend from.
         assert UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS == (
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
@@ -980,7 +994,7 @@ class TestE3ManifestLockstep:
             *UK_LCFS_EXCISE_DECLARED_OUTPUTS,
         )
         assert not {"electricity_kwh", "gas_kwh"} & set(
-            lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"]
+            lcfs_ops["draw_budget_and_mix"].parameters["targets"]
         )
         # The declared excise step writes exactly those inputs: its quantity
         # outputs, its draught shares and every gambling base.
@@ -1138,7 +1152,7 @@ class TestE3ManifestLockstep:
         }
         assert lcfs_seeded == {
             "assign_binary_from_rate": 0,
-            "fit_weighted_qrf_chain": 0,
+            "draw_budget_and_mix": 0,
             "price_domestic_energy": 0,
             # The road-fuel incidence redraw (microcosm#1113).
             "redraw_zero_road_fuel": 0,

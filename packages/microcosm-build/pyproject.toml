@@ -29,7 +29,7 @@ dependencies = [
     # microcosm-emitter`) and started as the build's child process, so an
     # emitter release needs no change here. The socket protocol carries its
     # own version, and every emitter release accepts the versions in use.
-    "microcosm-emitter-interface>=0.16.0,<1",
+    "microcosm-emitter-interface>=0.18.0,<1",
     # The US base command records each loaded BLAS library's thread count in
     # its run configuration. scikit-learn already depends on it; 3.6 reads
     # the scipy-openblas library that numpy 2 wheels bundle.
@@ -55,7 +55,7 @@ us = [
 # The UK extra adds the rules engine for local metric generation from a
 # Microcosm UK H5. Target tables remain explicit inputs, and the base package
 # still does not import policyengine-uk at import time.
-uk = ["policyengine-uk>=2.179.2", "microcosm-data>=0.1,<0.2", "h5py>=3", "tables>=3", "openpyxl>=3.1"]
+uk = ["policyengine-uk>=2.180.0", "microcosm-data>=0.1,<0.2", "h5py>=3", "tables>=3", "openpyxl>=3.1"]
 
 [project.scripts]
 microcosm-build-uk = "microcosm.build.uk_runtime.full_build_cli:main"

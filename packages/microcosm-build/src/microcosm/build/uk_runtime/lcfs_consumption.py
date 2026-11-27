@@ -93,10 +93,12 @@ from microcosm.build.uk_runtime.nts_car_attributes import (
 from microcosm.build.uk_runtime.qrf_gates import (
     UK_DEFAULT_GATE_CALIBRATION,
     UK_GATE_OUTCOMES_EVIDENCE,
-    declared_gate_calibration,
     gate_outcomes,
 )
 from microcosm.build.uk_runtime.receipt_counts import (
+    UK_DISCLOSURE_FLOOR,
+    UK_WITHHELD,
+    distinct_count,
     extreme_count,
     floored_share,
     rounded_count,
@@ -165,10 +167,19 @@ HOUSEHOLD_LCFS_RENAMES = {
     "p344p": "household_gross_income",
     UK_LCFS_DONOR_WEIGHT_COLUMN: "household_weight",
 }
-PERSON_LCFS_RENAMES = {
-    "b303p": "employment_income",
-    "b3262p": "self_employment_income",
-    "p049p": "private_pension_income",
+#: Each person income predictor and the LCF derived variables it sums, from the
+#: LCF 2024-25 User Guide Volume F (SN 9603,
+#: ``9603_volume_f_derived_variables_2024_25.xlsx``, sheet "Part 2"), in the
+#: concepts the frame's predictors carry (microcosm#1717): gross employment
+#: income is p008p, normal gross wage or salary on the 13-week rule (b303p is
+#: the pay last time paid, net of deductions); self-employment profit is p047p
+#: plus p037p, income from main and from subsidiary self-employment (b3262p is
+#: the first subsidiary job's profit alone); pensions are p049p, income from
+#: pensions and annuities.
+PERSON_LCFS_INCOME_CODES = {
+    "employment_income": ("p008p",),
+    "self_employment_income": ("p047p", "p037p"),
+    "private_pension_income": ("p049p",),
 }
 CONSUMPTION_VARIABLE_RENAMES = {
     "p601": "food_and_non_alcoholic_beverages_consumption",
@@ -193,7 +204,7 @@ UK_LCFS_COICOP_DIVISION_COLUMNS = tuple(
     CONSUMPTION_VARIABLE_RENAMES[f"p6{division:02d}"] for division in range(1, 13)
 )
 BUS_FARE_LCFS_CODES = ("c73212", "c73213", "c73214")
-#: The diary lines of the excise goods inside two COICOP totals the chain
+#: The diary lines of the excise goods inside two COICOP totals the stage
 #: draws (microcosm#1359), in the adult forms those totals sum, from the LCF
 #: 2024-25 User Guide Volume F (SN 9603,
 #: ``9603_volume_f_derived_variables_2024_25.xlsx``), sheet "Part 2". Alcohol
@@ -738,17 +749,16 @@ UK_LCFS_CONSUMPTION_TARGET_COLUMNS = (
     "domestic_energy_consumption",
     "electricity_consumption",
     "gas_consumption",
-    # Drawn last, after the totals and the levelled parts they condition on,
-    # so every earlier draw is the chain's own (pe-uk#2572).
+    # Listed last, after the totals and the levelled parts (pe-uk#2572).
     "liquid_fuel_consumption",
     "solid_fuel_consumption",
 )
-#: The shares the chain draws after its spend targets (microcosm#1359). Each
-#: splits a COICOP total the chain has drawn, so its parts sum to the drawn
-#: total and every total, the VAT base with them, keeps its draw; appended
-#: after the spend targets, they move none of those draws either. Tobacco is
-#: a share of the off-trade alcohol and tobacco that make up P602, so
-#: off-trade alcohol is the rest of that total. On-trade alcohol is a share of
+#: The shares the stage draws after its spend targets (microcosm#1359). Each
+#: is the mix donor's own split of a COICOP total the draw scales, so its parts
+#: sum to the drawn total and every total, the VAT base with them, keeps its
+#: draw; appended after the spend targets, they move none of those draws
+#: either. Tobacco is a share of the off-trade alcohol and tobacco that make up
+#: P602, so off-trade alcohol is the rest of that total. On-trade alcohol is a share of
 #: restaurants and hotels (P611), whose published total the 2024-25 tab stores
 #: to one decimal place, so its lines can pass it by pennies and the share is
 #: clipped at one. Gambling stakes are a share of recreation (P609), stored
@@ -806,10 +816,10 @@ UK_LCFS_EXCISE_SHARES: Mapping[str, tuple[str, tuple[str, ...], tuple[str, ...]]
 UK_LCFS_EXCISE_SHARES_RECEIPT = "excise_shares"
 RECOMPOSE_FROM_REMAINDER_KIND = "recompose_from_remainder"
 #: The COICOP totals that contain columns the stage levels (microcosm#1113):
-#: each maps to the chain draws subtracted from its own draw to leave its
-#: remainder, and the levelled columns added back. The chain draws each part
-#: after its total, so the split is the chain's own. Housing (p604) nets the
-#: chain's domestic-energy draw, which is the electricity and gas
+#: each maps to the drawn parts subtracted from its own draw to leave its
+#: remainder, and the levelled columns added back. Each part comes from the
+#: same donor as its total, so the split is the donor's own. Housing (p604)
+#: nets the drawn domestic energy, which is the electricity and gas
 #: ``derive_energy_from_lcfs`` makes of the diary's fuel, light and power
 #: (``p537``) by its labelled parts, so the diary's oil, bottled gas, solid
 #: fuels and heat stay in the housing remainder (microcosm#1164); the liquid and
@@ -835,7 +845,7 @@ UK_LCFS_RECOMPOSED_PARENTS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]
 UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL = "donor_support"
 #: The declared levelling of the divisions' relative over-draw (María's rulings
 #: of 2026-10-23 and 2026-10-24, microcosm#1278; Vahid's review of #1383, item
-#: 9). A division's ratio is the spend the chain drew for it per frame
+#: 9). A division's ratio is the spend the stage drew for it per frame
 #: household over the donor's mean of the same spend per donor household: a
 #: recomposed total's remainder against the donor's total less the same parts,
 #: since its levelled energy, road fuel and priced fares keep their published
@@ -844,10 +854,10 @@ UK_LCFS_RECOMPOSED_MAXIMUM_TOTAL = "donor_support"
 #: levelling, comes down to it; no other moves. Measured again after each
 #: cut, the shared ratio would fall until every division sat at the lowest
 #: one's, close to levelling to the donor totals (María's ruling of
-#: 2026-10-24). Only the chain's own draws move.
+#: 2026-10-24). Only the stage's own draws move.
 UK_LCFS_LEVEL_DIVISION_EXCESS = "excess_over_shared_ratio"
 UK_LCFS_LEVEL_DIVISION_BASIS = "drawn_spend_over_donor_spend_per_household"
-#: The chain draws a recomposition subtracts, kept before any step re-levels them.
+#: The draws a recomposition subtracts, kept before any step re-levels them.
 UK_LCFS_RECOMPOSED_DRAWN_COLUMNS = tuple(
     dict.fromkeys(
         column
@@ -893,7 +903,49 @@ UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS = (
     "car_engine_size",
 )
 UK_LCFS_CONSUMPTION_FIT_NAME = "uk_lcfs_2024_25_consumption"
+#: The operation that draws the stage's spending (microcosm#1717): each
+#: household's budget from a forest, its spending mix from one donor.
+UK_LCFS_DRAW_OPERATION = "draw_budget_and_mix"
 UK_LCFS_CONSUMPTION_STAGE_NAME = "lcfs_consumption"
+#: The receipt of the frame's spending beside the donor's by income decile
+#: (microcosm#1717), and the deciles whose pooled ratio sets each one's shape.
+UK_LCFS_DECILE_FIT_RECEIPT = "decile_fit"
+UK_LCFS_DECILE_FIT_REFERENCE_DECILES = (4, 5, 6, 7)
+#: The receipt of the draw's range step on each build (microcosm#1717).
+UK_LCFS_BUDGET_AND_MIX_RECEIPT = "budget_and_mix"
+#: The household mix the receipt reweights the donor to within each decile:
+#: adults 1, 2, 3 or more; children and cars 0, 1, 2 or more (each count's
+#: first and open-ended last band); tenure by its categories (``None``).
+UK_LCFS_DECILE_FIT_MIX: Mapping[str, tuple[int, int] | None] = MappingProxyType(
+    {
+        "household_adult_count": (1, 3),
+        "household_child_count": (0, 2),
+        "num_vehicles": (0, 2),
+        "tenure_type": None,
+    }
+)
+#: How far the reweighting may move a donor household's weight, either way.
+UK_LCFS_DECILE_FIT_MAXIMUM_FACTOR = 5.0
+UK_LCFS_DECILE_FIT_RAKE_ITERATIONS = 100
+#: The largest gap from the frame's share of any mix category at which the
+#: reweighted donor counts as matching the frame's mix.
+UK_LCFS_DECILE_FIT_MIX_TOLERANCE = 1e-6
+#: ONS Family Spending, financial year ending 2025 (workbook 1, Table 3.1E),
+#: vendored from the pinned Chronicle feed: mean weekly household spending by
+#: equivalised disposable income decile on the updated OECD-modified scale,
+#: the decile receipt's official reference (microcosm#1717,
+#: PolicyEngine/chronicle#446).
+UK_ONS_FAMILY_SPENDING_RESOURCE = "ons_family_spending_income_decile_facts.json"
+UK_ONS_FAMILY_SPENDING_CONCEPT = "ons.family_spending.mean_weekly_household_expenditure"
+UK_ONS_FAMILY_SPENDING_PERIOD: tuple[str, int] = ("fiscal_year", 2024)
+UK_ONS_FAMILY_SPENDING_DECILE_DIMENSIONS: Mapping[str, str] = MappingProxyType(
+    {
+        "income_decile_basis": "equivalised_disposable_income",
+        "equivalence_scale": "updated_oecd_modified_2_adult_reference",
+    }
+)
+#: The Family Spending group that is the twelve COICOP divisions together.
+UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL = "coicop_01_to_12"
 
 
 @dataclass
@@ -919,6 +971,8 @@ class UKLCFSConsumptionResult:
     gambling_participation: Mapping[str, Any] | None = None
     excise_quantities: Mapping[str, Any] | None = None
     car_attributes: Mapping[str, Any] | None = None
+    budget_and_mix: Mapping[str, Any] | None = None
+    decile_fit: Mapping[str, Any] | None = None
     gate_outcomes: Mapping[str, str] | None = None
 
     def evidence(self) -> dict[str, object]:
@@ -962,6 +1016,10 @@ class UKLCFSConsumptionResult:
             evidence[UK_LCFS_EXCISE_QUANTITIES_RECEIPT] = dict(self.excise_quantities)
         if self.car_attributes is not None:
             evidence[ASSIGN_CAR_ATTRIBUTES_KIND] = dict(self.car_attributes)
+        if self.budget_and_mix is not None:
+            evidence[UK_LCFS_BUDGET_AND_MIX_RECEIPT] = dict(self.budget_and_mix)
+        if self.decile_fit is not None:
+            evidence[UK_LCFS_DECILE_FIT_RECEIPT] = dict(self.decile_fit)
         if self.gate_outcomes:
             evidence[UK_GATE_OUTCOMES_EVIDENCE] = dict(self.gate_outcomes)
         return evidence
@@ -1103,11 +1161,11 @@ class UKLCFSConsumptionStageTransform:
         imputation = impute_lcfs_consumption(
             donor,
             recipient,
-            seed=_operation_seed(self.stage, "fit_weighted_qrf_chain"),
-            n_estimators=_qrf_n_estimators(self.stage),
+            seed=_operation_seed(self.stage, UK_LCFS_DRAW_OPERATION),
+            n_estimators=_draw_n_estimators(self.stage),
             record_ids=frame.table("household")["household_id"].to_numpy(),
-            targets=lcfs_chain_targets(self.stage, shares),
-            gate_calibration=_qrf_gate_calibration(self.stage),
+            targets=lcfs_draw_targets(self.stage, shares),
+            support_exempt=support_clip_exempt(self.stage),
         )
         clip_result = support_clip_to_donor(
             imputation.draws, donor, exempt=support_clip_exempt(self.stage)
@@ -1122,8 +1180,8 @@ class UKLCFSConsumptionStageTransform:
             household_ids=frame.table("household")["household_id"].to_numpy(),
             weights=weights,
         )
-        # The chain's own draws of the parts later steps re-level, for the
-        # recomposed totals (microcosm#1113).
+        # The draw's own parts that later steps re-level, for the recomposed
+        # totals (microcosm#1113).
         drawn_parts = household_draws[list(UK_LCFS_RECOMPOSED_DRAWN_COLUMNS)].copy()
         energy_rake_receipt = None
         energy_kwh = None
@@ -1211,6 +1269,26 @@ class UKLCFSConsumptionStageTransform:
                 donor=donor,
                 sources=sources,
             )
+        )
+        try:
+            published: dict[str, Any] = family_spending_by_decile()
+        except DiagnosticUnavailableError as error:
+            published = {
+                "resource": UK_ONS_FAMILY_SPENDING_RESOURCE,
+                "available": False,
+                "reason": str(error),
+            }
+        decile_receipt = decile_fit(
+            household_draws,
+            recipient,
+            weights=weights,
+            donor=donor,
+            sources=sources,
+            mix_donors=imputation.mix_donors,
+            published=published,
+        )
+        range_receipt = budget_and_mix_receipt(
+            imputation, weights=weights, sources=sources
         )
         litres_audit = fuel_litres_audit(
             household_draws, weights=weights, stage=self.stage
@@ -1309,8 +1387,9 @@ class UKLCFSConsumptionStageTransform:
             gambling_participation=None if gambling is None else gambling.receipt,
             excise_quantities=excise_quantities,
             car_attributes=None if car_attributes is None else car_attributes.receipt,
+            budget_and_mix=range_receipt,
+            decile_fit=decile_receipt,
             gate_outcomes={
-                **imputation.gate_outcomes,
                 **incidence.receipt.get(UK_GATE_OUTCOMES_EVIDENCE, {}),
                 **(
                     {}
@@ -1338,8 +1417,12 @@ class UKLCFSConsumptionStageTransform:
 class UKLCFSConsumptionImputationResult:
     draws: pd.DataFrame
     fit_weight_records: tuple[FitWeightRecord, ...]
-    #: Each chain target's gate outcome, when the chain is not in-sample.
-    gate_outcomes: Mapping[str, str] = field(default_factory=dict)
+    #: Each household's mix donor (its donor row), in recipient row order, and
+    #: the households the range step gave a new donor or moved to another
+    #: budget (microcosm#1717).
+    mix_donors: np.ndarray | None = None
+    redrawn: np.ndarray | None = None
+    moved_budget: np.ndarray | None = None
 
 
 class DiagnosticUnavailableError(ValueError):
@@ -1541,9 +1624,9 @@ def division_capture(
     and the tourism adjustment is published for the total only, so only the
     total is also compared on the national concept. Nothing is gated on it.
 
-    With ``donor`` (the annualised donor the chain drew from, carried to the
+    With ``donor`` (the annualised donor the stage drew from, carried to the
     base year), each division and the total also record the donor's weighted
-    total and the frame's over it, in all and per household: whether the chain
+    total and the frame's over it, in all and per household: whether the stage
     draws a division above its own donor, as microcosm#1167 found it did for
     the transport remainder (microcosm#1207's furnishings and health item).
     Each division also records the share of its spend held by the top 1% and
@@ -1684,6 +1767,627 @@ def division_capture_or_reason(
             "reason": str(error),
             "gated": False,
         }
+
+
+def family_spending_by_decile() -> dict[str, Any]:
+    """ONS Family Spending's mean weekly spending by income decile (microcosm#1717).
+
+    The vendored Table 3.1E rows: for each equivalised disposable income
+    decile group on the updated OECD-modified scale, and for all households,
+    the twelve COICOP divisions together and each division, in pounds a week
+    as published. A cell ONS suppresses has no row and reads ``None``.
+    Raises :class:`DiagnosticUnavailableError` when the resource lacks the
+    twelve divisions' total for a decile or for all households, so the
+    report-only receipt can record why.
+    """
+
+    period_type, period_value = UK_ONS_FAMILY_SPENDING_PERIOD
+    groups = (
+        UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL,
+        *(f"coicop_{code}" for code in UK_LCFS_DIVISION_COICOP.values()),
+    )
+    keys = (*(str(decile) for decile in range(1, 11)), "all")
+    table: dict[str, dict[str, float | None]] = {
+        key: dict.fromkeys(groups) for key in keys
+    }
+    rows = vendored_rows(
+        UK_ONS_FAMILY_SPENDING_RESOURCE,
+        concept=UK_ONS_FAMILY_SPENDING_CONCEPT,
+        period_type=period_type,
+        period_value=period_value,
+        geography_id="K02000001",
+    )
+    for row in rows:
+        dimensions = {
+            str(name): str(value)
+            for name, value in (row.get("dimensions") or {}).items()
+        }
+        group = dimensions.get("expenditure_group")
+        if group not in groups:
+            continue
+        if set(dimensions) == {"expenditure_group"}:
+            key = "all"
+        elif all(
+            dimensions.get(name) == value
+            for name, value in UK_ONS_FAMILY_SPENDING_DECILE_DIMENSIONS.items()
+        ):
+            key = dimensions.get("income_decile_group", "").removeprefix("decile_")
+            if key not in table:
+                continue
+        else:
+            continue
+        if table[key][group] is not None:
+            raise ValueError(
+                f"{UK_ONS_FAMILY_SPENDING_RESOURCE}: two {group} rows for {key}."
+            )
+        table[key][group] = float(row["value"])
+    missing = [
+        key
+        for key in keys
+        if table[key][UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL] is None
+    ]
+    if missing:
+        raise DiagnosticUnavailableError(
+            f"{UK_ONS_FAMILY_SPENDING_RESOURCE}: no "
+            f"{UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL} row for {', '.join(missing)}."
+        )
+    return {
+        "resource": UK_ONS_FAMILY_SPENDING_RESOURCE,
+        "concept": UK_ONS_FAMILY_SPENDING_CONCEPT,
+        "period_type": period_type,
+        "period_value": period_value,
+        "geography_id": "K02000001",
+        **UK_ONS_FAMILY_SPENDING_DECILE_DIMENSIONS,
+        "unit": "gbp_per_week",
+        "deciles": table,
+    }
+
+
+def budget_and_mix_receipt(
+    imputation: UKLCFSConsumptionImputationResult,
+    *,
+    weights: np.ndarray,
+    sources: np.ndarray | None,
+) -> dict[str, Any] | None:
+    """The draw's range step on this build (microcosm#1717).
+
+    For the households the step gave a new donor, and for those it moved to
+    another budget (none of whose neighbours fitted): the support band, the
+    share of frame households floored to the hundredth, and the share at the
+    stage's design weights, each withheld where one or two source households
+    carry it. Aggregates only.
+    """
+
+    if imputation.redrawn is None or imputation.moved_budget is None:
+        return None
+    mass = np.asarray(weights, dtype=float)
+    ids = np.arange(len(mass)) if sources is None else np.asarray(sources)
+
+    def path(mask: np.ndarray) -> dict[str, Any]:
+        selected = np.asarray(mask, dtype=bool)
+        support = distinct_count(ids, selected, mass)
+        withheld = 0 < support < UK_DISCLOSURE_FLOOR
+        return {
+            "support": support_band(support),
+            "share": UK_WITHHELD if withheld else floored_share(float(selected.mean())),
+            "weighted_share": small_cell_share(
+                float(np.average(selected, weights=mass)), support
+            ),
+        }
+
+    return {
+        "range_step": {
+            "redrawn": path(imputation.redrawn),
+            "moved_budget": path(imputation.moved_budget),
+        }
+    }
+
+
+def effective_donor_count(donors: np.ndarray, weights: np.ndarray) -> float:
+    """The effective number of donors behind some draws (microcosm#1717).
+
+    The inverse Simpson index of the weight each donor carries: the number of
+    equally used donors that would spread the draws as evenly.
+    """
+
+    _, index = np.unique(np.asarray(donors), return_inverse=True)
+    carried = np.bincount(index, weights=np.asarray(weights, dtype=float))
+    total = float(carried.sum())
+    return total**2 / float(np.square(carried).sum()) if total > 0 else 0.0
+
+
+def _effective_mix_donors(donors: np.ndarray, weights: np.ndarray) -> float | str:
+    count = effective_donor_count(donors, weights)
+    return count if count >= UK_DISCLOSURE_FLOOR else UK_WITHHELD
+
+
+def decile_fit_mix(table: pd.DataFrame) -> dict[str, np.ndarray]:
+    """Each household's mix category for the decile receipt (microcosm#1717).
+
+    The counts are banded as :data:`UK_LCFS_DECILE_FIT_MIX` declares, the last
+    band open-ended; tenure keeps its categories.
+    """
+
+    mix: dict[str, np.ndarray] = {}
+    for column, bands in UK_LCFS_DECILE_FIT_MIX.items():
+        if bands is None:
+            mix[column] = table[column].astype(str).to_numpy(dtype=str)
+        else:
+            counts = np.rint(_numeric(table[column]).to_numpy(dtype=float))
+            mix[column] = np.clip(counts, *bands).astype(int)
+    return mix
+
+
+def _merged_sparse_categories(
+    donor: np.ndarray, frame: np.ndarray, *, ordered: bool
+) -> tuple[np.ndarray, np.ndarray]:
+    """Join each mix category under the floor of donor households to another.
+
+    The sparsest category goes first, the later of a tie. A count band joins
+    the band below it (the lowest, the band above); a tenure joins the
+    category with the most donor households. A frame category the donor lacks
+    holds no donor household, so it always joins one. Stops at one category.
+    """
+
+    # One dtype for both sides, so a joined category's name fits either.
+    common = np.result_type(donor, frame)
+    donor, frame = donor.astype(common), frame.astype(common)
+    while True:
+        categories = sorted(set(donor.tolist()) | set(frame.tolist()))
+        if len(categories) < 2:
+            return donor, frame
+        held = {category: int(np.sum(donor == category)) for category in categories}
+        sparse = [
+            category for category in categories if held[category] < UK_DISCLOSURE_FLOOR
+        ]
+        if not sparse:
+            return donor, frame
+        merged = min(
+            sparse, key=lambda category: (held[category], -categories.index(category))
+        )
+        position = categories.index(merged)
+        if ordered:
+            into = (
+                categories[position - 1] if position > 0 else categories[position + 1]
+            )
+        else:
+            into = max(
+                (category for category in categories if category != merged),
+                key=lambda category: (held[category], category),
+            )
+        donor[donor == merged] = into
+        frame[frame == merged] = into
+
+
+def reweighted_to_frame_mix(
+    donor_mix: Mapping[str, np.ndarray],
+    donor_weights: np.ndarray,
+    frame_mix: Mapping[str, np.ndarray],
+    frame_weights: np.ndarray,
+) -> tuple[np.ndarray, bool]:
+    """The donor's weights raked to the frame's household mix (microcosm#1717).
+
+    One income decile's households on each side, holding at least three on
+    the donor's. Each margin of :data:`UK_LCFS_DECILE_FIT_MIX`, its sparse
+    categories joined first (:func:`_merged_sparse_categories`), is raked in
+    turn to the frame's weighted shares of the donor's total. A donor
+    category the frame lacks gets no weight, its weight shared out over the
+    rest, and the raking holds every other household within
+    :data:`UK_LCFS_DECILE_FIT_MAXIMUM_FACTOR` of that weight either way; the
+    weights keep the donor's total unless the bound holds a category back.
+    Returned with whether every category's share comes within
+    :data:`UK_LCFS_DECILE_FIT_MIX_TOLERANCE` of the frame's.
+    """
+
+    base = np.asarray(donor_weights, dtype=float)
+    frame_mass = np.asarray(frame_weights, dtype=float)
+    kept = base > 0
+    margins: list[tuple[np.ndarray, np.ndarray]] = []
+    for column, bands in UK_LCFS_DECILE_FIT_MIX.items():
+        donor_codes, frame_codes = _merged_sparse_categories(
+            np.asarray(donor_mix[column]),
+            np.asarray(frame_mix[column]),
+            ordered=bands is not None,
+        )
+        categories, index = np.unique(donor_codes, return_inverse=True)
+        if not bool(np.isin(frame_codes, categories).all()):
+            raise ValueError(
+                f"The donor holds too few households to reweight {column} to the frame."
+            )
+        share = (
+            np.bincount(
+                np.searchsorted(categories, frame_codes),
+                weights=frame_mass,
+                minlength=len(categories),
+            )
+            / frame_mass.sum()
+        )
+        kept &= share[index] > 0
+        margins.append((index, share))
+    if not bool(kept.any()):
+        return np.zeros_like(base), False
+    total = float(base.sum())
+    weights = np.where(kept, base * total / base[kept].sum(), 0.0)
+    low = weights / UK_LCFS_DECILE_FIT_MAXIMUM_FACTOR
+    high = weights * UK_LCFS_DECILE_FIT_MAXIMUM_FACTOR
+    for _ in range(UK_LCFS_DECILE_FIT_RAKE_ITERATIONS):
+        for index, share in margins:
+            current = np.bincount(index, weights=weights, minlength=len(share))
+            factor = np.divide(
+                share * total, current, out=np.zeros_like(share), where=current > 0
+            )
+            weights = np.clip(weights * factor[index], low, high)
+    gap = max(
+        float(
+            np.abs(
+                np.bincount(index, weights=weights, minlength=len(share))
+                / weights.sum()
+                - share
+            ).max()
+        )
+        for index, share in margins
+    )
+    return weights, gap <= UK_LCFS_DECILE_FIT_MIX_TOLERANCE
+
+
+def decile_fit(
+    household_draws: pd.DataFrame,
+    recipient: pd.DataFrame,
+    *,
+    weights: np.ndarray,
+    donor: pd.DataFrame,
+    sources: np.ndarray | None,
+    mix_donors: np.ndarray | None = None,
+    published: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The frame's spending beside the donor's, by income decile (microcosm#1717).
+
+    Each survey is ranked on its own equivalised predictor income, the HBAI
+    net income the draw conditions on over the modified OECD scale from the
+    adult and child counts, and cut into tenths of its weighted households:
+    the frame at the stage's design weights, the donor at its own. For each
+    decile, and for all households, the receipt gives total spending (the
+    twelve COICOP divisions, as the stage emits them) and each division: the
+    weighted mean per household on each side, the weighted share spending
+    anything, and the frame's mean over the donor's. Each decile's ratio over
+    the pooled ratio of deciles 4 to 7 is its shape, which no choice of level
+    moves.
+
+    The mean, ratio and shape are also given against the donor reweighted,
+    within each decile, to the frame's household mix of adults, children,
+    cars and tenure (:func:`reweighted_to_frame_mix`). A frame whose
+    households spend what the donor's households like them spend sits at one
+    on that shape, whatever the two surveys' mixes, so it is the draw's own.
+    The pooled figures sum each decile's reweighted donor; a decile too thin
+    to compare keeps the donor's own weights there.
+
+    Given ``mix_donors``, each household's mix donor in frame row order, the
+    receipt also gives the effective number of donors behind the frame's
+    mixes (:func:`effective_donor_count`, at the design weights) in each
+    decile and in each region's deciles: the number of distinct mixes to
+    expect when cutting spending by such a group.
+
+    Given ``published``, ONS Family Spending's table
+    (:func:`family_spending_by_decile`), each decile also sets the published
+    figures beside both surveys: the weekly mean as published, its shape (the
+    decile's mean over the mean of deciles 4 to 7), and the frame's and the
+    donor's own profiles (each decile's mean over its deciles 4 to 7) over
+    that shape. Shapes leave out the level, so the published weeks and price
+    year need no conversion. A ``published`` that records why it is
+    unavailable is carried as it stands.
+
+    A decile resting on fewer than three source households on either side is
+    withheld, as are the reweighted figures where the reweighted donor rests
+    on fewer than three and an effective number of donors under three, and
+    every cell gives its support bands. Aggregates only: no household's value,
+    weight, maximum or minimum.
+    """
+
+    frame_weights = np.asarray(weights, dtype=float)
+    donor_weights = _numeric(donor["household_weight"]).to_numpy(dtype=float)
+    frame_rank = income_tenths(
+        _numeric(recipient["hbai_household_net_income"]).to_numpy(dtype=float),
+        _modified_oecd_scale(recipient),
+        frame_weights,
+    )
+    donor_rank = income_tenths(
+        _numeric(donor["hbai_household_net_income"]).to_numpy(dtype=float),
+        _modified_oecd_scale(donor),
+        donor_weights,
+    )
+    columns = list(UK_LCFS_COICOP_DIVISION_COLUMNS)
+    frame_values = household_draws.loc[:, columns].to_numpy(dtype=float)
+    donor_values = donor.loc[:, columns].to_numpy(dtype=float)
+    frame_ids = (
+        np.arange(len(frame_weights)) if sources is None else np.asarray(sources)
+    )
+    donor_ids = np.arange(len(donor_weights))
+
+    def supported(
+        frame_mask: np.ndarray, donor_mask: np.ndarray, donor_mass: np.ndarray
+    ) -> tuple[int, int]:
+        return (
+            distinct_count(frame_ids, frame_mask, frame_weights),
+            distinct_count(donor_ids, donor_mask, donor_mass),
+        )
+
+    frame_mix = decile_fit_mix(recipient)
+    donor_mix = decile_fit_mix(donor)
+    reweighted = donor_weights.copy()
+    mix_met: dict[int, bool] = {}
+    for decile in range(1, 11):
+        frame_mask = frame_rank == decile
+        donor_mask = donor_rank == decile
+        if min(supported(frame_mask, donor_mask, donor_weights)) < UK_DISCLOSURE_FLOOR:
+            continue
+        reweighted[donor_mask], mix_met[decile] = reweighted_to_frame_mix(
+            {column: codes[donor_mask] for column, codes in donor_mix.items()},
+            donor_weights[donor_mask],
+            {column: codes[frame_mask] for column, codes in frame_mix.items()},
+            frame_weights[frame_mask],
+        )
+
+    def side(values: np.ndarray, mass: np.ndarray, mask: np.ndarray) -> dict[str, Any]:
+        weight = mass[mask]
+        total = values[mask].sum(axis=1)
+        return {
+            "mean": float(np.average(total, weights=weight)),
+            "positive_share": float(np.average(total > 0, weights=weight)),
+            "division_means": np.average(values[mask], axis=0, weights=weight),
+            "division_positive": np.average(values[mask] > 0, axis=0, weights=weight),
+        }
+
+    def compared(frame: float, donor_value: float) -> float | None:
+        return float(frame / donor_value) if donor_value > 0 else None
+
+    def shaped(ratio: float | None, reference: float | None) -> float | None:
+        return None if ratio is None or not reference else ratio / reference
+
+    def pooled(donor_mass: np.ndarray) -> tuple[float | None, list[float | None]]:
+        frame_mask = np.isin(frame_rank, UK_LCFS_DECILE_FIT_REFERENCE_DECILES)
+        donor_mask = np.isin(donor_rank, UK_LCFS_DECILE_FIT_REFERENCE_DECILES) & (
+            donor_mass > 0
+        )
+        # The reference deciles carry every shape, so they meet the floor too.
+        if min(supported(frame_mask, donor_mask, donor_mass)) < UK_DISCLOSURE_FLOOR:
+            return None, [None] * len(columns)
+        frame = side(frame_values, frame_weights, frame_mask)
+        donor_side = side(donor_values, donor_mass, donor_mask)
+        return compared(frame["mean"], donor_side["mean"]), [
+            compared(float(f), float(d))
+            for f, d in zip(
+                frame["division_means"], donor_side["division_means"], strict=True
+            )
+        ]
+
+    reference_ratio, reference_divisions = pooled(donor_weights)
+    reweighted_reference, reweighted_divisions = pooled(reweighted)
+
+    # Family Spending beside both surveys: each one's own profile over the
+    # published shape, all against the mean of deciles 4 to 7.
+    published_table = None if published is None else published.get("deciles")
+    frame_profile_reference = donor_profile_reference = None
+    published_reference: dict[str, float | None] = {}
+    if published_table:
+        reference_frame = np.isin(frame_rank, UK_LCFS_DECILE_FIT_REFERENCE_DECILES)
+        reference_donor = np.isin(donor_rank, UK_LCFS_DECILE_FIT_REFERENCE_DECILES)
+        if (
+            min(supported(reference_frame, reference_donor, donor_weights))
+            >= UK_DISCLOSURE_FLOOR
+        ):
+            frame_profile_reference = side(frame_values, frame_weights, reference_frame)
+            donor_profile_reference = side(donor_values, donor_weights, reference_donor)
+        for group in published_table["all"]:
+            weekly = [
+                published_table[str(decile)][group]
+                for decile in UK_LCFS_DECILE_FIT_REFERENCE_DECILES
+            ]
+            published_reference[group] = (
+                None
+                if any(value is None for value in weekly)
+                else float(np.mean(weekly))
+            )
+
+    def against_published(
+        key: str, frame: Mapping[str, Any], donor_side: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        def one(
+            group: str,
+            frame_mean: float,
+            donor_mean: float,
+            frame_reference: float | None,
+            donor_reference: float | None,
+        ) -> dict[str, Any]:
+            weekly = published_table[key][group]
+            shape = shaped(weekly, published_reference.get(group))
+            frame_profile = shaped(frame_mean, frame_reference)
+            donor_profile = shaped(donor_mean, donor_reference)
+            return {
+                "weekly_mean": weekly,
+                "shape": shape,
+                "frame_over_published": shaped(frame_profile, shape),
+                "donor_over_published": shaped(donor_profile, shape),
+            }
+
+        frame_reference = frame_profile_reference or {}
+        donor_reference = donor_profile_reference or {}
+        return {
+            "total": one(
+                UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL,
+                frame["mean"],
+                donor_side["mean"],
+                frame_reference.get("mean"),
+                donor_reference.get("mean"),
+            ),
+            "divisions": {
+                column: one(
+                    f"coicop_{UK_LCFS_DIVISION_COICOP[column]}",
+                    float(frame["division_means"][j]),
+                    float(donor_side["division_means"][j]),
+                    None
+                    if not frame_reference
+                    else float(frame_reference["division_means"][j]),
+                    None
+                    if not donor_reference
+                    else float(donor_reference["division_means"][j]),
+                )
+                for j, column in enumerate(columns)
+            },
+        }
+
+    def figures(
+        frame_mean: float,
+        donor_mean: float,
+        frame_positive: float,
+        donor_positive: float,
+        reweighted_mean: float | None,
+        reference: float | None,
+        reference_reweighted: float | None,
+    ) -> dict[str, Any]:
+        ratio = compared(frame_mean, donor_mean)
+        reweighted_ratio = (
+            None if reweighted_mean is None else compared(frame_mean, reweighted_mean)
+        )
+        return {
+            "frame_mean": frame_mean,
+            "donor_mean": donor_mean,
+            "frame_positive_share": frame_positive,
+            "donor_positive_share": donor_positive,
+            "ratio": ratio,
+            "shape": shaped(ratio, reference),
+            "reweighted_donor_mean": reweighted_mean,
+            "reweighted_ratio": reweighted_ratio,
+            "reweighted_shape": shaped(reweighted_ratio, reference_reweighted),
+        }
+
+    def cell(
+        key: str, frame_mask: np.ndarray, donor_mask: np.ndarray, met: bool | None
+    ) -> dict[str, Any]:
+        frame_support, donor_support = supported(frame_mask, donor_mask, donor_weights)
+        entry: dict[str, Any] = {
+            "frame_support": support_band(frame_support),
+            "donor_support": support_band(donor_support),
+        }
+        if min(frame_support, donor_support) < UK_DISCLOSURE_FLOOR:
+            entry["withheld"] = True
+            return entry
+        reweighted_mask = donor_mask & (reweighted > 0)
+        reweighted_support = distinct_count(donor_ids, reweighted_mask, reweighted)
+        entry["reweighted_donor_support"] = support_band(reweighted_support)
+        if met is not None:
+            entry["reweighted_mix_met"] = met
+        if mix_donors is not None:
+            entry["effective_mix_donors"] = _effective_mix_donors(
+                mix_donors[frame_mask], frame_weights[frame_mask]
+            )
+        frame = side(frame_values, frame_weights, frame_mask)
+        donor_side = side(donor_values, donor_weights, donor_mask)
+        matched = (
+            side(donor_values, reweighted, reweighted_mask)
+            if reweighted_support >= UK_DISCLOSURE_FLOOR
+            else None
+        )
+        entry["total"] = figures(
+            frame["mean"],
+            donor_side["mean"],
+            frame["positive_share"],
+            donor_side["positive_share"],
+            None if matched is None else matched["mean"],
+            reference_ratio,
+            reweighted_reference,
+        )
+        entry["divisions"] = {
+            column: figures(
+                float(frame["division_means"][j]),
+                float(donor_side["division_means"][j]),
+                float(frame["division_positive"][j]),
+                float(donor_side["division_positive"][j]),
+                None if matched is None else float(matched["division_means"][j]),
+                reference_divisions[j],
+                reweighted_divisions[j],
+            )
+            for j, column in enumerate(columns)
+        }
+        if published_table:
+            entry["published"] = against_published(key, frame, donor_side)
+        return entry
+
+    deciles = [
+        {
+            "decile": decile,
+            **cell(
+                str(decile),
+                frame_rank == decile,
+                donor_rank == decile,
+                mix_met.get(decile),
+            ),
+        }
+        for decile in range(1, 11)
+    ]
+    everyone = cell(
+        "all",
+        np.ones(len(frame_weights), dtype=bool),
+        np.ones(len(donor_weights), dtype=bool),
+        None,
+    )
+    by_region: dict[str, list[dict[str, Any]]] | None = None
+    if mix_donors is not None:
+        regions = recipient["region"].astype(str).to_numpy()
+        by_region = {}
+        for region in sorted(set(regions.tolist())):
+            cells = []
+            for decile in range(1, 11):
+                mask = (regions == region) & (frame_rank == decile)
+                support = distinct_count(frame_ids, mask, frame_weights)
+                region_cell: dict[str, Any] = {
+                    "decile": decile,
+                    "frame_support": support_band(support),
+                }
+                if support >= UK_DISCLOSURE_FLOOR:
+                    region_cell["effective_mix_donors"] = _effective_mix_donors(
+                        mix_donors[mask], frame_weights[mask]
+                    )
+                cells.append(region_cell)
+            by_region[region] = cells
+    return {
+        "ranking": "equivalised_hbai_household_net_income",
+        "equivalisation": "modified_oecd_from_adult_and_child_counts",
+        "frame_weights": "stage_design_weights",
+        "donor_weights": "household_weight",
+        "reference_deciles": list(UK_LCFS_DECILE_FIT_REFERENCE_DECILES),
+        "reweighting": {
+            "within": "income_decile",
+            "margins": {
+                column: "categories"
+                if bands is None
+                else ", ".join(
+                    [
+                        *(str(value) for value in range(bands[0], bands[1])),
+                        f"{bands[1]}+",
+                    ]
+                )
+                for column, bands in UK_LCFS_DECILE_FIT_MIX.items()
+            },
+            "minimum_donor_households_per_category": UK_DISCLOSURE_FLOOR,
+            "maximum_factor": UK_LCFS_DECILE_FIT_MAXIMUM_FACTOR,
+            "iterations": UK_LCFS_DECILE_FIT_RAKE_ITERATIONS,
+        },
+        "columns": columns,
+        "deciles": deciles,
+        "all": everyone,
+        **({} if by_region is None else {"effective_mix_donors_by_region": by_region}),
+        **(
+            {}
+            if published is None
+            else {
+                "published": {
+                    name: value
+                    for name, value in published.items()
+                    if name != "deciles"
+                }
+            }
+        ),
+    }
 
 
 def desnz_cars_share_by_fuel(period_value: int) -> dict[str, dict[str, Any]]:
@@ -1921,11 +2625,11 @@ def redraw_zero_road_fuel(
     """Give every household the fuel flag marks a positive road-fuel spend.
 
     The LCFS diary covers two weeks, so about a third of car-owning donors
-    record no fuel purchase and the chain reproduces that zero share among the
+    record no fuel purchase and the draw reproduces that zero share among the
     households the fuel flag marks as buying petrol or diesel; over a year
-    such a car is refuelled. For a flagged household whose chain draw is zero,
+    such a car is refuelled. For a flagged household whose draw is zero,
     petrol plus diesel is redrawn from the donor's conditional distribution
-    among households with positive road fuel, on the chain's predictors: a
+    among households with positive road fuel, on the stage's predictors: a
     weighted regime-gated QRF draws the total, positive by construction, then
     the petrol share of it (which keeps diesel-only and mixed households), at
     quantiles keyed on the household id. Positive draws are kept; the level
@@ -2113,7 +2817,7 @@ def impute_prepayment_meter(
 ) -> PrepaymentMeterDraw:
     """Draw ``uses_energy_prepayment_meter`` from the LCFS donor (microcosm#1110).
 
-    A weighted regime-gated QRF on the chain's predictors (household counts,
+    A weighted regime-gated QRF on the stage's predictors (household counts,
     region, incomes, tenure, accommodation, vehicles) fits the donor's
     prepayment flag; each recipient's draw takes uniforms keyed on its household
     id, so the flag does not depend on row order and no other draw moves. The
@@ -3241,8 +3945,8 @@ def gambling_participation_features(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """The donor's and the frame's features for the gambling top-up's two fits.
 
-    The chain's predictors and the spend targets the shares were drawn on:
-    the donor's diary totals, and the chain's raw draws on the frame. Recreation
+    The stage's predictors and the spend targets the shares were drawn with:
+    the donor's diary totals, and the stage's raw draws on the frame. Recreation
     enters net of its gambling stakes on both sides. P609 sums the stake lines,
     so a recorded stake would otherwise raise the very feature that predicts it,
     and the walk would favour high-recreation households for that reason alone
@@ -3505,14 +4209,14 @@ def recompose_parent_totals(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Write each recomposed total around the levelled parts the stage set.
 
-    A total keeps its own chain draw less the chain's draws of the parts the
+    A total keeps its own draw less the draws of the parts the
     stage re-levels (``drawn``, kept before any step touched them; floored at
     zero where the parts outgrow the total), and adds the levelled parts back,
     so it always contains the electricity, gas, petrol, diesel and priced bus
-    fares at their published scale (microcosm#1113). The chain draws each part after, and
-    conditional on, its total, so the remainder is the chain's own split; a
-    remainder drawn as a chain target of its own over-drew the vehicle-purchase
-    tail of transport (10 to 13 percent above the donor in-sample).
+    fares at their published scale (microcosm#1113). Each part comes from the
+    same donor as its total, so the remainder is the donor's own split; a
+    remainder drawn as a target of its own over-drew the vehicle-purchase tail
+    of transport (10 to 13 percent above the donor in-sample).
 
     The total is then held to the donor's realised maximum of it
     (``donor_support``, the declared ``maximum_total``; microcosm#1164), never
@@ -3521,7 +4225,7 @@ def recompose_parent_totals(
 
     Where the declaration levels the divisions' relative over-draw
     (``level_division_excess``), each division above the shared ratio of the
-    spend the chain drew is brought down to it before the hold
+    spend the stage drew is brought down to it before the hold
     (:func:`division_excess_factors`; ``donor_division_means`` is then the
     donor's drawn spend, :func:`lcfs_donor_drawn_means`): a recomposed total
     by its remainder alone, any other division by its draw.
@@ -3546,7 +4250,7 @@ def recompose_parent_totals(
             raise ValueError(
                 "Levelling the divisions' excess needs the donor's division means."
             )
-        # The spend the chain drew: a recomposed total's remainder, any other
+        # The spend the stage drew: a recomposed total's remainder, any other
         # division's whole draw.
         frame_drawn = {
             division: float(
@@ -3633,7 +4337,7 @@ def division_excess_factors(
 ) -> dict[str, Any]:
     """Each division's factor bringing its relative over-draw to the shared ratio.
 
-    ``frame_drawn`` is each division's weighted frame spend the chain drew (a
+    ``frame_drawn`` is each division's weighted frame spend the stage drew (a
     recomposed total's remainder, any other division's whole draw), and
     ``donor_drawn_means`` the donor's mean of the same per household
     (:func:`lcfs_donor_drawn_means`). A division's ratio is the one over the
@@ -3715,7 +4419,7 @@ def lcfs_donor_drawn_means(donor: pd.DataFrame) -> dict[str, float]:
 
     A recomposed total's is the division less the parts the stage levels,
     floored at zero per household as the frame's remainder is; any other
-    division's is the division. The donor is the one the chain drew from.
+    division's is the division. The donor is the one the stage drew from.
     """
 
     weight = _numeric(donor["household_weight"]).to_numpy(dtype=float)
@@ -3863,7 +4567,7 @@ def gas_payer_draws(
 ) -> GasPayerDraws:
     """What the connection walk needs to connect a household the draw left at zero.
 
-    Two weighted fits on the chain's predictors (microcosm#1164). A gradient
+    Two weighted fits on the stage's predictors (microcosm#1164). A gradient
     boosted classifier of whether the donor pays for gas gives each recipient
     the probability that a donor like it does, which orders the walk; a
     regime-gated QRF of the donor's gas spend draws, from its positive forest
@@ -4129,12 +4833,12 @@ def lcfs_bus_fare_pricing(
 ) -> tuple[pd.DataFrame, dict[str, Any] | None]:
     """Replace the priced regions' bus fares with journeys times the published yield.
 
-    The chain's raw draw (clipped to donor support) stands where no area
+    The stage's raw draw (clipped to donor support) stands where no area
     prices (Wales); everywhere else the emitted value is the sum over the
     household's non-eligible persons of their ``nts_bus_travel`` journeys
     times boardings per resident trip times the yield per fare-paying
-    boarding (microcosm#930). The chain conditioned later targets on the raw
-    draw, which the receipt states.
+    boarding (microcosm#930). Every other draw saw the raw draw, never the
+    priced fare, which the receipt states.
     """
 
     parameters = bus_pricing_operation(stage)
@@ -4143,7 +4847,7 @@ def lcfs_bus_fare_pricing(
     column = str(parameters["column"])
     if column not in household_draws:
         raise ValueError(
-            f"price_bus_journeys names {column!r}, which the chain did not draw."
+            f"price_bus_journeys names {column!r}, which the stage did not draw."
         )
     prices = bus_fare_prices(parameters, allowed_resources=UK_LCFS_VENDORED_RESOURCES)
     trips_columns = {
@@ -4419,6 +5123,35 @@ def frame_income_quintiles(
     return np.searchsorted(cuts, equivalised, side="left") + 1
 
 
+def income_tenths(
+    income: Sequence[float], equivalisation: Sequence[float], weights: Sequence[float]
+) -> np.ndarray:
+    """Each household's weighted tenth of equivalised income, 1 (lowest) to 10."""
+
+    scale = np.asarray(equivalisation, dtype=float)
+    if not bool(np.all(scale > 0)):
+        raise ValueError("Every household needs a positive equivalence scale.")
+    equivalised = np.asarray(income, dtype=float) / scale
+    weight = np.asarray(weights, dtype=float)
+    order = np.argsort(equivalised, kind="stable")
+    cumulative = np.cumsum(weight[order]) / weight.sum()
+    cuts = equivalised[order][
+        np.minimum(
+            np.searchsorted(cumulative, np.arange(1, 10) / 10.0, side="left"),
+            len(order) - 1,
+        )
+    ]
+    return np.searchsorted(cuts, equivalised, side="left") + 1
+
+
+def _modified_oecd_scale(table: pd.DataFrame) -> np.ndarray:
+    """The modified OECD scale from a table's adult and child counts."""
+
+    adults = _numeric(table["household_adult_count"]).clip(lower=1.0)
+    children = _numeric(table["household_child_count"]).clip(lower=0.0)
+    return (1.0 + 0.5 * (adults - 1.0) + 0.3 * children).to_numpy(dtype=float)
+
+
 def zero_emission_share_by_household(
     national: float,
     risks: Mapping[int, float],
@@ -4583,11 +5316,11 @@ def lcfs_donor_shares(
 ) -> dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]]:
     """The excise shares the derive step declares, held to the module's.
 
-    No declaration draws no share and leaves the chain its spend targets. A
+    No declaration draws no share and leaves the draw its spend targets. A
     declaration that differs from ``UK_LCFS_EXCISE_SHARES`` in a share, its
     total or a diary line is refused: the code computes these. The loaded
-    spec does not keep a mapping's order, so the chain's declared targets
-    (``lcfs_chain_targets``) fix the order the shares are drawn in.
+    spec does not keep a mapping's order, so the draw's declared targets
+    (``lcfs_draw_targets``) fix the order the shares are drawn in.
     """
 
     declared = _operation_parameters(stage, "derive").get("shares")
@@ -4614,19 +5347,30 @@ def lcfs_donor_shares(
     return dict(UK_LCFS_EXCISE_SHARES)
 
 
-def lcfs_chain_targets(
+def lcfs_draw_targets(
     stage: SourceStageSpec, shares: Mapping[str, object]
 ) -> tuple[str, ...]:
-    """The chain's declared targets, held to the spend targets then the shares."""
+    """The draw's declared targets and budget, held to the module's.
 
-    declared = tuple(
-        _operation_parameters(stage, "fit_weighted_qrf_chain").get("targets", ())
-    )
+    The targets are the spend targets followed by the declared excise shares,
+    and the budget is the twelve COICOP divisions whose sum each household's
+    mix is scaled to (microcosm#1717).
+    """
+
+    parameters = _operation_parameters(stage, UK_LCFS_DRAW_OPERATION)
+    declared = tuple(parameters.get("targets", ()))
     expected = (*UK_LCFS_CONSUMPTION_TARGET_COLUMNS, *shares)
     if declared != expected:
         raise ValueError(
-            f"{stage.stage}: fit_weighted_qrf_chain declares targets {declared}, "
+            f"{stage.stage}: {UK_LCFS_DRAW_OPERATION} declares targets {declared}, "
             f"not the spend targets followed by the declared shares: {expected}."
+        )
+    budget = tuple(parameters.get("budget", ()))
+    if budget != UK_LCFS_COICOP_DIVISION_COLUMNS:
+        raise ValueError(
+            f"{stage.stage}: {UK_LCFS_DRAW_OPERATION} declares the budget "
+            f"{budget}, not the twelve COICOP divisions the draw sums: "
+            f"{UK_LCFS_COICOP_DIVISION_COLUMNS}."
         )
     return expected
 
@@ -4751,8 +5495,8 @@ def clip_excise_shares(
 ) -> tuple[pd.DataFrame, dict[str, int | str]]:
     """Hold each drawn share to [0, 1], counting the draws held.
 
-    The chain draws a share from donor values, which lie in the interval, so
-    the count is zero unless the chain stops doing so.
+    The stage copies each share from its mix donor, whose shares lie in the
+    interval, so the count is zero unless the draw stops doing so.
     """
 
     held = draws.copy()
@@ -4834,14 +5578,22 @@ def clean_lcfs_consumption_table(
     the income margin to the NEED means (shape only, no level) and prices back; without it the energy columns
     are the raw diary spend.
     ``shares`` (the derive step's declared excise shares, microcosm#1359) adds
-    each share as a donor column for the chain, from the diary lines before
+    each share as a donor column for the draw, from the diary lines before
     any of this, and its receipt under ``donor.attrs``.
     """
 
-    person = _lowercase(lcfs_person).rename(columns=PERSON_LCFS_RENAMES)
+    person = _lowercase(lcfs_person)
     household = _lowercase(lcfs_household).rename(columns=HOUSEHOLD_LCFS_RENAMES)
     _require_columns(household, ("case", *HOUSEHOLD_LCFS_RENAMES.values()))
-    _require_columns(person, ("case", *PERSON_LCFS_RENAMES.values()))
+    _require_columns(
+        person,
+        (
+            "case",
+            *(code for codes in PERSON_LCFS_INCOME_CODES.values() for code in codes),
+        ),
+    )
+    for column, codes in PERSON_LCFS_INCOME_CODES.items():
+        person[column] = sum(_numeric(person[code]) for code in codes)
     household["region"] = mapped_lcfs_codes(
         household["region"], LCFS_REGIONS, column="gorx"
     )
@@ -4877,7 +5629,7 @@ def clean_lcfs_consumption_table(
     ]
     for column in annualize:
         household[column] = _numeric(household[column]) * WEEKS_IN_YEAR
-    for column in PERSON_LCFS_RENAMES.values():
+    for column in PERSON_LCFS_INCOME_CODES:
         totals = person.groupby("case")[column].sum()
         household[column] = household["case"].map(totals).fillna(0.0) * WEEKS_IN_YEAR
     household["household_weight"] = _numeric(household["household_weight"]) * 1_000
@@ -4923,7 +5675,7 @@ def clean_lcfs_consumption_table(
 def donor_energy_split_receipt(household: pd.DataFrame) -> dict[str, Any]:
     """The donor's fuel, light and power by fuel: weighted annual diary totals.
 
-    Electricity and gas are what ``derive_energy_from_lcfs`` gives the chain;
+    Electricity and gas are what ``derive_energy_from_lcfs`` gives the draw;
     the other fuels stay in the housing total. Their sum against ``p537``
     shows how much of the published definition the labelled parts reach
     (microcosm#1164), split into what reading refunds as zero adds
@@ -5436,36 +6188,76 @@ def impute_lcfs_consumption(
     n_estimators: int,
     record_ids: Sequence[object] | np.ndarray,
     targets: Sequence[str] = UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
-    gate_calibration: str = "in_sample",
+    support_exempt: Collection[str] = UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT,
 ) -> UKLCFSConsumptionImputationResult:
-    """Chain-draw the targets in the declared order.
+    """Draw each household's budget from a forest and its spending mix from a donor.
 
-    ``bus_fare_spending`` stays a chain target so later targets condition on
-    the same raw draw; the emitted fares are then replaced by the priced
-    value where an area prices (microcosm#930).
+    Drawing the targets one by one, each conditioned on the earlier random
+    draws, compounded the forests' pull towards the middle at the bottom of the
+    income range: on the LCFS holdout (the stage fitted on half the diaries,
+    imputing the other half) the bottom decile's spending came out 13% above
+    its actual (microcosm#1717). No target is drawn on its own here:
 
-    Each draw reads uniforms keyed on the household's own id (``record_ids``,
-    in recipient row order) and the target, never a positional stream, so a
-    household's consumption moves only when its own predictors do.
+    1. The budget, total spending over the twelve COICOP divisions, is the
+       household's keyed quantile of its neighbourhood in a forest fitted to
+       the donors' log total spending on the predictors, read between
+       neighbouring donors' totals.
+    2. The mix comes from one donor, drawn at a second keyed uniform from the
+       household's neighbourhood in a forest fitted to the donors' twelve
+       division shares (each over its weighted standard deviation), with the
+       predictors and log total spending as features: the donor's own total in
+       the fit, the household's budget in the draw. So the mix moves with the
+       budget, as Engel curves have it.
+    3. The household takes that donor's spending scaled to its budget: every
+       spend target times the budget over the donor's total, so the divisions
+       sum to the budget and each part (fuels, fares, energy) keeps the donor's
+       share of its division. The excise shares are the donor's own.
+    4. The basket stays inside the donor's range on every spend target the
+       support clip bounds, so the clip that follows changes nothing. A
+       household whose donor's basket, scaled to its budget, would leave that
+       range keeps its budget and takes a donor drawn afresh, at a third keyed
+       uniform, from the neighbours whose scaled basket stays inside. A
+       household none of whose neighbours fits keeps its donor and takes the
+       budget nearest its own that the donor's basket allows.
+
+    On the holdout this puts every decile within 5% of its actual (the bottom
+    at 0.97), keeps the spread of spending among similar households and the
+    correlations between divisions, and on the stage's own input leaves 0.5%
+    of households sharing a basket with another: mixes repeat (34,953 frame
+    households on 4,995 donors), budgets do not.
+
+    Both forests are fitted on the donors alone and every draw reads uniforms
+    keyed on the household's own id (``record_ids``, in recipient row order),
+    so a household's spending moves only when its own predictors do.
     ``targets`` is the spend targets, optionally followed by the declared
-    excise shares (microcosm#1359): a target appended after them leaves every
-    earlier draw as it was. ``gate_calibration`` is the chain's declared
-    :class:`~microcosm.fit.GateCalibration`: cross-fitted gates draw a rare
-    spending at the donor's rate on households they were not fitted to, and
-    move no forest and no uniform.
+    excise shares (microcosm#1359). A donor with no spending gives no mix.
+    ``support_exempt`` names the spend targets the support clip leaves
+    unbounded (the declared ``support_clip`` exemptions).
+
+    A household with a negative income, a self-employment loss say, draws
+    like any other: both forests read the income predictors as values, so a
+    negative income sorts with the donors at the bottom of every split on
+    income, those with the lowest incomes the survey records. Matching each
+    survey's bottom tail to the other's by income rank is left for
+    microcosm#1717.
+
+    The result names each household's mix donor and the households the
+    range step redrew or moved to another budget, for the stage's receipts.
     """
 
+    from microcosm.fit.donors import (
+        forest_neighbourhoods,
+        keyed_neighbour_donors,
+        keyed_neighbour_quantiles,
+    )
+
     targets = tuple(targets)
-    if targets[: len(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)] != (
-        UK_LCFS_CONSUMPTION_TARGET_COLUMNS
-    ):
+    spend = UK_LCFS_CONSUMPTION_TARGET_COLUMNS
+    if targets[: len(spend)] != spend:
         raise ValueError(
-            "The LCFS chain draws its spend targets first, in their declared "
+            "The LCFS draw takes its spend targets first, in their declared "
             f"order, then any excise shares; got {targets}."
         )
-
-    from microcosm.fit import RegimeGatedQRF
-
     donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
         donor, recipient_predictor_frame
     )
@@ -5474,42 +6266,229 @@ def impute_lcfs_consumption(
         raise ValueError(
             "LCFS record_ids must name every recipient once, in recipient row order."
         )
-    model = RegimeGatedQRF(
-        n_estimators=n_estimators, seed=seed, gate_calibration=gate_calibration
+    weights = pd.to_numeric(donor["household_weight"], errors="coerce").to_numpy(
+        dtype=float
     )
-    state = model.start_chain(
-        donor_encoded,
-        list(predictors),
-        list(targets),
-        weights="household_weight",
+    donor_features = donor_encoded.loc[:, list(predictors)].to_numpy(dtype=float)
+    recipient_features = recipient_encoded.loc[:, list(predictors)].to_numpy(
+        dtype=float
     )
-    raw = pd.DataFrame(index=recipient_encoded.index)
-    draws = pd.DataFrame(index=recipient_encoded.index)
-    fit_records: list[FitWeightRecord] = []
-    outcomes: dict[str, str] = {}
-    for target in targets:
-        features = recipient_encoded.loc[:, list(predictors)]
-        salt = f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}"
-        result = model.fit_draw_next(
-            donor_encoded,
-            features,
-            raw,
-            state=state,
-            weights="household_weight",
-            quantiles=stable_identity_uniforms(ids, seed=seed, salt=salt),
-            sign_uniforms=stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:sign"),
+    divisions = donor.loc[:, list(UK_LCFS_COICOP_DIVISION_COLUMNS)].to_numpy(
+        dtype=float
+    )
+    donor_total = divisions.sum(axis=1)
+    log_total = np.log1p(np.clip(donor_total, 0.0, None))
+    has_mix = donor_total > 0
+    if not has_mix.any():
+        raise ValueError("No LCFS donor has any spending to give a mix.")
+    shares = np.divide(
+        divisions,
+        donor_total[:, None],
+        out=np.zeros_like(divisions),
+        where=has_mix[:, None],
+    )
+    centre = np.average(shares[has_mix], axis=0, weights=weights[has_mix])
+    spread = np.sqrt(
+        np.average((shares[has_mix] - centre) ** 2, axis=0, weights=weights[has_mix])
+    )
+    budget_neighbourhoods = forest_neighbourhoods(
+        donor_features,
+        log_total,
+        recipient_features,
+        donor_weights=weights,
+        n_estimators=n_estimators,
+        seed=seed,
+    )
+    salt = UK_LCFS_CONSUMPTION_FIT_NAME
+    budget = np.expm1(
+        keyed_neighbour_quantiles(
+            budget_neighbourhoods,
+            log_total,
+            stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:budget"),
         )
-        raw[target] = result.raw_draw
-        draws[target] = result.raw_draw
-        fit_records.append(
-            FitWeightRecord(
-                f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}", result.weight_kind
+    )
+    mix_neighbourhoods = forest_neighbourhoods(
+        np.column_stack([donor_features, log_total]),
+        shares / np.where(spread > 0, spread, 1.0),
+        np.column_stack([recipient_features, np.log1p(budget)]),
+        donor_weights=np.where(has_mix, weights, 0.0),
+        n_estimators=n_estimators,
+        seed=seed,
+    )
+    chosen = keyed_neighbour_donors(
+        mix_neighbourhoods,
+        stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:mix"),
+    )
+    donor_spend = donor.loc[:, list(spend)].to_numpy(dtype=float)
+    exempt = set(support_exempt)
+    bounded = [
+        position for position, column in enumerate(spend) if column not in exempt
+    ]
+    lower, upper = _donor_support_bounds(donor, [spend[p] for p in bounded])
+    first_chosen, first_budget = chosen, budget
+    chosen, budget = _keep_baskets_in_support(
+        mix_neighbourhoods,
+        chosen,
+        budget,
+        donor_spend=donor_spend[:, bounded],
+        donor_total=donor_total,
+        lower=lower,
+        upper=upper,
+        uniforms=stable_identity_uniforms(ids, seed=seed, salt=f"{salt}:mix-support"),
+    )
+    scale = budget / donor_total[chosen]
+    draws = pd.DataFrame(
+        donor_spend[chosen] * scale[:, None],
+        columns=list(spend),
+        index=recipient_encoded.index,
+    )
+    for share in targets[len(spend) :]:
+        draws[share] = donor[share].to_numpy(dtype=float)[chosen]
+    return UKLCFSConsumptionImputationResult(
+        draws,
+        (
+            FitWeightRecord(f"{UK_LCFS_CONSUMPTION_FIT_NAME}:budget", EXPLICIT_KIND),
+            FitWeightRecord(f"{UK_LCFS_CONSUMPTION_FIT_NAME}:mix", EXPLICIT_KIND),
+        ),
+        mix_donors=np.asarray(chosen),
+        redrawn=np.asarray(chosen) != np.asarray(first_chosen),
+        moved_budget=np.asarray(budget) != np.asarray(first_budget),
+    )
+
+
+#: Candidate baskets checked against the donor's range at a time (memory bound).
+_SUPPORT_CHECK_CHUNK = 1 << 16
+
+
+def _donor_support_bounds(
+    donor: pd.DataFrame, columns: Sequence[str]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each column's donor range, read as ``support_clip_to_donor`` reads it.
+
+    The finite minimum and maximum over every donor row; a column with no
+    finite value has no bounds.
+    """
+
+    lower = np.full(len(columns), -np.inf)
+    upper = np.full(len(columns), np.inf)
+    for position, column in enumerate(columns):
+        values = pd.to_numeric(donor[column], errors="coerce")
+        finite = values[np.isfinite(values)]
+        if not finite.empty:
+            lower[position] = float(finite.min())
+            upper[position] = float(finite.max())
+    return lower, upper
+
+
+def _outside_support(
+    donor_spend: np.ndarray,
+    donor_total: np.ndarray,
+    donors: np.ndarray,
+    budgets: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+) -> np.ndarray:
+    """Whether each donor's basket, scaled to its budget, leaves the bounds.
+
+    The scaling is the draw's own, so the test reads the values the draw writes.
+    """
+
+    values = donor_spend[donors] * (budgets / donor_total[donors])[:, None]
+    return ((values < lower) | (values > upper)).any(axis=1)
+
+
+def _nearest_supported_budget(
+    donor_spend: np.ndarray,
+    donor_total: np.ndarray,
+    donors: np.ndarray,
+    budgets: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+) -> np.ndarray:
+    """Each budget moved to the nearest one its donor's basket allows.
+
+    Every bounded target the donor spends on bounds the scale of its basket
+    on both sides; the donor's own total meets every bound.
+    """
+
+    values = donor_spend[donors]
+    total = donor_total[donors][:, None]
+    binding = np.isfinite(values) & (values != 0)
+    safe = np.where(binding, values, 1.0)
+    at_lower = lower * total / safe
+    at_upper = upper * total / safe
+    low = np.where(binding, np.minimum(at_lower, at_upper), -np.inf).max(axis=1)
+    high = np.where(binding, np.maximum(at_lower, at_upper), np.inf).min(axis=1)
+    return np.minimum(np.maximum(budgets, low), high)
+
+
+def _keep_baskets_in_support(
+    neighbourhoods: Any,
+    chosen: np.ndarray,
+    budget: np.ndarray,
+    *,
+    donor_spend: np.ndarray,
+    donor_total: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    uniforms: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Mix donors and budgets whose scaled baskets stay inside the donor's range.
+
+    Step 4 of :func:`impute_lcfs_consumption`. A household whose donor's basket,
+    scaled to its budget, leaves the range on some bounded spend target is
+    redrawn, at its own ``uniforms`` entry, from the neighbours whose scaled
+    basket stays inside. Redrawing only those households draws each from its
+    neighbourhood restricted to the donors that fit, as restricting every
+    neighbourhood would, and a household whose first donor fits keeps it. A
+    household none of whose neighbours fits keeps its donor and takes the
+    budget nearest its own that the donor's basket allows. Rounding at a bound
+    can leave that basket a hair outside; the household then takes its donor's
+    own total, whose basket is the donor's own and so inside.
+    """
+
+    from scipy import sparse
+
+    from microcosm.fit.donors import keyed_neighbour_donors
+
+    chosen, budget = chosen.copy(), budget.copy()
+    leaving = np.flatnonzero(
+        _outside_support(donor_spend, donor_total, chosen, budget, lower, upper)
+    )
+    if leaving.size == 0:
+        return chosen, budget
+    candidates = sparse.csr_matrix(neighbourhoods)[leaving]
+    rows = np.repeat(np.arange(leaving.size), np.diff(candidates.indptr))
+    fits = np.empty(candidates.nnz, dtype=bool)
+    for start in range(0, candidates.nnz, _SUPPORT_CHECK_CHUNK):
+        part = slice(start, start + _SUPPORT_CHECK_CHUNK)
+        fits[part] = ~_outside_support(
+            donor_spend,
+            donor_total,
+            candidates.indices[part],
+            budget[leaving[rows[part]]],
+            lower,
+            upper,
+        )
+    candidates.data = np.where(fits, candidates.data, 0.0)
+    candidates.eliminate_zeros()
+    redrawn = np.diff(candidates.indptr) > 0
+    if redrawn.any():
+        chosen[leaving[redrawn]] = keyed_neighbour_donors(
+            candidates[redrawn], uniforms[leaving[redrawn]]
+        )
+    stuck = leaving[~redrawn]
+    if stuck.size:
+        budget[stuck] = _nearest_supported_budget(
+            donor_spend, donor_total, chosen[stuck], budget[stuck], lower, upper
+        )
+        rounded = stuck[
+            _outside_support(
+                donor_spend, donor_total, chosen[stuck], budget[stuck], lower, upper
             )
-        )
-        if gate_calibration != UK_DEFAULT_GATE_CALIBRATION:
-            outcomes.update(gate_outcomes(UK_LCFS_CONSUMPTION_FIT_NAME, result.fitted))
-        state = result.state
-    return UKLCFSConsumptionImputationResult(draws, tuple(fit_records), outcomes)
+        ]
+        budget[rounded] = donor_total[chosen[rounded]]
+    return chosen, budget
 
 
 def support_clip_to_donor(
@@ -5658,18 +6637,18 @@ def _operation_seed(stage: SourceStageSpec, kind: str) -> int:
     return 0
 
 
-def _qrf_n_estimators(stage: SourceStageSpec) -> int:
-    for operation in stage.operations:
-        if operation.kind == "fit_weighted_qrf_chain":
-            value = operation.parameters.get("n_estimators", 100)
-            if isinstance(value, int) and value > 0:
-                return value
-    return 100
+def _draw_n_estimators(stage: SourceStageSpec) -> int:
+    """Trees in each of the draw's two forests, as declared (100 when unset)."""
 
-
-def _qrf_gate_calibration(stage: SourceStageSpec) -> str:
-    """The chain's declared gate calibration; the in-sample gate when undeclared."""
-    return declared_gate_calibration(stage, "fit_weighted_qrf_chain")
+    value = _operation_parameters(stage, UK_LCFS_DRAW_OPERATION).get(
+        "n_estimators", 100
+    )
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(
+            f"{stage.stage}: {UK_LCFS_DRAW_OPERATION} declares n_estimators "
+            f"{value!r}, not a positive integer."
+        )
+    return value
 
 
 def _require_path(path: str | Path | None) -> Path:

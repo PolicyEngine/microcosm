@@ -837,10 +837,13 @@ lock unchanged:
     by less than the copy the context no longer holds: from projection to
     the kernel's `Frame`, on an invented table of 20 float64 and 2 int64
     columns, the peak goes from 3.45x the columns read to 2.86x, while what
-    stays held goes from 2.20x to 1.11x. Copying each dtype's columns
-    straight into one new block, and adopting it without a second copy,
-    would lower that peak; that change belongs to the kernels' own copies
-    (`_minimal_frame`, `context_frame`), not to the executor. And a
+    stays held goes from 2.20x to 1.11x. The UK kernels' own copies
+    (`_minimal_frame`, `context_frame`) now copy each column once, straight
+    into its place in the block layout that merge gives
+    (`microcosm.frame.table_copies.copy_table`), and build the `Frame`
+    with `Frame.adopt`, which keeps the copies without a second one; on the
+    same table the peak is then 1.29x the columns read, and 1.09x stays
+    held. The transport and US kernels' copies still merge. And a
     kernel that runs a BLAS product directly on input columns sees them at
     their offsets in the population's blocks rather than in a fresh copy,
     which on Apple's Accelerate can move the last bit of `np.dot`.

@@ -322,6 +322,38 @@ def test_a_view_runs_the_logical_entity_on_selected_rows_only(monkeypatch):
     assert engine.compiled.count("Child") == 1
 
 
+def _integer_amount(amount):
+    """A program function whose declared-decimal ``child_amount`` is int64."""
+
+    def function(age, income):
+        values = f(age, income)
+        values["child_amount"] = np.asarray(amount(age), dtype=np.int64)
+        return values
+
+    return function
+
+
+def test_a_view_scatters_an_int64_decimal_as_float64(monkeypatch):
+    """The engine can return int64 for a declared decimal; the scatter widens it."""
+    program = _child_program(function=_integer_amount(lambda age: age * 10))
+    adapter, _ = _adapter(monkeypatch, {"Child": program})
+    result = adapter.materialize(
+        _frame([True, False, True, True, False]), ["child_amount"], "2025"
+    )
+    assert program.calls[-1]["outputs"] == ["child_amount"]
+    assert result["child_amount"].dtype == np.float64
+    assert result["child_amount"].tolist() == [0.0, -7.5, 20.0, 30.0, -7.5]
+
+
+def test_a_view_refuses_an_int64_decimal_float64_cannot_hold(monkeypatch):
+    program = _child_program(
+        function=_integer_amount(lambda age: np.full(age.shape, 2**53 + 1))
+    )
+    adapter, _ = _adapter(monkeypatch, {"Child": program})
+    with pytest.raises(ValueError, match=r"'child_amount'.*outside -2\*\*53"):
+        adapter.materialize(_frame([True, False, True]), ["child_amount"], "2025")
+
+
 def test_a_view_output_resolves_to_the_person_entity(monkeypatch):
     adapter, _ = _adapter(monkeypatch)
     metadata = adapter.variable_metadata("child_amount")

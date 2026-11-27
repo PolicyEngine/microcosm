@@ -58,16 +58,19 @@ import importlib.metadata
 import importlib.util
 import json
 import math
+import pickle
 import platform
 import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 import time
 import tomllib
 import traceback
 import uuid
-from collections.abc import Callable, Iterable, Mapping, Sequence
+import weakref
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from importlib.resources import files as package_files
@@ -98,12 +101,15 @@ from microcosm.build.gates import (
     target_profile_coverage_gate,
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.run_outcome import classify_failure
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
 from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
+from microcosm.build.staging_storage import confirm_and_report_final_commit
 from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     start_local_telemetry_emitter_service,
 )
+from microcosm.build.termination import BuildTerminatedError, raise_on_sigterm
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -360,10 +366,14 @@ from microcosm.build.us_runtime.population_structure_holdout import (
     population_structure_holdout_unavailable,
     write_population_structure_holdout,
 )
+from microcosm.build.us_runtime.post_export_requests import (
+    RECORDS_REQUESTS_ONLY,
+    PostExportRequest,
+    check_post_export_reform,
+)
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
-from microcosm.build.us_runtime.reform_coverage_smoke import RECORDS_REQUESTS_ONLY
 from microcosm.build.us_runtime.reform_validation import (
     US_RELEASE_SPM_SELECTION,
     default_baseline_level_specs,
@@ -1827,7 +1837,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional local path to the sha-pinned SIPP 2023 slim CSV that "
             "feeds tip_income and Treasury tipped-occupation coverage. When "
-            "omitted the immutable donor revision is fetched and verified."
+            "omitted the donor is fetched from tag 1.115.5 and verified."
         ),
     )
     parser.add_argument(
@@ -1837,7 +1847,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Optional local path to the sha-pinned full SIPP 2023 public-use "
             "file that feeds financial assets, SSI disability criteria, "
             "household vehicle count/value, and measured voluntary tax filing. "
-            "When omitted the immutable donor revision is fetched and verified."
+            "When omitted the donor is fetched from tag 1.115.5 and verified."
         ),
     )
     parser.add_argument(
@@ -2046,12 +2056,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--staging-run-id",
         help="Override the staging run id. Defaults to the candidate release id.",
-    )
-    parser.add_argument(
-        "--staging-upload-interval-seconds",
-        type=float,
-        default=30.0,
-        help="Minimum seconds between progress uploads to the staging repo.",
     )
     parser.add_argument(
         _DRY_RUN_REPORT_FLAG,
@@ -5074,13 +5078,23 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 # * the WRITTEN H5 is loaded once (its sha256 bound to the bytes read) and
 #   split once into household batches; every group entity must nest in one
 #   household and the batches must partition every entity, or the scorer
-#   refuses before any engine exists;
+#   refuses before any engine exists. Each batch is then written to its own
+#   file, with the sha256 of its bytes recorded, and the frames are freed; a
+#   pass reads each batch back from its file and refuses one whose bytes
+#   changed, so the process that scores holds no frame of the H5 between
+#   batches (``_PostExportBatchFiles``);
 # * every construction declares ``spm=US_RELEASE_SPM_SELECTION``;
-# * a consumer's baseline requests are learned by an engine-free recording
-#   dry run and scored in ONE batch-outer pass, in ascending period order;
-#   the served baseline refuses any key outside that recorded plan;
-# * each reform builds ONE tax-benefit system (microcosm#456) and scores its
-#   keys batch by batch; every batch engine is released before the next;
+# * each consumer's baseline requests are learned by an engine-free recording
+#   dry run; the scorer registers the recorded plans and scores their union
+#   in ONE batch-outer pass, in ascending period order, serving each consumer
+#   its own keys (microcosm#1595). A consumer without a registered plan, and
+#   every consumer once that pass has failed, scores its own plan in a pass
+#   of its own; a refused batch file (``PostExportBatchFileError``) is raised
+#   at once instead. The served baseline refuses any key outside the
+#   consumer's recorded plan;
+# * each reform builds ONE tax-benefit system (microcosm#456) and scores each
+#   key, or each set of keys it is asked to ``prefetch``, in one pass, batch
+#   by batch; every batch engine is released before the next;
 # * a batch reform engine gets that system alone, not ``reform=`` too (see
 #   ``_HouseholdBatchedPostExportScorer._construct``), so it carries no
 #   ``baseline`` branch; it refuses the formulas that read one
@@ -5100,7 +5114,9 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 # a batch-local aggregate.
 
 #: Recorded in ``post_export_scoring`` blocks; bump with any change to how the
-#: written H5 is scored.
+#: written H5 is scored that can change a scored value. Regrouping keys into
+#: fewer passes while every value stays byte-identical (the merged baseline
+#: pass and the shared pre-OBBBA pass, microcosm#1595) keeps it.
 POST_EXPORT_SCORING_METHOD = "household_batched_written_h5"
 
 #: One scored request: (variable, period, map_to).
@@ -5265,50 +5281,175 @@ def _post_export_values_and_weights(result, key: PostExportKey):
 
 
 class _RecordingPostExportSimulation:
-    """Engine-free stand-in that records the baseline keys a consumer asks for."""
+    """Engine-free stand-in that records each key one simulation is asked for.
 
-    def __init__(self, keys: dict[PostExportKey, None] | None) -> None:
-        self._keys = keys
+    ``asked`` is shared by every recorder of one dry run: it collects
+    ``(simulation, key)`` in the order the serial scorer computes them, where
+    ``simulation`` is the reformed simulation's number, or ``None`` for the
+    baseline. ``reforms`` is the dry run's list of the reforms opened so far,
+    also shared, so a reformed simulation's recorder refuses every key once a
+    later one is opened, as the scorer refuses a finished
+    ``_BatchedPostExportReform``. ``reform_passes``, also shared, gets one
+    entry per batched reform pass: when the consumer runs for real, each
+    ``calculate`` or ``prefetch`` that asks a reformed simulation for a key it
+    was not asked before is one pass of ``_BatchedPostExportReform``, which
+    computes the new keys in ascending period order.
+    """
+
+    def __init__(
+        self,
+        asked: dict[tuple[int | None, PostExportKey], None],
+        simulation: int | None,
+        reforms: Sequence[object],
+        reform_passes: list[int],
+    ) -> None:
+        self._asked = asked
+        self._simulation = simulation
+        self._reforms = reforms
+        self._reform_passes = reform_passes
 
     def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
-        key = _post_export_key(variable, period, map_to)
-        if self._keys is not None:
-            self._keys.setdefault(key, None)
+        self._record((_post_export_key(variable, period, map_to),))
         return _PostExportValues(np.zeros(0), np.zeros(0))
+
+    def prefetch(self, requests) -> None:
+        """Record ``requests`` as ``_BatchedPostExportReform.prefetch`` scores them."""
+        self._record(tuple(_post_export_key(*request) for request in requests))
+
+    def _record(self, keys: Sequence[PostExportKey]) -> None:
+        latest = len(self._reforms) - 1
+        if self._simulation is not None and self._simulation != latest:
+            asked_for = keys[0] if len(keys) == 1 else tuple(keys)
+            raise RuntimeError(
+                f"A post-export consumer asked reformed simulation "
+                f"{self._simulation} for {asked_for} after opening reformed "
+                f"simulation {latest}. The scorer finishes a reformed simulation "
+                "when the consumer opens the next one and refuses it further "
+                "keys, so a consumer asks each reformed simulation for all its "
+                "keys before opening the next."
+            )
+        new_keys = _ascending_period_plan(
+            key for key in keys if (self._simulation, key) not in self._asked
+        )
+        self._asked.update(dict.fromkeys((self._simulation, key) for key in new_keys))
+        if new_keys and self._simulation is not None:
+            self._reform_passes.append(self._simulation)
+
+
+def _dry_run_post_export_requests(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[tuple[int | None, object, PostExportKey], ...]:
+    """Every request ``consumer`` makes, learned from engine-free recorders.
+
+    Returns ``(simulation, reform, key)`` for each request, in the order the
+    serial scorer runs them: the baseline plan first (``reform`` and
+    ``simulation`` None; ``_ascending_period_plan`` order), then the reform
+    requests. When the consumer runs for real, each ``calculate`` or
+    ``prefetch`` that asks a reformed simulation for keys it was not asked
+    before is one batched pass (``_BatchedPostExportReform``), which computes
+    those keys in ascending period order, so the reform requests follow that
+    order; ``simulation`` numbers the consumer's ``simulate(reform)`` calls
+    from 0. ``_dry_run_post_export`` also counts the passes.
+
+    No engine is constructed: ``simulate(None)`` returns a recorder that logs
+    every baseline request, and each ``simulate(reform)`` a recorder of its
+    own. The consumers ask for the same keys whatever values they get back,
+    and the served baseline refuses any key this dry run did not see, so a
+    value-dependent request cannot slip past the plan. ``simulate`` carries
+    ``RECORDS_REQUESTS_ONLY``, so each consumer hands it the description it
+    builds a reform from instead of building the reform (the reform-coverage
+    smoke check's probe, a reform-validation spec or a cumulative OBBBA
+    state's parameter changes), and the dry run resolves no list edit against
+    an engine. A reform given as anything else is refused
+    (``check_post_export_reform``): a worker process could not rebuild it.
+    So is a key asked of a reformed simulation after the consumer opened the
+    next one, which the scorer refuses too (``_BatchedPostExportReform``).
+    """
+    return _dry_run_post_export(consumer)[0]
+
+
+def _dry_run_post_export(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[tuple[tuple[int | None, object, PostExportKey], ...], int]:
+    """``_dry_run_post_export_requests``'s requests and the number of batched
+    reform passes the scorer runs for them: one per ``calculate`` or
+    ``prefetch`` that asks a reformed simulation for a key not asked of it
+    before, so a ``prefetch`` of several keys is one pass."""
+    asked: dict[tuple[int | None, PostExportKey], None] = {}
+    reforms: list[object] = []
+    reform_passes: list[int] = []
+
+    def simulate(reform):
+        if reform is None:
+            return _RecordingPostExportSimulation(asked, None, reforms, reform_passes)
+        check_post_export_reform(reform)
+        reforms.append(reform)
+        return _RecordingPostExportSimulation(
+            asked, len(reforms) - 1, reforms, reform_passes
+        )
+
+    setattr(simulate, RECORDS_REQUESTS_ONLY, True)
+    consumer(simulate)
+    baseline = _ascending_period_plan(
+        key for simulation, key in asked if simulation is None
+    )
+    requests = (
+        *((None, None, key) for key in baseline),
+        *(
+            (simulation, reforms[simulation], key)
+            for simulation, key in asked
+            if simulation is not None
+        ),
+    )
+    return requests, len(reform_passes)
+
+
+def _record_post_export_request_descriptors(
+    name: str, consumer: Callable[[Callable[[Any], Any]], object]
+) -> tuple[PostExportRequest, ...]:
+    """Every request of the consumer ``name`` as a picklable descriptor.
+
+    One ``PostExportRequest`` per request of the engine-free dry run
+    (``_dry_run_post_export_requests``), in the order the serial scorer runs
+    them, so a spawned worker process can run each request. The results are
+    the values each request calculates; a consumer's output also holds what
+    it reads off the reforms it builds itself (the smoke check records each
+    list-edit probe's resolved lists from its built reform), so rebuilding an
+    output means running the consumer again over the results. Nothing records
+    the descriptors: the plan in ``calibration_diagnostics.json`` keeps its
+    keys only.
+    """
+    return tuple(
+        PostExportRequest(
+            consumer=name,
+            position=position,
+            variable=variable,
+            period=period,
+            map_to=map_to,
+            reform=reform,
+            reformed_simulation=simulation,
+        )
+        for position, (simulation, reform, (variable, period, map_to)) in enumerate(
+            _dry_run_post_export_requests(consumer)
+        )
+    )
 
 
 def _record_post_export_requests(
     consumer: Callable[[Callable[[Any], Any]], object],
 ) -> tuple[tuple[PostExportKey, ...], int]:
-    """Learn a consumer's baseline keys and reform pass count from recorders.
+    """Learn a consumer's baseline keys and reform pass count from its dry run.
 
-    No engine is constructed: ``simulate(None)`` returns a recorder that
-    logs every baseline request, and each ``simulate(reform)`` a recorder of
-    its own. The consumers ask for the same keys whatever values they get
-    back, and the served baseline refuses any key this dry run did not see,
-    so a value-dependent request cannot slip past the plan. ``simulate``
-    carries ``RECORDS_REQUESTS_ONLY``, so the reform-coverage smoke gate hands
-    it each probe instead of building the probe's reform, and the dry run
-    resolves no list edit against an engine.
-
-    When the consumer runs for real, each key a reformed simulation is first
-    asked for is one batched pass (``_BatchedPostExportReform``), so the pass
-    count is the distinct keys asked of each reformed simulation, summed.
-    Progress reporting alone uses it: a consumer that runs more passes than
-    counted reports no outer counter on the extra ones.
+    The baseline keys are the plan the served baseline scores. The pass count
+    is the batched reform passes the scorer runs for the dry run's reform
+    requests (``_dry_run_post_export``): a ``prefetch`` of several keys of one
+    reformed simulation is one pass. Progress reporting alone uses the count:
+    a consumer that runs more passes than counted reports no outer counter on
+    the extra ones.
     """
-    keys: dict[PostExportKey, None] = {}
-    reform_keys: list[dict[PostExportKey, None]] = []
-
-    def simulate(reform):
-        if reform is None:
-            return _RecordingPostExportSimulation(keys)
-        reform_keys.append({})
-        return _RecordingPostExportSimulation(reform_keys[-1])
-
-    setattr(simulate, RECORDS_REQUESTS_ONLY, True)
-    consumer(simulate)
-    return _ascending_period_plan(keys), sum(len(asked) for asked in reform_keys)
+    requests, reform_passes = _dry_run_post_export(consumer)
+    baseline = tuple(key for simulation, _, key in requests if simulation is None)
+    return baseline, reform_passes
 
 
 def _record_post_export_baseline_plan(
@@ -5659,6 +5800,122 @@ def _post_export_consumers(
     return consumers
 
 
+#: The directory in a build's ``--out`` in which certification's post-export
+#: scorer makes its own directory for its household batch files while it
+#: scores. The scorer removes its directory, and this one once empty if it
+#: made it, when it closes or is freed; placing a build for certification
+#: removes the scorer directories an attempt that was killed left there
+#: (``_place_build_for_certification``).
+US_POST_EXPORT_BATCH_DIRECTORY = "post_export_batches"
+
+#: The start of the name of each scorer's own batch directory.
+_POST_EXPORT_BATCH_DIRECTORY_PREFIX = "post-export-batches-"
+
+
+class PostExportBatchFileError(RuntimeError):
+    """A post-export batch file changed or cannot be read; the batch is refused.
+
+    Not a measurement that cannot be made: the held-out reports, which record
+    those as unavailable, raise this (``_write_ssi_social_security_holdout``,
+    ``_write_medicare_irmaa_holdout``).
+    """
+
+
+def _new_post_export_batch_directory(
+    batch_parent: Path | None,
+) -> tuple[Path, Path | None]:
+    """A new directory for one scorer's batch files, and the parent it made.
+
+    The directory is new and uniquely named inside ``batch_parent`` (the
+    system's temporary directory without one), so a scorer only ever removes
+    files it wrote, even when an earlier scorer used the same parent. The
+    parent is made if it does not exist, and is then returned, so that the
+    scorer can remove it again once it is empty.
+    """
+    made_parent = None
+    if batch_parent is not None:
+        batch_parent = Path(batch_parent)
+        try:
+            batch_parent.mkdir(parents=True)
+        except FileExistsError:
+            pass
+        else:
+            made_parent = batch_parent
+    directory = Path(
+        tempfile.mkdtemp(prefix=_POST_EXPORT_BATCH_DIRECTORY_PREFIX, dir=batch_parent)
+    )
+    return directory, made_parent
+
+
+def _remove_post_export_batch_files(directory: Path, made_parent: Path | None) -> None:
+    """Remove a scorer's batch directory, and the parent it made once empty."""
+    shutil.rmtree(directory, ignore_errors=True)
+    if made_parent is not None:
+        try:
+            made_parent.rmdir()
+        except OSError:
+            # Not empty: another scorer's directory, or files someone else
+            # put there, which this scorer did not write.
+            pass
+
+
+class _PostExportBatchFiles(Sequence):
+    """The written H5's household batches, each kept in its own file.
+
+    Built from the batch frames the scorer selected from the H5 it loaded
+    once, bound to the H5's sha256: each frame is pickled to its own file in
+    ``directory`` and the sha256 of the bytes written is recorded. Indexing
+    reads one batch back as a new frame, which the caller frees once it has
+    scored the batch, so between batches only the files' paths and digests
+    are held. A file's bytes must hash to the recorded digest before they are
+    unpickled, so only bytes this process wrote are loaded and a batch file
+    that changed is refused. Unpickling gives back the same tables, dtypes,
+    index, values, weights and strata, so every batch scores the values the
+    in-memory batch did. (A plain class, for the reason
+    :class:`_PostExportScoringPlan` gives.)
+    """
+
+    def __init__(self, directory: Path, batch_frames: Sequence[Frame]) -> None:
+        self.directory = Path(directory)
+        files: list[tuple[Path, str]] = []
+        for number, batch_frame in enumerate(batch_frames):
+            payload = pickle.dumps(batch_frame, protocol=pickle.HIGHEST_PROTOCOL)
+            path = self.directory / f"batch-{number:05d}.pickle"
+            path.write_bytes(payload)
+            files.append((path, hashlib.sha256(payload).hexdigest()))
+            del payload
+        self._files = tuple(files)
+
+    def __len__(self) -> int:
+        return len(self._files)
+
+    def __iter__(self) -> Iterator[Frame]:
+        # By position, not the Sequence default, which ends at the first
+        # IndexError: one raised while reading a batch would end the pass
+        # early, leaving later batches unscored.
+        for position in range(len(self._files)):
+            yield self[position]
+
+    def __getitem__(self, position: int) -> Frame:
+        if isinstance(position, slice):
+            raise TypeError("Post-export batches are read one at a time.")
+        path, sha256 = self._files[position]
+        try:
+            payload = path.read_bytes()
+        except OSError as error:
+            raise PostExportBatchFileError(
+                f"Post-export batch file {path} cannot be read ({error}); the "
+                "batch is refused."
+            ) from error
+        observed = hashlib.sha256(payload).hexdigest()
+        if observed != sha256:
+            raise PostExportBatchFileError(
+                f"Post-export batch file {path} has SHA-256 {observed}, not the "
+                f"{sha256} the scorer wrote; the batch is refused."
+            )
+        return pickle.loads(payload)
+
+
 class _HouseholdBatchedPostExportScorer:
     """Scores the written release H5 in household batches (see the block
     comment above). One instance serves every post-export consumer."""
@@ -5669,10 +5926,16 @@ class _HouseholdBatchedPostExportScorer:
         *,
         maximum_microsim_batch_size: int | None,
         expected_n_households: int | None = None,
+        batch_parent: Path | None = None,
         microsimulation_cls=None,
         dataset_from_frame=None,
         load_frame=None,
+        baseline_plans: Mapping[str, Sequence[PostExportKey]] | None = None,
     ) -> None:
+        """``baseline_plans`` registers consumers' recorded baseline plans by
+        name: the first of them opened scores the union of every registered
+        plan in one batch-outer pass, and each is served its own keys from it
+        (``_baseline_for``)."""
         self.dataset_path = Path(dataset_path)
         self.maximum_batch_size = maximum_microsim_batch_size
         # The scored bytes are bound to this digest: the loader refuses a file
@@ -5701,11 +5964,29 @@ class _HouseholdBatchedPostExportScorer:
         )
         _assert_post_export_batching_premises(frame, batch_frames)
         del frame
-        self._batch_frames: tuple[Frame, ...] | None = batch_frames
         self.n_batches = len(batch_frames)
         self.max_batch_households = max(
             (batch.n("household") for batch in batch_frames), default=0
         )
+        # The batches go to files in a new directory of this scorer's own,
+        # made inside ``batch_parent`` (or the system's temporary directory),
+        # and the frames are freed; ``_batches()`` reads each back when a pass
+        # scores it. The directory is removed when the scorer closes, is freed
+        # or the interpreter exits.
+        self.batch_directory, made_parent = _new_post_export_batch_directory(
+            batch_parent
+        )
+        self._remove_batch_files = weakref.finalize(
+            self, _remove_post_export_batch_files, self.batch_directory, made_parent
+        )
+        try:
+            self._batch_frames: _PostExportBatchFiles | None = _PostExportBatchFiles(
+                self.batch_directory, batch_frames
+            )
+        except BaseException:
+            self._remove_batch_files()
+            raise
+        del batch_frames
         if microsimulation_cls is None:
             from policyengine_us import Microsimulation
 
@@ -5726,6 +6007,17 @@ class _HouseholdBatchedPostExportScorer:
         # Each finished consumer's scoring record, for the manifests' block.
         # Records, not consumers: a finished consumer's arrays must be freed.
         self.consumer_records: dict[str, dict[str, object]] = {}
+        # Every registered plan, which an opened consumer must match; the
+        # non-empty ones not yet served; and the merged pass's values of the
+        # keys those still need (None until that pass runs).
+        self._registered_baseline_plans: dict[str, tuple[PostExportKey, ...]] = {
+            name: tuple(plan) for name, plan in (baseline_plans or {}).items()
+        }
+        self._unserved_baseline_plans = {
+            name: plan for name, plan in self._registered_baseline_plans.items() if plan
+        }
+        self._merged_baseline: dict[PostExportKey, _PostExportValues] | None = None
+        self._merged_baseline_failed = False
         # The reform last handed to any consumer. Consumers run one after
         # another, so at most one reform's system and rule modules are held;
         # opening the next reform, finishing its consumer or closing the scorer
@@ -5738,7 +6030,8 @@ class _HouseholdBatchedPostExportScorer:
         baseline_plan: Sequence[PostExportKey],
         planned_reform_passes: int | None = None,
     ) -> _PostExportConsumer:
-        """Score ``baseline_plan`` now; return the consumer's simulate seam.
+        """Score or serve ``baseline_plan`` now (``_baseline_for``); return the
+        consumer's simulate seam.
 
         With ``planned_reform_passes``, each reform pass reports its number of
         that count as its progress's outer counter.
@@ -5795,7 +6088,9 @@ class _HouseholdBatchedPostExportScorer:
     def close(self) -> None:
         self._finish_open_reform()
         self._batch_frames = None
+        self._merged_baseline = None
         _collect_family_garbage()
+        self._remove_batch_files()
 
     def _open_reform_for(
         self, consumer: _PostExportConsumer, reform
@@ -5814,10 +6109,81 @@ class _HouseholdBatchedPostExportScorer:
         if reform is not None:
             reform.finish()
 
-    def _batches(self) -> tuple[Frame, ...]:
+    def _batches(self) -> _PostExportBatchFiles:
+        """The batches, each read from its file when it is indexed."""
         if self._batch_frames is None:
             raise RuntimeError("The post-export scorer is closed.")
         return self._batch_frames
+
+    def _baseline_for(
+        self, name: str, baseline_plan: tuple[PostExportKey, ...]
+    ) -> tuple[dict[PostExportKey, _PostExportValues], bool]:
+        """Score ``name``'s baseline plan, or serve it from the merged pass.
+
+        Returns the plan's values and whether they came from the merged pass.
+        A registered consumer opened with any plan but its registered one is
+        refused. The first registered consumer opened scores the union of
+        every unserved registered plan in one batch-outer pass, in ascending
+        period order; each registered consumer is then served exactly its own
+        keys, once, and the merged values are dropped once no unserved
+        registered plan holds them. A consumer without a registered plan, or
+        opened again, scores its own plan in a pass of its own. If the merged
+        pass raises, every consumer scores its own plan, so a key that only
+        one consumer planned fails that consumer alone, with the error it
+        raised before the merge (the holdout reports catch it). A refused
+        batch file (:class:`PostExportBatchFileError`) is the exception: it
+        propagates at once, as it does from every other post-export pass, so
+        it stops certification (or the guard sweep's baseline worker) and no
+        consumer scores its own plan.
+        """
+        registered = self._registered_baseline_plans.get(name)
+        if registered is not None and registered != baseline_plan:
+            raise ValueError(
+                f"{name}: opened with a baseline plan other than its registered "
+                "baseline plan; a registered consumer is served the plan recorded "
+                "before export."
+            )
+        if not baseline_plan:
+            return {}, False
+        self._batches()
+        if name not in self._unserved_baseline_plans or self._merged_baseline_failed:
+            return self._score(baseline_plan, label=f"{name} baseline plan"), False
+        if self._merged_baseline is None:
+            union = _ascending_period_plan(
+                key for plan in self._unserved_baseline_plans.values() for key in plan
+            )
+            try:
+                self._merged_baseline = self._score(union, label="merged baseline plan")
+            except PostExportBatchFileError:
+                # The scored file's integrity, not a key one consumer planned:
+                # it stops certification.
+                raise
+            except Exception as error:
+                self._merged_baseline_failed = True
+                try:
+                    reason = f"{type(error).__name__}: {error}"
+                except Exception:
+                    reason = type(error).__name__
+                print(
+                    f"Post-export merged baseline plan failed ({reason}); each "
+                    "consumer scores its own baseline plan instead.",
+                    flush=True,
+                )
+            if self._merged_baseline_failed:
+                # Outside the handler, so the failed pass's traceback and the
+                # per-batch values its frame collected are no longer
+                # referenced; a full collection frees any held in a cycle.
+                _collect_family_garbage()
+                return self._score(baseline_plan, label=f"{name} baseline plan"), False
+        del self._unserved_baseline_plans[name]
+        served = {key: self._merged_baseline[key] for key in baseline_plan}
+        still_planned = {
+            key for plan in self._unserved_baseline_plans.values() for key in plan
+        }
+        for key in tuple(self._merged_baseline):
+            if key not in still_planned:
+                del self._merged_baseline[key]
+        return served, True
 
     def _construct(self, batch_frame: Frame, *, reform_system):
         dataset = self._dataset_from_frame(batch_frame)
@@ -5901,9 +6267,15 @@ class _HouseholdBatchedPostExportScorer:
             total=len(batches),
             outer=outer,
         )
-        for batch, batch_frame in enumerate(batches, start=1):
+        for batch in range(1, len(batches) + 1):
+            # Read by position: ``enumerate`` keeps its last item, so the
+            # previous batch's frame would stay alive while the next is read.
+            batch_frame = batches[batch - 1]
             with _automatic_gc_suspended():
                 simulation = self._construct(batch_frame, reform_system=reform_system)
+                # The engine holds its own copy of the batch; the frame read
+                # from the batch's file is freed before the next one is read.
+                del batch_frame
                 try:
                     known_at_load = _engine_known_periods(simulation, watched)
                     engine = _AscendingPeriodEngine(simulation, label=label)
@@ -5936,9 +6308,16 @@ class _HouseholdBatchedPostExportScorer:
 
 
 def _open_post_export_scorer(
-    plan: _PostExportScoringPlan, dataset_path: Path
+    plan: _PostExportScoringPlan,
+    dataset_path: Path,
+    *,
+    batch_parent: Path | None = None,
 ) -> _HouseholdBatchedPostExportScorer | None:
-    """Open the scorer the plan recorded before export, or None if no stage runs."""
+    """Open the scorer the plan recorded before export, or None if no stage runs.
+
+    The scorer keeps its household batch files in a new directory of its own
+    inside ``batch_parent`` (the system's temporary directory without one).
+    """
     if plan.error is not None:
         raise RuntimeError(
             f"The post-export scoring plan was not built before export: {plan.error}"
@@ -5948,7 +6327,9 @@ def _open_post_export_scorer(
     return _HouseholdBatchedPostExportScorer(
         dataset_path,
         maximum_microsim_batch_size=plan.maximum_batch_size,
+        batch_parent=batch_parent,
         expected_n_households=plan.n_households,
+        baseline_plans=plan.baseline_plans,
     )
 
 
@@ -5995,10 +6376,8 @@ class _PostExportConsumer:
         self.reform_passes = 0
         self.planned_reform_passes = planned_reform_passes
         self.reform_systems = 0
-        self._baseline = (
-            scorer._score(baseline_plan, label=f"{name} baseline plan")
-            if baseline_plan
-            else {}
+        self._baseline, self.baseline_from_merged_pass = scorer._baseline_for(
+            name, baseline_plan
         )
 
     def simulate(self, reform):
@@ -6032,11 +6411,20 @@ class _PostExportConsumer:
                 "baseline request, so nothing is scored off-plan."
             ) from None
 
-    def _reform_values(self, reform_system, key: PostExportKey):
-        label = f"{self.name} reform {key[0]}@{key[1]}"
-        self._scorer._assert_reform_keeps_baseline_responses(
-            reform_system, key, label=label
+    def _reform_values(
+        self, reform_system, keys: tuple[PostExportKey, ...]
+    ) -> dict[PostExportKey, _PostExportValues]:
+        """One batched reform pass over ``keys`` (ascending period order)."""
+        label = f"{self.name} reform " + ", ".join(
+            f"{variable}@{period}" for variable, period, _ in keys
         )
+        checked_periods: set[int] = set()
+        for key in keys:
+            if key[1] not in checked_periods:
+                checked_periods.add(key[1])
+                self._scorer._assert_reform_keeps_baseline_responses(
+                    reform_system, key, label=label
+                )
         self.reform_passes += 1
         planned = self.planned_reform_passes
         outer = (
@@ -6044,10 +6432,9 @@ class _PostExportConsumer:
             if planned is not None and self.reform_passes <= planned
             else None
         )
-        scored = self._scorer._score(
-            (key,), label=label, reform_system=reform_system, outer=outer
+        return self._scorer._score(
+            keys, label=label, reform_system=reform_system, outer=outer
         )
-        return scored[key]
 
 
 class _PlannedPostExportBaseline:
@@ -6061,11 +6448,18 @@ class _PlannedPostExportBaseline:
             _post_export_key(variable, period, map_to)
         )
 
+    def prefetch(self, requests) -> None:
+        """Nothing to score: refuse any request outside the served plan, as
+        ``calculate`` would (the dry run's recorder takes ``prefetch`` too)."""
+        for request in requests:
+            self._consumer._baseline_values(_post_export_key(*request))
+
 
 class _BatchedPostExportReform:
-    """A reformed simulation a consumer sees: each key is one batched pass.
+    """A reformed simulation a consumer sees: each key not yet scored, or each
+    ``prefetch`` of several such keys, is one batched pass.
 
-    The reform's tax-benefit system is built once, on the first key, and
+    The reform's tax-benefit system is built once, on the first pass, and
     handed to every batch engine (microcosm#456). The engines get that system
     alone (see ``_HouseholdBatchedPostExportScorer._construct``).
 
@@ -6088,29 +6482,46 @@ class _BatchedPostExportReform:
 
     def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
         key = _post_export_key(variable, period, map_to)
+        self._score_new((key,))
+        return self._results[key]
+
+    def prefetch(self, requests) -> None:
+        """Score every requested key not yet scored in one batched pass.
+
+        ``requests`` are ``(variable, period)`` or ``(variable, period,
+        map_to)`` tuples. Each batch engine computes them in ascending period
+        order, and later ``calculate`` calls for them are served from the
+        pass. The dry run counts it as one pass
+        (``_RecordingPostExportSimulation.prefetch``).
+        """
+        self._score_new(tuple(_post_export_key(*request) for request in requests))
+
+    def _score_new(self, keys: Sequence[PostExportKey]) -> None:
         if self._finished:
+            asked = keys[0] if len(keys) == 1 else tuple(keys)
             raise RuntimeError(
-                f"{self._consumer.name} asked a finished reform for {key}. A "
+                f"{self._consumer.name} asked a finished reform for {asked}. A "
                 "post-export consumer scores each reform completely before it "
                 "opens the next one, which finishes and releases the earlier."
             )
-        if key not in self._results:
-            if self._system is None:
-                scorer = self._consumer._scorer
-                rule_modules = EngineVariableModuleScope().open()
-                try:
-                    self._system = (
-                        scorer._microsimulation_cls.default_tax_benefit_system(
-                            reform=self._reform
-                        )
-                    )
-                except BaseException:
-                    rule_modules.close()
-                    raise
-                self._rule_modules = rule_modules
-                self._consumer.reform_systems += 1
-            self._results[key] = self._consumer._reform_values(self._system, key)
-        return self._results[key]
+        new_keys = _ascending_period_plan(
+            key for key in keys if key not in self._results
+        )
+        if not new_keys:
+            return
+        if self._system is None:
+            scorer = self._consumer._scorer
+            rule_modules = EngineVariableModuleScope().open()
+            try:
+                self._system = scorer._microsimulation_cls.default_tax_benefit_system(
+                    reform=self._reform
+                )
+            except BaseException:
+                rule_modules.close()
+                raise
+            self._rule_modules = rule_modules
+            self._consumer.reform_systems += 1
+        self._results.update(self._consumer._reform_values(self._system, new_keys))
 
     def finish(self) -> None:
         """Drop the reform's system and remove the modules its build added."""
@@ -9220,7 +9631,6 @@ def _record_qrf_tail_concentration_gate(
                 *(gate.failures if gate_failures else ()),
                 *register_failures,
             ],
-            force_upload=True,
         )
     return register_failures
 
@@ -9941,7 +10351,6 @@ def _enforce_ssi_take_up_delivery(
                 status="failed",
                 message="SSI take-up enforced-band delivery gate failed.",
                 failures=list(delivery_gate.failures),
-                force_upload=True,
             )
     except Exception as error:
         failures.append(
@@ -11337,8 +11746,13 @@ def _score_post_export_consumer(
         )
         output = consumer(scoring.simulate)
         record = scorer.finish_consumer(scoring)
+        baseline = (
+            "baseline served from the merged pass"
+            if scoring.baseline_from_merged_pass
+            else f"{record['baseline_passes']} baseline pass"
+        )
         print(
-            f"Post-export {name}: {record['baseline_passes']} baseline pass "
+            f"Post-export {name}: {baseline} "
             f"({len(plan)} keys), {record['reform_passes']} reform passes, "
             f"{record['reform_systems']} reform systems, "
             f"{record['n_batches']} batches of up to "
@@ -11454,6 +11868,9 @@ def _write_ssi_social_security_holdout(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
         payload["release_id"] = release_id
+    except PostExportBatchFileError:
+        # The scored file's integrity, not a measurement: it stops certification.
+        raise
     except Exception as error:
         # Reporting is observational, including an unavailable measurement.
         # It must not introduce a new release refusal or calibration target.
@@ -11485,6 +11902,9 @@ def _write_medicare_irmaa_holdout(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
         )
         payload["release_id"] = release_id
+    except PostExportBatchFileError:
+        # The scored file's integrity, not a measurement: it stops certification.
+        raise
     except Exception as error:
         # Reporting is observational, including an unavailable measurement.
         # It must not introduce a new release refusal or calibration target.
@@ -12920,7 +13340,6 @@ class _BuildProgress:
         *,
         message: str | None = None,
         status: str = "running",
-        force_upload: bool = False,
         **details: Any,
     ) -> None:
         self.emitter.transition_stage(
@@ -12934,7 +13353,6 @@ class _BuildProgress:
                 stage,
                 message=message,
                 status=status,
-                force_upload=force_upload,
                 **details,
             )
 
@@ -12955,23 +13373,46 @@ class _BuildProgress:
             self.staging_bundle.attach_artifact(name, path, **details)
 
     def fail(self, error: BaseException) -> None:
-        # The staging run's failed state is handed to the emitter before the
-        # telemetry outcome shuts the emitter down.
+        # The staging run's failed state is handed to the emitter, and its
+        # final commit confirmed, before the telemetry outcome shuts the
+        # emitter down (it drops a run's events after its outcome).
         try:
             if self.staging_bundle is not None:
                 self.staging_bundle.fail(error)
+                confirm_and_report_final_commit(
+                    self.staging_bundle, self.emitter, error=error
+                )
         finally:
-            self.emitter.fail(error)
+            _fail_emitter(self.emitter, error)
 
     def complete(self) -> None:
         if self.staging_bundle is not None:
             self.staging_bundle.complete()
+            confirm_and_report_final_commit(self.staging_bundle, self.emitter)
         self.emitter.complete()
 
 
 #: The progress coordinator for the build in flight, so the entry point can
 #: report failure without threading another handle back through the call stack.
 _ACTIVE_PROGRESS: _BuildProgress | None = None
+
+
+def _fail_emitter(emitter: LocalTelemetryEmitter, error: BaseException) -> None:
+    """Record the build's failure; a SIGTERM as a termination, as UK builds do.
+
+    An error raised while a SIGTERM unwinds holds it in its cause chain, which
+    ``classify_failure`` follows.
+    """
+
+    classified = classify_failure(error)
+    if classified.error_code == "TERMINATED":
+        emitter.fail(
+            error,
+            failure_class=classified.failure_class or "terminated",
+            error_code=classified.error_code,
+        )
+        return
+    emitter.fail(error)
 
 
 class _WorkCounter:
@@ -13639,8 +14080,9 @@ def _release_dry_run_checks(
 def _staging_manifest_block(telemetry: _BuildProgress | None) -> dict[str, object]:
     """Record what staging did and distinguish an opt-out from non-delivery.
 
-    Uploads are best-effort and self-disable after repeated failures, so a
-    configured destination is not evidence that anything reached it.
+    Uploads are best-effort and pause after three refused in a row until the
+    run's final state, so a configured destination is not evidence that
+    anything reached it.
     """
 
     if telemetry is None or telemetry.staging_bundle is None:
@@ -13701,7 +14143,6 @@ def _build_progress(
         path_prefix=args.staging_prefix,
         # The build's emitter commits the run files with its own credential.
         emitter_client=emitter.client,
-        upload_interval_seconds=args.staging_upload_interval_seconds,
     )
     _ACTIVE_PROGRESS = _BuildProgress(
         run_id=run_id,
@@ -14507,7 +14948,6 @@ def _certify_progress(
             staging_dir=staging_dir,
             staging_repo_id=settings["repo_id"],
             staging_prefix=settings["prefix"],
-            staging_upload_interval_seconds=settings["upload_interval_seconds"],
         ),
         release_root=record.release_root,
         release_id=build,
@@ -14749,7 +15189,9 @@ def _place_build_for_certification(record: _USBuildRecord, release_dir: Path) ->
     #568 weight evidence is never copied: the H5 carries the weights. A
     rerun after a failed certification first removes every file this
     certification would copy or write, so none of an earlier attempt's
-    survives.
+    survives, and the post-export batch files of an attempt that was killed
+    before its scorer could remove them. (Two certifications of one ``--out``
+    at once are not supported: each removes the other's files.)
     """
 
     release_dir.mkdir(parents=True, exist_ok=True)
@@ -14765,6 +15207,13 @@ def _place_build_for_certification(record: _USBuildRecord, release_dir: Path) ->
         "us_ssi_take_up.json",
     }:
         (release_dir / name).unlink(missing_ok=True)
+    # Only scorers' own directories: anything else in the parent is kept.
+    batch_parent = record.release_root / US_POST_EXPORT_BATCH_DIRECTORY
+    if batch_parent.is_dir():
+        for stale_batch_files in batch_parent.glob(
+            f"{_POST_EXPORT_BATCH_DIRECTORY_PREFIX}*"
+        ):
+            shutil.rmtree(stale_batch_files)
     build_dir = record.build_dir.resolve()
     for role, pinned in record.payload["files"].items():
         source = (record.release_root / pinned["path"]).resolve()
@@ -14799,7 +15248,19 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     either tier is refused: a certified build is never changed.
     Certification opens its own staging run where the build staged
     (:func:`_certify_progress`) and marks it failed if it does not finish.
+    A SIGTERM is recorded as a termination, as in :func:`main`, and the
+    command then exits 143.
     """
+
+    with raise_on_sigterm():
+        try:
+            _certify_main_with_close_out(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _certify_main_with_close_out(argv: Sequence[str] | None) -> None:
+    """Run the certification and record how it ended (see :func:`certify_main`)."""
 
     global _ACTIVE_EMITTER
     parser = _certify_parser()
@@ -14922,7 +15383,7 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
             if telemetry is not None:
                 telemetry.fail(error)
             elif _ACTIVE_EMITTER.available:
-                _ACTIVE_EMITTER.fail(error)
+                _fail_emitter(_ACTIVE_EMITTER, error)
         except Exception as telemetry_error:  # pragma: no cover - defensive
             # A failing failure-report must not replace the real traceback.
             print(
@@ -15186,7 +15647,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     An uncaught build error previously left the dashboard status at ``running``
     forever. SIGKILL remains outside the reach of an in-process handler; this
-    closes the ordinary exception and termination half of the gap.
+    closes the ordinary exception and termination half of the gap. A SIGTERM
+    raises ``BuildTerminatedError`` (``microcosm.build.termination``), which
+    closes the staging run as failed and records a termination with the
+    emitter, and the program then exits 143.
 
     A build returns ``None``. ``--dry-run-gates-report`` leaves through
     ``SystemExit`` with the report's exit code: 1 on any certain failure, 2 on
@@ -15199,6 +15663,16 @@ def main(argv: Sequence[str] | None = None) -> None:
     build's telemetry has completed its staging run and its emitter, which
     closes on that outcome.
     """
+
+    with raise_on_sigterm():
+        try:
+            _main_with_close_out(argv)
+        except BuildTerminatedError as terminated:
+            raise SystemExit(terminated.exit_code) from terminated
+
+
+def _main_with_close_out(argv: Sequence[str] | None) -> None:
+    """Run :func:`_main` and record how it ended (see :func:`main`)."""
 
     global _ACTIVE_DRY_RUN
     _ACTIVE_DRY_RUN = None
@@ -15228,7 +15702,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     file=sys.stderr,
                 )
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-            _ACTIVE_EMITTER.fail(error)
+            _fail_emitter(_ACTIVE_EMITTER, error)
         raise
     try:
         _finish_national_gate_shadow(
@@ -15244,7 +15718,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         # closed the emitter by now (see the docstring), so this records an
         # outcome only on an emitter that something left open.
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
-            _ACTIVE_EMITTER.fail(error)
+            _fail_emitter(_ACTIVE_EMITTER, error)
         raise
     if dry_run_exit is not None:
         if _ACTIVE_EMITTER is not None and _ACTIVE_EMITTER.available:
@@ -15359,7 +15833,6 @@ def _with_scf_education_debt_stage(
                 status="failed",
                 message="SCF education-debt signal gate failed.",
                 failures=list(gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -15918,7 +16391,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             message="Compiled fiscal target registry.",
             n_targets=len(target_specs),
             target_profile_gate_passed=target_profile_gate.passed,
-            force_upload=True,
         )
 
     if telemetry is not None:
@@ -15981,7 +16453,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Weeks-unemployed input signal gate failed.",
                 failures=list(weeks_unemployed_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16064,7 +16535,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         "input signal."
                     ),
                     failures=list(post_selection_weeks_unemployed_gate.failures),
-                    force_upload=True,
                 )
             raise RuntimeError(
                 "Release gates failed: "
@@ -16147,7 +16617,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Base population scale gate failed.",
                 failures=list(base_population_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16170,7 +16639,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="QBI-input signal gate failed.",
                 failures=list(qbi_inputs_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16191,7 +16659,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Farm-business-income signal gate failed.",
                 failures=list(farm_business_income_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16212,7 +16679,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Domestic-production-ALD signal gate failed.",
                 failures=list(domestic_production_ald_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16233,7 +16699,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Child-support input signal gate failed.",
                 failures=list(child_support_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16254,7 +16719,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Disability-benefits input signal gate failed.",
                 failures=list(disability_benefits_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16275,7 +16739,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Workers-compensation input signal gate failed.",
                 failures=list(workers_compensation_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16296,7 +16759,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Educator-expense input signal gate failed.",
                 failures=list(educator_expense_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16317,7 +16779,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Form 4952 election input signal gate failed.",
                 failures=list(form_4952_election_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16338,7 +16799,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SALT-refund-income signal gate failed.",
                 failures=list(salt_refund_income_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16359,7 +16819,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Capital-gain details input signal gate failed.",
                 failures=list(capital_gain_details_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16387,7 +16846,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Childcare-input signal gate failed.",
                 failures=list(childcare_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16415,7 +16873,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Energy-subsidy signal gate failed.",
                 failures=list(energy_subsidy_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16434,7 +16891,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Alimony-input signal gate failed.",
                 failures=list(alimony_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16455,7 +16911,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Casualty-loss signal gate failed.",
                 failures=list(casualty_loss_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16476,7 +16931,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Miscellaneous-itemized signal gate failed.",
                 failures=list(misc_itemized_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16508,7 +16962,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Retirement-contribution signal gate failed.",
                 failures=list(retirement_contributions_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16540,7 +16993,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Immigration composition gate failed.",
                 failures=list(immigration_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16570,7 +17022,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Take-up signal gate failed.",
                 failures=list(take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16601,7 +17052,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Hours-worked signal gate failed.",
                 failures=list(hours_worked_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16632,7 +17082,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SNAP take-up signal gate failed.",
                 failures=list(snap_take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16664,7 +17113,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Relationship-input signal gate failed.",
                 failures=list(relationship_inputs_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16699,7 +17147,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SPM independence role signal gate failed.",
                 failures=list(spm_independence_role_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16731,7 +17178,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Medicare take-up input signal gate failed.",
                 failures=list(medicare_take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16752,7 +17198,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Prior-year-income signal gate failed.",
                 failures=list(prior_year_income_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16779,7 +17224,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Housing/tenure input signal gate failed.",
                 failures=list(housing_inputs_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16828,7 +17272,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     status="failed",
                     message="Retirement-distribution signal gate failed.",
                     failures=list(retirement_distributions_gate.failures),
-                    force_upload=True,
                 )
         except Exception as error:
             early_terminal_gate_failures.append(
@@ -16858,7 +17301,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Eligibility-inputs signal gate failed.",
                 failures=list(eligibility_inputs_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16893,7 +17335,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Education-input signal gate failed.",
                 failures=list(education_inputs_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16925,7 +17366,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Pregnancy signal gate failed.",
                 failures=list(pregnancy_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16953,7 +17393,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Reported-coverage vintage signal gate failed.",
                 failures=list(reported_coverage_vintage_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -16986,7 +17425,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="WIC-claim input signal gate failed.",
                 failures=list(wic_claim_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17017,7 +17455,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SNAP discretionary-exemption signal gate failed.",
                 failures=list(snap_discretionary_exemption_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17110,7 +17547,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SCF-wealth signal gate failed.",
                 failures=list(scf_wealth_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17152,7 +17588,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SSI disability-criteria signal gate failed.",
                 failures=list(ssi_disability_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17188,7 +17623,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SIPP Head Start signal gate failed.",
                 failures=list(head_start_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17248,7 +17682,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SSI take-up assignment gate failed.",
                 failures=list(ssi_take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17312,7 +17745,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SCF auto-loan signal gate failed.",
                 failures=list(scf_auto_loan_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17368,7 +17800,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SIPP-vehicle signal gate failed.",
                 failures=list(sipp_vehicles_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17404,7 +17835,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Voluntary-filing signal gate failed.",
                 failures=list(voluntary_filing_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17447,7 +17877,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SIPP-tip signal gate failed.",
                 failures=list(sipp_tips_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17491,7 +17920,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="CPS ORG/FLSA signal gate failed.",
                 failures=list(org_wages_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17523,7 +17951,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Health input signal gate failed.",
                 failures=list(health_input_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17561,7 +17988,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Medicaid take-up gate failed.",
                 failures=list(medicaid_take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17595,7 +18021,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="SNAP state take-up gate failed.",
                 failures=list(snap_state_take_up_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17630,7 +18055,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Other-health-insurance premium signal gate failed.",
                 failures=list(other_health_insurance_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17653,7 +18077,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="ESI premium signal gate failed on the base.",
                 failures=list(esi_premiums_base_gate.failures),
-                force_upload=True,
             )
         raise RuntimeError(
             "Release gates failed: "
@@ -17694,7 +18117,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         status="failed",
                         message="Base-frame input mass parity gate failed.",
                         failures=list(input_mass_reference_gate.failures),
-                        force_upload=True,
                     )
             except Exception as error:
                 early_terminal_gate_failures.append(
@@ -17708,7 +18130,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     status="failed",
                     message="Base-frame input mass parity gate failed.",
                     failures=list(input_mass_reference_gate.failures),
-                    force_upload=True,
                 )
             raise RuntimeError(
                 "Release gates failed: "
@@ -17741,7 +18162,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         status="failed",
                         message="Degenerate input signal gate failed.",
                         failures=list(degenerate_input_gate.failures),
-                        force_upload=True,
                     )
             except Exception as error:
                 early_terminal_gate_failures.append(
@@ -17756,7 +18176,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     status="failed",
                     message="Degenerate input signal gate failed.",
                     failures=list(degenerate_input_gate.failures),
-                    force_upload=True,
                 )
             raise RuntimeError(
                 "Release gates failed: "
@@ -17794,7 +18213,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                         status="failed",
                         message="eCPS parity gate failed.",
                         failures=list(ecps_parity_gate.failures),
-                        force_upload=True,
                     )
             except Exception as error:
                 early_terminal_gate_failures.append(
@@ -17808,7 +18226,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     status="failed",
                     message="eCPS parity gate failed.",
                     failures=list(ecps_parity_gate.failures),
-                    force_upload=True,
                 )
             raise RuntimeError(
                 "Release gates failed: "
@@ -18378,7 +18795,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                     status="failed",
                     message="SSI take-up final export-frame gate failed.",
                     failures=list(final_ssi_take_up_gate.failures),
-                    force_upload=True,
                 )
         except Exception as error:
             early_terminal_gate_failures.append(
@@ -18813,7 +19229,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             message="Release gates failed; continuing to evaluate the "
             "remaining terminal gate groups before aborting.",
             failures=gate_failures,
-            force_upload=True,
         )
 
     # SPM measurement composition, as a batched pre-export gate.
@@ -18866,7 +19281,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             status="failed",
             message="SPM measurement composition gate failed.",
             failures=spm_composition_failures,
-            force_upload=True,
         )
 
     # Stored model inputs (microcosm#1026, decision d271), as a batched
@@ -18903,7 +19317,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             status="failed",
             message="Stored model inputs gate failed.",
             failures=stored_input_failures_,
-            force_upload=True,
         )
 
     terminal_batch_telemetry.stage(
@@ -18996,7 +19409,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Release input-column coverage gate failed.",
                 failures=list(input_coverage_gate.failures),
-                force_upload=True,
             )
     # microcosm#454: the calibrated ESI premium total over the anchor's
     # universe (every policyholder) against BEA NIPA 7.8 line 17 within tolerance,
@@ -19068,7 +19480,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="ESI premium anchor gate failed.",
                 failures=list(esi_premiums_anchor_gate.failures),
-                force_upload=True,
             )
     # #327: the export gate compares the calibrated export against a reference.
     # By default that reference is the raw pre-calibration base — but for a dense
@@ -19162,7 +19573,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 status="failed",
                 message="Export input mass parity gate failed.",
                 failures=list(export_input_mass_gate.failures),
-                force_upload=True,
             )
     # microcosm#462: tail-concentration gate over the sparse QRF-imputed dollar
     # columns at the export's calibrated weights. The Build M defect — 89% of
@@ -19213,7 +19623,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             status="failed",
             message="Release gates failed (batched pre-export report).",
             failures=terminal_gate_failures,
-            force_upload=True,
         )
         build_refusal = _BuildFailedReleaseGatesError(
             "Release gates failed: " + "; ".join(terminal_gate_failures)
@@ -19394,7 +19803,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "no_staging": bool(args.no_staging),
                 "repo_id": args.staging_repo_id or None,
                 "prefix": args.staging_prefix,
-                "upload_interval_seconds": float(args.staging_upload_interval_seconds),
             },
         ),
     )
@@ -19502,9 +19910,12 @@ def _certify_us_build(
     # smoke, reform validation, demographics) scores THIS file through one
     # household-batched scorer instead of one whole-pool Microsimulation each.
     # It loads the written H5 once, binds its sha256 (the manifest must pin
-    # the same bytes), and serves the baseline plans recorded above.
+    # the same bytes), and serves the baseline plans recorded above from one
+    # merged baseline pass (microcosm#1595).
     post_export_scorer = _open_post_export_scorer(
-        post_export_scoring_plan, dataset_path
+        post_export_scoring_plan,
+        dataset_path,
+        batch_parent=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY,
     )
     # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
     # gate above proves the required keys exist and carry signal; this is the
@@ -19551,8 +19962,9 @@ def _certify_us_build(
             )
             + "\n"
         )
-        # The smoke's scored baseline plan is recorded; free its arrays before
-        # reform validation scores its own.
+        # The smoke's record is written; free its reform results before reform
+        # validation runs. Its baseline values stay with the scorer only while
+        # a consumer still to be served planned them.
         del smoke_scoring
         if telemetry is not None:
             telemetry.attach_artifact(
@@ -19568,7 +19980,6 @@ def _certify_us_build(
                     status="failed",
                     message="Reform-coverage smoke gate failed.",
                     failures=list(reform_coverage_smoke_gate.failures),
-                    force_upload=True,
                 )
             smoke_failures = [
                 f"Reform coverage smoke failed: {failure}"
@@ -19659,14 +20070,14 @@ def _certify_us_build(
             "us_medicare_irmaa_holdout",
             release_dir / "us_medicare_irmaa_holdout.json",
         )
-    # Every post-export engine stage has run; free the scorer's batch frames.
+    # Every post-export engine stage has run; remove the scorer's batch files.
     # The manifest must pin the bytes those stages scored, and both manifests
     # carry how they were scored (Route A remediation PR-3).
     post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
     scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
     post_export_scorer = None
-    # Reads the written H5 without an engine, after the scorer frees its
-    # batch frames, so it adds no memory on top of them.
+    # Reads the written H5 without an engine, after the scorer has closed,
+    # so it adds no memory on top of the scorer's.
     if telemetry is not None:
         telemetry.stage(
             "population_structure_holdout",

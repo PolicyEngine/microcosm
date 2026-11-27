@@ -28,6 +28,7 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime.post_export_requests import RECORDS_REQUESTS_ONLY
 from microcosm.build.us_runtime.release_input_coverage import (
     ListParameterEdit,
     ReformCoverageProbe,
@@ -38,18 +39,11 @@ from microcosm.build.us_runtime.release_input_coverage import (
 )
 
 __all__ = [
-    "RECORDS_REQUESTS_ONLY",
     "us_reform_coverage_smoke_gate",
 ]
 
 # simulate(reform_or_None) -> object with .calculate(measure, period).sum()
 SimulateFn = Callable[[Any], Any]
-
-#: Set to ``True`` on a ``simulate`` that only records the keys it is asked
-#: for and never applies a reform (the release tool's post-export plan dry
-#: run). The gate then passes it each probe in place of the probe's built
-#: reform, so recording resolves no list edit and needs no engine.
-RECORDS_REQUESTS_ONLY = "records_requests_only"
 
 
 def _weighted_total(simulation: Any, measure: str, period: int) -> float:
@@ -152,9 +146,10 @@ def us_reform_coverage_smoke_gate(
         simulate: ``simulate(None)`` builds the baseline; ``simulate(reform)``
             builds the reformed simulation. Each result answers
             ``.calculate(measure, period).sum()`` as a weighted total. A
-            ``simulate`` whose :data:`RECORDS_REQUESTS_ONLY` attribute is true
-            only records requests: it receives each probe in place of the
-            probe's reform, and no reform is built.
+            ``simulate`` whose
+            :data:`~microcosm.build.us_runtime.post_export_requests.RECORDS_REQUESTS_ONLY`
+            attribute is true only records requests: it receives each probe
+            in place of the probe's reform, and no reform is built.
         probes: Probes to run. Defaults to the shipped manifest's probe set.
         period: Default period for probes without a probe-specific period.
         name: Gate name for the manifest.

@@ -29,12 +29,39 @@ class _StubEngine:
     def materialize(self, frame, variables, period):
         self.calls.append((tuple(variables), str(period)))
         person = frame.table("person")
+        benunit = frame.table("benunit")
+        child = person["age"].to_numpy() < 16
+        children = (
+            pd.Series(child, index=person.index)
+            .groupby(person["person_benunit_id"])
+            .sum()
+        )
         return {
-            "is_child_or_qualifying_young_person_for_child_benefit": (
-                person["age"].to_numpy() < 16
-            ),
+            "is_child_or_qualifying_young_person_for_child_benefit": child,
             "adjusted_net_income": person["stub_income"].to_numpy(dtype=float),
+            # A stand-in annual amount per eligible child, at benefit-unit grain.
+            "child_benefit_entitlement": (
+                benunit["benunit_id"].map(children).fillna(0).to_numpy(float)
+                * STUB_ENTITLEMENT_PER_CHILD
+            ),
         }
+
+
+STUB_ENTITLEMENT_PER_CHILD = 1_000.0
+
+
+def _with_frs_lineage(person, benunit, household):
+    """The support-channel lineage of an FRS-only frame: every row its own twin."""
+
+    person = person.assign(
+        is_benunit_head=person.groupby("person_benunit_id").cumcount().eq(0),
+        person_source_id=person["person_id"],
+    )
+    benunit = benunit.assign(
+        benunit_support_channel="frs", benunit_source_id=benunit["benunit_id"]
+    )
+    household = household.assign(source_household_id=household["household_id"])
+    return person, benunit, household
 
 
 def _frame():
@@ -58,6 +85,7 @@ def _frame():
         }
     )
     household = pd.DataFrame({"household_id": [1, 2, 3, 4], "region": ["WALES"] * 4})
+    person, benunit, household = _with_frs_lineage(person, benunit, household)
     return uk_national_frame(
         person=person,
         benunit=benunit,
@@ -109,6 +137,7 @@ def _taper_frame():
         ],
         ignore_index=True,
     )
+    person, benunit, household = _with_frs_lineage(person, benunit, household)
     return uk_national_frame(
         person=person,
         benunit=benunit,
@@ -116,4 +145,84 @@ def _taper_frame():
         household_weights=np.asarray([10.0, 2.0, 20.0, 10.0, 5.0]),
         weight_kind=WeightKind.IMPORTANCE,
         time_period="2026",
+    )
+
+
+def _copy_frame():
+    """FRS families and their SPI copies, one household per benefit unit.
+
+    FRS units 1 to 4 are one-child families below the charge start; units 1
+    and 2 report. Unit 5 is fully charged with one child and does not report.
+    Unit 6 has no child and does not report. Copies: 101 of unit 1 (reporting
+    twin, same cell); 102 of unit 3 (non-reporting twin, same cell, but the
+    forests gave it a report); 105 of unit 1 moved into the fully charged
+    cell; 106 of unit 6, childless, with a forest report of its own.
+    """
+
+    frs = [
+        # unit, adult income, child, reported on the adult
+        (1, 20_000.0, True, 1_300.0),
+        (2, 25_000.0, True, 1_100.0),
+        (3, 30_000.0, True, 0.0),
+        (4, 35_000.0, True, 0.0),
+        (5, 95_000.0, True, 0.0),
+        (6, 40_000.0, False, 0.0),
+    ]
+    copies = [
+        # copy unit, twin unit, adult income, reported on the adult (forests)
+        (101, 1, 21_000.0, 0.0),
+        (102, 3, 31_000.0, 900.0),
+        (105, 1, 120_000.0, 1_300.0),
+        (106, 6, 150_000.0, 700.0),
+    ]
+    people, units, households = [], [], []
+    for unit, income, child, reported in frs:
+        people.append(
+            (unit * 10 + 1, unit, unit, 40, reported, income, True, unit * 10 + 1)
+        )
+        if child:
+            people.append(
+                (unit * 10 + 2, unit, unit, 5, 0.0, 0.0, False, unit * 10 + 2)
+            )
+        units.append((unit, "frs", unit))
+        households.append((unit, unit))
+    for unit, twin, income, reported in copies:
+        people.append(
+            (unit * 10 + 1, unit, unit, 40, reported, income, True, twin * 10 + 1)
+        )
+        if any(row[0] == twin and row[2] for row in frs):
+            people.append(
+                (unit * 10 + 2, unit, unit, 5, 0.0, 0.0, False, twin * 10 + 2)
+            )
+        units.append((unit, "spi", twin))
+        households.append((unit, twin))
+    person = pd.DataFrame(
+        people,
+        columns=[
+            "person_id",
+            "person_benunit_id",
+            "person_household_id",
+            "age",
+            "child_benefit_reported",
+            "stub_income",
+            "is_benunit_head",
+            "person_source_id",
+        ],
+    )
+    benunit = pd.DataFrame(
+        units, columns=["benunit_id", "benunit_support_channel", "benunit_source_id"]
+    )
+    benunit["would_claim_child_benefit"] = False
+    benunit["child_benefit_opts_out"] = False
+    household = pd.DataFrame(
+        households, columns=["household_id", "source_household_id"]
+    )
+    household["region"] = "WALES"
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        household_weights=np.full(len(household), 10.0),
+        weight_kind=WeightKind.IMPORTANCE,
+        time_period="2024",
     )

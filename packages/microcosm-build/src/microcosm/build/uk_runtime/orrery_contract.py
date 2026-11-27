@@ -34,8 +34,8 @@ from .graph_national import (
 from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import FULL_GATE_REPORT_TYPE
 
-#: A target row's fields that the result's weights produce. The summaries are
-#: the projection a build may publish to the Orrery, and since María's ruling
+#: A target row's fields that the result's weights produce. The summaries go
+#: to the collector in the build's execution overlay, and since María's ruling
 #: of 2026-10-26 the build no longer marks the rows resting on fewer than ten
 #: source households, so the summaries carry no row's figures (Vahid's review
 #: of #1396, M1). The build's private diagnostics keep every row's.
@@ -297,9 +297,9 @@ UK_SUMMARY_PROVIDERS = {
 def public_summary_findings(summaries: list[dict]) -> list[str]:
     """Recorded summaries that carry a target row's figures or failure lines.
 
-    The providers above project neither. The publication runs this on the
-    summaries it is about to export, so a provider that regresses stops the
-    export rather than reaching the Orrery.
+    The providers above project neither. The build's graph step and the
+    inputs command run this on the overlay's summaries before writing it, so a
+    provider that regresses leaves no Orrery input for the collector.
     """
 
     findings = []
@@ -522,7 +522,7 @@ def save_uk_graph_schema(
 
 
 def persist_uk_run_evidence(graph, manifest, store, args, *, phase: str) -> Path:
-    """Preserve native evidence; the operator separately requests Orrery export."""
+    """Preserve native evidence; the build's graph step later writes the overlay."""
     attempt_id = Path(args.attempt_evidence).name
     index_path = save_run_evidence(
         compile_graph(graph),

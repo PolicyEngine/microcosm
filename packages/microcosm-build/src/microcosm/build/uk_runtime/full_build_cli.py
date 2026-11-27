@@ -237,7 +237,6 @@ from .rowwise_posture import (
 )
 from .rowwise_staging import (
     STAGED_DATASET_PHASES,
-    STAGING_UPLOAD_INTERVAL_SECONDS,
     block_staging_run_bundle,
     create_staging_run_bundle,
     emit_calibration_progress,
@@ -765,6 +764,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "uniform",
             "grain_equal",
             "family_equal",
+            "loss_family_equal",
             *UK_LOCAL_ROW_METADATA_RULES,
         ),
         help="Defaults to the role's doctrine; any other admitted rule is a receipted override.",
@@ -900,43 +900,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Validate the request and print the compiled operation inventory without fitting or writing files.",
     )
-    add_staging_arguments(
-        parser,
-        repository=UK_STAGING_REPOSITORY,
-        default_upload_interval_seconds=STAGING_UPLOAD_INTERVAL_SECONDS,
-    )
+    add_staging_arguments(parser, repository=UK_STAGING_REPOSITORY)
     add_staged_dataset_arguments(parser, repository=UK_STAGED_DATASET_REPOSITORY)
-    graph_publication = parser.add_mutually_exclusive_group()
-    graph_publication.add_argument(
-        "--publish-orrery",
-        dest="publish_orrery",
-        action="store_true",
-        help=(
-            "Accepted for older launchers; it only prints a warning. Builds no "
-            "longer upload the graph to the runs application: the staged "
-            "dataset bundle hands the graph's inputs to the emitter for the "
-            "collector, which builds the Orrery graph files."
-        ),
-    )
-    graph_publication.add_argument(
-        "--no-publish-orrery",
-        dest="publish_orrery",
-        action="store_false",
-        help=("Accepted for older launchers; builds upload no graph either way."),
-    )
-    parser.set_defaults(publish_orrery=None)
     args = parser.parse_args(argv)
-    if args.publish_orrery is True:
-        print(
-            "warning: --publish-orrery no longer uploads the graph to the runs "
-            "application. The staged dataset bundle hands the graph's inputs to "
-            "the emitter, which submits them to the collector with or without "
-            "the flag; the collector builds the Orrery graph files and keeps a "
-            "licensed build's private. With local-only or no "
-            "staging nothing is handed over.",
-            file=sys.stderr,
-            flush=True,
-        )
     validate_staging_arguments(parser, args)
     validate_staged_dataset_arguments(parser, args)
     if args.input_h5 is None and any(
@@ -1896,7 +1862,7 @@ class _BuildKernel[Prepared](Protocol):
     ) -> int: ...
 
 
-def _run_with_graph_publication[Prepared](
+def _run_with_graph_inputs[Prepared](
     execute: _BuildKernel[Prepared],
     prepared: Prepared,
     args: argparse.Namespace,
@@ -1905,8 +1871,8 @@ def _run_with_graph_publication[Prepared](
     attempt: dict | None,
     record: dict,
 ) -> int:
-    """Export before temporary files disappear, even if a kernel raises."""
-    from .orrery_publication import finalize_graph
+    """Write the Orrery inputs before temporary files disappear, even if a kernel raises."""
+    from .orrery_inputs import finalize_graph
 
     try:
         status = execute(
@@ -1956,7 +1922,7 @@ def _publish_failure_evidence(
     """
     from microcosm.build.artifact_files import publish_staged_bundle
 
-    from .orrery_publication import (
+    from .orrery_inputs import (
         EVIDENCE_MANIFEST_NAME,
         FAILURE_BUNDLE_DIRECTORY,
         FAILURE_MARKER_NAME,
@@ -2045,7 +2011,7 @@ def execute_full_build(
         staged_args.out = Path(temporary)
         staged_args.graph_store = graph_store
         staged_args.published_out = output
-        status = _run_with_graph_publication(
+        status = _run_with_graph_inputs(
             _execute_full_build,
             prepared,
             staged_args,
@@ -2198,7 +2164,7 @@ def _close_attempt(
             output / f"{stem}.h5", repository_hint=REPOSITORY
         )
     else:
-        from .orrery_publication import stage_graph_evidence
+        from .orrery_inputs import stage_graph_evidence
 
         stage_graph_evidence(
             args,
@@ -3099,7 +3065,7 @@ def execute_national_build(
         staged_args.out = Path(temporary)
         staged_args.graph_store = graph_store
         staged_args.published_out = output
-        status = _run_with_graph_publication(
+        status = _run_with_graph_inputs(
             _execute_national_build,
             prepared,
             staged_args,
@@ -3685,7 +3651,7 @@ def _close_national_attempt(
             if rewritten and not _kept_for_emitter(staged, output / "build.json"):
                 _refresh_completion(output, rewritten)
     else:
-        from .orrery_publication import stage_graph_evidence
+        from .orrery_inputs import stage_graph_evidence
 
         stage_graph_evidence(
             args,

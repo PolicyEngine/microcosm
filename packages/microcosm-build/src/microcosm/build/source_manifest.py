@@ -63,6 +63,8 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_trips_from_band_means",
         # microcosm#1428: the self-employed's gross receipts.
         "assign_trading_allowance_receipts",
+        # B1 of microcosm#1710: DWP's admin-linked UC housing element status.
+        "assign_uc_housing_claim_from_admin_status",
         # microcosm#1095 (Y1): DWP's admin-linked UC limited capability status.
         "assign_uc_limited_capability_from_admin_status",
         # microcosm#1095: UC's new-claimant health element draw, by claim recency.
@@ -140,6 +142,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_weeks_unemployed",
         "derive_wic_claim",
         "disaggregate_aggregate_records",
+        "draw_budget_and_mix",
         "draw_capital_gains_prior_from_banded_quantiles",
         "draw_employer_pension_contributions_from_rate_bands",
         "draw_spi_donor_ages_by_population",
@@ -208,6 +211,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "restore_spi_channel_reports_from_source_within_earnings_limit",
         "zero_pension_age_reports_below_state_pension_age",
         "zero_spi_channel_reports",
+        "redraw_spi_reported_child_benefit",
         "redraw_spi_reported_uc",
         "redraw_spi_reporter_capital",
         "record_mass_conservation_receipt",

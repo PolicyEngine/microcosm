@@ -28,7 +28,14 @@ Declared options, each a real feature (and each its own test):
   exceed ``max_weight_ratio * initial_weight``. It is clamped after every step —
   the documented guard against the tail "landmine" (a rare high-value,
   near-zero-weight donor whose weight detonates on reweight and blows up an
-  aggregate).
+  aggregate). The bound is against the frame's weights, never against a warm
+  start, so a stage whose frame carries an earlier stage's weights bounds
+  against those (:mod:`microcosm.calibrate.weight_bound` states the contract).
+- ``max_weight_reference`` (opt-in) bounds against a declared weight for each
+  record instead: no calibrated weight may exceed
+  ``max_weight_ratio * max_weight_reference``. A record that starts heavier
+  than the others then gets no larger a bound for it. The starting weights,
+  the mass and the L2 anchor stay the frame's.
 - ``target_records`` turns on hard-concrete L0 gates
   (:mod:`microcosm.calibrate.gates`) with **budget control**: the solver searches
   ``l0_lambda`` (a bisection on its log) so the achieved non-zero count tracks
@@ -90,9 +97,9 @@ import math
 import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
-import torch
 from scipy import sparse
 
 from microcosm.calibrate.exact_k import (
@@ -103,7 +110,6 @@ from microcosm.calibrate.exact_k import (
     assert_exact_k_support,
     exact_k_design_feasibility,
 )
-from microcosm.calibrate.gates import HardConcrete
 from microcosm.calibrate.initialization import GateInitialization
 from microcosm.calibrate.matrix import (
     CalibrationProblem,
@@ -112,6 +118,13 @@ from microcosm.calibrate.matrix import (
 )
 from microcosm.calibrate.target import TargetSet
 from microcosm.frame import Frame, MassChange, WeightKind, Weights
+
+if TYPE_CHECKING:
+    # Torch is imported by the functions that use it, so importing this
+    # module (as every importer of microcosm.calibrate does) does not import it.
+    import torch
+
+    from microcosm.calibrate.gates import HardConcrete
 
 __all__ = [
     "calibrate",
@@ -604,6 +617,9 @@ def _torch_constraint_matrix(matrix) -> torch.Tensor:
     to a torch sparse-CSR tensor and every epoch runs SpMM instead; autograd
     flows to the dense weight operand.
     """
+
+    import torch
+
     cells = int(matrix.shape[0]) * int(matrix.shape[1])
     density = (matrix.nnz / cells) if cells else 1.0
     if cells >= _SPARSE_MIN_CELLS and density <= _SPARSE_DENSITY_CUTOFF:
@@ -619,6 +635,9 @@ def _torch_constraint_matrix(matrix) -> torch.Tensor:
 
 def _apply_constraint(matrix: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
     """``A @ w`` for a dense or sparse-CSR ``A`` (targets x records)."""
+
+    import torch
+
     if matrix.layout == torch.sparse_csr:
         # SpMM needs a 2-D dense operand; SpMV is not exposed with autograd.
         return (matrix @ weights.unsqueeze(1)).squeeze(1)
@@ -756,6 +775,9 @@ def _relative_error_loss(
     target_loss_cap: float,
 ) -> torch.Tensor:
     """The capped weighted-MAPE target loss, optionally averaged with row weights."""
+
+    import torch
+
     scaled_error = (estimate - targets) / target_loss_scales
     loss = torch.clamp(
         torch.abs(scaled_error),
@@ -992,6 +1014,33 @@ def _prepare_warm_start_weights(
     return prepared
 
 
+def _prepare_reference_bound_start(
+    initial_weights: np.ndarray,
+    warm_start_weights: np.ndarray | None,
+    reference: np.ndarray,
+    *,
+    conserve_mass: bool,
+    max_weight_ratio: float,
+) -> np.ndarray:
+    """The optimizer's start under a bound against a declared reference.
+
+    Under ``max_weight_reference`` a record may start above its bound,
+    ``max_weight_ratio * reference``. The start is the starting weights (or
+    the warm start) held to the bound and, under mass conservation, brought
+    back to the input total below the bound. A warm start gets the same
+    projection under the default bound.
+    """
+    w0 = np.asarray(initial_weights, dtype=np.float64)
+    # The warm start's checks and copy, with no bound and no projection.
+    start = _prepare_warm_start_weights(
+        w0, warm_start_weights, conserve_mass=False, max_weight_ratio=None
+    )
+    start = np.minimum(start, max_weight_ratio * reference)
+    if conserve_mass:
+        start = _project_to_total(start, float(w0.sum()), max_weight_ratio, reference)
+    return start
+
+
 def _l2_penalty(
     pre_gate_weights: torch.Tensor,
     anchor: torch.Tensor,
@@ -1053,6 +1102,9 @@ def _sorted_capped_log_shift(
     rounds once per record, at the resolution of a log-sum that size
     (*Precision* in :func:`_capped_log_shift` gives the figures).
     """
+
+    import torch
+
     rest = ~capped & torch.isfinite(log_weights)
     order = torch.argsort(cap_shift[rest])
     rest_shift = cap_shift[rest][order]
@@ -1155,6 +1207,9 @@ def _capped_log_shift(
     Returns the shift and the rounds taken (``active_set_rounds + 1`` when
     the sort finished it).
     """
+
+    import torch
+
     cap_shift = torch.where(
         torch.isneginf(log_upper),
         torch.full_like(log_upper, -math.inf),
@@ -1207,6 +1262,9 @@ def _project_softmax_log_weights_(
     projection is the shift alone. Returns the active-set rounds taken (0
     without a cap).
     """
+
+    import torch
+
     log_weights = log_w.detach().to(torch.float64)
     log_weights = log_weights + (
         math.log(total) - float(torch.logsumexp(log_weights, dim=0))
@@ -1225,6 +1283,9 @@ def _max_cap_ratio(weights: torch.Tensor, cap: torch.Tensor) -> float:
     A record with a zero cap reads ``0`` while its weight is zero (``0 / 0``)
     and ``inf`` once it is not.
     """
+
+    import torch
+
     ratio = weights.detach().to(torch.float64) / cap
     return float(torch.nan_to_num(ratio, nan=0.0, posinf=math.inf).max())
 
@@ -1257,6 +1318,7 @@ def _optimize(
     return_gate_open_probabilities: bool = False,
     selection_receipt: dict[str, object] | None = None,
     retain_best_objective: bool = False,
+    weight_bound_reference: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Run the torch optimization and return weights plus its trajectory.
 
@@ -1277,14 +1339,34 @@ def _optimize(
     value without changing the two-item tuple used by existing workspace
     callers. The third value is aligned per-record ``pi_i`` for an L0 run and
     ``None`` when no gates were active.
+
+    ``weight_bound_reference`` is the weight ``max_weight_ratio`` multiplies
+    for each record. ``None`` (default) is the record's own starting weight,
+    and every expression below is then the historical one.
     """
+
+    import torch
+
+    from microcosm.calibrate.gates import HardConcrete
+
     w0 = np.asarray(initial_weights, dtype=np.float64)
-    start = _prepare_warm_start_weights(
-        w0,
-        warm_start_weights,
-        conserve_mass=conserve_mass,
-        max_weight_ratio=max_weight_ratio,
-    )
+    if weight_bound_reference is None:
+        bound_base = w0
+        start = _prepare_warm_start_weights(
+            w0,
+            warm_start_weights,
+            conserve_mass=conserve_mass,
+            max_weight_ratio=max_weight_ratio,
+        )
+    else:
+        bound_base = np.asarray(weight_bound_reference, dtype=np.float64)
+        start = _prepare_reference_bound_start(
+            w0,
+            warm_start_weights,
+            bound_base,
+            conserve_mass=conserve_mass,
+            max_weight_ratio=max_weight_ratio,
+        )
     total0 = float(w0.sum())
     # Same prune threshold the result's n_nonzero uses, so "pruned" here means
     # exactly what the reported non-zero count means.
@@ -1319,7 +1401,7 @@ def _optimize(
 
     optimizer = torch.optim.Adam(params, lr=learning_rate)
     upper = (
-        torch.tensor(max_weight_ratio * w0, dtype=torch.float32)
+        torch.tensor(max_weight_ratio * bound_base, dtype=torch.float32)
         if max_weight_ratio is not None
         else None
     )
@@ -1331,7 +1413,7 @@ def _optimize(
     softmax_max_cap_ratio = 0.0
     if softmax_mass and upper is not None:
         softmax_log_upper = torch.log(upper).to(torch.float64)
-        softmax_cap = torch.tensor(max_weight_ratio * w0, dtype=torch.float64)
+        softmax_cap = torch.tensor(max_weight_ratio * bound_base, dtype=torch.float64)
     if l2_lambda > 0.0:
         # The L2 penalty's reference vector. "initial" divides by each record's
         # own starting weight; "uniform" divides by the shared mean weight; an
@@ -1530,9 +1612,12 @@ def _optimize(
     # Make the hard ratio bound exact on the returned vector. The per-step
     # clamp is in float32, so exp() can overshoot the bound by a float epsilon
     # (~1e-7 relative); a closing float64 cap guarantees no returned weight
-    # exceeds max_weight_ratio * w0, which downstream code may assert.
+    # exceeds max_weight_ratio * w0 (or the declared reference), which
+    # downstream code may assert.
     if max_weight_ratio is not None:
-        final = np.minimum(final, max_weight_ratio * np.asarray(w0, dtype=np.float64))
+        final = np.minimum(
+            final, max_weight_ratio * np.asarray(bound_base, dtype=np.float64)
+        )
 
     # Exact mass conservation on the returned vector: a single closing rescale
     # to the input total. When a max_weight_ratio is also set, the rescale is
@@ -1544,7 +1629,9 @@ def _optimize(
         pruned = (
             final <= prune_atol if (gates is not None and l0_lambda > 0.0) else None
         )
-        final = _project_to_total(final, total0, max_weight_ratio, w0, pruned=pruned)
+        final = _project_to_total(
+            final, total0, max_weight_ratio, bound_base, pruned=pruned
+        )
     if return_gate_open_probabilities:
         return final, trajectory, gate_open_probabilities
     return final, trajectory
@@ -1582,6 +1669,9 @@ def _optimize_proximal(
     is used for the prox, so ``l1_lambda`` is the recorded mean-ratio objective
     coefficient.
     """
+
+    import torch
+
     w0 = np.asarray(initial_weights, dtype=np.float64)
     start = _prepare_warm_start_weights(
         w0,
@@ -1821,6 +1911,9 @@ def _search_l0_lambda_for_budget(
         vector is appended. The default four-item tuple is retained for
         existing workspace callers.
     """
+
+    import torch
+
     bracket_lo, bracket_hi = _check_l0_search_bracket(search_bracket)
     lo_u, hi_u = math.log10(bracket_lo), math.log10(bracket_hi)
     warm = initial_lambda is not None and initial_lambda > 0
@@ -2336,7 +2429,11 @@ def _check_mass(mass: str) -> None:
 
 
 def _check_epochs_and_weight_ratio(
-    epochs: int, max_weight_ratio: float | None, *, mass: str
+    epochs: int,
+    max_weight_ratio: float | None,
+    *,
+    mass: str,
+    reference_bound: bool = False,
 ) -> None:
     if epochs <= 0:
         raise ValueError(f"epochs must be positive, got {epochs!r}.")
@@ -2344,7 +2441,14 @@ def _check_epochs_and_weight_ratio(
         raise ValueError(
             f"max_weight_ratio must be positive, got {max_weight_ratio!r}."
         )
-    if max_weight_ratio is not None and max_weight_ratio < 1 and mass == CONSERVE_MASS:
+    # Against a declared reference a ratio below 1 can still admit the total;
+    # _check_max_weight_reference checks the bounds themselves.
+    if (
+        max_weight_ratio is not None
+        and max_weight_ratio < 1
+        and mass == CONSERVE_MASS
+        and not reference_bound
+    ):
         # Every capped weight is below its initial, so sum(cap) < input total:
         # mass conservation is infeasible a priori (Finding 7). Reject it here
         # with a named error rather than letting it surface later as the kernel's
@@ -2421,6 +2525,82 @@ def _check_l2_anchor_shape(
         )
 
 
+def _checked_max_weight_reference(
+    max_weight_reference: np.ndarray | None,
+    max_weight_ratio: float | None,
+    *,
+    method: str,
+    l0_lambda: float,
+    target_records: int | None,
+) -> np.ndarray | None:
+    """Check the declared weight-bound reference; return it as float64."""
+    if max_weight_reference is None:
+        return None
+    if max_weight_ratio is None:
+        raise ValueError(
+            "max_weight_reference declares what max_weight_ratio multiplies; "
+            "pass max_weight_ratio too."
+        )
+    if method != "adam" or l0_lambda > 0.0 or target_records is not None:
+        raise ValueError(
+            "max_weight_reference is implemented for the Adam solve without L0 "
+            "gates (method='adam', l0_lambda=0, target_records=None)."
+        )
+    reference = np.asarray(max_weight_reference, dtype=np.float64)
+    if (
+        reference.ndim != 1
+        or not np.isfinite(reference).all()
+        or (reference <= 0).any()
+    ):
+        raise ValueError(
+            "max_weight_reference must be one finite, strictly positive weight "
+            "for each record."
+        )
+    return reference
+
+
+def _check_max_weight_reference(
+    reference: np.ndarray | None,
+    initial_weights: np.ndarray,
+    max_weight_ratio: float | None,
+    *,
+    mass: str,
+) -> None:
+    """The reference fits the records, and its bounds admit a conserved total."""
+    if reference is None:
+        return
+    if reference.shape != initial_weights.shape:
+        raise ValueError(
+            f"max_weight_reference shape {reference.shape} must match the "
+            f"calibrated weight vector shape {initial_weights.shape}."
+        )
+    total = float(initial_weights.sum())
+    admitted = float(max_weight_ratio * reference.sum())
+    if mass == CONSERVE_MASS and admitted < total * (1.0 - 1e-12):
+        raise ValueError(
+            f"max_weight_ratio={max_weight_ratio!r} times max_weight_reference "
+            f"admits a total of {admitted!r}, below the input total {total!r}: "
+            "the mass cannot be conserved under these bounds. Raise "
+            "max_weight_ratio, declare a larger reference, or use mass='free'."
+        )
+
+
+def _weight_bound_options(
+    reference: np.ndarray,
+    initial_weights: np.ndarray,
+    final_weights: np.ndarray,
+    max_weight_ratio: float,
+) -> dict[str, object]:
+    """What a solve under a declared reference records about its bound."""
+    return {
+        "reference": "declared",
+        "records_started_above_bound": int(
+            (initial_weights > max_weight_ratio * reference).sum()
+        ),
+        "realized_max_ratio_to_reference": float((final_weights / reference).max()),
+    }
+
+
 def calibrate(
     frame: Frame,
     targets: TargetSet,
@@ -2434,6 +2614,7 @@ def calibrate(
     mass_reason: str | None = None,
     mass_parametrization: str = MASS_PARAMETRIZATION_PROJECTION,
     max_weight_ratio: float | None = None,
+    max_weight_reference: np.ndarray | None = None,
     target_records: int | None = None,
     l0_lambda: float = 0.0,
     l1_lambda: float = 0.0,
@@ -2517,6 +2698,25 @@ def calibrate(
             at the ACS local release's scale.
         max_weight_ratio: If given, a hard per-record cap: no calibrated weight
             exceeds ``max_weight_ratio * initial_weight``. The landmine guard.
+        max_weight_reference: Optional declared reference for the cap: one
+            finite, strictly positive weight for each ``weight_entity``
+            record. The cap is then ``max_weight_ratio *
+            max_weight_reference`` instead of ``max_weight_ratio *
+            initial_weight``, so a record that starts heavier than the others
+            gets no larger a cap for it (for example one shared weight, or
+            the mean weight of the record's area;
+            :func:`microcosm.calibrate.weight_bound.weight_bound_reference`).
+            ``None`` (default) is the historical cap, unchanged bit for bit.
+            The frame's weights still define the starting point, mass
+            conservation, the L2 anchor and the diagnostics. A record may
+            start above its cap: the solve then starts from the starting
+            weights held to the cap and, under ``mass="conserve"``, brought
+            back to the input total below it, the projection a warm start
+            gets. Under ``mass="conserve"`` the caps must admit the total
+            (``max_weight_ratio * sum(max_weight_reference) >= sum(initial)``).
+            Requires ``max_weight_ratio`` and the Adam solve without L0
+            gates. Recorded in ``options["weight_bound"]``, a key a solve
+            without a reference does not have.
         target_records: If given, enable L0 pruning with **budget control**: the
             solver searches ``l0_lambda`` (a bisection on its log, ``budget_iters``
             optimizations) so the achieved non-zero count tracks this budget, and
@@ -2653,11 +2853,18 @@ def calibrate(
             ``l2_lambda``, if ``l2_basis`` is unknown, if
             ``mass_parametrization`` is unknown or is ``"softmax"`` outside
             an Adam ``mass="conserve"`` solve without L0 gates, if
+            ``max_weight_reference`` is given without ``max_weight_ratio``,
+            outside the Adam solve without L0 gates, misaligned, not strictly
+            positive, or (under ``mass="conserve"``) too small to admit the
+            total, if
             ``budget_search_bracket`` is malformed or given without
             ``target_records``, if a ``target_records`` warm start
             (``l0_lambda``) lies outside the search bracket, or if no
             targets compile (from the matrix build).
     """
+
+    import torch
+
     if method == "apg":
         warnings.warn(
             "method='apg' is deprecated and now aliases method='adam'; result "
@@ -2685,7 +2892,19 @@ def calibrate(
             )
         if not isinstance(mass_reason, str) or not mass_reason.strip():
             raise ValueError("mass_reason must be a non-empty string when provided.")
-    _check_epochs_and_weight_ratio(epochs, max_weight_ratio, mass=mass)
+    _check_epochs_and_weight_ratio(
+        epochs,
+        max_weight_ratio,
+        mass=mass,
+        reference_bound=max_weight_reference is not None,
+    )
+    max_weight_reference = _checked_max_weight_reference(
+        max_weight_reference,
+        max_weight_ratio,
+        method=method,
+        l0_lambda=l0_lambda,
+        target_records=target_records,
+    )
     if gate_initialization is not None:
         if method != "adam" or (target_records is None and l0_lambda <= 0):
             raise ValueError("gate_initialization requires an Adam L0 solve.")
@@ -2789,6 +3008,7 @@ def calibrate(
     w0 = initial.values
     prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
     _check_l2_anchor_shape(l2_anchor_weights, w0.shape)
+    _check_max_weight_reference(max_weight_reference, w0, max_weight_ratio, mass=mass)
 
     torch.manual_seed(seed)
     matrix_t = _torch_constraint_matrix(problem.matrix)
@@ -2947,6 +3167,11 @@ def calibrate(
                 if gate_initialization is None
                 else {"gate_initialization": gate_initialization}
             ),
+            **(
+                {}
+                if max_weight_reference is None
+                else {"weight_bound_reference": max_weight_reference}
+            ),
         )
         n_nonzero = int((final_weights > prune_atol).sum())
         if effective_l0 > 0.0 and n_nonzero == 0:
@@ -3058,6 +3283,17 @@ def calibrate(
             "matrix_format": (
                 "sparse_csr" if matrix_t.layout == torch.sparse_csr else "dense"
             ),
+            # Only a solve under a declared reference records its bound, so
+            # the options of every other solve are unchanged.
+            **(
+                {}
+                if max_weight_reference is None
+                else {
+                    "weight_bound": _weight_bound_options(
+                        max_weight_reference, w0, final_weights, max_weight_ratio
+                    )
+                }
+            ),
         },
         gate_open_probabilities=gate_open_probabilities,
     )
@@ -3074,6 +3310,7 @@ def solve_constraint_system(
     mass: str = FREE_MASS,
     mass_parametrization: str = MASS_PARAMETRIZATION_PROJECTION,
     max_weight_ratio: float | None = None,
+    max_weight_reference: np.ndarray | None = None,
     l2_lambda: float = 0.0,
     l2_anchor: str = "initial",
     l2_anchor_weights: np.ndarray | None = None,
@@ -3097,8 +3334,23 @@ def solve_constraint_system(
         ``(weights, trajectory)``, as :func:`calibrate` reports ``weights``
         and ``loss_trajectory``.
     """
+
+    import torch
+
     _check_mass(mass)
-    _check_epochs_and_weight_ratio(epochs, max_weight_ratio, mass=mass)
+    _check_epochs_and_weight_ratio(
+        epochs,
+        max_weight_ratio,
+        mass=mass,
+        reference_bound=max_weight_reference is not None,
+    )
+    max_weight_reference = _checked_max_weight_reference(
+        max_weight_reference,
+        max_weight_ratio,
+        method="adam",
+        l0_lambda=0.0,
+        target_records=None,
+    )
     l2_anchor_weights = _checked_l2_options(
         l2_lambda,
         l2_basis,
@@ -3120,6 +3372,7 @@ def solve_constraint_system(
             f"{(target_vector.shape[0], w0.shape[0])}."
         )
     _check_l2_anchor_shape(l2_anchor_weights, w0.shape)
+    _check_max_weight_reference(max_weight_reference, w0, max_weight_ratio, mass=mass)
     target_loss_cap = _validate_target_loss_cap(target_loss_cap)
     target_loss_weights = _validate_target_loss_weights(
         target_loss_weights, target_vector.shape
@@ -3163,6 +3416,11 @@ def solve_constraint_system(
         init_mean=0.999,
         temperature=0.25,
         progress_callback=progress_callback,
+        **(
+            {}
+            if max_weight_reference is None
+            else {"weight_bound_reference": max_weight_reference}
+        ),
     )
 
 

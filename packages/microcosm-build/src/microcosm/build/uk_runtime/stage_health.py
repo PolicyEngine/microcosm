@@ -94,6 +94,8 @@ def uk_stage_health_gate(
         return _consumption_basis_gate(stage, evidence, parameters)
     if check == "recomposed_totals":
         return _recomposed_totals_gate(stage, evidence, parameters)
+    if check == "decile_fit":
+        return _decile_fit_gate(stage, evidence, parameters)
     if check == "road_fuel_incidence":
         return _road_fuel_incidence_gate(stage, evidence, parameters)
     if check == "road_fuel_level":
@@ -1060,6 +1062,10 @@ def _child_benefit_take_up_gate(
     falls short of it) is reported, not held. The opted-out share of claiming
     families is held to the published share, or may fall short of it only
     where the receipt shows the charged families exhausted (microcosm#1063).
+    The SPI copies' redrawn reports (microcosm#1508) must leave FRS rows
+    unchanged, rest every cell on the declared number of FRS source
+    households, and give the copy families a weighted reporting share within
+    the tolerance of their cells' FRS rates.
     """
 
     check = "child_benefit_take_up"
@@ -1077,11 +1083,24 @@ def _child_benefit_take_up_gate(
         label=f"{stage}.maximum_opt_out_share_deviation",
     )
     minimum_families = int(parameters["minimum_eligible_family_units"])
+    copy_tolerance = _finite_number(
+        parameters["maximum_copy_report_rate_deviation"],
+        label=f"{stage}.maximum_copy_report_rate_deviation",
+    )
     failures: list[str] = []
     claims = _mapping(evidence.get("claims"), label=f"{stage}.claims")
     opt_outs = _mapping(evidence.get("opt_outs"), label=f"{stage}.opt_outs")
     families = int(claims.get("eligible_family_units", 0))
     details: dict[str, object] = {"eligible_family_units": families}
+    copy_reports = evidence.get("copy_reports")
+    if not isinstance(copy_reports, Mapping):
+        failures.append(f"{stage}: the receipt carries no SPI copy reports.")
+    else:
+        failures.extend(
+            _child_benefit_copy_report_failures(
+                stage, copy_reports, tolerance=copy_tolerance, details=details
+            )
+        )
     target = claims.get("target_rate")
     realized = claims.get("realized_rate")
     if families < minimum_families or target is None or realized is None:
@@ -1159,6 +1178,49 @@ def _child_benefit_take_up_gate(
         if failures
         else _pass(stage, check, details)
     )
+
+
+def _child_benefit_copy_report_failures(
+    stage: str,
+    receipt: Mapping[str, object],
+    *,
+    tolerance: float,
+    details: dict[str, object],
+) -> list[str]:
+    failures: list[str] = []
+    if receipt.get("frs_rows_unchanged") is not True:
+        failures.append(f"{stage}: the copy report redraw did not keep FRS rows.")
+    minimum = int(receipt.get("minimum_source_households", 0))
+    cells = receipt.get("cells")
+    if minimum < 1 or not isinstance(cells, list) or not cells:
+        failures.append(f"{stage}: the copy report receipt carries no cells.")
+        cells = []
+    short = 0
+    for row in cells:
+        row = _mapping(row, label=f"{stage}.copy_reports.cells[]")
+        support = row.get("frs_source_households")
+        if not isinstance(support, int) or support < minimum:
+            short += 1
+    if short:
+        failures.append(
+            f"{stage}: {short} copy report cell(s) rest on fewer than {minimum} FRS "
+            "source households."
+        )
+    expected = receipt.get("copy_rate_expected")
+    realized = receipt.get("copy_rate_after")
+    summary: dict[str, object] = {"cells": len(cells), "short_cells": short}
+    if expected is not None or realized is not None:
+        expected = _finite_number(expected, label=f"{stage}.copy_rate_expected")
+        realized = _finite_number(realized, label=f"{stage}.copy_rate_after")
+        summary.update({"expected": expected, "realized": realized})
+        if abs(realized - expected) > tolerance:
+            failures.append(
+                f"{stage}: {realized:.4f} of SPI copy families report Child Benefit "
+                f"against {expected:.4f} at their cells' FRS rates (tolerance "
+                f"{tolerance})."
+            )
+    details["copy_reports"] = summary
+    return failures
 
 
 def _take_up_signal_gate(
@@ -3454,6 +3516,81 @@ def _division_levelling_factors(
             )
         factors[str(division)] = factor
     return factors
+
+
+#: The donors the decile_fit gate may hold the frame's shape to, each with the
+#: receipt field that carries the shape against it and its name in a failure.
+_DECILE_FIT_SHAPE_REFERENCES: Mapping[str, tuple[str, str]] = {
+    "reweighted_donor": ("reweighted_shape", "reweighted donor's"),
+    "donor": ("shape", "donor's"),
+}
+
+
+def _decile_fit_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Each income decile's spending keeps the donor's shape (microcosm#1717).
+
+    Reads the lcfs ``decile_fit`` receipt: the frame's total spending per
+    household over the donor's, in each decile, over the same ratio pooled
+    over the reference deciles. ``shape_reference`` names the donor the frame
+    is held to: ``reweighted_donor``, the donor reweighted within each decile
+    to the frame's household mix, so that the two surveys' mixes move no
+    shape, or ``donor``, the donor as surveyed. A decile among ``deciles``
+    whose shape leaves 1 by more than ``maximum_shape_deviation``, or that is
+    withheld or missing, fails. Decile 10 rests on incomes beyond the donor's
+    and is reported, not checked. The battery declares the gate diagnostic:
+    it warns and blocks no release.
+    """
+
+    check = "decile_fit"
+    receipt = _mapping(evidence.get("decile_fit"), label=f"{stage}.decile_fit")
+    reference = parameters.get("shape_reference")
+    if reference not in _DECILE_FIT_SHAPE_REFERENCES:
+        raise ValueError(
+            f"{stage}.shape_reference must be one of "
+            f"{sorted(_DECILE_FIT_SHAPE_REFERENCES)}, not {reference!r}."
+        )
+    field, named = _DECILE_FIT_SHAPE_REFERENCES[str(reference)]
+    maximum = _finite_number(
+        parameters.get("maximum_shape_deviation"),
+        label=f"{stage}.maximum_shape_deviation",
+    )
+    checked = [int(decile) for decile in parameters.get("deciles", range(1, 10))]
+    rows = {
+        int(row["decile"]): row
+        for row in receipt.get("deciles", ())
+        if isinstance(row, Mapping) and isinstance(row.get("decile"), int)
+    }
+    failures: list[str] = []
+    shapes: dict[str, float] = {}
+    for decile in checked:
+        row = rows.get(decile)
+        total = None if row is None else row.get("total")
+        shape = total.get(field) if isinstance(total, Mapping) else None
+        if not isinstance(shape, int | float) or not np.isfinite(float(shape)):
+            failures.append(f"{stage}: decile {decile} has no spending shape.")
+            continue
+        shapes[str(decile)] = float(shape)
+        if abs(float(shape) - 1.0) > maximum:
+            failures.append(
+                f"{stage}: decile {decile}'s spending is {float(shape):.3f} of the "
+                f"{named} shape, outside 1 +/- {maximum}."
+            )
+    return GateResult(
+        name="stage_health",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "stage": stage,
+            "check": check,
+            "shape_reference": reference,
+            "shapes": shapes,
+            "maximum_shape_deviation": maximum,
+        },
+    )
 
 
 def _recomposed_totals_gate(

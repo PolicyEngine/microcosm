@@ -87,11 +87,7 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
     from microcosm_emitter_interface import client as emitter_interface_client
 
     from microcosm.build import telemetry_emitter
-    from microcosm.build.uk_runtime import orrery_publication
-    from test_support.microcosm_build.telemetry import (
-        FakeTelemetryEmitter,
-        fake_publication_inventory,
-    )
+    from test_support.microcosm_build.telemetry import FakeTelemetryEmitter
 
     for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"):
         monkeypatch.delenv(name, raising=False)
@@ -135,9 +131,6 @@ def fake_telemetry_emitters(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         telemetry_emitter.LocalTelemetryEmitter, "start", classmethod(start)
-    )
-    monkeypatch.setattr(
-        orrery_publication, "publication_inventory", fake_publication_inventory
     )
 
     def unexpected_start(*args, **options):

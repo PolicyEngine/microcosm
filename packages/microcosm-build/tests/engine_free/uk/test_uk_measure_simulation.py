@@ -819,8 +819,10 @@ def test_packaged_exclusions_load():
     # PIP cases at 16 to 19 and 20 to 24 and holds their sum, 16 to 24, out.
     # PolicyEngine/microcosm#1663 holds RTI's pay of employees aged 18 to 24 and
     # England's PIP cases aged 16 to 24 at each component's enhanced rate as
-    # checks (María's go of 2026-11-18).
-    assert len(names) == len(set(names)) == 144
+    # checks (María's go of 2026-11-18). PolicyEngine/microcosm#1710's B3 holds
+    # HMRC's one-child Child Benefit families in payment on its measured
+    # distortion (María's go of 2026-11-24).
+    assert len(names) == len(set(names)) == 145
     (gas,) = [
         entry
         for entry in exclusions
@@ -911,9 +913,11 @@ def test_packaged_exclusions_load():
     # the plan-2 rows left the 2026-10-02 clock on their 2026-10-20 renewal.
     assert [e for e in exclusions if e["approved_on"] == "2026-10-02"] == []
     # The plan-2 rows were renewed again on 2026-10-23, on arm 1 of the next
-    # bump; the 2026-10-20 entry left is the rail-support hold-out (below).
+    # bump; the rail-support hold-out (below) left the 2026-10-20 clock on its
+    # renewal of 2026-11-27 with the uprating holds (microcosm#1736).
+    assert [e for e in exclusions if e["approved_on"] == "2026-10-20"] == []
     assert sorted(
-        e["name"] for e in exclusions if e["approved_on"] == "2026-10-20"
+        e["name"] for e in exclusions if e["approved_on"] == "2026-11-27"
     ) == ["orr.rail_government_support"]
     renewed = [
         e
@@ -924,9 +928,11 @@ def test_packaged_exclusions_load():
     # María's ruling of 2026-10-20 (microcosm#1278): the ORR row is held out
     # only on a national arm whose gates pass and whose share of rows within
     # 10 percent holds; the 7270 versus 7271 basis ruling stays open.
+    # Renewed on 2026-11-27 with the uprating holds, to their new expiry
+    # (microcosm#1736).
     (rail,) = [e for e in exclusions if e["name"] == "orr.rail_government_support"]
     assert rail["approved_by"] == "juaristi22"
-    assert (rail["approved_on"], rail["expires_on"]) == ("2026-10-20", "2026-12-11")
+    assert (rail["approved_on"], rail["expires_on"]) == ("2026-11-27", "2027-01-27")
     assert rail["tracking"] == "microcosm#1095"
     assert "7270" in rail["reason"] and "7271" in rail["reason"]
     assert "microcosm#890 G" in rail["reason"]

@@ -716,6 +716,13 @@ def default_simulate_factory(dataset_path: Path) -> SimulateFn:
     return simulate
 
 
+def _request_period(request: tuple[str, int]) -> int:
+    """The period of a ``(measure, period)`` weighted-total request."""
+
+    measure, at_period = request
+    return at_period
+
+
 def reform_validation_payload(
     specs: Sequence[ReformValidationSpec],
     *,
@@ -746,7 +753,21 @@ def reform_validation_payload(
     incremental effect given the lines above it — so the per-line effects sum to
     the bill total, matching JCT (see ``stacked_obbba_effects``). The shape
     matches the calibration-diagnostics dashboard's reform_validation reader.
+
+    A ``simulate`` whose
+    :data:`~microcosm.build.us_runtime.post_export_requests.RECORDS_REQUESTS_ONLY`
+    attribute is true only records requests (the release tool's post-export
+    dry run). It receives each reform's description in place of the built
+    reform: the spec for a row simulated on its own, and a
+    :class:`~microcosm.build.us_runtime.post_export_requests.ParameterChangesReform`
+    for each cumulative OBBBA state. No reform is built.
     """
+    # Imported here: post_export_requests imports ReformValidationSpec.
+    from microcosm.build.us_runtime.post_export_requests import (
+        RECORDS_REQUESTS_ONLY,
+        ParameterChangesReform,
+    )
+
     estimates = in_sample_estimates or {}
     targets = in_sample_targets or {}
     baseline: Any = None
@@ -754,6 +775,7 @@ def reform_validation_payload(
     obbba_specs = tuple(spec for spec in specs if _is_obbba_spec(spec))
     obbba_pre_baseline_changes = _merged_parameter_changes(obbba_specs)
     obbba_stacked: dict[str, tuple[float, float, float]] | None = None
+    records_requests_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
 
     def baseline_total(measure: str, at_period: int) -> float:
         nonlocal baseline
@@ -765,24 +787,49 @@ def reform_validation_payload(
         return baseline_totals[key]
 
     def simulation_for_parameter_changes(changes: dict[str, Any]) -> Any:
-        reform = None if not changes else _build_parameter_reform(changes)
-        return simulate(reform)  # type: ignore[misc]
+        if not changes:
+            return simulate(None)  # type: ignore[misc]
+        if records_requests_only:
+            return simulate(ParameterChangesReform(changes))  # type: ignore[misc]
+        return simulate(_build_parameter_reform(changes))  # type: ignore[misc]
 
-    def released_weighted_total(
-        transient_simulation: Any, measure: str, at_period: int
-    ) -> float:
-        """Weighted total of a single-use reform simulation, then release it.
+    def released_weighted_totals(
+        transient_simulation: Any, requests: tuple[tuple[str, int], ...]
+    ) -> dict[tuple[str, int], float]:
+        """Weighted totals of a single-use reform simulation, then release it.
+
+        ``requests`` are ``(measure, period)`` pairs, read in ascending period
+        order: policyengine-us 2.2.1 can fail to compute an earlier period
+        after a later one on the same simulation (microcosm#956). A simulation
+        offering ``prefetch`` (the release tool's household-batched reform)
+        scores them all in one pass before any total is read.
 
         microcosm#456: every out-of-sample score builds a full-release-sized
         engine simulation whose object graph stays reachable after the local
         name dies (system backref, branch-clone cycles). Release it and sweep
         so the smoke phase runs at one-simulation footprint.
         """
+        ascending = tuple(sorted(dict.fromkeys(requests), key=_request_period))
         try:
-            return _weighted_total(transient_simulation, measure, at_period)
+            prefetch = getattr(transient_simulation, "prefetch", None)
+            if prefetch is not None:
+                prefetch(ascending)
+            return {
+                (measure, at_period): _weighted_total(
+                    transient_simulation, measure, at_period
+                )
+                for measure, at_period in ascending
+            }
         finally:
             if _released_engine_state(transient_simulation):
                 gc.collect()
+
+    def released_weighted_total(
+        transient_simulation: Any, measure: str, at_period: int
+    ) -> float:
+        """One weighted total of a single-use reform simulation, then release it."""
+        request = (measure, at_period)
+        return released_weighted_totals(transient_simulation, (request,))[request]
 
     def stacked_obbba_effects() -> dict[str, tuple[float, float, float]]:
         """Score the OBBBA provisions *stacked* in their JCX-35-25 order.
@@ -806,21 +853,23 @@ def reform_validation_payload(
         group reduces to enacting that provision alone). The pre-OBBBA baseline
         always merges every provision's revert, so each group is scored in the
         context of the whole bill; measures are disjoint taxes, so cross-group
-        interactions are nil by construction.
+        interactions are nil by construction. Every group therefore starts
+        from the same state, which one simulation scores for all groups.
         """
         if simulate is None or not obbba_specs:
             return {}
         groups: dict[tuple[str, int], list[ReformValidationSpec]] = {}
         for spec in obbba_specs:
             groups.setdefault((spec.budget_measure, spec.period), []).append(spec)
+        # state 0: pre-OBBBA (every provision reverted, across all groups),
+        # each group's (measure, period) read from one simulation.
+        state_zero_totals = released_weighted_totals(
+            simulation_for_parameter_changes(obbba_pre_baseline_changes),
+            tuple(groups),
+        )
         effects: dict[str, tuple[float, float, float]] = {}
         for (measure, period), group in groups.items():
-            # state 0: pre-OBBBA (every provision reverted, across all groups).
-            prev_total = released_weighted_total(
-                simulation_for_parameter_changes(obbba_pre_baseline_changes),
-                measure,
-                period,
-            )
+            prev_total = state_zero_totals[(measure, period)]
             enacted: set[str] = set()
             for spec in group:
                 # Enacting a provision means dropping its repeal from the
@@ -849,8 +898,9 @@ def reform_validation_payload(
                 obbba_stacked = stacked_obbba_effects()
             return obbba_stacked.get(spec.id, (None, None, None))
         base = baseline_total(spec.budget_measure, spec.period)
+        reform = spec if records_requests_only else spec.build_reform()
         reform_total = released_weighted_total(
-            simulate(spec.build_reform()), spec.budget_measure, spec.period
+            simulate(reform), spec.budget_measure, spec.period
         )
         raw = reform_total - base
         # A counterfactual revert measures the provision as baseline − reform.

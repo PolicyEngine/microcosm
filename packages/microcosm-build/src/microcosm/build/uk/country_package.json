@@ -593,6 +593,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "ons_family_spending_income_decile_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "desnz_road_fuel_by_vehicle.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

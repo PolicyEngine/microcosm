@@ -29,8 +29,9 @@ import pandas as pd
 from microcosm.fit import categorical as fit_categorical
 from microcosm.fit import donors as fit_donors
 from microcosm.fit import held_out as fit_held_out
-from microcosm.frame import Frame, MassChangeRecord, WeightKind
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, table_copies
 from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+from microcosm.frame.table_copies import copy_series, copy_table
 from microcosm.graph import (
     Capabilities,
     Determinism,
@@ -129,6 +130,7 @@ _STAGE_MODULES = {
     "spi_benefit_coherence": "spi_benefit_coherence",
     "uc_capital_coherence": "uc_capital_coherence",
     "uc_limited_capability": "uc_limited_capability",
+    "uc_housing_costs_claim": "uc_housing_costs_claim",
     "uc_take_up": "uc_take_up",
     "uc_legacy_closure_take_up": "legacy_closure_take_up",
     "pension_credit_take_up": "pension_credit_take_up",
@@ -194,8 +196,9 @@ _STAGE_HELPER_MODULES = {
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
     # The energy level and prices are energy_pricing's (microcosm#1418): a
     # code-only change to them must re-key the stage (the independent review
-    # of microcosm#1420, finding 5).
-    "lcfs_consumption": (uk_engine_adapter, energy_pricing),
+    # of microcosm#1420, finding 5). The spending draws through microcosm.fit's
+    # forest neighbourhoods and keyed donors (microcosm#1717).
+    "lcfs_consumption": (uk_engine_adapter, energy_pricing, fit_donors),
     "etb_vat": (uk_engine_adapter,),
     "etb_services": (uk_engine_adapter,),
     "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
@@ -224,6 +227,13 @@ _STAGE_HELPER_MODULES = {
         frs_take_up,
         uc_take_up,
         stochastic_assignment,
+    ),
+    # One engine materialization of the housing costs element; the frs_spine
+    # carrier's codes and the receipt's support counts (B1 of microcosm#1710).
+    "uc_housing_costs_claim": (
+        uk_engine_adapter,
+        frs_spine,
+        receipt_counts,
     ),
     # vendored DWP counts, the closure stage's rule and rates, the deduction
     # attributes, the take-up population and the family-type roles, and counts
@@ -370,6 +380,7 @@ _COUNTING_STAGES = frozenset(
         "spi_employment_shell",
         "aps_occupation",
         "uc_limited_capability",
+        "uc_housing_costs_claim",
         "pip_points",
     }
 )
@@ -423,6 +434,8 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
         type(kernel),
         stage_evidence,
         graph_evidence,
+        # _minimal_frame copies the stage's inputs with copy_table.
+        table_copies,
         _stage_artifacts,
         _mass_log_payload,
         _stage_module(stage),
@@ -739,6 +752,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .trading_allowance_receipts import UKTradingAllowanceReceiptsStageTransform
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .uc_deduction_attributes import UKUCDeductionAttributesStageTransform
+    from .uc_housing_costs_claim import UKUCHousingCostsClaimStageTransform
     from .uc_limited_capability import UKUCLimitedCapabilityStageTransform
     from .uc_new_claimant_draw import UKUCNewClaimantDrawStageTransform
     from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
@@ -957,6 +971,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "uc_limited_capability": UKUCLimitedCapabilityStageTransform(
                 stage=stages["uc_limited_capability"], engine=engine
             ),
+            "uc_housing_costs_claim": UKUCHousingCostsClaimStageTransform(
+                stage=stages["uc_housing_costs_claim"], engine=engine
+            ),
             "uc_take_up": UKUCTakeUpStageTransform(
                 stage=stages["uc_take_up"], engine=engine
             ),
@@ -1143,14 +1160,16 @@ def _minimal_frame(context: KernelContext) -> Frame:
                 reason=reason,
             ),
         )
-    return Frame(
+    # One copy of each input column, in the block layout copy(deep=True) gives,
+    # which Frame.adopt stores without copying again.
+    return Frame.adopt(
         {
-            entity: context.tables[entity].copy(deep=True)
+            entity: copy_table(context.tables[entity])
             for entity in UK_NATIONAL_SCHEMA.entities
         },
         UK_NATIONAL_SCHEMA,
         {"household": context.weights["household"]},
-        context.strata.copy(deep=True),
+        copy_series(context.strata),
         mass_log=mass_log,
         metadata={"time_period": str(context.params.get("time_period", "2024"))},
     )

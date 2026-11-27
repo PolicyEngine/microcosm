@@ -31,6 +31,8 @@ from microcosm.build.spec_engine import SpecValidationError, load_bundle
 from microcosm.build.spec_engine.compiler_ir import compile_spec
 from microcosm.build.trace import canonical_json_bytes
 from microcosm.build.uk_runtime import terminal_gates, weighted_integrity
+from microcosm.data.contract import publishes_to_build_folder, required_release_files
+from test_support.microcosm_data.build_folders import BE_RELEASE_IDS
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -950,6 +952,31 @@ class TestBelgianPackage:
         assert "source_coverage.json" in contract.required_release_files
         assert "reform_validation.json" in contract.required_release_files
 
+    def test_release_contract_names_build_folders_and_releases_json(self, spec) -> None:
+        """BE's builds publish into ``releases/<release>/<build>/`` folders,
+        which ``releases.json`` lists, through the emitter; no pointer file
+        names a build."""
+        contract = spec.release_contract
+        assert "latest.json" not in contract.private_artifacts
+        assert "releases.json" in contract.private_artifacts
+        assert "releases/<release>/<build>/" in contract.policy
+        assert "releases.json" in contract.policy
+        assert "microcosm-publish-release-build" in contract.policy
+        assert "latest.json" not in contract.notes
+        assert "authorizes no publication" not in contract.policy
+
+    @pytest.mark.parametrize("release_id", BE_RELEASE_IDS)
+    def test_release_contract_requires_the_files_publication_checks(
+        self, spec, release_id
+    ) -> None:
+        """The data contract keys BE's file list on BE's release names, as it
+        does each UK release's, and checks it before a build is handed to the
+        emitter."""
+        assert publishes_to_build_folder(release_id)
+        assert required_release_files(release_id) == tuple(
+            spec.release_contract.required_release_files
+        )
+
     def test_gates_declare_their_phase_order(self, spec) -> None:
         assert spec.gates.phases == ("terminal",)
         assert {gate.phase for gate in spec.gates.gates} == {"terminal"}
@@ -1187,6 +1214,7 @@ class TestUKCountryPackage:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "ons_family_spending_income_decile_facts.json",
             "desnz_road_fuel_by_vehicle.json",
             "excise_facts.json",
             "gambling_participation_facts.json",
@@ -1229,8 +1257,9 @@ class TestUKCountryPackage:
         # microcosm#1095 (P1) pip_points just before trading_allowance_receipts;
         # microcosm#1095 (Y1) uc_limited_capability just before uc_take_up;
         # microcosm#1095 uc_new_claimant_draw last, after
-        # trading_allowance_receipts.
-        assert len(spec.sources.stages) == 57
+        # trading_allowance_receipts; B1 of microcosm#1710 uc_housing_costs_claim
+        # after uc_limited_capability.
+        assert len(spec.sources.stages) == 58
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1379,6 +1408,7 @@ class TestExistingPackagesGeneralize:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "ons_family_spending_income_decile_facts.json",
             "desnz_road_fuel_by_vehicle.json",
             "excise_facts.json",
             "gambling_participation_facts.json",
@@ -1655,6 +1685,7 @@ class TestUKGatesManifest:
             "uk_stage_lcfs_consumption_excise_quantities",
             "uk_stage_lcfs_consumption_gambling_participation",
             "uk_stage_lcfs_consumption_basis",
+            "uk_stage_lcfs_consumption_decile_fit",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
@@ -1731,10 +1762,12 @@ class TestUKGatesManifest:
         ]
         # PR #870 review: the four local fit/weight gates are release-blocking
         # like the rest of the battery; the only diagnostic entries are the
-        # microcosm#1240 high-value homes benchmarks and support reports.
+        # microcosm#1240 high-value homes benchmarks and support reports and
+        # the microcosm#1717 decile fit of the LCFS spending.
         diagnostic: set[str] = {
             "uk_high_value_homes_benchmarks",
             "uk_high_value_homes_support",
+            "uk_stage_lcfs_consumption_decile_fit",
         }
         assert {
             gate.id for gate in manifest.gates if gate.criticality == "diagnostic"

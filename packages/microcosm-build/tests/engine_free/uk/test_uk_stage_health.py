@@ -1827,6 +1827,74 @@ def test_road_fuel_incidence_gate_holds_every_flagged_household_positive() -> No
         run(None)
 
 
+def test_decile_fit_gate_reports_a_decile_off_the_donors_shape() -> None:
+    """Deciles 1 to 9 are held to the reweighted donor's shape; 10 is not.
+
+    The gate is report-only (microcosm#1717): declared diagnostic, evidence
+    absence blocks nothing, and it runs in the spine's battery. The spec holds
+    the frame to the donor reweighted to its household mix; the shape against
+    the donor as surveyed is read only when ``shape_reference`` names it.
+    """
+
+    from microcosm.build.uk_runtime.calibration_run import UK_SPINE_GATE_SCOPE
+
+    gates = json.loads(
+        (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text("utf-8")
+    )
+    entry = next(
+        g for g in gates["gates"] if g["id"] == "uk_stage_lcfs_consumption_decile_fit"
+    )
+    assert entry["gate"] == "stage_health"
+    assert entry["criticality"] == "diagnostic"
+    assert "evidence_absent_blocks" not in entry
+    assert entry["id"] in UK_SPINE_GATE_SCOPE
+    parameters = dict(entry["parameters"])
+    assert parameters["deciles"] == list(range(1, 10))
+    assert parameters["shape_reference"] == "reweighted_donor"
+
+    def gate(shapes, *, surveyed=1.5, reference=None):
+        rows = [
+            {"decile": decile, "withheld": True}
+            if shape is None
+            else {
+                "decile": decile,
+                "total": {"reweighted_shape": shape, "shape": surveyed},
+            }
+            for decile, shape in enumerate(shapes, start=1)
+        ]
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "decile_fit": {"deciles": rows}},
+            stage="lcfs_consumption",
+            check="decile_fit",
+            parameters={
+                **parameters,
+                **({} if reference is None else {"shape_reference": reference}),
+            },
+        )
+
+    within = gate([1.08, 0.95, 1.0, 1.0, 1.0, 1.0, 1.0, 1.02, 0.93, 1.6])
+    assert within.passed, within.failures
+    assert within.details["shape_reference"] == "reweighted_donor"
+    assert "10" not in within.details["shapes"]
+    off = gate([1.27, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    assert list(off.failures) == [
+        "lcfs_consumption: decile 1's spending is 1.270 of the reweighted donor's "
+        "shape, outside 1 +/- 0.1."
+    ]
+    withheld = gate([1.0, None, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    assert list(withheld.failures) == [
+        "lcfs_consumption: decile 2 has no spending shape."
+    ]
+    surveyed = gate([1.0] * 10, surveyed=1.15, reference="donor")
+    assert len(surveyed.failures) == 9
+    assert surveyed.failures[0] == (
+        "lcfs_consumption: decile 1's spending is 1.150 of the donor's shape, "
+        "outside 1 +/- 0.1."
+    )
+    with pytest.raises(ValueError, match="shape_reference must be one of"):
+        gate([1.0] * 10, reference="frame")
+
+
 def test_recomposed_totals_gate_holds_totals_above_their_components() -> None:
     """The lcfs recomposed_totals receipt is checked at stage time (microcosm#1113)."""
 
@@ -2521,6 +2589,7 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
         "minimum_age_child_rows": 200,
         "maximum_opt_out_share_deviation": 0.01,
         "minimum_eligible_family_units": 1,
+        "maximum_copy_report_rate_deviation": 0.05,
     }
 
     def age(value, published, realized, *, rows=1_000, clipped=False):
@@ -2532,9 +2601,41 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
             "clipped": clipped,
         }
 
-    def gate(*, realized=0.868, ages=None, share=0.0905, exhausted=False, units=100):
+    def copies(**changes):
+        receipt = {
+            "minimum_source_households": 30,
+            "cells": [
+                {
+                    "children": ["1"],
+                    "income_bands": ["taper"],
+                    "frs_source_households": 40,
+                },
+                {
+                    "children": ["2", "3+"],
+                    "income_bands": ["taper"],
+                    "frs_source_households": 31,
+                },
+            ],
+            "copy_rate_expected": 0.67,
+            "copy_rate_after": 0.69,
+            "frs_rows_unchanged": True,
+        }
+        receipt.update(changes)
+        return receipt
+
+    def gate(
+        *,
+        realized=0.868,
+        ages=None,
+        share=0.0905,
+        exhausted=False,
+        units=100,
+        copy_reports=None,
+        omit_copies=False,
+    ):
         evidence = {
             "stage": "child_benefit_take_up",
+            "copy_reports": copies() if copy_reports is None else copy_reports,
             "claims": {
                 "eligible_family_units": units,
                 "target_rate": 0.871,
@@ -2549,6 +2650,8 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
                 "pool_exhausted": exhausted,
             },
         }
+        if omit_copies:
+            del evidence["copy_reports"]
         return uk_stage_health_gate(
             evidence=evidence,
             stage="child_benefit_take_up",
@@ -2575,6 +2678,30 @@ def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> No
     assert not gate(share=0.12, exhausted=True).passed
     assert not gate(units=0).passed
     assert not gate(ages=[]).passed
+    # The SPI copies' reports (microcosm#1508): FRS rows kept, every cell on
+    # the declared support, and the copies' share near their cells' rates.
+    assert result.details["copy_reports"] == {
+        "cells": 2,
+        "short_cells": 0,
+        "expected": 0.67,
+        "realized": 0.69,
+    }
+    assert "did not keep FRS rows" in " ".join(
+        gate(copy_reports=copies(frs_rows_unchanged=False)).failures
+    )
+    short = copies()
+    short["cells"][1]["frs_source_households"] = None
+    assert "1 copy report cell(s)" in " ".join(gate(copy_reports=short).failures)
+    assert "SPI copy families report" in " ".join(
+        gate(copy_reports=copies(copy_rate_after=0.75)).failures
+    )
+    assert not gate(copy_reports=copies(cells=[])).passed
+    assert not gate(copy_reports={}).passed
+    # A frame without copies has no share to hold.
+    assert _passed(
+        gate(copy_reports=copies(copy_rate_expected=None, copy_rate_after=None))
+    )
+    assert "no SPI copy reports" in " ".join(gate(omit_copies=True).failures)
 
 
 _PROPERTY_COMPONENTS_PARAMETERS = {

@@ -1,4 +1,4 @@
-"""Keyed nearest-donor choice within cells.
+"""Keyed donor choice: nearest donors within cells, and forest neighbourhoods.
 
 Some values are copied whole from a donor rather than modelled one by one, so
 that combinations that occur together stay together: an industry division and
@@ -8,6 +8,12 @@ builds, chosen with probability proportional to the donor's weight at the
 recipient's own uniform. A build passes uniforms keyed on stable identities, so
 a recipient's donor does not depend on which other recipients are drawn with it.
 A cell with too few donors falls back to the next, coarser cell.
+
+:func:`forest_neighbourhoods` lets a regression forest choose the neighbours
+instead of a distance: it learns which features matter for the donors' values.
+:func:`keyed_neighbour_donors` draws one donor from a neighbourhood and
+:func:`keyed_neighbour_quantiles` reads a value between neighbouring donors'
+values, both at the recipient's own uniform.
 """
 
 from __future__ import annotations
@@ -16,11 +22,19 @@ from collections.abc import Mapping, Sequence
 
 import numpy as np
 import pandas as pd
+from scipy import sparse
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.neighbors import NearestNeighbors
 
 from microcosm.fit.model import duplicated_column_labels
 
-__all__ = ["donor_distance_features", "keyed_nearest_donors"]
+__all__ = [
+    "donor_distance_features",
+    "forest_neighbourhoods",
+    "keyed_nearest_donors",
+    "keyed_neighbour_donors",
+    "keyed_neighbour_quantiles",
+]
 
 #: What :func:`donor_distance_features` does with a recipient category no
 #: donor holds; the rules :class:`~microcosm.fit.CategoricalClassifier` names.
@@ -257,3 +271,218 @@ def keyed_nearest_donors(
             "Some recipients have no donor with positive weight at any level."
         )
     return positions, levels
+
+
+def _donor_uniforms(uniforms: np.ndarray, rows: int) -> np.ndarray:
+    u = np.asarray(uniforms, dtype=np.float64)
+    if u.shape != (rows,):
+        raise ValueError("uniforms need one value per recipient.")
+    if not np.isfinite(u).all() or ((u < 0) | (u >= 1)).any():
+        raise ValueError("Donor uniforms must be in [0, 1).")
+    return u
+
+
+def _neighbourhood_rows(neighbourhoods: sparse.csr_matrix) -> sparse.csr_matrix:
+    if not sparse.issparse(neighbourhoods):
+        raise ValueError(
+            "neighbourhoods must be the matrix forest_neighbourhoods returns."
+        )
+    weights = sparse.csr_matrix(neighbourhoods)
+    if (np.diff(weights.indptr) == 0).any():
+        raise ValueError("Every recipient's neighbourhood needs at least one donor.")
+    return weights
+
+
+def forest_neighbourhoods(
+    donor_features: np.ndarray,
+    donor_targets: np.ndarray,
+    recipient_features: np.ndarray,
+    *,
+    donor_weights: np.ndarray,
+    n_estimators: int,
+    seed: int,
+) -> sparse.csr_matrix:
+    """Each recipient's weights on the donors, from a regression forest's leaves.
+
+    A random forest of fully grown trees is fitted to the donors' targets (one
+    column, or several for a multi-output forest), weighted by
+    ``donor_weights``. In each tree a recipient falls in one leaf, and the leaf
+    shares one unit among the positive-weight donors it holds, in proportion to
+    their weights; a recipient's weight on a donor is that share summed over the
+    trees, over the number of trees. These are the weights a quantile regression
+    forest gives its training rows (Meinshausen 2006), so the neighbourhood is
+    the forest's conditional distribution of the donors given the recipient's
+    features, and the forest, not a distance, decides which features matter.
+
+    Args:
+        donor_features: Donor feature matrix, one row per donor.
+        donor_targets: The values the forest is fitted to, one row per donor.
+        recipient_features: Recipient feature matrix, the donors' columns.
+        donor_weights: Non-negative donor weights; a zero-weight donor is in
+            no neighbourhood.
+        n_estimators: Number of trees.
+        seed: The forest's random state.
+
+    Returns:
+        A ``(recipients, donors)`` CSR matrix whose rows sum to one, with each
+        row's donors in position order.
+
+    Raises:
+        ValueError: If the inputs disagree in shape, a feature, target or
+            weight is not finite, a weight is negative, no donor has positive
+            weight, ``n_estimators`` is below 1, or a recipient's leaves hold
+            no positive-weight donor in any tree.
+    """
+    x_donors = np.asarray(donor_features, dtype=np.float64)
+    x_recipients = np.asarray(recipient_features, dtype=np.float64)
+    y = np.asarray(donor_targets, dtype=np.float64)
+    weights = np.asarray(donor_weights, dtype=np.float64)
+    if x_donors.ndim != 2 or x_recipients.ndim != 2:
+        raise ValueError("Donor and recipient features must be matrices.")
+    m = len(x_donors)
+    if x_recipients.shape[1] != x_donors.shape[1]:
+        raise ValueError("Recipients need the donors' feature columns.")
+    if len(y) != m or weights.shape != (m,):
+        raise ValueError("donor_targets and donor_weights need one row per donor.")
+    for name, values in (
+        ("donor_features", x_donors),
+        ("recipient_features", x_recipients),
+        ("donor_targets", y),
+        ("donor_weights", weights),
+    ):
+        if not np.isfinite(values).all():
+            raise ValueError(f"{name} must be finite.")
+    if (weights < 0).any() or not (weights > 0).any():
+        raise ValueError(
+            "Donor weights must be non-negative, with at least one positive."
+        )
+    if n_estimators < 1:
+        raise ValueError("n_estimators must be at least 1.")
+    forest = RandomForestRegressor(
+        n_estimators=n_estimators, min_samples_leaf=1, random_state=seed
+    ).fit(x_donors, y, sample_weight=weights)
+    donor_leaves = forest.apply(x_donors)
+    recipient_leaves = forest.apply(x_recipients)
+    members_rows = np.flatnonzero(weights > 0)
+    n = len(x_recipients)
+    rows, columns, shares = [], [], []
+    for tree in range(donor_leaves.shape[1]):
+        leaves, leaf_of_member = np.unique(
+            donor_leaves[members_rows, tree], return_inverse=True
+        )
+        leaf_weight = np.bincount(
+            leaf_of_member, weights=weights[members_rows], minlength=len(leaves)
+        )
+        members = sparse.csr_matrix(
+            (
+                weights[members_rows] / leaf_weight[leaf_of_member],
+                (leaf_of_member, members_rows),
+            ),
+            shape=(len(leaves), m),
+        )
+        position = np.minimum(
+            np.searchsorted(leaves, recipient_leaves[:, tree]), len(leaves) - 1
+        )
+        # A leaf that holds only zero-weight donors gives its recipients nothing.
+        held = np.flatnonzero(leaves[position] == recipient_leaves[:, tree])
+        picked = members[position[held]]
+        rows.append(np.repeat(held, np.diff(picked.indptr)))
+        columns.append(picked.indices)
+        shares.append(picked.data)
+    # Built once: the COO-to-CSR conversion sums each recipient's trees.
+    total = sparse.csr_matrix(
+        (np.concatenate(shares), (np.concatenate(rows), np.concatenate(columns))),
+        shape=(n, m),
+    )
+    total.sum_duplicates()
+    total.sort_indices()
+    totals = np.asarray(total.sum(axis=1)).ravel()
+    if (totals <= 0).any():
+        raise ValueError(
+            "Some recipients' leaves hold no donor with positive weight in any tree."
+        )
+    total.data /= np.repeat(totals, np.diff(total.indptr))
+    return total
+
+
+def keyed_neighbour_donors(
+    neighbourhoods: sparse.csr_matrix, uniforms: np.ndarray
+) -> np.ndarray:
+    """One donor per recipient, drawn from its neighbourhood at its own uniform.
+
+    The donors are taken in position order and the recipient takes the first
+    whose cumulative weight passes its uniform, so each donor is drawn with
+    probability equal to its neighbourhood weight and a recipient's draw depends
+    on nothing but its own row and uniform.
+
+    Returns:
+        Each recipient's donor, as a row position in the donor arrays.
+
+    Raises:
+        ValueError: If a uniform is outside ``[0, 1)``, the uniforms are not one
+            per recipient, or a recipient's neighbourhood is empty.
+    """
+    weights = _neighbourhood_rows(neighbourhoods)
+    u = _donor_uniforms(uniforms, weights.shape[0])
+    cumulative = np.cumsum(weights.data)
+    starts, ends = weights.indptr[:-1], weights.indptr[1:]
+    before = np.where(starts > 0, cumulative[np.maximum(starts - 1, 0)], 0.0)
+    within = cumulative[ends - 1] - before
+    # The first donor whose cumulative weight passes the uniform's share of the row.
+    position = np.clip(
+        np.searchsorted(cumulative, before + u * within, side="right"),
+        starts,
+        ends - 1,
+    )
+    return weights.indices[position].astype(np.int64)
+
+
+def keyed_neighbour_quantiles(
+    neighbourhoods: sparse.csr_matrix,
+    donor_values: np.ndarray,
+    uniforms: np.ndarray,
+) -> np.ndarray:
+    """Each recipient's value at its uniform's quantile of its neighbours' values.
+
+    The neighbourhood's donors are sorted by value; each sits at the midpoint of
+    its weight on the cumulative scale, and the quantile is read linearly
+    between the two donors either side of the uniform. A recipient's value
+    therefore falls between two donors' values rather than on one, except in the
+    half-weight tails beyond the lowest and the highest donor, where it is that
+    donor's value. It never leaves the range of the neighbours' values.
+
+    Returns:
+        One value per recipient.
+
+    Raises:
+        ValueError: If a uniform is outside ``[0, 1)``, the uniforms are not one
+            per recipient, ``donor_values`` is not one finite value per donor,
+            or a recipient's neighbourhood is empty.
+    """
+    weights = _neighbourhood_rows(neighbourhoods)
+    u = _donor_uniforms(uniforms, weights.shape[0])
+    values = np.asarray(donor_values, dtype=np.float64)
+    if values.shape != (weights.shape[1],) or not np.isfinite(values).all():
+        raise ValueError("donor_values need one finite value per donor.")
+    rows = np.repeat(np.arange(weights.shape[0]), np.diff(weights.indptr))
+    order = np.lexsort((values[weights.indices], rows))
+    rows, mass = rows[order], weights.data[order]
+    sorted_values = values[weights.indices[order]]
+    starts, ends = weights.indptr[:-1], weights.indptr[1:]
+    cumulative = np.cumsum(mass)
+    before = np.where(starts > 0, cumulative[np.maximum(starts - 1, 0)], 0.0)
+    within = cumulative[ends - 1] - before
+    midpoint = (cumulative - 0.5 * mass - before[rows]) / within[rows]
+    # Midpoints lie strictly inside (0, 1), so row + midpoint is sorted overall.
+    upper = np.searchsorted(rows + midpoint, np.arange(len(u)) + u, side="left")
+    upper = np.clip(upper, starts, ends - 1)
+    lower = np.clip(upper - 1, starts, ends - 1)
+    span = midpoint[upper] - midpoint[lower]
+    share = np.where(
+        span > 0,
+        np.clip((u - midpoint[lower]) / np.where(span > 0, span, 1.0), 0, 1),
+        1.0,
+    )
+    below_first = u <= midpoint[starts]
+    value = sorted_values[lower] + share * (sorted_values[upper] - sorted_values[lower])
+    return np.where(below_first, sorted_values[starts], value)

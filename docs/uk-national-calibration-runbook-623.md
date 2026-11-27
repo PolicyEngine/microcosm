@@ -78,9 +78,13 @@ supply, and no way for the receipt to claim an identity the file does not have.
 
 Solve parameters are per-run overrides of the declared doctrine. Since the
 2026-09-20 ruling (microcosm#823) the doctrine is the campaign posture itself:
-1,500 epochs, `family_equal`, learning rate 0.02, seed 0, so a doctrine run
-passes no solve flags and records no overrides; `--target-weight-rule uniform`,
-another `--epochs`, `--learning-rate` or `--target-loss-cap` is validated
+1,500 epochs, `loss_family_equal`, learning rate 0.02, seed 0, so a doctrine run
+passes no solve flags and records no overrides. `loss_family_equal` (María's
+ruling of 2026-11-25, microcosm#1710) is `family_equal` over loss families: a
+row's loss family is its register family, except that DWP's Universal Credit
+family splits into award bands, composition, and housing with the single-row
+tables (`UK_NATIONAL_LOSS_FAMILIES`). `--target-weight-rule family_equal` or
+`uniform`, another `--epochs`, `--learning-rate` or `--target-loss-cap` is validated
 through the doctrine dataclass and echoed as an explicit deviation in the
 manifest, diagnostics and build record. The national role refuses
 `--release-candidate` outright: its six-gate battery cannot sign

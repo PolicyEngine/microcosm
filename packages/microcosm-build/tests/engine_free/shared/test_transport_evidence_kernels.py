@@ -101,30 +101,22 @@ PROPERTY = settings(max_examples=60, deadline=None, derandomize=True)
 SCHEMA = EntitySchema(group_entities=("household", "family"))
 GATE = "release_input_coverage"
 #: What the leaf adds to the battery's binding identity (H42).
+#: Since #1745 deleted the Orrery projection, whose module and the package's
+#: projection functions imported ``microcosm.graph.evidence`` and with it the
+#: store, manifest and presentation modules, the leaf reaches only these.
 LEAF_ADDED_MODULES = frozenset(
     [
         "microcosm.build.transport.evidence_contract",
         "microcosm.frame.adapters.axiom_input_surface",
         "microcosm.frame.input_closure",
         "microcosm.graph",
-        "microcosm.graph.artifact_edges",
-        "microcosm.graph.availability",
         "microcosm.graph.canonical",
         "microcosm.graph.decl",
         "microcosm.graph.errors",
-        "microcosm.graph.evidence",
-        "microcosm.graph.execution_overlay",
         "microcosm.graph.expansion",
         "microcosm.graph.kernel",
-        "microcosm.graph.keys",
-        "microcosm.graph.manifest",
-        "microcosm.graph.orrery",
-        "microcosm.graph.orrery_evidence",
-        "microcosm.graph.population",
-        "microcosm.graph.presentation",
         "microcosm.graph.schema",
         "microcosm.graph.serialize",
-        "microcosm.graph.store",
         "microcosm.graph.weight_update",
     ]
 )
@@ -161,6 +153,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1585 item 11: us_runtime.multispine_pool's shadow sites
         # import us_runtime.gate_shadow.
         "microcosm.build.us_runtime.gate_shadow",
+        # microcosm#1722: us_runtime.reform_coverage_smoke imports
+        # RECORDS_REQUESTS_ONLY from us_runtime.post_export_requests.
+        "microcosm.build.us_runtime.post_export_requests",
         # microcosm#1686: the five SIPP donor modules import the shared read
         # of the SIPP person file.
         "microcosm.build.us_runtime.sipp_december_person_rows",
