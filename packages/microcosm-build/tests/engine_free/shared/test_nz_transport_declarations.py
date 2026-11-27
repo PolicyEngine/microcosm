@@ -274,6 +274,10 @@ def test_settings_export_and_receipt_profiles_declare_the_reviewed_scope():
         "sole_parent_support",
         "jobseeker_support",
     ]
+    # The opt-in take-up cap sits inside ``receipts``, the object the take-up
+    # nodes select; a copy at the file's top level would be ignored.
+    assert receipts["target_exceeds_eligible_mass"] == "assign_all_eligible"
+    assert "target_exceeds_eligible_mass" not in resources["receipt_contract"]
     suffixes = [
         row["draw_key_suffix"] for row in receipts["assignment_profiles"].values()
     ]
