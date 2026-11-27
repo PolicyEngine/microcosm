@@ -13,6 +13,7 @@ from microcosm.build.outer_stage_runtime import (
     StagePipeline,
     StageRuntime,
     assert_clone_expansion,
+    assert_expected_identity,
     assert_unchanged_identity,
     frame_identity,
 )
@@ -20,6 +21,7 @@ from microcosm.frame import (
     EntitySchema,
     Frame,
     MassChangeRecord,
+    SharedColumnChangedError,
     WeightKind,
     Weights,
 )
@@ -380,3 +382,126 @@ def test_load_restores_frame_metadata_from_the_stage_record(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="no mapping under"):
         resumed.load("source", frame_metadata_key="missing_key")
+
+
+def _reordered_people(frame: Frame) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    order = [1, 0, 2]
+    tables["person"] = tables["person"].iloc[order].reset_index(drop=True)
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata.iloc[order].reset_index(drop=True),
+        mass_log=frame.mass_log,
+    )
+
+
+def test_expected_identity_check_needs_only_the_recorded_identity() -> None:
+    original = _source_frame()
+    recorded = frame_identity(original)
+    changed_values = _with_income(original, [100.0, 200.0, 300.0])
+
+    assert (
+        assert_expected_identity(recorded, changed_values, stage="value_only")
+        == recorded
+    )
+    with pytest.raises(
+        AssertionError,
+        match=r"stage 'value_only' changed Frame identity or row order: "
+        rf"{recorded.sha256} -> [0-9a-f]{{64}}",
+    ):
+        assert_expected_identity(
+            recorded, _reordered_people(original), stage="value_only"
+        )
+
+
+def test_expected_identity_check_finds_input_ids_rewritten_in_place() -> None:
+    """Only the result is compared with the identity recorded before the step.
+
+    ``assert_unchanged_identity`` hashes the input again after the step, so it
+    hashes the input's rewritten IDs. A result that carries them passes that
+    check and fails the recorded one. A result built before the rewrite keeps
+    the recorded identity: the recorded check accepts it, and the two-frame
+    check refuses it although the result is unchanged.
+    """
+
+    original = _source_frame()
+    recorded = frame_identity(original)
+    built_before_rewrite = _with_income(original, [4.0, 5.0, 6.0])
+    original.table("person")["source_row_id"] = np.array([5, 6, 7], dtype=np.int32)
+    carries_rewrite = _with_income(original, [1.0, 2.0, 3.0])
+
+    assert_unchanged_identity(original, carries_rewrite, stage="in_place")
+    with pytest.raises(AssertionError, match="stage 'in_place' changed"):
+        assert_expected_identity(recorded, carries_rewrite, stage="in_place")
+
+    assert (
+        assert_expected_identity(recorded, built_before_rewrite, stage="in_place")
+        == recorded
+    )
+    with pytest.raises(AssertionError, match="stage 'in_place' changed"):
+        assert_unchanged_identity(original, built_before_rewrite, stage="in_place")
+
+
+def test_complete_refuses_a_frame_unlike_the_expected_identity_before_writing(
+    tmp_path: Path,
+) -> None:
+    source = _source_frame()
+    runtime = StageRuntime(tmp_path / "checked", _pipeline())
+    runtime.complete("source", source)
+    recorded = runtime.load("source").identity
+
+    with pytest.raises(AssertionError, match="stage 'enrich' changed"):
+        runtime.complete(
+            "enrich",
+            _reordered_people(source),
+            expected_identity=recorded,
+        )
+    assert runtime.context.completed == ("source",)
+    assert not (tmp_path / "checked" / "001_enrich.frame.h5").exists()
+
+    enriched = _with_income(source, [100.0, 200.0, 300.0])
+    checked = runtime.complete(
+        "enrich", enriched, metadata={"step": 1}, expected_identity=recorded
+    )
+    unchecked_runtime = StageRuntime(tmp_path / "unchecked", _pipeline())
+    unchecked_runtime.complete("source", source)
+    unchecked = unchecked_runtime.complete("enrich", enriched, metadata={"step": 1})
+
+    assert checked.identity == recorded
+    assert checked.path.read_bytes() == unchecked.path.read_bytes()
+    assert (tmp_path / "checked" / "stage_run_context.json").read_bytes() == (
+        tmp_path / "unchecked" / "stage_run_context.json"
+    ).read_bytes()
+
+
+def test_complete_names_a_shared_column_written_raw_before_the_identity_check(
+    tmp_path: Path,
+) -> None:
+    """A raw write into memory the result shares is reported as before.
+
+    The result is built with ``with_columns``, so it shares the input's
+    ``person_id`` memory, and the step then writes into that memory directly.
+    The checkpoint writer's shared-column check names the column; the
+    identity comparison, which now runs first, must not hide that error.
+    """
+
+    runtime = StageRuntime(tmp_path, _pipeline())
+    runtime.complete("source", _source_frame())
+    loaded = runtime.load("source")
+    result = loaded.frame.with_columns(
+        "person", income=np.array([7.0, 8.0, 9.0], dtype=np.float64)
+    )
+    input_ids = loaded.frame.table("person")["person_id"].to_numpy()
+    owner = input_ids
+    while isinstance(owner.base, np.ndarray):
+        owner = owner.base
+    assert np.shares_memory(owner, result.table("person")["person_id"].to_numpy())
+    assert owner.flags.writeable
+    owner += 1_000
+
+    with pytest.raises(SharedColumnChangedError, match="person_id"):
+        runtime.complete("enrich", result, expected_identity=loaded.identity)
+    assert runtime.context.completed == ("source",)
+    assert not (tmp_path / "001_enrich.frame.h5").exists()

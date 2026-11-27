@@ -52,7 +52,6 @@ set_build_thread_environment(default_count=min(os.cpu_count() or 1, 16))
 
 import argparse
 import dataclasses
-import gc
 import hashlib
 import importlib.metadata
 import importlib.util
@@ -71,11 +70,12 @@ import traceback
 import uuid
 import weakref
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager, nullcontext
+from contextlib import nullcontext
 from datetime import UTC, datetime
+from functools import partial
 from importlib.resources import files as package_files
 from pathlib import PurePosixPath
-from types import MethodType, SimpleNamespace
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -103,8 +103,15 @@ from microcosm.build.gates import (
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.run_outcome import classify_failure
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingRunBundleWriter
 from microcosm.build.staging_storage import confirm_and_report_final_commit
+from microcosm.build.staging_v2 import (
+    EMITTER_MAX_FILE_BYTES,
+    MAX_MESSAGE_CHARACTERS,
+    EventStatus,
+    StagingContentPolicy,
+    StagingRunBundleWriterV2,
+    disabled_staging_delivery,
+)
 from microcosm.build.telemetry_emitter import (
     LocalTelemetryEmitter,
     start_local_telemetry_emitter_service,
@@ -338,6 +345,21 @@ from microcosm.build.us_runtime.h5_io import (
     refuse_denied_pool_h5_digest,
     require_authenticated_us_multispine_pool_h5,
     us_multispine_pool_release_receipt,
+)
+from microcosm.build.us_runtime.household_batches import (
+    INPUT_PASS_POPULATION_AGGREGATE_REMEDY,
+    assert_group_entities_nest_in_households,
+    assert_medicaid_claiming_tax_units_local,
+    automatic_gc_suspended,
+    checked_batch_engine,
+    collect_batch_garbage,
+    collect_pass_garbage,
+    group_to_household_positions,
+    household_batch_plan,
+    household_position_batches,
+    record_engine_branches,
+    refuse_batch_population_aggregates,
+    select_households_by_position,
 )
 from microcosm.build.us_runtime.input_mass import (
     us_input_mass_parity_gate,
@@ -712,41 +734,6 @@ TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 13
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
-
-
-def _collect_batch_garbage() -> None:
-    """Keep batch loops tidy without traversing the full object graph."""
-
-    gc.collect(0)
-
-
-def _collect_family_garbage() -> None:
-    """Full collection at target-family boundaries (microcosm#456).
-
-    ``release_engine_simulation`` frees each batch's array mass by refcount,
-    but the residual simulation skeletons are cyclic, and anything promoted
-    past generation 0 is invisible to ``_collect_batch_garbage`` forever —
-    CPython's own full collections are throttled against the build's multi-GB
-    long-lived heap, so without an explicit sweep the skeletons accumulate
-    for the run's lifetime. One full collection per materialized family is
-    cheap next to the family's engine work.
-    """
-
-    gc.collect()
-
-
-@contextmanager
-def _automatic_gc_suspended():
-    """Avoid surprise full-graph cyclic GC inside memory-heavy PE batches."""
-
-    was_enabled = gc.isenabled()
-    if was_enabled:
-        gc.disable()
-    try:
-        yield
-    finally:
-        if was_enabled:
-            gc.enable()
 
 
 US_BASE_PERSON_POPULATION_BENCHMARK = float(sum(CENSUS_NATIONAL_AGE_BENCHMARK.values()))
@@ -2003,8 +1990,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--staging-dir",
         type=Path,
         help=(
-            "Optional local directory for staging run files. Defaults "
-            "to <out>/staging/runs/<run_id> when --staging-repo-id is set."
+            "Local root for the build's version 2 staging run files, which go "
+            "to <dir>/runs/<run_id>/. Defaults to <out>/staging when "
+            "--staging-repo-id is set; without a repository, it makes a "
+            "local-only run."
         ),
     )
     parser.add_argument(
@@ -2043,14 +2032,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Disable staging run files and their uploads for this build; hosted "
             "telemetry remains active."
-        ),
-    )
-    parser.add_argument(
-        "--staging-prefix",
-        default=_env_default("POPULACE_STAGING_PREFIX", DEFAULT_STAGING_PREFIX),
-        help=(
-            "Repo prefix for staging run artifacts. Defaults to "
-            "POPULACE_STAGING_PREFIX or runs."
         ),
     )
     parser.add_argument(
@@ -2198,10 +2179,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             parser.error(
                 "ExactKExplicitSeedError: --exact-k requires an explicit "
                 "non-negative --seed."
-            )
-        if not args.no_staging:
-            parser.error(
-                "ExactKPointerSuppressionError: --exact-k requires --no-staging."
             )
         if not math.isfinite(args.exact_k_pi_hi) or not (
             0.0 <= args.exact_k_pi_hi <= 1.0
@@ -4261,12 +4238,26 @@ def _aca_source_tax_unit_table_from_simulation(
     return _with_state_take_up_rates(tax_unit, target_tables)
 
 
+# The input-stage passes below run policyengine-us over household batches
+# (``household_batch_plan``). Each batch engine runs in
+# ``checked_batch_engine``: with more than one batch, or when a caller that
+# hands over only part of the population passes
+# ``refuse_population_aggregates=True``, an engine that computed a
+# population-aggregate variable is refused, and every engine is released
+# before the next one is built, also when its batch raised.
+_ACA_SOURCE_INPUT_PASS = "The ACA source-input pass"
+_MEDICAID_ELIGIBILITY_PASS = "The Medicaid eligibility pass"
+_DECEMBER_SSI_PASS = "The December SSI pass"
+_SNAP_ELIGIBILITY_PASS = "The SNAP eligibility pass"
+
+
 def _aca_source_tax_unit_table_batched(
     frame: Frame,
     target_tables: Mapping[str, pd.DataFrame],
     *,
     microsimulation_cls,
     maximum_microsim_batch_size: int | None,
+    refuse_population_aggregates: bool | None = None,
 ) -> pd.DataFrame:
     _assert_no_formula_owned_columns(frame)
     tax_unit = frame.table("tax_unit").copy()
@@ -4298,9 +4289,13 @@ def _aca_source_tax_unit_table_batched(
         index=tax_unit["tax_unit_id"].to_numpy(),
     )
     n_households = frame.n("household")
-    batches = tuple(
-        _household_position_batches(n_households, maximum_microsim_batch_size)
+    plan = household_batch_plan(
+        frame,
+        maximum_microsim_batch_size,
+        refuse_population_aggregates=refuse_population_aggregates,
+        work=_ACA_SOURCE_INPUT_PASS,
     )
+    batches = plan.batches
     if len(batches) > 1:
         print(
             "Materializing ACA source inputs in "
@@ -4309,13 +4304,13 @@ def _aca_source_tax_unit_table_batched(
             flush=True,
         )
 
-    for household_positions in batches:
-        with _automatic_gc_suspended():
+    for batch, household_positions in enumerate(batches, start=1):
+        with automatic_gc_suspended():
             full_batch = len(household_positions) == n_households
             batch_frame = (
                 frame
                 if full_batch
-                else _select_households_by_position(frame, household_positions)
+                else select_households_by_position(frame, household_positions)
             )
             batch_simulation = microsimulation_cls(
                 dataset=_dataset_from_frame(
@@ -4324,11 +4319,19 @@ def _aca_source_tax_unit_table_batched(
                     period_only=True,
                 )
             )
-            batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
-                batch_frame,
-                target_tables,
-                simulation=batch_simulation,
-            )
+            with checked_batch_engine(
+                batch_simulation,
+                refuse_population_aggregates=plan.refuse_population_aggregates,
+                batch=batch,
+                batches=len(batches),
+                work=_ACA_SOURCE_INPUT_PASS,
+                remedy=INPUT_PASS_POPULATION_AGGREGATE_REMEDY,
+            ):
+                batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
+                    batch_frame,
+                    target_tables,
+                    simulation=batch_simulation,
+                )
             full_positions = tax_unit_positions.reindex(
                 batch_tax_unit["tax_unit_id"].to_numpy()
             ).to_numpy()
@@ -4343,10 +4346,9 @@ def _aca_source_tax_unit_table_batched(
                     full_positions,
                     tax_unit.columns.get_loc(column),
                 ] = batch_tax_unit[column].to_numpy()
-            release_engine_simulation(batch_simulation)
             del batch_tax_unit, batch_simulation, batch_frame
-        _collect_batch_garbage()
-    _collect_family_garbage()
+        collect_batch_garbage()
+    collect_pass_garbage()
     return _with_state_take_up_rates(tax_unit, target_tables)
 
 
@@ -4502,6 +4504,7 @@ def _medicaid_person_eligibility(
     *,
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    refuse_population_aggregates: bool | None = None,
 ) -> np.ndarray:
     """Engine-computed person-level ``is_medicaid_eligible``, batched like ACA."""
     if simulation is not None:
@@ -4514,9 +4517,13 @@ def _medicaid_person_eligibility(
         np.arange(len(person_ids), dtype=np.int64), index=person_ids
     )
     n_households = frame.n("household")
-    batches = tuple(
-        _household_position_batches(n_households, maximum_microsim_batch_size)
+    plan = household_batch_plan(
+        frame,
+        maximum_microsim_batch_size,
+        refuse_population_aggregates=refuse_population_aggregates,
+        work=_MEDICAID_ELIGIBILITY_PASS,
     )
+    batches = plan.batches
     if len(batches) > 1:
         print(
             "Materializing Medicaid eligibility in "
@@ -4524,13 +4531,13 @@ def _medicaid_person_eligibility(
             f"{maximum_microsim_batch_size:,} households.",
             flush=True,
         )
-    for household_positions in batches:
-        with _automatic_gc_suspended():
+    for batch, household_positions in enumerate(batches, start=1):
+        with automatic_gc_suspended():
             full_batch = len(household_positions) == n_households
             batch_frame = (
                 frame
                 if full_batch
-                else _select_households_by_position(frame, household_positions)
+                else select_households_by_position(frame, household_positions)
             )
             batch_simulation = Microsimulation(
                 dataset=_dataset_from_frame(
@@ -4539,12 +4546,20 @@ def _medicaid_person_eligibility(
                     period_only=True,
                 )
             )
-            batch_eligible = (
-                _calculate_array(
-                    batch_simulation, "is_medicaid_eligible", map_to="person"
+            with checked_batch_engine(
+                batch_simulation,
+                refuse_population_aggregates=plan.refuse_population_aggregates,
+                batch=batch,
+                batches=len(batches),
+                work=_MEDICAID_ELIGIBILITY_PASS,
+                remedy=INPUT_PASS_POPULATION_AGGREGATE_REMEDY,
+            ):
+                batch_eligible = (
+                    _calculate_array(
+                        batch_simulation, "is_medicaid_eligible", map_to="person"
+                    )
+                    > 0
                 )
-                > 0
-            )
             positions = person_positions.reindex(
                 batch_frame.table("person")["person_id"].to_numpy()
             ).to_numpy()
@@ -4554,10 +4569,9 @@ def _medicaid_person_eligibility(
                     "present in the full person table."
                 )
             eligibility[positions.astype(np.int64)] = batch_eligible
-            release_engine_simulation(batch_simulation)
             del batch_frame, batch_simulation
-        _collect_batch_garbage()
-    _collect_family_garbage()
+        collect_batch_garbage()
+    collect_pass_garbage()
     return eligibility
 
 
@@ -4566,6 +4580,7 @@ def _ssi_person_uncapped_amount(
     *,
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    refuse_population_aggregates: bool | None = None,
 ) -> np.ndarray:
     """December person-level potential federal SSI, batched like Medicaid.
 
@@ -4602,9 +4617,13 @@ def _ssi_person_uncapped_amount(
         np.arange(len(person_ids), dtype=np.int64), index=person_ids
     )
     n_households = frame.n("household")
-    batches = tuple(
-        _household_position_batches(n_households, maximum_microsim_batch_size)
+    plan = household_batch_plan(
+        frame,
+        maximum_microsim_batch_size,
+        refuse_population_aggregates=refuse_population_aggregates,
+        work=_DECEMBER_SSI_PASS,
     )
+    batches = plan.batches
     if len(batches) > 1:
         print(
             "Materializing December SSI candidate amounts in "
@@ -4612,13 +4631,13 @@ def _ssi_person_uncapped_amount(
             f"{maximum_microsim_batch_size:,} households.",
             flush=True,
         )
-    for household_positions in batches:
-        with _automatic_gc_suspended():
+    for batch, household_positions in enumerate(batches, start=1):
+        with automatic_gc_suspended():
             full_batch = len(household_positions) == n_households
             batch_frame = (
                 frame
                 if full_batch
-                else _select_households_by_position(frame, household_positions)
+                else select_households_by_position(frame, household_positions)
             )
             batch_simulation = Microsimulation(
                 dataset=_dataset_from_frame(
@@ -4627,7 +4646,15 @@ def _ssi_person_uncapped_amount(
                     period_only=True,
                 )
             )
-            batch_uncapped = calculate(batch_simulation)
+            with checked_batch_engine(
+                batch_simulation,
+                refuse_population_aggregates=plan.refuse_population_aggregates,
+                batch=batch,
+                batches=len(batches),
+                work=_DECEMBER_SSI_PASS,
+                remedy=INPUT_PASS_POPULATION_AGGREGATE_REMEDY,
+            ):
+                batch_uncapped = calculate(batch_simulation)
             positions = person_positions.reindex(
                 batch_frame.table("person")["person_id"].to_numpy()
             ).to_numpy()
@@ -4637,10 +4664,9 @@ def _ssi_person_uncapped_amount(
                     "in the full person table."
                 )
             uncapped[positions.astype(np.int64)] = batch_uncapped
-            release_engine_simulation(batch_simulation)
             del batch_frame, batch_simulation
-        _collect_batch_garbage()
-    _collect_family_garbage()
+        collect_batch_garbage()
+    collect_pass_garbage()
     return uncapped
 
 
@@ -4806,6 +4832,7 @@ def _snap_spm_unit_eligibility(
     *,
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    refuse_population_aggregates: bool | None = None,
 ) -> np.ndarray:
     """Engine-computed SPM-unit ``is_snap_eligible``, batched like Medicaid."""
     if simulation is not None:
@@ -4818,9 +4845,13 @@ def _snap_spm_unit_eligibility(
         np.arange(len(spm_unit_ids), dtype=np.int64), index=spm_unit_ids
     )
     n_households = frame.n("household")
-    batches = tuple(
-        _household_position_batches(n_households, maximum_microsim_batch_size)
+    plan = household_batch_plan(
+        frame,
+        maximum_microsim_batch_size,
+        refuse_population_aggregates=refuse_population_aggregates,
+        work=_SNAP_ELIGIBILITY_PASS,
     )
+    batches = plan.batches
     if len(batches) > 1:
         print(
             "Materializing SNAP eligibility in "
@@ -4828,13 +4859,13 @@ def _snap_spm_unit_eligibility(
             f"{maximum_microsim_batch_size:,} households.",
             flush=True,
         )
-    for household_positions in batches:
-        with _automatic_gc_suspended():
+    for batch, household_positions in enumerate(batches, start=1):
+        with automatic_gc_suspended():
             full_batch = len(household_positions) == n_households
             batch_frame = (
                 frame
                 if full_batch
-                else _select_households_by_position(frame, household_positions)
+                else select_households_by_position(frame, household_positions)
             )
             batch_simulation = Microsimulation(
                 dataset=_dataset_from_frame(
@@ -4843,12 +4874,20 @@ def _snap_spm_unit_eligibility(
                     period_only=True,
                 )
             )
-            batch_eligible = (
-                _calculate_array(
-                    batch_simulation, "is_snap_eligible", map_to="spm_unit"
+            with checked_batch_engine(
+                batch_simulation,
+                refuse_population_aggregates=plan.refuse_population_aggregates,
+                batch=batch,
+                batches=len(batches),
+                work=_SNAP_ELIGIBILITY_PASS,
+                remedy=INPUT_PASS_POPULATION_AGGREGATE_REMEDY,
+            ):
+                batch_eligible = (
+                    _calculate_array(
+                        batch_simulation, "is_snap_eligible", map_to="spm_unit"
+                    )
+                    > 0
                 )
-                > 0
-            )
             positions = unit_positions.reindex(
                 batch_frame.table("spm_unit")["spm_unit_id"].to_numpy()
             ).to_numpy()
@@ -4858,10 +4897,9 @@ def _snap_spm_unit_eligibility(
                     "present in the full spm_unit table."
                 )
             eligibility[positions.astype(np.int64)] = batch_eligible
-            release_engine_simulation(batch_simulation)
             del batch_frame, batch_simulation
-        _collect_batch_garbage()
-    _collect_family_garbage()
+        collect_batch_garbage()
+    collect_pass_garbage()
     return eligibility
 
 
@@ -4980,40 +5018,7 @@ def _calculate_array(
 
 
 def _tax_unit_to_household_positions(frame: Frame) -> np.ndarray:
-    return _group_to_household_positions(frame, "tax_unit")
-
-
-def _group_to_household_positions(frame: Frame, group_entity: str) -> np.ndarray:
-    person = frame.table("person")
-    household_ids = frame.table("household")["household_id"].to_numpy()
-    group_ids = frame.table(group_entity)[f"{group_entity}_id"].to_numpy()
-    person_group_column = f"person_{group_entity}_id"
-
-    membership = person[[person_group_column, "person_household_id"]].drop_duplicates()
-    counts = membership.groupby(person_group_column)["person_household_id"].nunique()
-    ambiguous = counts[counts != 1]
-    if not ambiguous.empty:
-        raise ValueError(
-            f"{group_entity} units must be nested in households; ambiguous ids "
-            f"examples: {ambiguous.index[:5].tolist()}."
-        )
-    group_to_household = (
-        membership.drop_duplicates(person_group_column)
-        .set_index(person_group_column)["person_household_id"]
-        .reindex(group_ids)
-    )
-    if group_to_household.isna().any():
-        missing = group_ids[group_to_household.isna().to_numpy()][:5].tolist()
-        raise ValueError(f"{group_entity} units with no person membership: {missing}.")
-    household_positions = pd.Series(
-        np.arange(len(household_ids), dtype=np.int64), index=household_ids
-    )
-    positions = household_positions.reindex(group_to_household.to_numpy()).to_numpy()
-    if np.isnan(positions).any():
-        raise ValueError(
-            f"{group_entity} household ids are not present in household table."
-        )
-    return positions.astype(np.int64)
+    return group_to_household_positions(frame, "tax_unit")
 
 
 def _collapse_tax_unit(
@@ -5042,25 +5047,6 @@ def _collapse_person(frame: Frame, values: np.ndarray) -> np.ndarray:
     out = np.zeros(len(household_ids), dtype=np.float64)
     np.add.at(out, positions, np.asarray(values, dtype=np.float64))
     return out
-
-
-def _household_position_batches(
-    n_households: int, batch_size: int | None
-) -> Iterable[np.ndarray]:
-    if n_households <= 0:
-        return
-    if batch_size is None or batch_size <= 0 or batch_size >= n_households:
-        yield np.arange(n_households, dtype=np.int64)
-        return
-    for start in range(0, n_households, batch_size):
-        stop = min(start + batch_size, n_households)
-        yield np.arange(start, stop, dtype=np.int64)
-
-
-def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame:
-    household_ids = frame.table("household")["household_id"].to_numpy()[positions]
-    person_mask = frame.table("person")["person_household_id"].isin(household_ids)
-    return frame.select(person_mask)
 
 
 # ---------------------------------------------------------------------------
@@ -5130,23 +5116,37 @@ PostExportKey = tuple[str, int, str | None]
 #: (``sum_by_state``) and feed ``medicaid_cost_if_enrolled``, and through it
 #: ``medicaid_cost``, ``medicaid`` and ``household_health_benefits``; the two
 #: income deciles are weighted ranks over every household or SPM unit. Batched
-#: target materialization (``_refuse_batch_population_aggregates``) and
-#: multi-batch post-export scoring
-#: (``_assert_post_export_scoring_is_batch_invariant``) refuse an engine that
-#: computed any of them. ``test_us_batched_target_materialization.py`` pins
-#: this list against the installed engine's variable sources; that pattern
-#: scan is a drift detector, not a proof of household locality
-#: (microcosm#956). ``test_us_post_export_scoring.py`` exercises the
-#: post-export Medicaid refusal on a written fixture H5. Shared with the
-#: recertification tool (microcosm#1585).
+#: target materialization and the input-stage passes (through
+#: ``household_batches.refuse_batch_population_aggregates``) and multi-batch
+#: post-export scoring (``_assert_post_export_scoring_is_batch_invariant``)
+#: refuse an engine that computed any of them.
+#: ``test_us_batched_target_materialization.py`` pins this list against the
+#: installed engine's variable sources; that pattern scan is a drift
+#: detector, not a proof of household locality (microcosm#956).
+#: ``test_us_post_export_scoring.py`` exercises the post-export Medicaid
+#: refusal on a written fixture H5, and ``test_us_input_batch_loops.py`` the
+#: input-stage refusals. Shared with the recertification tool
+#: (microcosm#1585).
 US_POPULATION_AGGREGATE_VARIABLES = recert.POPULATION_AGGREGATE_VARIABLES
+
+#: The pass that target compilation's refusals name, and how its
+#: population-aggregate refusal ends.
+TARGET_MATERIALIZATION_PASS = "Target materialization"
+TARGET_POPULATION_AGGREGATE_REMEDY = (
+    "so a target that reaches them cannot be materialized in household "
+    "batches. Drop the target from the surface, or run the whole pool "
+    "unbatched in one simulation with one slice or chunk. Disabling only "
+    "inner batching still leaves slice- or chunk-local aggregates."
+)
 
 #: policyengine-us formulas whose value reads the engine's ``baseline`` branch,
 #: which a batch reform engine does not have. ``medicaid_slcsp_state_denominator``
 #: holds a reform at the baseline's denominator; the others reach
 #: ``get_behavioral_response_measurements``, which measures a reform against
 #: ``get_branch("baseline")`` and would measure it against itself here. A reform
-#: pass refuses an engine that computed any of them, whatever its batch count.
+#: pass refuses an engine that computed any of them, whatever its batch count;
+#: so does each JCT reform batch of target compilation, whose engines also get
+#: the reform's system alone (``_refuse_batch_baseline_branch_readers``).
 #: Pinned in ``test_us_post_export_scoring.py``.
 POST_EXPORT_BASELINE_BRANCH_READERS = (
     "income_elasticity_lsr",
@@ -5159,9 +5159,10 @@ POST_EXPORT_BASELINE_BRANCH_READERS = (
 
 #: The other two formulas that read ``simulation.baseline``, and the parameter
 #: subtree each response is computed from. Without a baseline branch both
-#: return 0; with one they return 0 at zero elasticities. Every reform pass
-#: requires these parameters to remain at their baseline values before it
-#: builds a batch engine.
+#: return 0; with one they return 0 at zero elasticities. Every reform pass, and
+#: each JCT reform of target compilation
+#: (``_refuse_reform_moving_behavioral_responses``), requires these parameters
+#: to remain at their baseline values before it builds a batch engine.
 POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS = {
     "capital_gains_behavioral_response": "gov.simulation.capital_gains_responses",
     "labor_supply_behavioral_response": "gov.simulation.labor_supply_responses",
@@ -5578,7 +5579,7 @@ def _assert_post_export_batching_premises(
     for entity in US_SCHEMA.group_entities:
         if entity != "household":
             # Raises when a unit's persons sit in more than one household.
-            _group_to_household_positions(frame, entity)
+            group_to_household_positions(frame, entity)
     for entity in frame.entities:
         batched = sum(batch.n(entity) for batch in batch_frames)
         if batched != frame.n(entity):
@@ -5637,7 +5638,7 @@ class _PostExportScoringPlan:
     def n_batches(self) -> int:
         return sum(
             1
-            for _ in _household_position_batches(
+            for _ in household_position_batches(
                 self.n_households, self.maximum_batch_size
             )
         )
@@ -5957,8 +5958,8 @@ class _HouseholdBatchedPostExportScorer:
         batch_frames = tuple(
             frame
             if len(positions) == self.n_households
-            else _select_households_by_position(frame, positions)
-            for positions in _household_position_batches(
+            else select_households_by_position(frame, positions)
+            for positions in household_position_batches(
                 self.n_households, maximum_microsim_batch_size
             )
         )
@@ -6089,7 +6090,7 @@ class _HouseholdBatchedPostExportScorer:
         self._finish_open_reform()
         self._batch_frames = None
         self._merged_baseline = None
-        _collect_family_garbage()
+        collect_pass_garbage()
         self._remove_batch_files()
 
     def _open_reform_for(
@@ -6173,7 +6174,7 @@ class _HouseholdBatchedPostExportScorer:
                 # Outside the handler, so the failed pass's traceback and the
                 # per-batch values its frame collected are no longer
                 # referenced; a full collection frees any held in a cycle.
-                _collect_family_garbage()
+                collect_pass_garbage()
                 return self._score(baseline_plan, label=f"{name} baseline plan"), False
         del self._unserved_baseline_plans[name]
         served = {key: self._merged_baseline[key] for key in baseline_plan}
@@ -6271,7 +6272,7 @@ class _HouseholdBatchedPostExportScorer:
             # Read by position: ``enumerate`` keeps its last item, so the
             # previous batch's frame would stay alive while the next is read.
             batch_frame = batches[batch - 1]
-            with _automatic_gc_suspended():
+            with automatic_gc_suspended():
                 simulation = self._construct(batch_frame, reform_system=reform_system)
                 # The engine holds its own copy of the batch; the frame read
                 # from the batch's file is freed before the next one is read.
@@ -6298,9 +6299,9 @@ class _HouseholdBatchedPostExportScorer:
                     # when a key raises.
                     release_engine_simulation(simulation)
                 del simulation, engine
-            _collect_batch_garbage()
+            collect_batch_garbage()
             sweep.advance(pass_name=label, batch=batch, batches=len(batches))
-        _collect_family_garbage()
+        collect_pass_garbage()
         return {
             key: _concatenate_post_export_parts(key_parts)
             for key, key_parts in parts.items()
@@ -6558,14 +6559,35 @@ def _reform_household_income_tax(
     # ``default_tax_benefit_system(reform=...)`` construction the engine ran
     # per batch — and hand it to every batch simulation explicitly.
     reform_system = microsimulation_cls.default_tax_benefit_system(reform=reform)
-    batches = tuple(_household_position_batches(n_households, batch_size))
+    # Each batch engine gets this system alone, not ``reform=`` as well, as the
+    # post-export scorer's do (``_HouseholdBatchedPostExportScorer._construct``).
+    # Given both, policyengine-us 2.2.1 clones the supplied system on every
+    # construction (``SPMSimulationMixin._prepare_spm_system`` ->
+    # ``clone_spm_system``: the parameter tree rebuilt and every variable
+    # deep-copied, so each batch starts on cold parameter caches), core applies
+    # the reform again to the clone, and core adds a ``baseline`` branch whose
+    # holders copy every input array: one clone per reform per batch, 1,947 in
+    # a release's target compilation. Given the system alone, the engine shares
+    # the system's policy (``share_spm_policy``) and has no ``baseline``
+    # branch, so this pass refuses the two ways a missing one changes what an
+    # engine scores: a reform that moves the behavioral-response parameters
+    # (below), and an engine that computed a formula reading the branch
+    # (``_refuse_batch_baseline_branch_readers``).
+    _refuse_reform_moving_behavioral_responses(
+        reform_system,
+        microsimulation_cls.default_tax_benefit_system_instance,
+        measure=reform_spec.measure,
+    )
+    batches = tuple(household_position_batches(n_households, batch_size))
     guard_armed = (
         len(batches) > 1
         if refuse_population_aggregates is None
         else refuse_population_aggregates
     )
     if guard_armed:
-        _assert_medicaid_claiming_tax_units_local(base_frame)
+        assert_medicaid_claiming_tax_units_local(
+            base_frame, work=TARGET_MATERIALIZATION_PASS
+        )
     if len(batches) > 1:
         print(
             "Materializing reform target "
@@ -6574,12 +6596,12 @@ def _reform_household_income_tax(
             flush=True,
         )
     for batch, household_positions in enumerate(batches, start=1):
-        with _automatic_gc_suspended():
+        with automatic_gc_suspended():
             full_batch = len(household_positions) == n_households
             batch_frame = (
                 base_frame
                 if full_batch
-                else _select_households_by_position(base_frame, household_positions)
+                else select_households_by_position(base_frame, household_positions)
             )
             batch_tax_unit_positions = _tax_unit_to_household_positions(batch_frame)
             reformed_dataset = _dataset_from_frame(
@@ -6592,32 +6614,38 @@ def _reform_household_income_tax(
             reformed = microsimulation_cls(
                 tax_benefit_system=reform_system,
                 dataset=reformed_dataset,
-                reform=reform,
             )
             try:
-                with (
-                    _record_engine_branches(reformed) if guard_armed else nullcontext()
-                ):
+                # Branches are recorded at every batch count, because the
+                # baseline-branch refusal applies to a single batch too.
+                with record_engine_branches(reformed):
                     batch_income_tax = _collapse_tax_unit(
                         _calculate_array(reformed, "income_tax"),
                         batch_tax_unit_positions,
                         batch_frame.n("household"),
                     )
                     if guard_armed:
-                        _refuse_batch_population_aggregates(
+                        refuse_batch_population_aggregates(
                             reformed,
                             batch=batch,
                             batches=len(batches),
-                            n_households=n_households,
+                            work=TARGET_MATERIALIZATION_PASS,
+                            remedy=TARGET_POPULATION_AGGREGATE_REMEDY,
                         )
+                    _refuse_batch_baseline_branch_readers(
+                        reformed,
+                        measure=reform_spec.measure,
+                        batch=batch,
+                        batches=len(batches),
+                    )
             finally:
                 release_engine_simulation(reformed)
             reform_income_tax[household_positions] = batch_income_tax
             del batch_income_tax, reformed, reformed_dataset, batch_frame
-        _collect_batch_garbage()
+        collect_batch_garbage()
         _advance_work(pass_name=reform_spec.measure, batch=batch, batches=len(batches))
     del reform_system
-    _collect_family_garbage()
+    collect_pass_garbage()
     return reform_income_tax
 
 
@@ -6684,7 +6712,7 @@ def _household_values(
     if entity in {"spm_unit", "family", "marital_unit"}:
         return _collapse_group(
             raw,
-            _group_to_household_positions(frame, entity),
+            group_to_household_positions(frame, entity),
             frame.n("household"),
         )
     raise ValueError(f"Unsupported variable entity {entity!r} for {variable!r}.")
@@ -6786,7 +6814,7 @@ def _combined_household_values(
     if entity in {"spm_unit", "family", "marital_unit"}:
         return _collapse_group(
             raw,
-            _group_to_household_positions(frame, entity),
+            group_to_household_positions(frame, entity),
             frame.n("household"),
         )
     raise ValueError(f"Unsupported variable entity {entity!r} for {variables!r}.")
@@ -7702,136 +7730,67 @@ def _base_simulation_household_columns(
     return columns
 
 
-@contextmanager
-def _record_engine_branches(simulation):
-    """Retain branches created through get_branch until the batch is checked.
-
-    Core's clone copies instance attributes, including a wrapped get_branch.
-    Rebind that method to each child before it can create its own branches.
-    Retained branches are released even if a formula detached them.
-    """
-
-    retained: list[object] = []
-    originals: dict[int, tuple[object, object, bool]] = {}
-    seen: set[int] = set()
-
-    def get_branch(current, *args, **kwargs):
-        branch = originals[id(current)][1](*args, **kwargs)
-        retain(branch)
-        return branch
-
-    def retain(current):
-        if current is None or id(current) in seen:
-            return
-        seen.add(id(current))
-        retained.append(current)
-        original = getattr(current, "get_branch", None)
-        if callable(original):
-            had_instance_method = "get_branch" in vars(current)
-            if getattr(original, "__func__", None) is get_branch:
-                # clone copied the parent's bound wrapper; recover the
-                # underlying method and bind it to the child.
-                _, parent_original, had_instance_method = originals[
-                    id(original.__self__)
-                ]
-                original = MethodType(parent_original.__func__, current)
-            originals[id(current)] = (current, original, had_instance_method)
-            current.get_branch = MethodType(get_branch, current)
-        branches = getattr(current, "branches", None)
-        if isinstance(branches, dict):
-            for branch in tuple(branches.values()):
-                retain(branch)
-        retain(getattr(current, "baseline", None))
-
-    retain(simulation)
-    simulation._target_materialization_branches = retained
-    try:
-        yield
-    finally:
-        for current, original, had_instance_method in originals.values():
-            if had_instance_method:
-                current.get_branch = original
-            else:
-                del current.get_branch
-        for current in retained:
-            # Core's shallow clone also copies the retained-list reference.
-            if "_target_materialization_branches" in vars(current):
-                del current._target_materialization_branches
-            if current is not simulation:
-                release_engine_simulation(current)
-
-
 _engine_known_periods = recert.engine_known_periods
 
 
-def _refuse_batch_population_aggregates(
+def _refuse_reform_moving_behavioral_responses(
+    reform_system, baseline_system, *, measure: str
+) -> None:
+    """Refuse a JCT reform system that moves a behavioral-response parameter.
+
+    A JCT batch engine gets the reform's system alone, so it has no
+    ``baseline`` branch, and policyengine-us scores its labor-supply and
+    capital-gains responses as 0. An engine given ``reform=`` as well has one
+    and scores them from these parameters, as 0 while they are at the engine's
+    zero default elasticities. Called once per reform, before its first batch
+    engine.
+    """
+
+    moved = _moved_behavioral_response_parameters(
+        reform_system, baseline_system, PERIOD
+    )
+    if not moved:
+        return
+    raise ValueError(
+        f"Target materialization refuses JCT reform {measure}: its tax-benefit "
+        f"system sets behavioral-response parameters off baseline at {PERIOD}: "
+        f"{', '.join(moved)}. JCT reform batch engines carry no baseline "
+        "branch, so policyengine-us would score these responses as zero."
+    )
+
+
+def _refuse_batch_baseline_branch_readers(
     simulation,
     *,
+    measure: str,
     batch: int,
     batches: int,
-    n_households: int,
 ) -> None:
-    """Refuse any known population aggregate before releasing a batch engine."""
+    """Refuse a JCT batch engine that computed a formula reading ``baseline``.
+
+    The engine has no ``baseline`` branch (see ``_reform_household_income_tax``),
+    so these formulas compute from the reform where an engine given
+    ``reform=`` reads the baseline: the Medicaid state denominator from the
+    reform's own enrollment, and the behavioral-response measurements against
+    the reform itself. ``record_engine_branches`` must be active, so that
+    branches a formula created and then deleted are read too. The base frame
+    holds no formula-owned column (``_assert_no_formula_owned_columns``), so
+    any known period was computed, not loaded.
+    """
 
     computed = sorted(
-        _engine_known_periods(simulation, US_POPULATION_AGGREGATE_VARIABLES)
+        _engine_known_periods(simulation, POST_EXPORT_BASELINE_BRANCH_READERS)
     )
     if not computed:
         return
     raise ValueError(
-        "Target materialization is not batch-invariant: the engine for "
+        f"Target materialization of JCT reform {measure}: the engine for "
         f"household batch {batch}/{batches} computed "
         f"{', '.join(f'{variable}@{period}' for variable, period in computed)}. "
-        "These policyengine-us formulas aggregate over the whole simulated "
-        "population, here one household batch instead of the pool, so a "
-        "target that reaches them cannot be materialized in household batches. "
-        "Drop the target from the surface, or run the whole pool unbatched "
-        "in one simulation with one slice or chunk. Disabling only inner "
-        "batching still leaves slice- or chunk-local aggregates."
+        "These policyengine-us formulas read the engine's baseline branch, which "
+        "a JCT reform batch engine does not carry: it is given the reform's "
+        "tax-benefit system alone, without reform=."
     )
-
-
-def _assert_group_entities_nest_in_households(frame: Frame) -> None:
-    """Refuse a frame whose group entities cross households.
-
-    Batching selects persons by household and keeps every group they
-    reference, so a group spanning two batches would be simulated twice, each
-    time with only part of its members. ``Frame`` does not check nesting, and
-    :func:`_group_to_household_positions` raises on exactly this.
-    """
-
-    for entity in frame.entities:
-        if entity in {"person", "household"}:
-            continue
-        _group_to_household_positions(frame, entity)
-
-
-def _assert_medicaid_claiming_tax_units_local(frame: Frame) -> None:
-    """Require positive Medicaid claiming IDs to resolve within the household.
-
-    The engine's claiming-tax-unit helpers join IDs across persons. Requiring
-    local references keeps those joins inside each household; an unresolved
-    positive ID is refused too, since a pre-sliced caller may have omitted it.
-    """
-
-    person = frame.table("person")
-    column = "medicaid_claiming_tax_unit_id"
-    if column not in person:
-        return
-    claims = person.loc[person[column] > 0]
-    if claims.empty:
-        return
-    local_units = pd.MultiIndex.from_frame(
-        person[["person_household_id", "person_tax_unit_id"]]
-    )
-    claimed_units = pd.MultiIndex.from_frame(claims[["person_household_id", column]])
-    if not claimed_units.isin(local_units).all():
-        raise ValueError(
-            "Target materialization is not batch-invariant: a positive "
-            "medicaid_claiming_tax_unit_id does not resolve within the "
-            "person's own household. Run the whole pool unbatched in one "
-            "simulation with one slice or chunk."
-        )
 
 
 def _materialize_base_simulation_columns(
@@ -7863,7 +7822,7 @@ def _materialize_base_simulation_columns(
     n_households = base_frame.n("household")
     household_ids = base_frame.table("household")["household_id"].to_numpy()
     batches = tuple(
-        _household_position_batches(n_households, maximum_microsim_batch_size)
+        household_position_batches(n_households, maximum_microsim_batch_size)
     )
     if not batches:
         raise ValueError("Target materialization requires at least one household.")
@@ -7874,9 +7833,11 @@ def _materialize_base_simulation_columns(
         else refuse_population_aggregates
     )
     if batched or guard_armed:
-        _assert_group_entities_nest_in_households(base_frame)
+        assert_group_entities_nest_in_households(base_frame)
     if guard_armed:
-        _assert_medicaid_claiming_tax_units_local(base_frame)
+        assert_medicaid_claiming_tax_units_local(
+            base_frame, work=TARGET_MATERIALIZATION_PASS
+        )
     if batched:
         print(
             "Materializing base target columns in "
@@ -7888,12 +7849,12 @@ def _materialize_base_simulation_columns(
     column_order: tuple[str, ...] | None = None
     columns: dict[str, np.ndarray] = {}
     for batch, household_positions in enumerate(batches, start=1):
-        with _automatic_gc_suspended():
+        with automatic_gc_suspended():
             full_batch = len(household_positions) == n_households
             batch_frame = (
                 base_frame
                 if full_batch
-                else _select_households_by_position(base_frame, household_positions)
+                else select_households_by_position(base_frame, household_positions)
             )
             if not np.array_equal(
                 batch_frame.table("household")["household_id"].to_numpy(),
@@ -7913,7 +7874,7 @@ def _materialize_base_simulation_columns(
             )
             try:
                 with (
-                    _record_engine_branches(batch_simulation)
+                    record_engine_branches(batch_simulation)
                     if guard_armed
                     else nullcontext()
                 ):
@@ -7925,11 +7886,12 @@ def _materialize_base_simulation_columns(
                     )
                     if guard_armed:
                         # Before the release below drops the engine's holders.
-                        _refuse_batch_population_aggregates(
+                        refuse_batch_population_aggregates(
                             batch_simulation,
                             batch=batch,
                             batches=len(batches),
-                            n_households=n_households,
+                            work=TARGET_MATERIALIZATION_PASS,
+                            remedy=TARGET_POPULATION_AGGREGATE_REMEDY,
                         )
             finally:
                 # microcosm#456: an engine's system keeps a ``simulation``
@@ -7970,9 +7932,9 @@ def _materialize_base_simulation_columns(
                 pool_values[household_positions] = values
                 columns[column] = pool_values
             del batch_columns, batch_frame
-        _collect_batch_garbage()
+        collect_batch_garbage()
         _advance_work(pass_name="base", batch=batch, batches=len(batches))
-    _collect_family_garbage()
+    collect_pass_garbage()
 
     assert column_order is not None
     receipt: dict[str, object] = {
@@ -8026,7 +7988,7 @@ def _materialize_target_frame(
         for spec in US_JCT_TAX_EXPENDITURE_REFORMS
     )
     batch_count = len(
-        tuple(_household_position_batches(n_households, maximum_microsim_batch_size))
+        tuple(household_position_batches(n_households, maximum_microsim_batch_size))
     )
     _ACTIVE_WORK = _WorkCounter(
         stage_id="target_compilation",
@@ -8153,7 +8115,7 @@ def _materialize_target_frame(
             entries.append(cache_entry)
         hh[reform_spec.measure] = reform_income_tax - base_income_tax_household
         del reform_income_tax
-        _collect_batch_garbage()
+        collect_batch_garbage()
 
     target_frame = Frame(
         materialized,
@@ -13299,12 +13261,158 @@ def _calibration_epoch_every(args: argparse.Namespace) -> int:
     return calibration_epoch_stride(int(args.epochs) * solves)
 
 
+#: The pipeline a US staging run names, as the build's hosted telemetry does.
+US_STAGING_PIPELINE = "us_fiscal_refresh"
+#: The operation of a build's staging run, and of its certification's.
+US_BUILD_STAGING_OPERATION = "us_fiscal_refresh_build"
+US_CERTIFICATION_STAGING_OPERATION = "us_fiscal_refresh_certification"
+#: The version 2 event status for each status a US build reports for a stage.
+#: Any other status (``skipped``, or a check's own verdict such as ``PASS``)
+#: becomes a completed event whose details keep it as ``stage_status``.
+_STAGING_EVENT_STATUSES: Mapping[str, EventStatus] = {
+    "running": "started",
+    "failed": "failed",
+}
+#: The size limit of a US result file reviewed to hold rows of aggregates
+#: (lists of objects, one per state, age band, program, reform or target),
+#: as version 2 allows a file of no rows.
+_US_AGGREGATE_ROWS_BYTES = 5 * 1024 * 1024
+
+
+class _StagedResultFile:
+    """How a US staging run carries one result file: its version 2 fields.
+
+    ``aggregate_rows_bytes`` is set for a file reviewed to hold rows of
+    aggregates, and is then its size limit; a file without it may hold no
+    lists of objects and keeps version 2's 5 MiB limit. (A plain class, for
+    the reason :class:`_RecordedCalibrationResult` gives.)
+    """
+
+    __slots__ = ("aggregate_rows_bytes", "artifact_kind", "classification")
+
+    def __init__(
+        self,
+        artifact_kind: str,
+        classification: str = "aggregate",
+        aggregate_rows_bytes: int | None = None,
+    ) -> None:
+        self.artifact_kind = artifact_kind
+        self.classification = classification
+        self.aggregate_rows_bytes = aggregate_rows_bytes
+
+
+_AGGREGATE_ROWS = _US_AGGREGATE_ROWS_BYTES
+#: The result files a US staging run carries, by logical name (microcosm#1135).
+#: Each was checked against version 2's content rules on real US runs: none
+#: holds a sensitive or row-level field, an individual record or a row
+#: collection, and those that hold rows hold aggregates. A file attached under
+#: any other name stays out of the run, with a warning, as does one the
+#: content checks refuse.
+US_STAGING_RESULT_FILES: Mapping[str, _StagedResultFile] = {
+    "build_manifest": _StagedResultFile(
+        "build_metadata", "non_row_level", _AGGREGATE_ROWS
+    ),
+    "build_record": _StagedResultFile(
+        "build_metadata", "non_row_level", _AGGREGATE_ROWS
+    ),
+    # Per-target rows, which the dashboard's calibration view reads: 33.4 MB
+    # for the national build in October 2026, up to the emitter's own limit.
+    "calibration_diagnostics": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=EMITTER_MAX_FILE_BYTES
+    ),
+    "demographics": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "esi_premiums": _StagedResultFile("validation_summary"),
+    "input_coverage": _StagedResultFile("validation_summary"),
+    "input_mass_parity": _StagedResultFile("validation_summary"),
+    "qrf_tail_concentration": _StagedResultFile("validation_summary"),
+    "reform_coverage_smoke": _StagedResultFile(
+        "validation_summary", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "reform_validation": _StagedResultFile(
+        "validation_summary", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "release_manifest": _StagedResultFile(
+        "build_metadata", "non_row_level", _AGGREGATE_ROWS
+    ),
+    US_STORED_INPUTS_EVIDENCE_KEY: _StagedResultFile("validation_summary"),
+    "us_medicaid_take_up": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_medicare_irmaa_holdout": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_population_structure_holdout": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_snap_state_take_up": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_source_coverage": _StagedResultFile(
+        "validation_summary", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_ssi_social_security_holdout": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_ssi_take_up": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+    "us_take_up_participation": _StagedResultFile(
+        "aggregate_diagnostics", aggregate_rows_bytes=_AGGREGATE_ROWS
+    ),
+}
+#: Version 2's content checks with the US files reviewed to hold rows.
+US_STAGING_CONTENT_POLICY = StagingContentPolicy(
+    aggregate_tables={
+        name: result_file.aggregate_rows_bytes
+        for name, result_file in US_STAGING_RESULT_FILES.items()
+        if result_file.aggregate_rows_bytes is not None
+    }
+)
+
+
+def _close_run(error: BaseException, bundle: StagingRunBundleWriterV2) -> None:
+    """Close a staging run the build did not finish.
+
+    A build whose release checks failed once its record was written
+    (:class:`_BuildFailedReleaseGatesError`, exit 3) reached a decision and
+    the checks refused it, so its run is ``blocked``; any other ending is a
+    failure, classified as the hosted telemetry classifies it.
+    """
+    if isinstance(error, _BuildFailedReleaseGatesError):
+        bundle.block(
+            phase="release_gates",
+            blocking_gate_ids=[],
+            blocking_failure_count=max(1, len(error.failures)),
+        )
+        return
+    classified = classify_failure(error)
+    bundle.fail(
+        error,
+        error_code=classified.error_code or "BUILD_FAILED",
+        failure_class=classified.failure_class,
+    )
+
+
+def _staging_message(message: str | None) -> str | None:
+    if message is None:
+        return None
+    return message[:MAX_MESSAGE_CHARACTERS]
+
+
 class _BuildProgress:
     """Report progress to an emitter and, independently, a staging bundle.
 
     Both receive the same calibration epochs: each solve's first and last and
     every ``epoch_every``-th epoch, the rule the UK build follows too
-    (microcosm#1292).
+    (microcosm#1292). The staging run is best-effort: once it is open, an
+    error in it (a local write, the version 2 checks refusing a document or
+    a result file) prints a warning and never stops the build or its hosted
+    telemetry, which hears of every stage before the staging run does.
+    Opening the run (``_build_progress``) checks its identity and writes its
+    first documents, so a refused ``--staging-run-id`` or an unwritable
+    staging directory stops the build at its start.
     """
 
     def __init__(
@@ -13312,7 +13420,7 @@ class _BuildProgress:
         *,
         run_id: str,
         emitter: LocalTelemetryEmitter,
-        staging_bundle: StagingRunBundleWriter | None,
+        staging_bundle: StagingRunBundleWriterV2 | None,
         staging_opt_out_reason: str | None = None,
         epoch_every: int = CALIBRATION_EPOCH_EVERY,
     ) -> None:
@@ -13328,11 +13436,21 @@ class _BuildProgress:
             return None
         return self.staging_bundle.repo_id
 
-    @property
-    def uploads_succeeded(self) -> int:
+    def _staged(
+        self, action: str, call: Callable[[StagingRunBundleWriterV2], object]
+    ) -> None:
+        """Make one call on the staging run; an error in it only warns."""
         if self.staging_bundle is None:
-            return 0
-        return self.staging_bundle.uploads_succeeded
+            return
+        try:
+            call(self.staging_bundle)
+        except Exception as error:
+            print(
+                f"warning: the staging run could not {action} "
+                f"({type(error).__name__}: {error}); the build and its hosted "
+                "telemetry go on.",
+                file=sys.stderr,
+            )
 
     def stage(
         self,
@@ -13348,46 +13466,111 @@ class _BuildProgress:
             message=message,
             **details,
         )
-        if self.staging_bundle is not None:
-            self.staging_bundle.stage(
+        event_status = _STAGING_EVENT_STATUSES.get(status)
+        staged_details = (
+            details if event_status is not None else {**details, "stage_status": status}
+        )
+        self._staged(
+            f"record the stage {stage}",
+            lambda bundle: bundle.stage(
                 stage,
-                message=message,
-                status=status,
-                **details,
-            )
+                event_status=event_status or "completed",
+                message=_staging_message(message),
+                **staged_details,
+            ),
+        )
 
     def calibration_progress(self, event: dict[str, object]) -> None:
         if not forwards_calibration_epoch(event, every=self.epoch_every):
             return
         self.emitter.transition_calibration_progress(event)
-        if self.staging_bundle is not None:
-            self.staging_bundle.calibration_progress(event)
+        self._staged(
+            "record calibration progress",
+            lambda bundle: bundle.calibration_progress(event),
+        )
 
-    def attach_artifact(
-        self,
-        name: str,
-        path: Path | str,
-        **details: Any,
-    ) -> None:
-        if self.staging_bundle is not None:
-            self.staging_bundle.attach_artifact(name, path, **details)
+    def attach_artifact(self, name: str, path: Path | str) -> None:
+        if self.staging_bundle is None:
+            return
+        result_file = US_STAGING_RESULT_FILES.get(name)
+        if result_file is None:
+            print(
+                f"warning: the staging run does not carry the result file {name}, "
+                "which is not one it was reviewed for; the build goes on.",
+                file=sys.stderr,
+            )
+            return
+        self._staged(
+            f"carry the result file {name}",
+            lambda bundle: bundle.add_artifact(
+                name,
+                path,
+                artifact_kind=result_file.artifact_kind,
+                classification=result_file.classification,
+            ),
+        )
 
     def fail(self, error: BaseException) -> None:
         # The staging run's failed state is handed to the emitter, and its
         # final commit confirmed, before the telemetry outcome shuts the
         # emitter down (it drops a run's events after its outcome).
         try:
-            if self.staging_bundle is not None:
-                self.staging_bundle.fail(error)
-                confirm_and_report_final_commit(
-                    self.staging_bundle, self.emitter, error=error
-                )
+            # A run whose closing finished keeps its state: an error after it
+            # completed is the build's, for the hosted telemetry alone.
+            bundle = self.staging_bundle
+            if bundle is not None and not bundle.closing_finished:
+                ended_by: BaseException = error
+                try:
+                    self._close_staging_run(bundle, error)
+                except KeyboardInterrupt as interrupt:
+                    # A SIGTERM or Ctrl-C ends the close only, as one during
+                    # the final commit check does (microcosm#1749): the
+                    # close-out goes on, so the build keeps its own outcome
+                    # and exit status, the run's state as it stands is handed
+                    # over once more and its final commit is checked by
+                    # receipt.
+                    print(
+                        "warning: closing the staging run was interrupted; its "
+                        "state is handed over once more and the build keeps "
+                        "its own outcome.",
+                        file=sys.stderr,
+                    )
+                    ended_by = interrupt
+                    try:
+                        self._close_staging_run(bundle, error)
+                    except KeyboardInterrupt:
+                        print(
+                            "warning: the staging run's second hand-over was "
+                            "interrupted too.",
+                            file=sys.stderr,
+                        )
+                confirm_and_report_final_commit(bundle, self.emitter, error=ended_by)
         finally:
             _fail_emitter(self.emitter, error)
 
+    def _close_staging_run(
+        self, bundle: StagingRunBundleWriterV2, error: BaseException
+    ) -> None:
+        """Close a running run, or finish closing one an interrupt stopped.
+
+        A run whose state changed but whose final state an interrupt kept from
+        the emitter (during completion, say) keeps that state and is handed
+        over again.
+        """
+        if bundle.status == "running":
+            self._staged("record how the build ended", partial(_close_run, error))
+        elif not bundle.closing_finished:
+            self._staged(
+                "hand over its final state", lambda run: run.hand_over_final_state()
+            )
+
     def complete(self) -> None:
+        # An interrupt here is not contained: the build's failure path then
+        # records it, so the emitter never hears of a completion first.
         if self.staging_bundle is not None:
-            self.staging_bundle.complete()
+            self._staged(
+                "record the build's completion", lambda bundle: bundle.complete()
+            )
             confirm_and_report_final_commit(self.staging_bundle, self.emitter)
         self.emitter.complete()
 
@@ -14091,13 +14274,8 @@ def _staging_manifest_block(telemetry: _BuildProgress | None) -> dict[str, objec
             if telemetry is None
             else telemetry.staging_opt_out_reason or "--no-staging"
         )
-        return {"enabled": False, "reason": reason}
-    return {
-        "enabled": True,
-        "run_id": telemetry.run_id,
-        "repo_id": telemetry.repo_id,
-        "uploads_succeeded": telemetry.uploads_succeeded,
-    }
+        return disabled_staging_delivery(reason)
+    return telemetry.staging_bundle.delivery_summary
 
 
 def _build_progress(
@@ -14108,7 +14286,19 @@ def _build_progress(
     run_id: str | None = None,
     emitter: LocalTelemetryEmitter,
     epoch_every: int | None = None,
+    candidate_id: str | None = None,
+    operation_id: str = US_BUILD_STAGING_OPERATION,
+    run_kind: str = "release",
 ) -> _BuildProgress:
+    """The build's progress, with its version 2 staging run unless opted out.
+
+    The run carries the identity the build's hosted telemetry has: its
+    candidate (``candidate_id``, the build itself by default), the release
+    build it is to become (``release_id``) and its kind of run. Its files are
+    written below ``--staging-dir`` (``<out>/staging`` by default), at
+    ``runs/<run_id>/``, and committed through the build's emitter when a
+    staging repository is set.
+    """
     global _ACTIVE_PROGRESS
     # Each call establishes the current run, so a handle from a previous one
     # can never be marked failed in place of this build's.
@@ -14134,16 +14324,24 @@ def _build_progress(
             "empty and staging_dir is unset. Set no_staging to skip staging, "
             "or give a staging_dir for a local-only run."
         )
-    run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
-    staging_bundle = StagingRunBundleWriter(
+    remote = bool(args.staging_repo_id)
+    staging_bundle = StagingRunBundleWriterV2(
         run_id=run_id,
-        candidate_release_id=release_id,
-        run_dir=run_dir,
-        repo_id=args.staging_repo_id,
-        path_prefix=args.staging_prefix,
+        country_code="US",
+        operation_id=operation_id,
+        pipeline_id=US_STAGING_PIPELINE,
+        pipeline_version=importlib.metadata.version("microcosm-build"),
+        candidate_id=candidate_id or release_id,
+        release_id=release_id,
+        local_dir=args.staging_dir or release_root / "staging",
+        run_kind=run_kind,
+        delivery_mode="local_and_remote" if remote else "local_only",
+        repo_id=args.staging_repo_id if remote else None,
         # The build's emitter commits the run files with its own credential.
-        emitter_client=emitter.client,
+        emitter_client=emitter.client if remote else None,
+        content_policy=US_STAGING_CONTENT_POLICY,
     )
+    staging_bundle.set_sample({"mode": "full"})
     _ACTIVE_PROGRESS = _BuildProgress(
         run_id=run_id,
         emitter=emitter,
@@ -14193,13 +14391,8 @@ class _TerminalBatchProgress:
     def stage(self, stage: str, **details: Any) -> None:
         self._call("stage", stage, **details)
 
-    def attach_artifact(
-        self,
-        name: str,
-        path: Path | str,
-        **details: Any,
-    ) -> None:
-        self._call("attach_artifact", name, path, **details)
+    def attach_artifact(self, name: str, path: Path | str) -> None:
+        self._call("attach_artifact", name, path)
 
 
 def _print_build_result(
@@ -14261,8 +14454,12 @@ class _BuildFailedReleaseGatesError(RuntimeError):
 
     Raised once the H5, the calibration weights and the record are written;
     run as a script, the build then exits
-    :data:`US_BUILD_FAILED_RELEASE_GATES_EXIT`.
+    :data:`US_BUILD_FAILED_RELEASE_GATES_EXIT`. ``failures`` are the record's.
     """
+
+    def __init__(self, failures: Sequence[str]) -> None:
+        self.failures = tuple(failures)
+        super().__init__("Release gates failed: " + "; ".join(self.failures))
 
 
 #: The build record a build leaves beside ``artifacts/`` and ``build/``
@@ -14893,8 +15090,8 @@ def _certify_parser() -> argparse.ArgumentParser:
         "--staging-dir",
         type=Path,
         help=(
-            "Local directory for the certification's staging run files. "
-            "Defaults to <build_dir>/staging/runs/<run id>."
+            "Local root for the certification's version 2 staging run files, "
+            "which go to <dir>/runs/<run id>/. Defaults to <build_dir>/staging."
         ),
     )
     return parser
@@ -14912,10 +15109,11 @@ def _certify_progress(
 
     The post-export verdicts and the manifests reach the staging dashboard,
     as they did when a build certified itself (microcosm#1585 item 11, PR
-    4a). Certification stages where its build did, to the build's repository
-    and prefix, in a run of its own, since a staging run's files start afresh
-    when it opens. A build that did not stage (``--no-staging``, which
-    ``--exact-k`` requires) is certified without staging. ``--no-staging``
+    4a). Certification stages where its build did, to the build's repository,
+    in a version 2 run of its own, since a staging run's files start afresh
+    when it opens; the run names the build as its candidate and the build
+    certification publishes as its release. A build that did not stage
+    (``--no-staging``) is certified without staging. ``--no-staging``
     opts certification out where the build staged too, as a build may opt
     out: the publisher accepts a stated opt-out, and the reason says the
     build staged, so the manifest shows that its certification did not.
@@ -14940,20 +15138,22 @@ def _certify_progress(
     staging_dir = args.staging_dir
     if staging_dir is None and not settings["repo_id"]:
         # A build that staged only locally is certified into the same layout.
-        staging_dir = record.release_root / "staging" / "runs" / run_id
+        staging_dir = record.release_root / "staging"
     return _build_progress(
         SimpleNamespace(
             no_staging=False,
             staging_run_id=run_id,
             staging_dir=staging_dir,
             staging_repo_id=settings["repo_id"],
-            staging_prefix=settings["prefix"],
         ),
         release_root=record.release_root,
         release_id=build,
         run_id=run_id,
         emitter=emitter,
         epoch_every=CALIBRATION_EPOCH_EVERY,
+        candidate_id=record.build,
+        operation_id=US_CERTIFICATION_STAGING_OPERATION,
+        run_kind="certification",
     )
 
 
@@ -15249,7 +15449,8 @@ def certify_main(argv: Sequence[str] | None = None) -> None:
     Certification opens its own staging run where the build staged
     (:func:`_certify_progress`) and marks it failed if it does not finish.
     A SIGTERM is recorded as a termination, as in :func:`main`, and the
-    command then exits 143.
+    command then exits 143, unless it arrives while a failing certification
+    closes its staging run, as in :func:`main`.
     """
 
     with raise_on_sigterm():
@@ -15650,7 +15851,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     closes the ordinary exception and termination half of the gap. A SIGTERM
     raises ``BuildTerminatedError`` (``microcosm.build.termination``), which
     closes the staging run as failed and records a termination with the
-    emitter, and the program then exits 143.
+    emitter, and the program then exits 143. One that arrives once the build
+    is already closing its staging run after a failure, or during the final
+    commit check, ends only that step (``_BuildProgress.fail``), and the
+    program keeps the failure's exit status.
 
     A build returns ``None``. ``--dry-run-gates-report`` leaves through
     ``SystemExit`` with the report's exit code: 1 on any certain failure, 2 on
@@ -19624,9 +19828,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             message="Release gates failed (batched pre-export report).",
             failures=terminal_gate_failures,
         )
-        build_refusal = _BuildFailedReleaseGatesError(
-            "Release gates failed: " + "; ".join(terminal_gate_failures)
-        )
+        build_refusal = _BuildFailedReleaseGatesError(terminal_gate_failures)
     # A green run must not inherit a prior failed attempt's weight evidence
     # (microcosm#568 round 2): with --out/--release-id reuse, stale evidence
     # files would coexist with a green build whose record knows nothing about
@@ -19725,13 +19927,10 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         # own checks exits as a refusal (exit 1), not with
         # US_BUILD_FAILED_RELEASE_GATES_EXIT: no tier certifies it, so a
         # driver must not keep it for certification.
-        refusal = (
-            RuntimeError
+        build_refusal = (
+            RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
             if artifact_integrity_failures
-            else _BuildFailedReleaseGatesError
-        )
-        build_refusal = refusal(
-            "Release gates failed: " + "; ".join(terminal_gate_failures)
+            else _BuildFailedReleaseGatesError(terminal_gate_failures)
         )
     timing["build_seconds"] = time.perf_counter() - build_started
     build_record_path = _write_us_build_record(
@@ -19802,7 +20001,6 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             staging_settings={
                 "no_staging": bool(args.no_staging),
                 "repo_id": args.staging_repo_id or None,
-                "prefix": args.staging_prefix,
             },
         ),
     )

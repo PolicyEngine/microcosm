@@ -683,19 +683,24 @@ unchanged.
   block. When a US tool rewrites its directory for a build folder,
   `build_folder_build_manifest` keeps the block.
 - **The documents.** Staging version 3 adds a `blocked` lifecycle status beside
-  `running`, `completed` and `failed`. The UK producers write version 3 through
-  `StagingRunBundleWriterV2`. The US fiscal-refresh tool still writes version 1
-  through `microcosm.build.staging.StagingRunBundleWriter`; no other tool
-  imports version 1, and `microcosm.build` re-exports it. The ACS-local tool
-  writes no staging documents. Since microcosm#1410 (merged 2026-11-02), both
-  writers hand the run's files to the build's emitter, which commits them to
+  `running`, `completed` and `failed`. Every producer writes version 3 through
+  `StagingRunBundleWriterV2`: the UK producers and, since microcosm#1135, the
+  US fiscal-refresh tool for its builds (exact-count builds among them) and
+  their certifications. A US build whose release checks fail once its record
+  is written closes its run `blocked`, and its manifest's `staging` block is
+  the run's version 2 delivery summary. The US tool names the result files it
+  reviewed for the content rules, and those reviewed to hold rows of
+  aggregates (`StagingContentPolicy.aggregate_tables`). Microcosm has no
+  version 1 writer. The ACS-local tool writes no staging documents. The
+  writer hands the run's files to the build's emitter, which commits them to
   the staging repository with the build's own Hugging Face credential.
 - **The run outcome.** `microcosm.build.run_outcome` (microcosm#1147) decides
   once how a build ended (`completed`, `blocked`, `failed`, `interrupted`,
   `terminated`, `aborted`) and derives the staging status and the Logbook
   disposition from that decision. The UK full build, spine build and row-wise
-  staging use it. On the US side only `program_telemetry` calls it, and only to
-  label a termination; no US tool takes a staging status or a Logbook
+  staging use it. On the US side `program_telemetry` calls it to label a
+  termination, and the fiscal-refresh tool classifies a failure with it for
+  its hosted telemetry and its staging run; no US tool takes a Logbook
   disposition from it.
 - **The emitter.** microcosm#1153 moved the local emitter out of this repository
   into the external `microcosm-emitter` package on 2026-10-13, and Max accepted
@@ -819,12 +824,12 @@ unchanged.
   and the publisher never reads it from the build host.
 - The publisher never requires telemetry delivery, so a collector outage cannot
   block a release.
-- The plan deletes staging version 1, its re-export from `microcosm.build` and
-  the version-1 branch of `_staging_undelivered` at M2, once the US writes
-  version 3 (microcosm#933). On 2026-11-12 the fiscal-refresh tool still writes
-  version 1, and `microcosm-publish-release-build` gates its builds through
-  that branch. Under the plan the staging dashboard keeps a version-1 reader
-  for history; this document has not read the dashboard's code.
+- microcosm#1135 deleted staging version 1 and its re-export from
+  `microcosm.build` once the US wrote version 3. The version-1 branch of
+  `_staging_undelivered` stays, so a US build certified before that change
+  can still be published. Under the plan the staging dashboard keeps a
+  version-1 reader for history; this document has not read the dashboard's
+  code.
 
 ### C4: the Logbook
 
@@ -1144,14 +1149,12 @@ work.
     without looking for `releases.json`, and `publish_release`, which writes
     it. They leave once no registered repository lacks `releases.json`. The
     plan names no owner or milestone for them yet.
-  - *The UK cut runner.* `tools/run_uk_cut.py` still builds the tagged
-    publisher's arguments for the UK national release, and
-    `docs/uk-cut-anyone.md` still describes them; `prepare_release` refuses
-    that release. Moving the runner to `microcosm-publish-release-build` falls
-    to the UK cut's owner.
   - *policyengine.py's pins.* Its bundle, read on 2026-11-11 at 5b6d7901c,
     pins builds by tag; version 1 pins each by release and build in its
-    folder.
+    folder. Its UK national and local-area builds have been pinned that way
+    since policyengine.py#759 (merged 2026-11-16), and
+    `tools/certify_uk_cut_in_policyengine_py.py` certifies a UK build only
+    from its folder (#1762).
   - *The default.* The loader takes each country's default release from the
     registry. `releases.json` also names a `default`: in this repository only
     the switch tool sets it, and no loader reads it. The gap: no check at
@@ -1447,7 +1450,7 @@ fixtures:
   roles or retired fields;
 - the emitter interface's `add_build`, `make_current` or
   `ReleasesRecord.serialize` (the repository requires
-  `microcosm-emitter-interface>=0.16.0,<1`);
+  `microcosm-emitter-interface>=0.18.0,<1`);
 - the registry;
 - the generator's `WRITERS` table, or one of its synthetic inputs, such as a
   build name, the fixture instant or a runtime version. A change of that kind

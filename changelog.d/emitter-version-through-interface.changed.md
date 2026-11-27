@@ -1,0 +1,1 @@
+Builds read the installed emitter's release through `microcosm-emitter-interface`'s `emitter_version` (0.18.0) instead of running `microcosm-emitter version` and parsing its output themselves; the refusals and warnings say the same. `microcosm-build` now requires interface 0.18.0, and the installed-emitter job tests emitter 0.18.0 beside the minimum, 0.17.0.

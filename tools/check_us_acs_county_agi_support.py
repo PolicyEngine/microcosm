@@ -93,6 +93,9 @@ if str(_TOOLS) not in sys.path:
 import check_us_acs_local_reviewed_fills as reviewed_fills  # noqa: E402
 import us_acs_local_county_surface as county_surface  # noqa: E402
 
+from microcosm.build.us_runtime.household_batches import (  # noqa: E402
+    assert_group_entities_nest_in_households,
+)
 from microcosm.frame import Frame  # noqa: E402
 
 TOOL = "tools/check_us_acs_county_agi_support.py"
@@ -244,7 +247,7 @@ def household_agi(
     if n_households > hh_chunk:
         # A chunk keeps every group its persons reference, so a group across
         # two chunks would be simulated twice, each time in part.
-        fiscal._assert_group_entities_nest_in_households(projected)
+        assert_group_entities_nest_in_households(projected)
     agi = np.zeros(n_households, dtype=np.float64)
     chunks = 0
     for low in range(0, n_households, hh_chunk):

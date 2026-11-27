@@ -469,7 +469,7 @@ def fake_reforms(monkeypatch, builder):
     Full garbage collections are stubbed too; these stand-ins do not create
     the engine state collected between production passes.
     """
-    monkeypatch.setattr(builder, "_collect_family_garbage", lambda: None)
+    monkeypatch.setattr(builder, "collect_pass_garbage", lambda: None)
     monkeypatch.setattr(
         reform_validation_module, "gc", SimpleNamespace(collect=lambda *args: 0)
     )

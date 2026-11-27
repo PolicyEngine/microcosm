@@ -1,9 +1,11 @@
 # Building a UK national cut without the original builder's machine
 
 Any team member or agent session with the credentials below can build, sign
-and publish a Microcosm UK national cut, then open its policyengine.py
-certification pull request. Each input comes from Hugging Face and is checked
-against the pins the build itself enforces.
+and publish a Microcosm UK national cut. Its policyengine.py certification
+pull request waits for the certification tool to read builds published into
+their own folders (see [Certifying into policyengine.py](#certifying-into-policyenginepy)).
+Each input comes from Hugging Face and is checked against the pins the build
+itself enforces.
 
 This is the short path. The step-by-step reference behind it stays in
 [uk-national-release-assembly-runbook-806.md](uk-national-release-assembly-runbook-806.md).
@@ -33,7 +35,7 @@ export HF_TOKEN=…
 # The key goes to this one command, never to the whole shell:
 MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY="$(security find-generic-password -a "$USER" -s microcosm-uk-gate-signing-key -w)" \
   uv run --no-sync python tools/run_uk_cut.py all --label sat24              # build, certify, assemble
-# add --publish to publish for inspection
+# add --publish to publish the build without making it current
 ```
 
 The runner passes the key on only to the steps that sign (spine, national
@@ -94,7 +96,7 @@ derive from licensed data:
 | `cuts/<label>-<sha9>/national/` | the calibration run |
 | `cuts/<label>-<sha9>/release/` | the assembled release |
 | `cuts/<label>-<sha9>/logs/` | one log per step |
-| `cuts/<label>-<sha9>/cut_receipt.json` | commit, engine, the signing key's fingerprint (from the signed reports), input pins, step timings, tag |
+| `cuts/<label>-<sha9>/cut_receipt.json` | commit, engine, the signing key's fingerprint (from the signed reports), input pins, step timings, build |
 
 If the machine runs a disk cleaner, keep it away from the work directory for
 the length of a run. On a host booked through a reservation tool, pass
@@ -104,16 +106,18 @@ missing. Without them no reservation is checked.
 
 ### What it will not do
 
-- **It never moves a default.** `--publish` always passes `--no-latest
-  --tag-only`, so `populace-uk-private`'s main branch, its root files and
-  `latest-*.json` stay where they are.
-- **It never promotes.** Promotion (`--promote-line national`) is a separate,
-  reviewed call. The runner prints the command for it.
+- **It never moves a default.** `--publish` publishes the build into its own
+  folder through the emitter (`microcosm-publish-release-build`, run as
+  `python -m microcosm.build.release_publication`), which lists it in
+  `populace-uk-private`'s `releases.json` without making it the release's
+  current build. A rerun publishes nothing once `releases.json` lists it.
+- **It never promotes.** Promotion (`microcosm-publish-release-build
+  --promote`) is a separate, reviewed call. The runner prints the command for
+  it.
 - **It never publishes to the public Orrery.** No build uploads its graph:
   the national build's staged bundle submits the graph's inputs to the
   collector, which keeps a licensed build's graph private
-  ([orrery-publication.md](orrery-publication.md)). The national step still
-  passes `--no-publish-orrery`, which builds accept and ignore.
+  ([orrery-publication.md](orrery-publication.md)).
 - **It never certifies into policyengine.py.** That is a pull request in
   another repository; see [Certifying into policyengine.py](#certifying-into-policyenginepy).
 - **It builds only from main.** It refuses a commit that is not on
@@ -127,6 +131,14 @@ the Mac is busy, short of disk or asleep. The container:
 
 - clones a pushed commit on main;
 - syncs that commit's own lock with the `uk` extra;
+- runs the `microcosm-emitter` its image installs, at or above the release
+  `minimum_emitter_version.json` names in the checkout you launch from, as
+  the US Modal image does. The build checks the minimum of the commit it
+  clones, so the plan refuses a commit whose minimum is higher: launch from
+  a checkout at or after that commit. Like the US image, the image first
+  drops the compromised eMudhra certificate authorities (an upgraded CA
+  store, a hash-pinned pip, uv 0.13.4 and a certifi floor) before it
+  downloads anything;
 - keeps the work directory, with its inputs and every step's outputs, on the
   `microcosm-uk-cuts` volume, so a rerun resumes.
 
@@ -234,6 +246,14 @@ the private repositories, is attached only with
 `MICROCOSM_UK_CHRONICLE_MODAL_UPLOAD=1`. It then goes to Modal as an
 ephemeral secret for that run; no named workspace secret keeps it. A rebuild
 without `--upload` sends no credential at all.
+
+As the US Modal image does, the rebuild's image stops trusting emSign ECC Root
+CA - G3, the eMudhra root that certifi and Debian distrust over eMudhra's
+disclosed intermediate keys, before it downloads anything else. It upgrades
+`ca-certificates`, replaces the base's pip with a hash-pinned pip 26.2.2, and
+installs uv 0.13.4 and certifi 2026.10.19 or later beside `huggingface_hub`.
+uv 0.13.4 installs Python 3.14.8, where the app's earlier uv 0.11.7 installed
+3.14.4; the receipt records the one used.
 
 ### The reference build
 
@@ -388,11 +408,37 @@ anyone verify; that is tracked in microcosm#1406.
 
 ```bash
 uv run --no-sync python tools/certify_uk_cut_in_policyengine_py.py \
-  --national-tag microcosm-uk-2024-25-national-<ts>-<id> \
-  (--dense-tag <tag> | --keep-regional-release | --area-coded-national-uri <uri> | --drop-regional-release) \
+  --national-build uk-frs-calibration-attempt-<ts>-<id> \
+  (--dense-build <local-area build> | --keep-regional-release | --area-coded-national-uri <uri> | --drop-regional-release) \
   --pepy-repo <your clone of PolicyEngine/policyengine.py> \
+  [--national-data-commit <commit>] [--dense-data-commit <commit>] \
   [--max-load1 <load>] [--min-free-gb <GB>] [--push --open-pr]
 ```
+
+Builds are named as `releases.json` names them, the national build in
+`microcosm-uk-2024-25-national` and the local-area build in
+`microcosm-uk-2024-25-dense`. `policyengine/populace-uk-private` publishes
+each build into its own folder, `releases/<release>/<build>/`, with no tag,
+and policyengine.py refuses a tagged manifest from a repository with
+`releases.json` (policyengine.py#683), so the script takes no tag. A build
+need not be current: a certificate pins one build.
+
+Each build is certified from its folder at the commit that published it,
+which the script asks the Hub for: the last commit of the build's
+`release_manifest.json` on `main`, since a build folder never changes. To pin
+another commit that holds the folder, such as the `commit` that
+`microcosm-publish-release-build` printed, pass `--national-data-commit` or
+`--dense-data-commit`: a full 40-character commit in `main`'s history, since a
+commit on another ref may hold an edited copy of the folder.
+`--keep-regional-release` reads the local-area build at the folder and commit
+the current bundle pins. `--resume-worktree` refuses a worktree whose modified
+bundle pins another national commit, or routes regions elsewhere than this
+run would (including none), because the first attempt's constant rewrite
+already moved the constants to its own builds.
+
+The policyengine.py base (`--base-ref`) must read builds in their own folders
+(`read_build_folder`, policyengine.py#683); a base without it refuses before
+anything is downloaded.
 
 Each heavy step first checks the host. The disk floor defaults to 55 GB
 (`--min-free-gb`). There is no load limit unless you set one with
@@ -403,9 +449,7 @@ For an accepted mismatch (see [Regions](#regions-the-dense-cut)), add
 `--audited-by "<who ran the audit>"` (it appears in policyengine.py's public
 bundle) and at least one `--regional-limitation "<text>"`. The base needs
 policyengine.py#699's audit, and a base without it refuses before anything
-is downloaded. Until #699 merges, test the route with `--base-ref
-origin/accept-regional-model-mismatch --pr-base accept-regional-model-mismatch`.
-The audit and `certify-data` also need `uv` and PyPI: both read the build
+is downloaded. The audit and `certify-data` also need `uv` and PyPI: both read the build
 model through a pinned `uv` probe, and `certify-data` re-reads both models
 rather than trusting the evidence's lists.
 
@@ -415,26 +459,41 @@ git identity that commits. An agent session adds its own credit:
 commit trailer, and `--pr-body-footer "🤖 Generated with [Claude Code](https://claude.com/claude-code)"`
 for the body.
 
-The script does the mechanical part of what policyengine.py#685 did by hand,
-on a new branch from policyengine.py's main.
+The script does the mechanical part of what policyengine.py#685 and #766 did
+by hand, on a new branch from policyengine.py's main.
 
 **Before writing anything:**
 
-- It refuses if another writer is already certifying the cut: an open pull
-  request that names the tag, or any open pull request or branch whose name
+- It refuses if another writer is already certifying the build: an open pull
+  request that names the build, or any open pull request or branch whose name
   contains `certify-uk-<id>`, including suffixed ones such as
   `certify-uk-a133f37a-national`. If it cannot read either listing, it
   refuses rather than passing.
-- It reads both manifests at their tags.
-- It refuses a regional cut built on another policyengine-uk, naming the
-  routes.
+- It refuses a build that `releases.json` at `main`, downloaded afresh, does
+  not list or has withdrawn, as `certify-data` would.
+- It reads each build's manifest from its folder at its commit, and refuses
+  one that names another release or build.
+- It refuses a regional build made with another policyengine-uk, naming the
+  routes, and a kept regional release in `populace-uk-private` that is not a
+  build in its own folder.
 
 **Then:**
 
-1. `certify-data` at the cut's own model and core.
+1. `certify-data` at the national build's own model, with each build's
+   folder manifest at its commit
+   (`hf://dataset/policyengine/populace-uk-private@<commit>/releases/<release>/<build>/release_manifest.json`).
+   The certificate follows the bundle's shared core pin
+   (`core_binding: bundle_pin`), policyengine.py's default, so the pin can
+   move with another country without re-certifying the UK. `--core-version`
+   binds the certificate to one core and moves the pin to it
+   (`core_binding: certified`); use it only when the release must not run on
+   any other core.
 2. `uv lock` and `release_lock.py`.
 3. `generate --include-tros`.
-4. policyengine.py's own certified-constant rewrite, plus the local-area tag.
+4. policyengine.py's own certified-constant rewrite, plus the local-area
+   build's name and commit. If the previous local-area build shared a commit
+   with a national build, its commit constants are left for a person, and the
+   pull request body says so.
 5. The household snapshots.
 6. `check --published-spm --include-tros --strict-tros`.
 7. The UC floor.
@@ -442,7 +501,9 @@ on a new branch from policyengine.py's main.
 
 It commits. It pushes and opens a draft only when asked. The pull request
 body lists what needs a person: the UC floor acceptance, any dataset overlays
-certification dropped, warnings and failing tests.
+certification dropped, warnings and failing tests. Its commands show paths
+relative to the worktree and the home directory, and the bundle records the
+constant rewrite is passed only by their size.
 
 ## Regions: the dense cut
 
@@ -492,8 +553,9 @@ rehearsal probe agrees.
   through any of these inputs would be wrong.
 - `tools/certify_uk_cut_in_policyengine_py.py` measures this whenever a
   mismatch is accepted, with policyengine.py's own audit:
-  - it downloads every regional microdata H5 at its manifest pin and checks
-    its sha256;
+  - it downloads every regional microdata H5 from the build's folder at the
+    build's commit (a file in another repository at its own revision), and
+    checks its sha256;
   - in the certification worktree it installs the target policyengine-uk
     and core, and runs `scripts/audit_regional_input_surface.py`, which reads
     only column names and measures them against the regional cut's build
