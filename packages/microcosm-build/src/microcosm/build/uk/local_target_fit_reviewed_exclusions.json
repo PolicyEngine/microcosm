@@ -153,61 +153,61 @@
    ]
   },
   "council_tax/E08000028/council_tax/band_f": {
-   "reason": "Gate-only sign-off of the local cell council_tax/E08000028/council_tax/band_f on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261102T182958Z-78667c3a (full gate report sha256 7f7d66cc44ab2370a126d344cba66a923be871291f0397ef4e8496bf060f57f8) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "reason": "Gate-only sign-off of the local cell council_tax/E08000028/council_tax/band_f on the local line (microcosm#1301). On dense build-2 attempt uk-local-candidate-f100-s42-20261123T075147Z-7081d968 (full gate report sha256 fbf5a2be5138e35268896abb6237d8c3274e8ad805708c798cb9e7530f9aed3d), the local release of the pair built from microcosm#1687's head on 2026-11-22, it still breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
    "approved_by": "juaristi22",
-   "adjudication": "microcosm#1301 route for the local cut built with microcosm#1428 (sign-off 2026-11-03)",
-   "approved_on": "2026-11-03",
-   "expires_on": "2026-12-01",
+   "adjudication": "María's renewal of 27 November 2026, with the UK registers' entries lapsing by 11 December (microcosm#1301, microcosm#1736)",
+   "approved_on": "2026-11-27",
+   "expires_on": "2026-12-25",
    "release_lines": [
     "local"
    ]
   },
   "hmrc_income_by_area/E09000020/hmrc/self_employment_income/amount": {
-   "reason": "Gate-only sign-off of the local cell hmrc_income_by_area/E09000020/hmrc/self_employment_income/amount on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261102T182958Z-78667c3a (full gate report sha256 7f7d66cc44ab2370a126d344cba66a923be871291f0397ef4e8496bf060f57f8) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "reason": "Gate-only sign-off of the local cell hmrc_income_by_area/E09000020/hmrc/self_employment_income/amount on the local line (microcosm#1301). On dense build-2 attempt uk-local-candidate-f100-s42-20261123T075147Z-7081d968 (full gate report sha256 fbf5a2be5138e35268896abb6237d8c3274e8ad805708c798cb9e7530f9aed3d), the local release of the pair built from microcosm#1687's head on 2026-11-22, it still breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
    "approved_by": "juaristi22",
-   "adjudication": "microcosm#1301 route for the local cut built with microcosm#1428 (sign-off 2026-11-03)",
-   "approved_on": "2026-11-03",
-   "expires_on": "2026-12-01",
+   "adjudication": "María's renewal of 27 November 2026, with the UK registers' entries lapsing by 11 December (microcosm#1301, microcosm#1736)",
+   "approved_on": "2026-11-27",
+   "expires_on": "2026-12-25",
    "release_lines": [
     "local"
    ]
   },
   "hmrc_income_by_area/E14001310/hmrc/self_employment_income/amount": {
-   "reason": "Gate-only sign-off of the local cell hmrc_income_by_area/E14001310/hmrc/self_employment_income/amount on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261102T182958Z-78667c3a (full gate report sha256 7f7d66cc44ab2370a126d344cba66a923be871291f0397ef4e8496bf060f57f8) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "reason": "Gate-only sign-off of the local cell hmrc_income_by_area/E14001310/hmrc/self_employment_income/amount on the local line (microcosm#1301). On dense build-2 attempt uk-local-candidate-f100-s42-20261123T075147Z-7081d968 (full gate report sha256 fbf5a2be5138e35268896abb6237d8c3274e8ad805708c798cb9e7530f9aed3d), the local release of the pair built from microcosm#1687's head on 2026-11-22, it still breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
    "approved_by": "juaristi22",
-   "adjudication": "microcosm#1301 route for the local cut built with microcosm#1428 (sign-off 2026-11-03)",
-   "approved_on": "2026-11-03",
-   "expires_on": "2026-12-01",
+   "adjudication": "María's renewal of 27 November 2026, with the UK registers' entries lapsing by 11 December (microcosm#1301, microcosm#1736)",
+   "approved_on": "2026-11-27",
+   "expires_on": "2026-12-25",
    "release_lines": [
     "local"
    ]
   },
   "age_structure/E06000023/age/20_30": {
-   "reason": "Gate-only sign-off of the local cell age_structure/E06000023/age/20_30 on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261104T000247Z-3a5b4051 (full gate report sha256 365f2878c6e3c8ca333486e9255632c5362c5b01a93d3fb699eca1ee22aa0795) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "reason": "Gate-only sign-off of the local cell age_structure/E06000023/age/20_30 on the local line (microcosm#1301). On dense build-2 attempt uk-local-candidate-f100-s42-20261123T075147Z-7081d968 (full gate report sha256 fbf5a2be5138e35268896abb6237d8c3274e8ad805708c798cb9e7530f9aed3d), the local release of the pair built from microcosm#1687's head on 2026-11-22, it still breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
    "approved_by": "juaristi22",
-   "adjudication": "microcosm#1301 route for the local cut built with microcosm#1491 (sign-off 2026-11-04)",
-   "approved_on": "2026-11-04",
-   "expires_on": "2026-12-02",
+   "adjudication": "María's renewal of 27 November 2026, with the UK registers' entries lapsing by 11 December (microcosm#1301, microcosm#1736)",
+   "approved_on": "2026-11-27",
+   "expires_on": "2026-12-25",
    "release_lines": [
     "local"
    ]
   },
   "council_tax/E09000020/council_tax/band_c": {
-   "reason": "Gate-only sign-off of the local cell council_tax/E09000020/council_tax/band_c on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261107T102622Z-f52640d9 (full gate report sha256 4080fda251017f8ddf8ce72df29a16653d0d1db236820b6d3787e329bff71d53) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "reason": "Gate-only sign-off of the local cell council_tax/E09000020/council_tax/band_c on the local line (microcosm#1301). On dense build-2 attempt uk-local-candidate-f100-s42-20261123T075147Z-7081d968 (full gate report sha256 fbf5a2be5138e35268896abb6237d8c3274e8ad805708c798cb9e7530f9aed3d), the local release of the pair built from microcosm#1687's head on 2026-11-22, it still breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
    "approved_by": "juaristi22",
-   "adjudication": "María's approval of the gate-only sign-off for the pair built from PolicyEngine/microcosm#1535 (microcosm#1301)",
-   "approved_on": "2026-11-07",
-   "expires_on": "2026-12-05",
+   "adjudication": "María's renewal of 27 November 2026, with the UK registers' entries lapsing by 11 December (microcosm#1301, microcosm#1736)",
+   "approved_on": "2026-11-27",
+   "expires_on": "2026-12-25",
    "release_lines": [
     "local"
    ]
   },
   "uc_households/E14001098/uc_hh_3plus_children": {
-   "reason": "Gate-only sign-off of the local cell uc_households/E14001098/uc_hh_3plus_children on the local line (microcosm#1301). On dense build-1 attempt uk-local-candidate-f100-s42-20261107T102622Z-f52640d9 (full gate report sha256 4080fda251017f8ddf8ce72df29a16653d0d1db236820b6d3787e329bff71d53) it breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
+   "reason": "Gate-only sign-off of the local cell uc_households/E14001098/uc_hh_3plus_children on the local line (microcosm#1301). On dense build-2 attempt uk-local-candidate-f100-s42-20261123T075147Z-7081d968 (full gate report sha256 fbf5a2be5138e35268896abb6237d8c3274e8ad805708c798cb9e7530f9aed3d), the local release of the pair built from microcosm#1687's head on 2026-11-22, it still breached the target-fit release bound (max_abs_relative_error 0.25). It stays bound in the solve: this entry suppresses only the release fence on the local line, and a build in which it is back inside the bound fails the entry as stale.",
    "approved_by": "juaristi22",
-   "adjudication": "María's approval of the gate-only sign-off for the pair built from PolicyEngine/microcosm#1535 (microcosm#1301)",
-   "approved_on": "2026-11-07",
-   "expires_on": "2026-12-05",
+   "adjudication": "María's renewal of 27 November 2026, with the UK registers' entries lapsing by 11 December (microcosm#1301, microcosm#1736)",
+   "approved_on": "2026-11-27",
+   "expires_on": "2026-12-25",
    "release_lines": [
     "local"
    ]
