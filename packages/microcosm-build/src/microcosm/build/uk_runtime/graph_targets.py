@@ -117,7 +117,7 @@ def registry_from_payload(payload: Mapping) -> TargetRegistry:
 def target_geography(spec: TargetSpec) -> str:
     """Resolve explicit metadata without interpreting legacy registry buckets.
 
-    The rule is declared in ``uk/target_sets.json`` (microcosm#1759): the
+    The rule is declared in ``uk/spec/target_sets.yaml`` (microcosm#1759): the
     level is ``geography_level`` or ``ledger_geography_level``, the two must
     agree when both are set, and it must be one of the five UK grains.
     """
@@ -243,9 +243,9 @@ class _TargetKernel(KernelBase):
             declared_registers,
             # The selection, the constraint matrices and their encoding, as
             # the transport kernels hash them (microcosm#1492). The selection
-            # and the level rule read uk/target_sets.json through the shared
-            # target sets (microcosm#1759); the file's bytes are in the solve
-            # fingerprint below.
+            # and the level rule read uk/spec/target_sets.yaml through the
+            # shared target sets (microcosm#1759); the file's normative
+            # content is in the solve fingerprint below.
             calibrate_target_sets,
             target_sets,
             calibrate_matrix,

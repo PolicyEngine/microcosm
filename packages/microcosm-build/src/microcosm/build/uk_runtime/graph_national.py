@@ -500,7 +500,7 @@ class _NationalKernel(KernelBase):
             # re-key the national problem.
             calibrate_target_loss_rules,
             # The national problem writes each row's level, which the
-            # declared UK level rule gives (uk/target_sets.json through the
+            # declared UK level rule gives (uk/spec/target_sets.yaml through the
             # shared target sets, microcosm#1759).
             calibrate_target_sets,
             target_sets,

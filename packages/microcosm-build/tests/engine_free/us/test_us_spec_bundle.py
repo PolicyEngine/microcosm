@@ -4,7 +4,7 @@
 from test_support.microcosm_build.us_spec_bundle import *
 
 
-def test_us_package_has_twelve_typed_domains_and_loads_through_one_seam(
+def test_us_package_has_thirteen_typed_domains_and_loads_through_one_seam(
     resolved_us_spec: ResolvedSpec,
     resolved_country_spec: ResolvedCountrySpec,
 ) -> None:
@@ -13,7 +13,7 @@ def test_us_package_has_twelve_typed_domains_and_loads_through_one_seam(
     assert isinstance(resources, list)
     typed_rows = [row for row in resources if row["kind"] != "legacy_json"]
 
-    assert len(typed_rows) == 12
+    assert len(typed_rows) == 13
     assert {row["kind"] for row in typed_rows} == TYPED_DOMAIN_KINDS
     assert all(
         row
@@ -41,6 +41,31 @@ def test_us_package_has_twelve_typed_domains_and_loads_through_one_seam(
     assert len(resolved_country_spec.sources.stages) == 38
     assert resolved_country_spec.support_spine is not None
     assert len(resolved_country_spec.support_spine.support_spine.sources) == 2
+
+
+def test_the_declared_target_sets_are_the_bundles_typed_domain(
+    resolved_country_spec: ResolvedCountrySpec,
+) -> None:
+    """The release tools read the declared target sets through a narrow
+    loader. It gives the object that the whole bundle holds, and the content
+    hash of a second read is the bundle's."""
+
+    from microcosm.build import country_spec
+
+    assert resolved_country_spec.resolved_spec is not None
+    domain = resolved_country_spec.resolved_spec.domain("target_sets").to_wire()
+    assert country_spec.load_country_target_sets("us") == domain
+    path = "spec/target_sets.yaml"
+    assert resolved_country_spec.content_hashes[path] == (
+        country_spec.typed_resource_content_sha256(
+            US_SPEC_ROOT.parent / path, "target_sets.schema.json"
+        )
+    )
+    assert set(resolved_country_spec.content_hashes) == {
+        row.path
+        for row in resolved_country_spec.resource_rows
+        if row.kind != "legacy_json"
+    }
 
 
 def test_constant_derived_domain_counts_are_complete(

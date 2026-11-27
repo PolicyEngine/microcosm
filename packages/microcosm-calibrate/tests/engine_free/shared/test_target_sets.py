@@ -1,9 +1,14 @@
-"""Declared target sets: the shared reader and selector (microcosm#1728)."""
+"""Declared target sets: the shared reader and selector (microcosm#1728).
+
+The reader takes the object that the spec engine parsed from a country's
+typed ``target_sets`` resource. The strict read of the file and its schema
+are the spec engine's, and ``test_spec_engine_target_sets.py`` of the build
+package tests them.
+"""
 
 from __future__ import annotations
 
 import copy
-import json
 from types import SimpleNamespace
 
 import pytest
@@ -43,19 +48,22 @@ DECLARATIONS = {
         "conflict": "first",
         "rationale": "r",
     },
-    "products": {
-        "national": {
+    "products": [
+        {
+            "id": "national",
             "tool": "tools/national.py",
             "option": "--surface",
             "default_mode": "all",
-            "modes": {
-                "all": {
+            "modes": [
+                {
+                    "id": "all",
                     "description": "Every compiled target.",
                     "compiled": [
                         {"id": "all", "families": "*", "levels": "*", "rationale": "r"}
                     ],
                 },
-                "no_district": {
+                {
+                    "id": "no_district",
                     "description": "Every target but the district ones.",
                     "compiled": [
                         {
@@ -67,14 +75,16 @@ DECLARATIONS = {
                         }
                     ],
                 },
-            },
+            ],
         },
-        "local": {
+        {
+            "id": "local",
             "tool": "tools/local.py",
             "option": "--mode",
             "default_mode": "state",
-            "modes": {
-                "state": {
+            "modes": [
+                {
+                    "id": "state",
                     "description": "State benefit and state tax rows.",
                     "compiled": [
                         {
@@ -106,7 +116,8 @@ DECLARATIONS = {
                         }
                     ],
                 },
-                "shares": {
+                {
+                    "id": "shares",
                     "description": "State tax rows and district shares of them.",
                     "compiled": [
                         {
@@ -119,24 +130,38 @@ DECLARATIONS = {
                         }
                     ],
                 },
-            },
+            ],
         },
-    },
+    ],
 }
 
 
-def _declarations(**changes):
+def _edited(**changes) -> dict:
+    """``DECLARATIONS`` with each ``a__b__c`` path set to its value.
+
+    A step into a list is an index, or the ``id`` of one of its objects.
+    """
+
     raw = copy.deepcopy(DECLARATIONS)
     for path, value in changes.items():
         node = raw
         *parents, leaf = path.split("__")
         for key in parents:
-            node = node[int(key)] if isinstance(node, list) else node[key]
+            if not isinstance(node, list):
+                node = node[key]
+            elif key.isdigit():
+                node = node[int(key)]
+            else:
+                (node,) = [item for item in node if item["id"] == key]
         if value is _DELETE:
             del node[leaf]
         else:
             node[leaf] = value
-    return load_target_set_declarations(raw)
+    return raw
+
+
+def _declarations(**changes):
+    return load_target_set_declarations(_edited(**changes))
 
 
 _DELETE = object()
@@ -146,11 +171,8 @@ def _names(specs) -> list[str]:
     return [spec.name for spec in specs]
 
 
-def test_declarations_load_from_a_file_and_name_products_and_modes(tmp_path) -> None:
-    path = tmp_path / "target_sets.json"
-    path.write_text(json.dumps(DECLARATIONS), encoding="utf-8")
-
-    declarations = load_target_set_declarations(path)
+def test_declarations_name_products_and_modes_in_declared_order() -> None:
+    declarations = load_target_set_declarations(DECLARATIONS)
 
     assert declarations.country == "test"
     assert declarations.level_rule.keys == ("level", "geo")
@@ -170,29 +192,29 @@ def test_declarations_load_from_a_file_and_name_products_and_modes(tmp_path) -> 
         state.clause("snap")
 
 
-def test_a_file_with_a_repeated_key_or_a_non_finite_number_is_refused(
-    tmp_path,
-) -> None:
-    # Plain json.loads keeps the last of two equal keys: a second mode of one
-    # name, or a second "levels" in a clause, would replace the first one
-    # without a word (the review of microcosm#1755).
-    text = json.dumps(DECLARATIONS)
-    path = tmp_path / "target_sets.json"
-    path.write_text('{"version": 1, ' + text[1:], encoding="utf-8")
-    with pytest.raises(
-        TargetSetDeclarationError, match=r"repeats the JSON key\(s\) \['version'\]"
-    ):
-        load_target_set_declarations(path)
-    nested = text.replace('"modes": {', '"modes": {"all": {}, ', 1)
-    assert nested != text
-    path.write_text(nested, encoding="utf-8")
-    with pytest.raises(
-        TargetSetDeclarationError, match=r"repeats the JSON key\(s\) \['all'\]"
-    ):
-        load_target_set_declarations(path)
-    path.write_text(text[:-1] + ', "extra": NaN}', encoding="utf-8")
-    with pytest.raises(TargetSetDeclarationError, match="non-finite number NaN"):
-        load_target_set_declarations(path)
+def test_the_reader_takes_the_frozen_lists_of_the_spec_engine() -> None:
+    """The spec engine holds a list as a tuple; the reader reads both."""
+
+    def frozen(node):
+        if isinstance(node, dict):
+            return {key: frozen(value) for key, value in node.items()}
+        if isinstance(node, list):
+            return tuple(frozen(item) for item in node)
+        return node
+
+    assert load_target_set_declarations(frozen(DECLARATIONS)) == _declarations()
+
+
+def test_a_repeated_product_or_mode_is_refused() -> None:
+    twice = _edited()
+    twice["products"].append(copy.deepcopy(twice["products"][0]))
+    with pytest.raises(TargetSetDeclarationError, match="repeats the product"):
+        load_target_set_declarations(twice)
+    twice = _edited()
+    modes = twice["products"][1]["modes"]
+    modes.append(copy.deepcopy(modes[0]))
+    with pytest.raises(TargetSetDeclarationError, match="repeats the mode 'state'"):
+        load_target_set_declarations(twice)
 
 
 @pytest.mark.parametrize(
@@ -206,7 +228,9 @@ def test_a_file_with_a_repeated_key_or_a_non_finite_number_is_refused(
         # The short form of the rule is gone: a country gives the rule in full.
         ({"level_keys": ["level", "geo"]}, "unknown keys"),
         ({"products__local__default_mode": "county"}, "not a declared mode"),
-        ({"products__local__modes__state__compiled": []}, "at least one clause"),
+        ({"products": []}, "nonempty list of products"),
+        ({"products__local__modes": []}, "nonempty list of modes"),
+        ({"products__local__modes__state__compiled": []}, "nonempty list of clauses"),
         (
             {"products__local__modes__state__compiled__0__families": []},
             "nonempty list",
@@ -380,12 +404,9 @@ def test_a_rule_takes_its_clause_specs_and_returns_specs_and_a_receipt() -> None
 
 
 def test_a_spec_that_two_clauses_keep_is_refused() -> None:
-    declarations = copy.deepcopy(DECLARATIONS)
-    clauses = declarations["products"]["local"]["modes"]["state"]["compiled"]
-    clauses[0]["families"] = ["benefit", "tax"]
-    declaration = load_target_set_declarations(declarations).declaration(
-        "local", "state"
-    )
+    declaration = _declarations(
+        products__local__modes__state__compiled__0__families=["benefit", "tax"]
+    ).declaration("local", "state")
 
     with pytest.raises(ValueError, match="both keep 'ca_tax_total'"):
         select_target_set(declaration, SPECS)
@@ -393,7 +414,7 @@ def test_a_spec_that_two_clauses_keep_is_refused() -> None:
 
 def test_metadata_tests_match_their_definitions() -> None:
     declarations = copy.deepcopy(DECLARATIONS)
-    clause = declarations["products"]["local"]["modes"]["state"]["compiled"][1]
+    clause = declarations["products"][1]["modes"][0]["compiled"][1]
     clause["levels"] = "*"
     clause["metadata"] = {
         "record": {"not_prefix": "district_file."},
@@ -465,13 +486,15 @@ def _level_declarations(**rule) -> dict:
             "rationale": "r",
             **rule,
         },
-        "products": {
-            "full": {
+        "products": [
+            {
+                "id": "full",
                 "tool": "tools/full.py",
                 "option": "--levels",
                 "default_mode": "levels",
-                "modes": {
-                    "levels": {
+                "modes": [
+                    {
+                        "id": "levels",
                         "description": "One clause for each level.",
                         "compiled": [
                             {
@@ -483,9 +506,9 @@ def _level_declarations(**rule) -> dict:
                             for level in LEVELS
                         ],
                     }
-                },
+                ],
             }
-        },
+        ],
     }
 
 
@@ -657,7 +680,7 @@ def test_select_by_levels_needs_a_level_mode() -> None:
     with pytest.raises(TargetSetDeclarationError, match="closed set of values"):
         select_by_levels(registry, _level_mode(values="*"))
     family_clause = _level_declarations()
-    mode = family_clause["products"]["full"]["modes"]["levels"]
+    mode = family_clause["products"][0]["modes"][0]
     mode["compiled"][0]["families"] = ["tax"]
     with pytest.raises(TargetSetDeclarationError, match="not a level clause"):
         select_by_levels(
@@ -665,7 +688,7 @@ def test_select_by_levels_needs_a_level_mode() -> None:
             load_target_set_declarations(family_clause).declaration("full", "levels"),
         )
     missing = _level_declarations()
-    missing["products"]["full"]["modes"]["levels"]["compiled"].pop()
+    missing["products"][0]["modes"][0]["compiled"].pop()
     with pytest.raises(TargetSetDeclarationError, match="are not the levels"):
         select_by_levels(
             registry,
@@ -677,25 +700,29 @@ def test_a_selection_that_tests_no_level_reads_no_level() -> None:
     """A closed rule refuses an unplaced target only where a clause tests levels."""
 
     declarations = _level_declarations()
-    declarations["products"]["lines"] = {
-        "tool": "t",
-        "option": "line",
-        "default_mode": "national",
-        "modes": {
-            "national": {
-                "description": "Every target but the local-only ones.",
-                "compiled": [
-                    {
-                        "id": "on_line",
-                        "families": "*",
-                        "levels": "*",
-                        "exclude": ["off_line"],
-                        "rationale": "r",
-                    }
-                ],
-            }
-        },
-    }
+    declarations["products"].append(
+        {
+            "id": "lines",
+            "tool": "t",
+            "option": "line",
+            "default_mode": "national",
+            "modes": [
+                {
+                    "id": "national",
+                    "description": "Every target but the local-only ones.",
+                    "compiled": [
+                        {
+                            "id": "on_line",
+                            "families": "*",
+                            "levels": "*",
+                            "exclude": ["off_line"],
+                            "rationale": "r",
+                        }
+                    ],
+                }
+            ],
+        }
+    )
     loaded = load_target_set_declarations(declarations)
     specs = (
         _spec("placed", "tax", level="la"),

@@ -41,7 +41,7 @@ from microcosm.build.spec_engine.model import ResolvedSpec
 
 REPORT_SCHEMA_VERSION = 3
 EXPECTED_POINTER_INVENTORY_SHA256 = (
-    "8e3b7c8680e0a5c5626867c1b697b6b6d98058b383c2f7d368f0b5b5df3105b1"
+    "7c37171ae40e7e9f43e9ecf36937cbd0a907b5516868b45dc3d9cf7ddec12d4d"
 )
 DEFAULT_REPORT_PATH = (
     Path(__file__).resolve().parents[1]

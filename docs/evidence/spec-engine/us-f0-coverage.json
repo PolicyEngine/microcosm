@@ -4,10 +4,10 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "fda6ec0dd925077f4d84d30a1c206dd81d82c5e16bd94506e81fe1b9f7e2f466",
+  "documentation_sha256": "3342f5315eeef08e5d2e91f29c9d06e6f8e5e065dfdb0222c8de573716bf0a97",
   "field_usage": {
-    "authored_normative_field_count": 32627,
-    "claim_count": 48,
+    "authored_normative_field_count": 32771,
+    "claim_count": 49,
     "claims": [
       {
         "consumer": "loader.typed_resource_manifest",
@@ -685,6 +685,20 @@
         "verifier": "legacy"
       },
       {
+        "consumer": "country_spec.declared_target_sets.us_runtime_target_sets",
+        "generation0_effect": "no_generation0_effect",
+        "id": "target_sets",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "all",
+        "pointer_count": 144,
+        "pointer_sha256": "476b22fb8944797601151d253e4a1f1c545d1e49029dc3d391f0b7ff89733b6d",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1target_sets.yaml",
+        "verifier": "target_sets"
+      },
+      {
         "consumer": "resolver.vintage_authorities",
         "generation0_effect": "no_generation0_effect",
         "id": "vintage_records",
@@ -758,20 +772,20 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42413,
-    "consumed_field_count": 42413,
+    "configuration_field_count": 42557,
+    "consumed_field_count": 42557,
     "generation0_effect_counts": {
       "legacy_behavior": 38780,
-      "no_generation0_effect": 3633
+      "no_generation0_effect": 3777
     },
     "mode_counts": {
       "compiler_semantic": 27674,
-      "front_end_validation": 367,
+      "front_end_validation": 511,
       "identity_only": 103,
       "legacy_behavior": 14269
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "8e3b7c8680e0a5c5626867c1b697b6b6d98058b383c2f7d368f0b5b5df3105b1",
+    "pointer_inventory_sha256": "7c37171ae40e7e9f43e9ecf36937cbd0a907b5516868b45dc3d9cf7ddec12d4d",
     "resolved_binding_field_count": 9786,
     "unused_field_count": 0
   },
@@ -2585,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "0ff909ec0783ad5d1fbf3c70fadbd60aee9b05773ebdb1ad42fbc988a5593fa3"
+      "spec_sha256": "50ebe28107e5fe8ab45e5c637871c9f0efdc97c697480eb41bdc262c89bf18fa"
     }
   },
   "report_schema_version": 3,
@@ -2595,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "0ff909ec0783ad5d1fbf3c70fadbd60aee9b05773ebdb1ad42fbc988a5593fa3"
+    "spec_sha256": "50ebe28107e5fe8ab45e5c637871c9f0efdc97c697480eb41bdc262c89bf18fa"
   },
   "status": "pass"
 }

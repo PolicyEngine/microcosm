@@ -653,7 +653,7 @@ def soi_surface_predicate(soi_mode: str):
     """The ``irs_soi`` spec filter for one ``--soi-mode``.
 
     It is the level and metadata tests of the mode's ``soi`` clause in
-    ``us/target_sets.json``, product ``local`` (microcosm#1728); the caller
+    ``us/spec/target_sets.yaml``, product ``local`` (microcosm#1728); the caller
     selects the family. A spec's level is its ``ledger_geography_level``
     (else its ``geography_level``), which every compiled spec carries.
 
@@ -766,7 +766,7 @@ def state_admin_surface(
     ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44) -> state-level
     {usda_snap, cms_medicaid[enrollment], irs_soi}. The clauses ``snap``,
     ``medicaid`` and ``soi`` of the mode's declaration in
-    ``us/target_sets.json`` (product ``local``, microcosm#1728) pick them, in
+    ``us/spec/target_sets.yaml`` (product ``local``, microcosm#1728) pick them, in
     that order; ``families`` turns clauses on by id. The SOI slice follows
     :func:`soi_surface_predicate` for ``state`` (the default), ``totals`` and
     ``full``; ``state_cd`` adds the reconciled congressional-district rows

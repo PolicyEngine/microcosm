@@ -41,7 +41,7 @@ same cell and concept — e.g. congressional-district income binds from
 artifact compiles the same national + state + congressional-district target
 registry (`us_runtime/fiscal_targets.py::compile_us_fiscal_target_registry`);
 artifact record count changes L0, not target membership. Each product then
-calibrates to the subset that `us/target_sets.json` declares for its mode
+calibrates to the subset that `us/spec/target_sets.yaml` declares for its mode
 ([US target sets](us-target-sets.md)). The national build's `national_state`
 mode and the local build's `state` mode are not the same set today
 (microcosm#1728). The pinned

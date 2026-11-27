@@ -4,7 +4,9 @@ Every US release compiles the same target registry
 (`us_runtime/fiscal_targets.py::compile_us_fiscal_target_registry`). Each
 release then calibrates to a subset of it. Since microcosm#1728, that subset is
 declared as data, for each product and mode, in
-[`packages/microcosm-build/src/microcosm/build/us/target_sets.json`](../packages/microcosm-build/src/microcosm/build/us/target_sets.json).
+[`packages/microcosm-build/src/microcosm/build/us/spec/target_sets.yaml`](../packages/microcosm-build/src/microcosm/build/us/spec/target_sets.yaml).
+The file is a typed resource of the US spec bundle (see "A typed resource of
+the spec bundle" below).
 
 - The shared reader and selector are in
   [`microcosm.calibrate.target_sets`](../packages/microcosm-calibrate/src/microcosm/calibrate/target_sets.py).
@@ -59,12 +61,11 @@ Each mode states three things:
 A target's family is its `TargetSpec.family`. Its level comes from the level
 rule that the file declares, in the form the UK file uses:
 
-```json
-"level_rule": {
-  "keys": ["ledger_geography_level", "geography_level"],
-  "values": "*",
-  "conflict": "first"
-}
+```yaml
+level_rule:
+  keys: [ledger_geography_level, geography_level]
+  values: "*"
+  conflict: first
 ```
 
 - The level is the first of the two keys that has a value. A compiled target
@@ -124,14 +125,55 @@ builds use `state`. Their state rows, by family:
 has 436 district population rows. Whether the local build fits the national
 rows and the full state set is decision 1 of microcosm#1728.
 
+## A typed resource of the spec bundle
+
+`spec/target_sets.yaml` is a typed resource of the country's spec bundle: kind
+`target_sets`, schema
+[`target_sets.schema.json`](../packages/microcosm-build/src/microcosm/build/spec_engine/schema/target_sets.schema.json)
+([spec engine](spec-engine.md)). The UK file has the same kind and schema.
+
+- **One read.** The spec engine reads the file with its strict YAML 1.2
+  reader (a repeated key and a non-finite number are refused) and checks it
+  against the schema, which is closed: an unknown field is refused. The
+  country modules read the same object through
+  `country_spec.load_country_target_sets`, which loads this one resource as
+  the bundle loader does.
+- **Content and documentation are apart.** The schema marks each `description`
+  and `rationale` as documentation. Every other field is normative: it is what
+  a selection reads. The bundle's `spec_sha256` covers the normative content,
+  so a changed clause changes the spec hash that a US build records, and a
+  reworded rationale does not.
+- **Order.** The products, the modes, the clauses and the built rows are
+  lists, so their declared order is content. The order of the fields of an
+  object is not content, and neither is the order of the names in a list of
+  families or levels.
+- **What the schema cannot state.** The shared reader refuses a repeated
+  product, mode, clause or built id, a default mode that is not declared, and
+  `"*"` inside a list of names.
+- **Written by hand.** The other US typed files are generated from the
+  constants-era code (`tools/generate_us_bundle_from_constants.py`). The
+  constants-era code never held the target sets, so this file is the
+  authority and the generator only declares its manifest row
+  (`AUTHORED_DOMAIN_KINDS`).
+- **The F0 field ledger.** Every normative field of the US bundle has a
+  reviewed claim in `spec_engine/field_usage.py`. The `target_sets` claim is
+  a front-end validation: the release tools read the typed domain themselves,
+  so it does not pass through the constants adapter. Its verifier checks the
+  domain against the schema and the shared reader.
+
 ## How to change a target set
 
-1. Change the mode's clauses or built entries in `target_sets.json`. The tools
-   read the file at run time.
-2. Run `test_us_target_sets.py` with the pinned feed. A change that moves a
+1. Change the mode's clauses or built entries in `spec/target_sets.yaml`. The
+   tools read the file at run time.
+2. Re-pin the US spec-engine contracts, because the file's content is in the
+   bundle's `spec_sha256` and in the field ledger:
+   `tools/repin_us_spec_engine_contracts.py`, then
+   `tools/spec_engine_coverage.py`. A change to a description or a rationale
+   alone moves no pin.
+3. Run `test_us_target_sets.py` with the pinned feed. A change that moves a
    surface changes its pinned count and version: update them, and say which
    rows moved in the pull request.
-3. A change that moves a surface changes what the calibration fits, so a
+4. A change that moves a surface changes what the calibration fits, so a
    build must measure it (`docs/us-release-build-rule.md`).
 
 A family or level that a feed re-pin adds enters a mode only if a clause names
@@ -180,9 +222,8 @@ replaced read only `ledger_geography_level`. So a state SOI row that carries
 only `geography_level` now enters these two modes. Every compiled row carries
 `ledger_geography_level`, so no compiled registry changes.
 
-A declaration file is read strictly: a repeated JSON key, a non-finite number,
-`"*"` inside a list of names and a version that is not the integer are
-refused.
+The file is read strictly and checked against its schema (see "A typed
+resource of the spec bundle" above).
 
 ## Rows the local tool builds, and its hold-outs
 

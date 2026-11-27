@@ -7,6 +7,12 @@ depends on keys on the *solve fingerprint* (every packaged resource but
 sound from both sides: the source names no gate-only file outside the gate
 machinery, and editing each one leaves every solve kernel's key unchanged
 while the calibrated gates re-key.
+
+The declared target sets (``spec/target_sets.yaml``, a typed resource of the
+spec bundle) are in the solve fingerprint by their normative content, not by
+their bytes (microcosm#1755): an edit to their prose or their layout leaves
+every solve kernel's key as it was, and an edit to a clause, a level or an
+exclusion changes every one of them.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import inspect
+import json
 import types
 from dataclasses import replace
 from pathlib import Path
@@ -36,6 +43,7 @@ from microcosm.build.uk_runtime.graph_terminal import (
     UKFullPreflightGateKernel,
 )
 from microcosm.build.uk_runtime.solve_scope import (
+    UK_CONTENT_KEYED_RESOURCES,
     UK_GATE_ONLY_RESOURCES,
     UK_POST_SOLVE_RESOURCES,
     uk_solve_fingerprint,
@@ -43,6 +51,10 @@ from microcosm.build.uk_runtime.solve_scope import (
 from microcosm.build.uk_runtime.stock_cells import STOCK_CELL_RESOURCES
 from microcosm.build.uk_runtime.target_compile_modules import (
     UK_TARGET_COMPILE_MODULE_NAMES,
+)
+from microcosm.build.uk_runtime.target_sets import (
+    UK_TARGET_SETS_RESOURCE,
+    uk_target_sets_path,
 )
 from test_support.paths import paths_for
 
@@ -243,11 +255,57 @@ def readers() -> dict[str, set[str]]:
 
 
 def _perturbed(*resources: str) -> country_spec.ResolvedCountrySpec:
+    """The packaged spec after an edit to the content of each resource: its
+    byte hash changes, and so does its content hash when it has one."""
+
     spec = country_spec.load_country_spec("uk")
     hashes = dict(spec.resource_hashes)
+    content = dict(spec.content_hashes)
     for resource in resources:
         hashes[resource] = hashlib.sha256(hashes[resource].encode()).hexdigest()
-    return replace(spec, resource_hashes=MappingProxyType(hashes))
+        if resource in content:
+            content[resource] = hashlib.sha256(content[resource].encode()).hexdigest()
+    return replace(
+        spec,
+        resource_hashes=MappingProxyType(hashes),
+        content_hashes=MappingProxyType(content),
+    )
+
+
+_TARGET_SETS_SCHEMA = "target_sets.schema.json"
+
+
+def _with_target_sets(text: str, tmp_path: Path) -> country_spec.ResolvedCountrySpec:
+    """The packaged spec with ``text`` as its ``spec/target_sets.yaml``.
+
+    The byte hash is the hash of the text. The content hash is the one the
+    loader gives a typed resource: the hash of its normative projection
+    (``country_spec.typed_resource_content_sha256``). The other resources are
+    as packaged.
+    """
+
+    path = tmp_path / "target_sets.yaml"
+    path.write_text(text, encoding="utf-8")
+    spec = country_spec.load_country_spec("uk")
+    return replace(
+        spec,
+        resource_hashes=MappingProxyType(
+            {
+                **spec.resource_hashes,
+                UK_TARGET_SETS_RESOURCE: hashlib.sha256(
+                    text.encode("utf-8")
+                ).hexdigest(),
+            }
+        ),
+        content_hashes=MappingProxyType(
+            {
+                **spec.content_hashes,
+                UK_TARGET_SETS_RESOURCE: country_spec.typed_resource_content_sha256(
+                    path, _TARGET_SETS_SCHEMA
+                ),
+            }
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -393,12 +451,28 @@ def test_fingerprint_excluding_refuses_what_it_cannot_honour():
     # excluding nothing is not the full fingerprint.
     assert spec.fingerprint_excluding(()) != spec.fingerprint
     excluded = UK_GATE_ONLY_RESOURCES | UK_POST_SOLVE_RESOURCES
-    assert spec.fingerprint_excluding(excluded) == uk_solve_fingerprint()
-    assert spec.fingerprint_excluding(UK_GATE_ONLY_RESOURCES) != uk_solve_fingerprint()
+    by_content = UK_CONTENT_KEYED_RESOURCES
+    solve = uk_solve_fingerprint()
+    assert spec.fingerprint_excluding(excluded, by_content=by_content) == solve
     assert (
-        spec.fingerprint_excluding(excluded | {"degenerate_reviewed_exclusions.json"})
-        != uk_solve_fingerprint()
+        spec.fingerprint_excluding(UK_GATE_ONLY_RESOURCES, by_content=by_content)
+        != solve
     )
+    assert (
+        spec.fingerprint_excluding(
+            excluded | {"degenerate_reviewed_exclusions.json"}, by_content=by_content
+        )
+        != solve
+    )
+    # The resources hashed by content are bound too: the same exclusions with
+    # every resource hashed by its bytes is another fingerprint.
+    assert spec.fingerprint_excluding(excluded) != solve
+    with pytest.raises(ValueError, match="have no content hash"):
+        spec.fingerprint_excluding(excluded, by_content={"gates.json"})
+    with pytest.raises(ValueError, match="both excluded and hashed by content"):
+        spec.fingerprint_excluding(excluded | by_content, by_content=by_content)
+    with pytest.raises(TypeError, match="collection"):
+        spec.fingerprint_excluding(excluded, by_content=UK_TARGET_SETS_RESOURCE)
 
 
 # ---------------------------------------------------------------------------
@@ -439,11 +513,14 @@ def stand_in_dependency_versions(monkeypatch):
     monkeypatch.setattr(metadata, "version", version)
 
 
-def _hashes(monkeypatch, *resources):
+def _hashes(monkeypatch, *resources, spec=None):
+    """Every solve kernel's key and the calibrated gates' key: on the packaged
+    spec, after an edit to ``resources``, or on ``spec``."""
+
     calibrated = UKFullGateKernel(coverage_engine=object(), engine_identity="fixture")
     with monkeypatch.context() as patch:
-        if resources:
-            edited = _perturbed(*resources)
+        if resources or spec is not None:
+            edited = _perturbed(*resources) if spec is None else spec
             patch.setattr(
                 country_spec, "_load_packaged_country_spec", lambda _country: edited
             )
@@ -471,6 +548,186 @@ def test_a_solve_scoped_edit_rekeys_every_solve_kernel(
     edited_solve, edited_calibrated = _hashes(
         monkeypatch, "calibration_measure_exclusions.json"
     )
+    assert {name for name in solve if edited_solve[name] == solve[name]} == set()
+    assert edited_calibrated != calibrated
+
+
+# ---------------------------------------------------------------------------
+# The declared target sets: in the solve fingerprint by content
+# ---------------------------------------------------------------------------
+
+
+def _target_sets() -> dict:
+    """The packaged file as authored: parsed, before defaults and sorting."""
+
+    from microcosm.build.spec_engine import load_yaml12_file
+
+    return load_yaml12_file(uk_target_sets_path())
+
+
+def _as_text(raw: dict) -> str:
+    """``raw`` as a file. JSON is YAML 1.2, so the strict reader takes it."""
+
+    return json.dumps(raw, indent=1, ensure_ascii=False) + "\n"
+
+
+def _full_levels(raw: dict) -> dict:
+    """The full build's selection by level: the first product's one mode."""
+
+    (mode,) = raw["products"][0]["modes"]
+    assert (raw["products"][0]["id"], mode["id"]) == ("full", "levels")
+    return mode
+
+
+def _calibration_lines(raw: dict) -> list:
+    product = raw["products"][1]
+    assert product["id"] == "calibration_line"
+    return product["modes"]
+
+
+def _reworded(raw: dict) -> str:
+    """Every description and rationale of the file, with words added."""
+
+    raw["description"] += " More words."
+    raw["level_rule"]["rationale"] += " More words."
+    for product in raw["products"]:
+        for mode in product["modes"]:
+            mode["description"] += " More words."
+            for entry in (*mode["compiled"], *mode.get("built", ())):
+                entry["rationale"] += " More words."
+    return _as_text(raw)
+
+
+def _reformatted(raw: dict) -> str:
+    """The same declarations in another layout: JSON in place of block YAML,
+    another indent, no final newline, and the fields of every object in the
+    reverse order."""
+
+    def relaid(node):
+        if isinstance(node, dict):
+            return {key: relaid(node[key]) for key in reversed(node)}
+        if isinstance(node, list):
+            return [relaid(item) for item in node]
+        return node
+
+    relaid_raw = relaid(raw)
+    assert list(relaid_raw) != list(raw)
+    return json.dumps(relaid_raw, indent=4, ensure_ascii=False)
+
+
+def _level_names_reordered(raw: dict) -> str:
+    """The names in a list of levels are a set: their order is not content."""
+
+    raw["level_rule"]["values"].reverse()
+    return _as_text(raw)
+
+
+def _level_added(raw: dict) -> str:
+    raw["level_rule"]["values"].append("ward")
+    return _as_text(raw)
+
+
+def _clause_level_changed(raw: dict) -> str:
+    _full_levels(raw)["compiled"][0]["levels"] = ["region"]
+    return _as_text(raw)
+
+
+def _clause_family_changed(raw: dict) -> str:
+    _full_levels(raw)["compiled"][0]["families"] = ["tax"]
+    return _as_text(raw)
+
+
+def _exclusion_removed(raw: dict) -> str:
+    del _calibration_lines(raw)[0]["compiled"][0]["exclude"]
+    return _as_text(raw)
+
+
+def _clauses_reordered(raw: dict) -> str:
+    _full_levels(raw)["compiled"].reverse()
+    return _as_text(raw)
+
+
+def _modes_reordered(raw: dict) -> str:
+    """The calibration lines are in declared order: a refusal lists them."""
+
+    _calibration_lines(raw).reverse()
+    return _as_text(raw)
+
+
+def test_the_packaged_target_sets_have_the_content_hash_of_the_bundle():
+    """The solve keys on the hash the bundle gives the typed resource, and the
+    builds read the object the bundle holds."""
+
+    spec = country_spec.load_country_spec("uk")
+    assert UK_CONTENT_KEYED_RESOURCES == {UK_TARGET_SETS_RESOURCE}
+    assert UK_CONTENT_KEYED_RESOURCES <= set(spec.resources)
+    assert not UK_CONTENT_KEYED_RESOURCES & (
+        UK_GATE_ONLY_RESOURCES | UK_POST_SOLVE_RESOURCES
+    )
+    # Every typed resource has a content hash, and no legacy JSON file has.
+    typed = {row.path for row in spec.resource_rows if row.kind != "legacy_json"}
+    assert set(spec.content_hashes) == typed
+    assert spec.content_hashes[UK_TARGET_SETS_RESOURCE] == (
+        country_spec.typed_resource_content_sha256(
+            uk_target_sets_path(), _TARGET_SETS_SCHEMA
+        )
+    )
+    assert spec.resolved_spec.domain("target_sets").to_wire() == (
+        country_spec.load_country_target_sets("uk")
+    )
+
+
+def test_the_unedited_target_sets_text_gives_the_packaged_hashes(tmp_path):
+    """The helper that edits the file gives the loader's own hashes."""
+
+    spec = country_spec.load_country_spec("uk")
+    text = uk_target_sets_path().read_text(encoding="utf-8")
+    same = _with_target_sets(text, tmp_path)
+    assert same.resource_hashes == spec.resource_hashes
+    assert same.content_hashes == spec.content_hashes
+    # The same declarations as JSON have other bytes and the same content.
+    as_json = _with_target_sets(_as_text(_target_sets()), tmp_path)
+    assert as_json.resource_hashes != spec.resource_hashes
+    assert as_json.content_hashes == spec.content_hashes
+
+
+@pytest.mark.parametrize("edit", [_reworded, _reformatted, _level_names_reordered])
+def test_a_target_set_prose_or_layout_edit_rekeys_no_solve_kernel(
+    edit, tmp_path, monkeypatch, stand_in_dependency_versions
+):
+    spec = country_spec.load_country_spec("uk")
+    edited = _with_target_sets(edit(_target_sets()), tmp_path)
+    assert edited.resource_hashes != spec.resource_hashes
+    assert edited.fingerprint != spec.fingerprint
+    assert uk_solve_fingerprint(edited) == uk_solve_fingerprint(spec)
+
+    solve, calibrated = _hashes(monkeypatch)
+    edited_solve, edited_calibrated = _hashes(monkeypatch, spec=edited)
+    assert edited_solve == solve
+    # The calibrated gates key on every byte of the package.
+    assert edited_calibrated != calibrated
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        _level_added,
+        _clause_level_changed,
+        _clause_family_changed,
+        _exclusion_removed,
+        _clauses_reordered,
+        _modes_reordered,
+    ],
+)
+def test_a_target_set_content_edit_rekeys_every_solve_kernel(
+    edit, tmp_path, monkeypatch, stand_in_dependency_versions
+):
+    spec = country_spec.load_country_spec("uk")
+    edited = _with_target_sets(edit(_target_sets()), tmp_path)
+    assert uk_solve_fingerprint(edited) != uk_solve_fingerprint(spec)
+
+    solve, calibrated = _hashes(monkeypatch)
+    edited_solve, edited_calibrated = _hashes(monkeypatch, spec=edited)
     assert {name for name in solve if edited_solve[name] == solve[name]} == set()
     assert edited_calibrated != calibrated
 

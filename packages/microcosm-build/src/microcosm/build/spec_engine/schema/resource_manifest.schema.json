@@ -49,6 +49,7 @@
        "publication",
        "vintages",
        "catalogs",
+       "target_sets",
        "schema",
        "legacy_json"
       ]

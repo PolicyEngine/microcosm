@@ -3,7 +3,9 @@
 The UK declares its target sets the way the US does
 ([US target sets](us-target-sets.md)). Since microcosm#1759 the UK choices are
 data in
-[`packages/microcosm-build/src/microcosm/build/uk/target_sets.json`](../packages/microcosm-build/src/microcosm/build/uk/target_sets.json),
+[`packages/microcosm-build/src/microcosm/build/uk/spec/target_sets.yaml`](../packages/microcosm-build/src/microcosm/build/uk/spec/target_sets.yaml),
+a typed resource of the UK spec bundle (kind `target_sets`; see
+[US target sets](us-target-sets.md#a-typed-resource-of-the-spec-bundle)),
 read by the shared
 [`microcosm.calibrate.target_sets`](../packages/microcosm-calibrate/src/microcosm/calibrate/target_sets.py).
 The UK names (file, products, predicate) are in
@@ -17,12 +19,11 @@ The move changed no target, selection or receipt. The proofs are listed under
 Every compiled UK target has one geography level. The file declares how to
 read it:
 
-```json
-"level_rule": {
-  "keys": ["geography_level", "ledger_geography_level"],
-  "values": ["country", "region", "constituency", "la", "brma"],
-  "conflict": "refuse"
-}
+```yaml
+level_rule:
+  keys: [geography_level, ledger_geography_level]
+  values: [country, region, constituency, la, brma]
+  conflict: refuse
 ```
 
 - The level is the first of the two keys that has a value.
@@ -32,8 +33,9 @@ read it:
 
 `uk_runtime.graph_targets.target_geography` and the national problem
 (`graph_national.national_target_geography_levels`) read levels with this
-rule. The US file gives the short form `level_keys`, which is an open rule
-that takes the first key.
+rule. The US file declares its rule in the same form: an open rule
+(`"values": "*"`, `"conflict": "first"`) that takes the first key. The reader
+has one form for the rule, so each country states its reading in full.
 
 ## The products
 
@@ -157,8 +159,8 @@ the nesting work of microcosm#1760.
 
 ## What a UK build computes again
 
-`uk/target_sets.json` is a solve-scoped UK resource, so it is in the UK solve
-fingerprint. The spine gates also hash that fingerprint. So the first UK build
+`uk/spec/target_sets.yaml` is a solve-scoped UK resource, so it is in the UK
+solve fingerprint. The spine gates also hash that fingerprint. So the first UK build
 after this change computes these again:
 
 - the spine from `frs_brma` on;
@@ -166,3 +168,33 @@ after this change computes these again:
 - the national graph.
 
 The outputs are the same bytes.
+
+### The file is in the fingerprint by its content
+
+Most of `uk/spec/target_sets.yaml` is prose: a description for each mode and a
+rationale for each clause. No node reads that prose. The selections read the
+clauses, levels, exclusions and rules. The spec engine already keeps the two
+apart for a typed resource: the schema marks each `description` and
+`rationale` as documentation, and every other field is normative. So the
+solve fingerprint takes the hash of the file's normative content, not the
+hash of its bytes (`uk_runtime.solve_scope.UK_CONTENT_KEYED_RESOURCES`):
+
+- The country spec records, for each typed resource of a package, the sha256
+  of its normative projection (`ResolvedCountrySpec.content_hashes`). It is
+  the split that gives the bundle's `spec_sha256`, for one file.
+- A reworded rationale, a new layout of the file or another order of the
+  fields of an object changes no solve key. The order of the products, the
+  modes and the clauses is content: they are lists. This matters for a local
+  release, whose second build must reuse the first build's solve
+  (microcosm#1301).
+- A changed clause, level, test, exclusion or rule changes the key of every
+  node that keys on the solve fingerprint. No reader has to add a hash of its
+  own.
+- The calibrated gate node and the release manifests keep the byte hash, so
+  provenance names the exact file.
+- The other typed UK resources still enter the fingerprint by their bytes.
+  Each can join `UK_CONTENT_KEYED_RESOURCES` after a review of what its
+  surfaces hold.
+
+`test_uk_solve_scope.py` edits the packaged file both ways and compares every
+solve kernel's key.

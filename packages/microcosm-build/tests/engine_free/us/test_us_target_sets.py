@@ -1,6 +1,6 @@
 """The US products' declared target sets (microcosm#1728).
 
-``us/target_sets.json`` declares what the national release and the ACS local
+``us/spec/target_sets.yaml`` declares what the national release and the ACS local
 release calibrate to. The engine-free tests check the declarations against
 the tools. The pinned-feed tests prove that the declarations select the same
 rows, in the same order, as the tool code they replace: each surface's count
@@ -238,7 +238,7 @@ def test_ladder_population_rows_have_the_declared_family_and_levels(
 
 def _target_geography_level_before_the_declared_rule(spec) -> str:
     """``target_loss_weights.target_geography_level`` as it was in code, before
-    it read the level rule of ``us/target_sets.json`` (a verbatim copy)."""
+    it read the level rule of ``us/spec/target_sets.yaml`` (a verbatim copy)."""
 
     metadata = spec.metadata
     return str(

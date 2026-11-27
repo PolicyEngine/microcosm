@@ -9967,7 +9967,7 @@ def _select_target_surface(
 ) -> tuple[tuple[TargetSpec, ...], dict[str, object]]:
     """Return the specs the release calibrates to and a receipt of the choice.
 
-    Each mode is declared in ``us/target_sets.json``, product ``national``
+    Each mode is declared in ``us/spec/target_sets.yaml``, product ``national``
     (microcosm#1728). ``full`` keeps every compiled spec. ``national_state``
     drops every spec ``is_congressional_district_target`` classifies as
     congressional-district (CD geography rows and rows sourced from the SOI

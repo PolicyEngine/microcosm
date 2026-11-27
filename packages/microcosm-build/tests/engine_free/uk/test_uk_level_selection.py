@@ -4,7 +4,7 @@ Before microcosm#1759 the UK full build selected its solve surface with
 ``microcosm.calibrate.target_selection.select_targets`` and the UK resolver
 ``uk_runtime.graph_targets.target_geography``. It now selects with the shared
 ``microcosm.calibrate.target_sets.select_by_levels`` and the UK's declared
-level rule (``uk/target_sets.json``). ``test_support/microcosm_build/target_selection_reference.py``
+level rule (``uk/spec/target_sets.yaml``). ``test_support/microcosm_build/target_selection_reference.py``
 holds verbatim copies of the old code. On random registries and requests the
 two give the same registry, the same receipt bytes, or the same refusal.
 """
@@ -24,7 +24,7 @@ from test_support.microcosm_build import target_selection_reference as reference
 
 UK_LEVELS = ("country", "region", "constituency", "la", "brma")
 
-#: The full build's level mode, as uk/target_sets.json declares it.
+#: The full build's level mode, as uk/spec/target_sets.yaml declares it.
 DECLARATION = uk_full_level_selection()
 
 

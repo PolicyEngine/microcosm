@@ -62,6 +62,13 @@ DOMAIN_KINDS = (
     "take_up",
     "vintages",
 )
+#: Typed domains that are written by hand. The constants-era code never held
+#: them, so no extractor builds them and this tool does not write their YAML.
+#: The manifest declares them, and the bundle loader validates them.
+AUTHORED_DOMAIN_KINDS = (
+    # The declared target set of each US product (microcosm#1728).
+    "target_sets",
+)
 
 
 def _domain_builders() -> dict[str, Callable[[], object]]:
@@ -167,8 +174,6 @@ LEGACY_RESOURCE_PATHS = (
     "take_up_contract.json",
     "target_parity_feed_families.json",
     "target_parity_manifest.json",
-    # The declared target set of each US product (microcosm#1728).
-    "target_sets.json",
     "tax_expenditure_reforms.json",
 )
 
@@ -265,7 +270,7 @@ def country_manifest() -> dict[str, object]:
             "kind": kind,
             "schema_id": f"{kind}.schema.json",
         }
-        for kind in DOMAIN_KINDS
+        for kind in sorted((*DOMAIN_KINDS, *AUTHORED_DOMAIN_KINDS))
     ]
     legacy_rows = [
         {"path": path, "kind": "legacy_json", "schema_id": "legacy_json"}

@@ -485,7 +485,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Calibration loss weights computed from target specs alone; reads no
         # frame and treats no population.
         "target_loss_weights.py",
-        # Names and loads the declared US target sets (us/target_sets.json);
+        # Names and loads the declared US target sets (us/spec/target_sets.yaml);
         # selects target specs only, reads no frame and treats no population.
         "target_sets.py",
         # Data-only final-owner matrix; provenance owner above.

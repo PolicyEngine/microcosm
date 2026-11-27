@@ -771,7 +771,7 @@ def target_loss_weights_sha256(names: Sequence[str], weights: np.ndarray) -> str
 
 
 def target_geography_level(spec) -> str:
-    """A spec's geography level, by the level rule of ``us/target_sets.json``.
+    """A spec's geography level, by the level rule of ``us/spec/target_sets.yaml``.
 
     The declared target sets place a target by the same rule
     (:func:`~.target_sets.us_target_level`), so a US target has one level in

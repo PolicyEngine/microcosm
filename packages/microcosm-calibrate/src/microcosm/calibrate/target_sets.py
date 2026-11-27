@@ -6,32 +6,36 @@ families, the levels and the rule. This module reads the declarations and
 selects by them (microcosm#1728). It holds no country code: a country passes
 the named predicates and rules its declarations use as callables.
 
-A declaration file has this form::
+A country ships its declarations as the typed ``target_sets`` resource of its
+spec bundle (``<country>/spec/target_sets.yaml``, schema
+``target_sets.schema.json`` of ``microcosm.build.spec_engine``). The spec
+engine reads the file strictly, checks it against the schema, and keeps the
+descriptions and rationales apart from the content that a selection reads.
+:func:`load_target_set_declarations` takes the object the engine parsed. It
+has this form::
 
-    {
-      "version": 1,
-      "country": "<country>",
-      "level_rule": {
-        "keys": ["<metadata key>", ...],
-        "values": ["<level>", ...] or "*",
-        "conflict": "first" or "refuse",
-        "rationale": "<why>"
-      },
-      "products": {
-        "<product>": {
-          "tool": "<path of the tool>",
-          "option": "<the option that picks the mode>",
-          "default_mode": "<mode>",
-          "modes": {
-            "<mode>": {
-              "description": "<what the product calibrates to>",
-              "compiled": [<clause>, ...],
-              "built": [<built rows>, ...]
-            }
-          }
-        }
-      }
-    }
+    version: 1
+    country: <country>
+    level_rule:
+      keys: [<metadata key>, ...]
+      values: [<level>, ...]        # or "*"
+      conflict: first               # or refuse
+      rationale: <why>
+    products:
+    - id: <product>
+      tool: <path of the tool>
+      option: <the option that picks the mode>
+      default_mode: <mode>
+      modes:
+      - id: <mode>
+        description: <what the product calibrates to>
+        compiled: [<clause>, ...]
+        built: [<built rows>, ...]
+
+The products, the modes, the clauses and the built rows are lists, so their
+declared order is part of the declaration. The order of the fields of an
+object is not, and neither is the order of the names in a list of families
+or levels.
 
 **Families and levels.** A target's family is ``spec.family``. Its level
 comes from the country's ``level_rule``: the first truthy value of the rule's
@@ -100,7 +104,6 @@ import json
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -137,10 +140,11 @@ UNSPECIFIED_LEVEL = "unspecified"
 LEVEL_CONFLICTS = ("first", "refuse")
 #: The receipt schema of :func:`select_by_levels`.
 SELECTION_RECEIPT_SCHEMA = "microcosm.calibrate.target-selection.v1"
+
 _TOP_KEYS = frozenset({"version", "country", "description", "level_rule", "products"})
 _LEVEL_RULE_KEYS = frozenset({"keys", "values", "conflict", "rationale"})
-_PRODUCT_KEYS = frozenset({"tool", "option", "default_mode", "modes"})
-_MODE_KEYS = frozenset({"description", "compiled", "built"})
+_PRODUCT_KEYS = frozenset({"id", "tool", "option", "default_mode", "modes"})
+_MODE_KEYS = frozenset({"id", "description", "compiled", "built"})
 _CLAUSE_KEYS = frozenset(
     {"id", "families", "levels", "metadata", "exclude", "rule", "rationale"}
 )
@@ -373,10 +377,18 @@ def _text(where: str, value: object) -> str:
     return value
 
 
+def _items(where: str, value: object, what: str) -> Sequence[Any]:
+    """A nonempty list (a list or a tuple, as the spec engine gives it)."""
+
+    if not isinstance(value, list | tuple) or not value:
+        raise _fail(where, f"must be a nonempty list of {what}.")
+    return value
+
+
 def _names(where: str, value: object) -> frozenset[str] | None:
-    if value == ANY:
+    if isinstance(value, str) and value == ANY:
         return None
-    if not isinstance(value, list) or not value:
+    if not isinstance(value, list | tuple) or not value:
         raise _fail(where, f"must be {ANY!r} or a nonempty list of names.")
     names = [_text(where, item) for item in value]
     if len(set(names)) != len(names):
@@ -416,7 +428,7 @@ def _clause(where: str, raw: object) -> TargetSetClause:
         where, raw, _CLAUSE_KEYS, ("id", "families", "levels", "rationale")
     )
     exclude = clause.get("exclude", [])
-    if not isinstance(exclude, list):
+    if not isinstance(exclude, list | tuple):
         raise _fail(f"{where}.exclude", "must be a list of predicate names.")
     rule = clause.get("rule")
     return TargetSetClause(
@@ -435,10 +447,10 @@ def _level_rule(where: str, top: Mapping[str, Any]) -> LevelRule:
 
     at = f"{where}.level_rule"
     rule = _require_keys(at, top["level_rule"], _LEVEL_RULE_KEYS, _LEVEL_RULE_KEYS)
-    keys = rule["keys"]
-    if not isinstance(keys, list) or not keys:
-        raise _fail(f"{at}.keys", "must be a nonempty list of metadata keys.")
-    keys = tuple(_text(f"{at}.keys", key) for key in keys)
+    keys = tuple(
+        _text(f"{at}.keys", key)
+        for key in _items(f"{at}.keys", rule["keys"], "metadata keys")
+    )
     if len(set(keys)) != len(keys):
         raise _fail(f"{at}.keys", "repeats a key.")
     if rule["conflict"] not in LEVEL_CONFLICTS:
@@ -474,105 +486,86 @@ def _built(where: str, raw: object) -> BuiltRows:
     )
 
 
-def _read_declaration_file(path: Path) -> object:
-    """Read a declaration file; refuse a repeated key or a non-finite number.
-
-    Plain ``json.loads`` keeps the last of two equal keys, so a second
-    ``"state"`` mode or a second ``"levels"`` in a clause would replace the
-    first one without a word.
-    """
-
-    where = str(path)
-
-    def no_repeated_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        keys = [key for key, _value in pairs]
-        repeated = sorted({key for key in keys if keys.count(key) > 1})
-        if repeated:
-            raise _fail(where, f"repeats the JSON key(s) {repeated}.")
-        return dict(pairs)
-
-    def no_constant(value: str) -> Any:
-        raise _fail(where, f"holds the non-finite number {value}.")
-
-    return json.loads(
-        path.read_text(encoding="utf-8"),
-        object_pairs_hook=no_repeated_keys,
-        parse_constant=no_constant,
+def _mode(
+    where: str, raw: object, *, country: str, product: str, level_rule: LevelRule
+) -> TargetSetDeclaration:
+    mode = _require_keys(where, raw, _MODE_KEYS, ("id", "description", "compiled"))
+    compiled = tuple(
+        _clause(f"{where}.compiled[{index}]", clause)
+        for index, clause in enumerate(
+            _items(f"{where}.compiled", mode["compiled"], "clauses")
+        )
+    )
+    built_raw = mode.get("built", [])
+    if not isinstance(built_raw, list | tuple):
+        raise _fail(f"{where}.built", "must be a list.")
+    built = tuple(
+        _built(f"{where}.built[{index}]", entry)
+        for index, entry in enumerate(built_raw)
+    )
+    ids = [clause.clause_id for clause in compiled] + [b.built_id for b in built]
+    if len(set(ids)) != len(ids):
+        raise _fail(where, "repeats a clause or built id.")
+    return TargetSetDeclaration(
+        country=country,
+        product=product,
+        mode=_text(f"{where}.id", mode["id"]),
+        description=_text(f"{where}.description", mode["description"]),
+        level_rule=level_rule,
+        compiled=compiled,
+        built=built,
     )
 
 
-def load_target_set_declarations(
-    source: str | Path | Mapping[str, Any],
-) -> TargetSetDeclarations:
-    """Read and check one country's declarations (a path or a parsed object).
+def load_target_set_declarations(source: Mapping[str, Any]) -> TargetSetDeclarations:
+    """Check one country's declarations and give them as objects.
 
-    A file is read strictly: a repeated JSON key and a non-finite number are
-    refused.
+    ``source`` is the parsed ``target_sets`` resource of the country's spec
+    bundle. The spec engine has already read the file strictly and checked
+    its form against the schema. This function builds the objects a selection
+    uses, and it refuses what the schema cannot state: a repeated product,
+    mode, clause or built id, and a default mode that is not declared.
     """
 
-    if isinstance(source, Mapping):
-        raw, where = source, "target sets"
-    else:
-        path = Path(source)
-        raw, where = _read_declaration_file(path), str(path)
+    where = "target sets"
     top = _require_keys(
-        where, raw, _TOP_KEYS, ("version", "country", "level_rule", "products")
+        where, source, _TOP_KEYS, ("version", "country", "level_rule", "products")
     )
     if type(top["version"]) is not int or top["version"] != DECLARATION_VERSION:
         raise _fail(where, f"version must be {DECLARATION_VERSION}.")
     country = _text(f"{where}.country", top["country"])
     level_rule = _level_rule(where, top)
-    products_raw = top["products"]
-    if not isinstance(products_raw, Mapping) or not products_raw:
-        raise _fail(f"{where}.products", "must name at least one product.")
     products: dict[str, ProductDeclaration] = {}
-    for product_name, product_raw in products_raw.items():
-        at = f"{where}.products.{product_name}"
+    for index, product_raw in enumerate(
+        _items(f"{where}.products", top["products"], "products")
+    ):
+        at = f"{where}.products[{index}]"
         product = _require_keys(at, product_raw, _PRODUCT_KEYS, _PRODUCT_KEYS)
-        modes_raw = product["modes"]
-        if not isinstance(modes_raw, Mapping) or not modes_raw:
-            raise _fail(f"{at}.modes", "must name at least one mode.")
+        product_id = _text(f"{at}.id", product["id"])
+        if product_id in products:
+            raise _fail(f"{where}.products", f"repeats the product {product_id!r}.")
+        at = f"{where}.products.{product_id}"
         modes: dict[str, TargetSetDeclaration] = {}
-        for mode_name, mode_raw in modes_raw.items():
-            mode_at = f"{at}.modes.{mode_name}"
-            mode = _require_keys(
-                mode_at, mode_raw, _MODE_KEYS, ("description", "compiled")
-            )
-            compiled_raw = mode["compiled"]
-            if not isinstance(compiled_raw, list) or not compiled_raw:
-                raise _fail(f"{mode_at}.compiled", "must list at least one clause.")
-            compiled = tuple(
-                _clause(f"{mode_at}.compiled[{index}]", clause)
-                for index, clause in enumerate(compiled_raw)
-            )
-            built_raw = mode.get("built", [])
-            if not isinstance(built_raw, list):
-                raise _fail(f"{mode_at}.built", "must be a list.")
-            built = tuple(
-                _built(f"{mode_at}.built[{index}]", entry)
-                for index, entry in enumerate(built_raw)
-            )
-            ids = [clause.clause_id for clause in compiled] + [
-                b.built_id for b in built
-            ]
-            if len(set(ids)) != len(ids):
-                raise _fail(mode_at, "repeats a clause or built id.")
-            modes[_text(mode_at, mode_name)] = TargetSetDeclaration(
+        for mode_index, mode_raw in enumerate(
+            _items(f"{at}.modes", product["modes"], "modes")
+        ):
+            mode = _mode(
+                f"{at}.modes[{mode_index}]",
+                mode_raw,
                 country=country,
-                product=product_name,
-                mode=mode_name,
-                description=_text(f"{mode_at}.description", mode["description"]),
+                product=product_id,
                 level_rule=level_rule,
-                compiled=compiled,
-                built=built,
             )
+            if mode.mode in modes:
+                raise _fail(f"{at}.modes", f"repeats the mode {mode.mode!r}.")
+            modes[mode.mode] = mode
         default_mode = _text(f"{at}.default_mode", product["default_mode"])
         if default_mode not in modes:
             raise _fail(
                 f"{at}.default_mode", f"{default_mode!r} is not a declared mode."
             )
-        products[_text(at, product_name)] = ProductDeclaration(
-            product=product_name,
+        products[product_id] = ProductDeclaration(
+            product=product_id,
             tool=_text(f"{at}.tool", product["tool"]),
             option=_text(f"{at}.option", product["option"]),
             default_mode=default_mode,

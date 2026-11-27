@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32627
+EXPECTED_AUTHORED_FIELD_COUNT = 32771
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9786
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42413
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42557
 
 
 class FieldUsageError(AssertionError):
@@ -528,6 +528,10 @@ _PINS: dict[str, tuple[int, str]] = {
         328,
         "d53096196db4c34da260cce2f35af8e7ba67f978448656c602ee5e17529dc4e0",
     ),
+    "target_sets": (
+        144,
+        "476b22fb8944797601151d253e4a1f1c545d1e49029dc3d391f0b7ff89733b6d",
+    ),
     "vintage_records": (
         120,
         "825b4ab09602353fc4d6c24b6f7654f7582502c7acf963b7ff6c117b07208eb4",
@@ -954,6 +958,17 @@ def default_usage_claims() -> tuple[UsageClaim, ...]:
                     "/stacked_checkpoint_static_components",
                 ),
             ),
+            # The release tools read this typed domain themselves
+            # (us_runtime.target_sets); the constants-era code never held it,
+            # so it does not pass through the legacy adapter.
+            _claim(
+                "target_sets",
+                f"{_A}/spec~1target_sets.yaml",
+                UsageMode.FRONT_END_VALIDATION,
+                _NO_EFFECT,
+                "country_spec.declared_target_sets.us_runtime_target_sets",
+                "target_sets",
+            ),
             _claim(
                 "vintage_records",
                 f"{_A}/spec~1vintages.yaml",
@@ -1238,6 +1253,34 @@ def _verify_spine_assembly_validation(
         )
 
 
+def _verify_target_sets(context: _VerificationContext, claim: UsageClaim) -> None:
+    """The typed domain is valid, and it is what the release tools select by."""
+
+    document = _verify_domain_schema(
+        context,
+        kind=ResourceKind.TARGET_SETS,
+        schema_id="target_sets.schema.json",
+        claim_id=claim.id,
+    )
+    _, source = _pointer_value(context.sources, claim.source_prefix)
+    if not _semantic_subset(source, document):
+        raise FieldUsageError(f"{claim.id}: typed domain binding differs")
+    # Imported here: only this claim needs the calibration reader.
+    from microcosm.calibrate.target_sets import (
+        TargetSetDeclarationError,
+        load_target_set_declarations,
+    )
+
+    try:
+        declarations = load_target_set_declarations(document)
+    except TargetSetDeclarationError as error:
+        raise FieldUsageError(
+            f"{claim.id}: the declarations reader refuses the domain: {error}"
+        ) from error
+    if declarations.country != context.spec.country:
+        raise FieldUsageError(f"{claim.id}: declared country differs")
+
+
 def _verify_compiled_domain(context: _VerificationContext, claim: UsageClaim) -> None:
     kind = ResourceKind(_domain_kind(claim))
     _, source = _pointer_value(context.sources, claim.source_prefix)
@@ -1448,6 +1491,7 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
         "seed_protocol": lambda: _verify_seed_protocol(context, claim),
         "seed_bindings": lambda: _verify_seed_bindings(context, claim),
         "vintages": lambda: _verify_vintages(context, claim),
+        "target_sets": lambda: _verify_target_sets(context, claim),
         "authorities": lambda: _verify_authorities(context, claim),
     }
     verifier = verifiers.get(claim.verifier)

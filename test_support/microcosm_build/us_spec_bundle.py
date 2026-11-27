@@ -64,7 +64,8 @@ def _load_generator_module():
 
 generator = _load_generator_module()
 
-TYPED_DOMAIN_KINDS = frozenset(
+#: The typed domains that the generator builds from the constants-era code.
+GENERATED_DOMAIN_KINDS = frozenset(
     {
         "battery",
         "bundle",
@@ -80,6 +81,9 @@ TYPED_DOMAIN_KINDS = frozenset(
         "vintages",
     }
 )
+#: The typed domains that are written by hand (the declared target sets).
+AUTHORED_DOMAIN_KINDS = frozenset({"target_sets"})
+TYPED_DOMAIN_KINDS = GENERATED_DOMAIN_KINDS | AUTHORED_DOMAIN_KINDS
 
 F_P_WAIVED_TARGETS = frozenset(
     {

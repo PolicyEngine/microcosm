@@ -1,6 +1,6 @@
 # Verbatim copy of uk_registry_on_calibration_line from
 # microcosm.build.uk_runtime.ledger_targets at 508351658, before microcosm#1759
-# declared the calibration lines in uk/target_sets.json. Tests hold the new
+# declared the calibration lines in uk/spec/target_sets.yaml. Tests hold the new
 # code to it; do not edit. It reads the contract through the live helpers.
 # ruff: noqa
 

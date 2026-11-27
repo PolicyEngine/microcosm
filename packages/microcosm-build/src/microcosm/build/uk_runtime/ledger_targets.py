@@ -2074,7 +2074,7 @@ def _uk_contract_targets(
 #: line (``load_uk_national_target_inputs``, the release-cut certifier) and the
 #: local line (the full dense build, whose solve binds the national rows beside
 #: the local surface). They are the modes of the ``calibration_line`` product
-#: in ``uk/target_sets.json`` (microcosm#1759).
+#: in ``uk/spec/target_sets.yaml`` (microcosm#1759).
 UK_CALIBRATION_LINES: tuple[str, ...] = uk_calibration_lines()
 
 
@@ -2128,7 +2128,7 @@ def uk_registry_on_calibration_line(
     all-lines registry version and count, and the dropped contract targets.
 
     The line is a mode of the declared ``calibration_line`` product
-    (``uk/target_sets.json``); its one clause keeps every reference but the
+    (``uk/spec/target_sets.yaml``); its one clause keeps every reference but the
     ones :data:`OFF_CALIBRATION_LINE` names, which this function binds to the
     contract targets that leave ``line`` out (microcosm#1759).
     """

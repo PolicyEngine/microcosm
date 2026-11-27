@@ -1,14 +1,17 @@
 """The declared target sets of the UK builds (microcosm#1759).
 
-``uk/target_sets.json`` declares the UK level rule, which places every
+``uk/spec/target_sets.yaml`` declares the UK level rule, which places every
 compiled UK target at one geography level; the full build's selection of its
 solve surface by level (``uk.full.target_selection@1``, from the full build's
 ``--target-geographies``); and the two calibration lines, which drop the
 compiled national references a line does not bind (``calibration_line``, one
-mode for each line). The shared reader and selector are in
+mode for each line). The file is a typed resource of the UK spec bundle
+(kind ``target_sets``): the spec engine reads it strictly, checks it against
+``target_sets.schema.json`` and keeps its descriptions and rationales apart
+from its content. The shared reader and selector are in
 :mod:`microcosm.calibrate.target_sets`; this module names the UK file and
 products. The US declares its target sets the same way, in
-``us/target_sets.json`` (microcosm#1728).
+``us/spec/target_sets.yaml`` (microcosm#1728).
 """
 
 from __future__ import annotations
@@ -38,7 +41,7 @@ __all__ = [
     "uk_target_sets_path",
 ]
 
-UK_TARGET_SETS_RESOURCE = "target_sets.json"
+UK_TARGET_SETS_RESOURCE = "spec/target_sets.yaml"
 #: The full build's product, and its one mode: selection by level.
 FULL_PRODUCT = "full"
 FULL_LEVELS_MODE = "levels"
@@ -54,9 +57,20 @@ def uk_target_sets_path() -> Path:
 
 @lru_cache(maxsize=1)
 def uk_target_set_declarations() -> TargetSetDeclarations:
-    """The packaged UK declarations, read and checked once."""
+    """The packaged UK declarations, read and checked once.
 
-    return load_target_set_declarations(uk_target_sets_path())
+    They come through :func:`microcosm.build.country_spec.load_country_target_sets`,
+    which reads the one typed resource as the bundle loader does.
+    """
+
+    # Imported here: the country spec module is large, and this module is
+    # imported by modules that the country spec's own imports reach.
+    from microcosm.build.country_spec import load_country_target_sets
+
+    document = load_country_target_sets("uk")
+    if document is None:  # pragma: no cover - the package declares the resource
+        raise RuntimeError("The UK package declares no target_sets resource.")
+    return load_target_set_declarations(document)
 
 
 def uk_full_level_selection() -> TargetSetDeclaration:

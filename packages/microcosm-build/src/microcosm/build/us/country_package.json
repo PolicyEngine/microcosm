@@ -58,6 +58,11 @@
       "schema_id": "take_up.schema.json"
     },
     {
+      "path": "spec/target_sets.yaml",
+      "kind": "target_sets",
+      "schema_id": "target_sets.schema.json"
+    },
+    {
       "path": "spec/vintages.yaml",
       "kind": "vintages",
       "schema_id": "vintages.schema.json"
@@ -189,11 +194,6 @@
     },
     {
       "path": "target_parity_manifest.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
-      "path": "target_sets.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

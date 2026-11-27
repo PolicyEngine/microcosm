@@ -28,6 +28,11 @@
       "schema_id": "spine.schema.json"
     },
     {
+      "path": "spec/target_sets.yaml",
+      "kind": "target_sets",
+      "schema_id": "target_sets.schema.json"
+    },
+    {
       "path": "spec/vintages.yaml",
       "kind": "vintages",
       "schema_id": "vintages.schema.json"
@@ -659,11 +664,6 @@
     },
     {
       "path": "hmrc_spi_table_3_11_uk_rows.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
-      "path": "target_sets.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     }

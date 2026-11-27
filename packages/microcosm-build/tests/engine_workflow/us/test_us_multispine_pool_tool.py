@@ -378,7 +378,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # again.
             # microcosm#1728's three declared US resources (target sets, local
             # target construction and compile registers) move it again.
-            "spec_sha256": "0ff909ec0783ad5d1fbf3c70fadbd60aee9b05773ebdb1ad42fbc988a5593fa3",
+            "spec_sha256": "50ebe28107e5fe8ab45e5c637871c9f0efdc97c697480eb41bdc262c89bf18fa",
         },
     }
 

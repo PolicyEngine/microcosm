@@ -561,6 +561,17 @@ Per "Gates and calibration": each gate a full executable record; the
 solver surface fully resolved; `k` a run-request knob with a declared
 bundle default and precedence; no `device` in normative content.
 
+### target_sets.yaml
+
+The declared target sets: which compiled targets each product calibrates to,
+for each mode, and the country's level rule (microcosm#1728, microcosm#1759).
+The schema is country-free, and the UK and the US both ship the file. The
+release tools read the typed domain themselves through
+`country_spec.load_country_target_sets`. Each `description` and `rationale` is
+documentation; the rest is normative. It is the one typed US file that is
+written by hand: the constants-era code never held it. See
+[US target sets](us-target-sets.md) and [UK target sets](uk-target-sets.md).
+
 ### publication.yaml
 
 Attempt-event model + promotion protocol + release relationship graph;

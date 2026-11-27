@@ -1228,9 +1228,6 @@ class TestUKCountryPackage:
             "desnz_constituency_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
-            # microcosm#1759: the UK level rule, the full build's selection
-            # by level and the calibration lines.
-            "target_sets.json",
         )
 
     def test_uk_source_manifest_contains_only_canonical_spine_stages(self) -> None:
@@ -1290,6 +1287,9 @@ class TestExistingPackagesGeneralize:
             "spec/geography.yaml",
             "spec/sources.yaml",
             "spec/spine.yaml",
+            # microcosm#1759: the UK level rule, the full build's selection
+            # by level and the calibration lines, as a typed resource.
+            "spec/target_sets.yaml",
             "spec/vintages.yaml",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
@@ -1425,9 +1425,6 @@ class TestExistingPackagesGeneralize:
             "desnz_constituency_energy_facts.json",
             "local_small_cell_rule.json",
             "hmrc_spi_table_3_11_uk_rows.json",
-            # microcosm#1759: the UK level rule, the full build's selection
-            # by level and the calibration lines.
-            "target_sets.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:

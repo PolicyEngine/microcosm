@@ -2,7 +2,7 @@
 
 Before microcosm#1759, ``uk_runtime.ledger_targets.uk_registry_on_calibration_line``
 dropped the targets that a line does not bind with its own loop. It now
-selects through ``uk/target_sets.json`` (product ``calibration_line``, one mode
+selects through ``uk/spec/target_sets.yaml`` (product ``calibration_line``, one mode
 for each line) with the shared ``select_target_set`` and one UK predicate.
 ``test_support/microcosm_build/calibration_line_reference.py`` holds the old
 function verbatim. On random registries the two give the same registry (the

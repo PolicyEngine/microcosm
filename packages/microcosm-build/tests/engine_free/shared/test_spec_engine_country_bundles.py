@@ -92,7 +92,9 @@ def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
     assert country_spec.resolved_spec.spec_sha256 == direct.spec_sha256
 
     compiled = compile_spec(direct)
-    assert set(compiled.resources_wire()) == EXPECTED_RESOURCES
+    # The UK also declares its target sets as a typed resource (microcosm#1759).
+    declared_target_sets = {"target_sets"} if country == "uk" else set()
+    assert set(compiled.resources_wire()) == EXPECTED_RESOURCES | declared_target_sets
     assert not compiled.producer_graph.present
     assert compiled.nodes == ()
     assert {column.key for column in direct.columns} == expected_columns
