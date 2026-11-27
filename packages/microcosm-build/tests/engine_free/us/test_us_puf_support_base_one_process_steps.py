@@ -17,10 +17,11 @@ runs one step, as before.
 
 The child-side tests call ``_run_outer_stage`` in this process, with the
 real checkpoint runtime and writer. Step functions that need real inputs are
-replaced with deterministic ones that read every table's numeric and text
-values, every column's dtype, the strata, the weights and the frame
-metadata, so a frame passed in memory that differed from the one a
-checkpoint read gives would write different bytes.
+replaced with deterministic ones that write a digest of every value with
+its type, every dtype, the indexes, the column labels, the strata, the
+weights, the mass log and the frame metadata, and a floating-point sum of
+each person's numeric values, so a frame passed in memory that differed
+from the one a checkpoint read gives would write different bytes.
 ``capital_gain_distributions`` runs its real code, and the stand-ins
 evaluate each step's ``us/gates.json`` check through the shadow evaluation,
 so the saved observations hold entries. One test runs the 16 steps in 16
@@ -185,53 +186,69 @@ def _with_person_columns(frame: Frame, columns: dict[str, object]) -> Frame:
 
 
 def _row_values(table: pd.DataFrame) -> np.ndarray:
-    """Per row, the sum of its numeric values plus the length of each text
-    value (-1 for a value that is not a string)."""
+    """Per row, the sum of its numeric and boolean values, computed with
+    floating-point arithmetic across the columns."""
 
-    values = table.select_dtypes("number").sum(axis=1).to_numpy(np.float64)
-    for name in table.columns:
-        if not pd.api.types.is_numeric_dtype(table[name].dtype):
-            values = values + np.asarray(
-                [len(value) if isinstance(value, str) else -1 for value in table[name]],
-                dtype=np.float64,
-            )
-    return values
+    return (
+        table.select_dtypes(["number", "bool"])
+        .astype(np.float64)
+        .sum(axis=1)
+        .to_numpy(np.float64)
+    )
 
 
-def _value_read_from_everything(frame: Frame, extra: float) -> np.ndarray:
-    """One float per person, read from every value a step could depend on:
-    each table's numeric and text values, each column's dtype, the strata,
-    the weights and the frame metadata."""
+def _frame_content_digest(frame: Frame) -> int:
+    """A digest of everything a step could read from ``frame``.
+
+    Every value of every column, index and the strata with its type and
+    ``repr``; the number of distinct objects in each (``set`` counts two
+    NaN objects twice); every dtype, including the column labels'; the
+    weights; the mass log; and the frame metadata.
+    """
+
+    digest = hashlib.sha256()
+
+    def add(text: str) -> None:
+        digest.update(text.encode("utf-8") + b"\0")
+
+    def add_values(label: str, values: pd.Series | pd.Index) -> None:
+        objects = list(values.to_numpy(dtype=object))
+        add(
+            f"{label}: {values.dtype}, {len(objects)} values, {len(set(objects))} distinct"
+        )
+        for value in objects:
+            add(f"{type(value).__module__}.{type(value).__qualname__}:{value!r}")
 
     tables = {
         **{entity: frame.table(entity) for entity in frame.entities},
         **{link: frame.link(link) for link in frame.links},
     }
-    other_tables = sum(
-        float(_row_values(table).sum())
-        for name, table in tables.items()
-        if name != "person"
-    )
-    dtype_text = "|".join(
-        f"{name}.{column}:{dtype}"
-        for name, table in tables.items()
-        for column, dtype in table.dtypes.items()
-    )
-    dtype_fingerprint = int(hashlib.sha256(dtype_text.encode()).hexdigest()[:6], 16)
-    weights = sum(
-        float(frame.weights_for(entity).values.sum())
-        for entity in frame.weighted_entities
-    )
-    strata_lengths = sum(len(str(value)) for value in frame.strata)
-    return (
-        _row_values(tables["person"]) * 1.000001
-        + other_tables / 1e3
-        + dtype_fingerprint
-        + 7.0 * len(frame.metadata or {})
-        + weights / 1e6
-        + strata_lengths
-        + extra
-    )
+    for name, table in tables.items():
+        add(f"{name} column labels: {table.columns.dtype}, {list(table.columns)!r}")
+        add_values(f"{name} index", table.index)
+        for column in table.columns:
+            add_values(f"{name}.{column}", table[column])
+    add(f"strata name: {frame.strata.name!r}")
+    add_values("strata", frame.strata)
+    add_values("strata index", frame.strata.index)
+    for entity in frame.weighted_entities:
+        weights = frame.weights_for(entity)
+        add(f"{entity} weights: {weights.kind}, {weights.values.dtype}")
+        digest.update(np.ascontiguousarray(weights.values).tobytes())
+    add(f"mass log: {frame.mass_log!r}")
+    add(f"metadata: {sorted(dict(frame.metadata or {}).items())!r}")
+    return int.from_bytes(digest.digest()[:7], "big")
+
+
+def _read_from_everything(frame: Frame, extra: float) -> dict[str, np.ndarray]:
+    """Two person columns computed from ``frame``: its person rows' sums,
+    and a digest of everything in it (``_frame_content_digest``)."""
+
+    person = frame.table("person")
+    return {
+        "row_values": _row_values(person) * 1.000001 + extra,
+        "content": np.full(len(person), _frame_content_digest(frame), dtype=np.int64),
+    }
 
 
 #: The ``us/gates.json`` entry each stand-in step evaluates, one per step that
@@ -274,11 +291,13 @@ class _StandInSteps:
 
         def tail_transfer(_args, frame):
             self._record_input(builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME, frame)
-            value = _value_read_from_everything(frame, 0.0)
+            read = _read_from_everything(frame, 0.0)
+            value = read["row_values"]
             result = _with_person_columns(
                 frame,
                 {
                     "tail_value": value,
+                    "tail_content": read["content"],
                     "tail_label": pd.Series(
                         np.where(value > np.median(value), "high", "low"),
                         index=frame.table("person").index,
@@ -302,12 +321,12 @@ class _StandInSteps:
                     ),
                     frame,
                 )
+            read = _read_from_everything(frame, float(len(stage_metadata)))
             result = _with_person_columns(
                 frame,
                 {
-                    f"{stage}_value": _value_read_from_everything(
-                        frame, float(len(stage_metadata))
-                    )
+                    f"{stage}_value": read["row_values"],
+                    f"{stage}_content": read["content"],
                 },
             )
             self._record_output(stage, result)
@@ -948,6 +967,23 @@ def _with_numpy_scalar(frame: Frame, where: str, value: object) -> Frame:
         person["numpy_scalars"] = pd.Series(
             [value] * len(person), index=person.index, dtype=object
         )
+    elif where == "python-backed str column":
+        person = tables["person"]
+        person["numpy_scalars"] = pd.Series(
+            [value] * len(person),
+            index=person.index,
+            dtype=pd.StringDtype("python", na_value=np.nan),
+        )
+    elif where == "strata index":
+        strata = pd.Series(
+            strata.to_numpy(),
+            index=pd.Index(
+                [scalar_type(position) for position in range(len(strata))],
+                dtype=object,
+            ),
+            name=strata.name,
+            dtype=strata.dtype,
+        )
     elif where == "index":
         household = tables["household"]
         household.index = pd.Index(
@@ -980,6 +1016,8 @@ def _with_numpy_scalar(frame: Frame, where: str, value: object) -> Frame:
         ("column", np.bool_(True), "numpy.bool"),
         ("index", np.int64(0), "numpy.int64"),
         ("strata", np.str_("asec_2024"), "numpy.str_"),
+        ("python-backed str column", np.str_("HEAD"), "numpy.str_"),
+        ("strata index", np.int64(0), "numpy.int64"),
     ),
 )
 def test_the_child_stops_before_handing_over_values_a_checkpoint_read_changes(
@@ -1014,8 +1052,10 @@ def test_the_child_stops_before_handing_over_values_a_checkpoint_read_changes(
     completed_before = _completed_steps(builder, checkpoint_dir)
     location = {
         "column": r"person column 'numpy_scalars'",
+        "python-backed str column": r"person column 'numpy_scalars'",
         "index": r"household index",
         "strata": r"strata",
+        "strata index": r"strata index",
     }[where]
 
     with _report_pipe(builder, monkeypatch) as reported:
