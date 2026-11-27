@@ -6609,10 +6609,13 @@ def _close_post_export_scorer_after_error(
 ) -> None:
     """Close the scorer after an error that stops certification.
 
-    A pooled scorer stops its workers, killing those still running a unit,
-    and every scorer removes its batch files. An error from closing is
-    printed, not raised, so the error that stopped certification is the one
-    raised.
+    A pooled scorer kills the workers still running a unit and tells idle
+    ones to exit (killing any that has not within 10 seconds); every scorer
+    removes its batch files. An ``Exception`` from closing is printed, not
+    raised, so the error that stopped certification is the one raised. An
+    interrupt while closing (Ctrl-C, or a first SIGTERM) is raised instead,
+    with that error as its context; batch files a failed close left are
+    removed when the process exits.
     """
     try:
         _close_post_export_scorer(scorer)
