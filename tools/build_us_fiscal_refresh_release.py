@@ -6192,6 +6192,8 @@ class _HouseholdBatchedPostExportScorer:
         }
         self._merged_baseline: dict[PostExportKey, _PostExportValues] | None = None
         self._merged_baseline_failed = False
+        # Why the merged pass fell back to each consumer's own pass, if it did.
+        self._merged_fallback_reason: str | None = None
         # The reform last handed to any consumer. Consumers run one after
         # another, so at most one reform's system and rule modules are held;
         # opening the next reform, finishing its consumer or closing the scorer
@@ -6329,31 +6331,8 @@ class _HouseholdBatchedPostExportScorer:
         if name not in self._unserved_baseline_plans or self._merged_baseline_failed:
             return self._score(baseline_plan, label=f"{name} baseline plan"), False
         if self._merged_baseline is None:
-            union = _ascending_period_plan(
-                key for plan in self._unserved_baseline_plans.values() for key in plan
-            )
-            try:
-                self._merged_baseline = self._score(union, label="merged baseline plan")
-            except PostExportBatchFileError:
-                # The scored file's integrity, not a key one consumer planned:
-                # it stops certification.
-                raise
-            except Exception as error:
-                self._merged_baseline_failed = True
-                try:
-                    reason = f"{type(error).__name__}: {error}"
-                except Exception:
-                    reason = type(error).__name__
-                print(
-                    f"Post-export merged baseline plan failed ({reason}); each "
-                    "consumer scores its own baseline plan instead.",
-                    flush=True,
-                )
+            self._run_merged_baseline_pass()
             if self._merged_baseline_failed:
-                # Outside the handler, so the failed pass's traceback and the
-                # per-batch values its frame collected are no longer
-                # referenced; a full collection frees any held in a cycle.
-                collect_pass_garbage()
                 return self._score(baseline_plan, label=f"{name} baseline plan"), False
         del self._unserved_baseline_plans[name]
         served = {key: self._merged_baseline[key] for key in baseline_plan}
@@ -6364,6 +6343,38 @@ class _HouseholdBatchedPostExportScorer:
             if key not in still_planned:
                 del self._merged_baseline[key]
         return served, True
+
+    def _run_merged_baseline_pass(self) -> None:
+        """Score the union of every unserved registered plan in one
+        batch-outer pass, in ascending period order, into ``_merged_baseline``.
+
+        If the pass raises, ``_merged_baseline_failed`` is set and every
+        registered consumer then scores its own plan. A refused batch file
+        (:class:`PostExportBatchFileError`) propagates instead.
+        """
+        union = _ascending_period_plan(
+            key for plan in self._unserved_baseline_plans.values() for key in plan
+        )
+        try:
+            self._merged_baseline = self._score(union, label="merged baseline plan")
+        except PostExportBatchFileError:
+            # The scored file's integrity, not a key one consumer planned:
+            # it stops certification.
+            raise
+        except Exception as error:
+            self._merged_baseline_failed = True
+            self._merged_fallback_reason = _post_export_error_text(error)
+            print(
+                "Post-export merged baseline plan failed "
+                f"({self._merged_fallback_reason}); each consumer scores its own "
+                "baseline plan instead.",
+                flush=True,
+            )
+        if self._merged_baseline_failed:
+            # Outside the handler, so the failed pass's traceback and the
+            # per-batch values its frame collected are no longer referenced; a
+            # full collection frees any held in a cycle.
+            collect_pass_garbage()
 
     def _construct(self, batch_frame: Frame, *, reform_system):
         return _construct_post_export_engine(
@@ -6428,6 +6439,36 @@ class _HouseholdBatchedPostExportScorer:
             key: _concatenate_post_export_parts(key_parts)
             for key, key_parts in parts.items()
         }
+
+
+def _post_export_error_text(error: BaseException) -> str:
+    """``"<class name>: <message>"``, or the class name alone when the
+    message cannot be formatted."""
+    try:
+        return f"{type(error).__name__}: {error}"
+    except Exception:
+        return type(error).__name__
+
+
+def _without_traceback_frames(error: BaseException, *, note: str) -> BaseException:
+    """``error``, kept to raise later: its formatted traceback is added as a
+    note after ``note``, and its frames, with those of every exception it was
+    raised from or while handling, are dropped, so it holds no failed pass's
+    per-batch values."""
+    error.add_note(note + "\n" + "".join(traceback.format_exception(error)))
+    pending, seen = [error], set()
+    while pending:
+        linked = pending.pop()
+        if id(linked) in seen:
+            continue
+        seen.add(id(linked))
+        linked.__traceback__ = None
+        pending.extend(
+            chained
+            for chained in (linked.__cause__, linked.__context__)
+            if chained is not None
+        )
+    return error
 
 
 def _construct_post_export_engine(microsimulation_cls, dataset, *, reform_system):
@@ -6815,29 +6856,32 @@ class _BatchedPostExportReform:
 # ---------------------------------------------------------------------------
 #
 # The serial scorer runs every pass in its own process, one after another.
-# The pooled scorer (``_PooledPostExportScorer``) runs the same passes in the
-# shared worker pool (``microcosm.build.worker_pool``) and serves each
-# consumer from their results:
+# The pooled scorer (``_PooledPostExportScorer``) runs the baseline passes
+# the same way, then the reform passes in the shared worker pool
+# (``microcosm.build.worker_pool``), and serves each consumer from their
+# results:
 #
 # * The plan's engine-free dry run recorded every request of every consumer
 #   and the reform passes the serial scorer runs for them
 #   (``_PostExportConsumerRequests``).
-# * The pool runs twice. First the merged baseline plan, split into ranges of
-#   batches, one unit per range. Then one unit per reformed simulation, with
-#   every recorded pass of it over every batch, in the order the consumers
-#   run: a worker builds the reform's rules once for the unit, as the serial
-#   scorer builds them once per reformed simulation. If the merged baseline
-#   pass failed, the second run also holds each consumer's own baseline plan
-#   before its reform units, as the serial scorer then scores it.
+# * When the first consumer opens, every baseline pass runs in this process
+#   with the serial scorer's code: the merged baseline plan, and, if that
+#   raises, each consumer's own plan, all before any worker starts
+#   (Anthony's decision of 27 November: each worker's memory cap is sized for
+#   reform passes, and in the 5% export probe a baseline pass over one batch
+#   of 2,000 households went over it on every attempt). Each batch engine is
+#   released before the next, so none is held here while workers run.
+# * The pool then runs one unit per reformed simulation, with every recorded
+#   pass of it over every batch, in the order the consumers run: a worker
+#   builds the reform's rules once for the unit, as the serial scorer builds
+#   them once per reformed simulation.
 # * A worker reads each batch from the scorer's batch file (refusing one
 #   whose bytes changed), builds one engine per batch and scores the pass's
 #   keys on it exactly as the serial scorer does
 #   (``_score_post_export_batches``): ascending periods, the
 #   population-aggregate refusal of a pass over a multi-batch H5, the
-#   baseline-branch refusal and the behavioral-response check of a reform
-#   pass. A failure is returned with the unit, not raised. A merged
-#   baseline unit that fails on every attempt (out of memory, over its cap)
-#   is a failed merged pass, as a serial MemoryError is.
+#   baseline-branch refusal and the behavioral-response check. A failure is
+#   returned with the unit, not raised.
 # * The consumers then run in this process, as in the serial path, and build
 #   their own reforms (the smoke check records each list edit's resolved
 #   lists from its own). Each baseline is served the consumer's recorded
@@ -7153,30 +7197,20 @@ def _post_export_worker_settings(
     )
 
 
-def _post_export_batch_ranges(n_batches: int, ranges: int) -> tuple[range, ...]:
-    """``n_batches`` split into at most ``ranges`` contiguous, near-equal ranges."""
-    count = max(1, min(int(ranges), int(n_batches)))
-    bounds = [index * n_batches // count for index in range(count + 1)]
-    return tuple(
-        range(start, stop)
-        for start, stop in zip(bounds, bounds[1:], strict=False)
-        if start < stop
-    )
-
-
 class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
-    """Scores the recorded requests in the shared worker pool and serves each
-    consumer, when it runs again in this process, from the results (see the
-    block comment above).
+    """Scores every baseline pass in this process and the recorded reform
+    passes in the shared worker pool, and serves each consumer, when it runs
+    again in this process, from the results (see the block comment above).
 
     ``consumer_requests`` are the plan's records of each consumer's dry run
     (``_PostExportScoringPlan.consumer_requests``), in the order the
     consumers run; every one is registered, so the merged baseline pass holds
     every plan. Only those consumers may be opened, each once, in that order
-    (one that stops early is passed over when the next opens). The pool
-    starts when the first consumer opens and stops when the scorer closes.
-    ``pass_timing_listener``, if set, is called with one row per pass a worker
-    ran, as its results arrive (the export probe writes them out).
+    (one that stops early is passed over when the next opens). When the first
+    consumer opens, every baseline pass runs here (:meth:`_score_baselines`)
+    and the pool then starts on the reform units; it stops when the scorer
+    closes. ``pass_timing_listener``, if set, is called with one row per pass
+    a worker ran, as its results arrive (the export probe writes them out).
     """
 
     def __init__(
@@ -7215,7 +7249,14 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         self._pool: WorkerPool | None = None
         self._started = False
         self._workers = 0
-        self._units = {"baseline": 0, "reform": 0}
+        self._units = {"reform": 0}
+        # Each baseline pass run in this process: label, keys, time, error.
+        self._baseline_passes: list[dict[str, object]] = []
+        # After a failed merged pass, each consumer's own baseline values, or
+        # the error its pass raised, until that consumer opens.
+        self._own_baselines: dict[
+            str, dict[PostExportKey, _PostExportValues] | BaseException
+        ] = {}
         self._stream: Iterator[PostExportUnitResult] | None = None
         self._stream_units: tuple[PostExportUnit, ...] = ()
         self._next_unit = 0
@@ -7226,10 +7267,9 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         # replaced since (a pool closes when a unit fails on every attempt).
         self._pool_settings: WorkerPoolSettings | None = None
         self._replaced_reports: list[WorkerPoolReport] = []
-        self._merged_fallback_reason: str | None = None
-        # The second run's units still to be handed back by the current pool,
-        # as positions in ``_stream_units``, and the units that failed on
-        # every attempt, by position, each raised when its consumer asks.
+        # The reform units still to be handed back by the current pool, as
+        # positions in ``_stream_units``, and the units that failed on every
+        # attempt, by position, each raised when its consumer asks.
         self._stream_positions: list[int] = []
         self._unit_errors: dict[int, WorkerPoolUnitError] = {}
         # Each reformed simulation whose unit failed on every attempt.
@@ -7250,26 +7290,77 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
             None
         )
 
-    # ---- the pool ----------------------------------------------------------
+    # ---- the baseline passes, in this process -------------------------------
 
-    def _baseline_units(
-        self, consumer: str | None, label: str, keys: Sequence[PostExportKey]
-    ) -> tuple[PostExportUnit, ...]:
-        scoring_pass = PostExportPass(label=label, keys=tuple(keys))
-        return tuple(
-            PostExportUnit(
-                consumer=consumer,
-                reformed_simulation=None,
-                reform=None,
-                passes=(scoring_pass,),
-                batch_start=batches.start,
-                batch_stop=batches.stop,
-                n_batches=self.n_batches,
+    def _score(
+        self,
+        keys: Sequence[PostExportKey],
+        *,
+        label: str,
+        reform_system=None,
+        outer: OuterProgress | None = None,
+    ) -> dict[PostExportKey, _PostExportValues]:
+        """The serial scorer's pass, which pooled scoring runs here for its
+        baseline passes alone; each is recorded for the execution record."""
+        if reform_system is not None:
+            raise RuntimeError(
+                f"{label}: pooled post-export scoring runs reform passes in its "
+                "workers only."
             )
-            for batches in _post_export_batch_ranges(
-                self.n_batches, self._pooling.settings.workers
+        wall, cpu = time.perf_counter(), time.process_time()
+        error_text: str | None = None
+        try:
+            return super()._score(keys, label=label, outer=outer)
+        except BaseException as error:
+            error_text = _post_export_error_text(error)
+            raise
+        finally:
+            self._baseline_passes.append(
+                {
+                    "label": label,
+                    "keys": len(keys),
+                    "wall_seconds": round(time.perf_counter() - wall, 3),
+                    "cpu_seconds": round(time.process_time() - cpu, 3),
+                    "error": error_text,
+                }
             )
-        )
+
+    def _score_baselines(self) -> None:
+        """Score every registered baseline plan here, before any worker starts.
+
+        As the serial scorer does: one merged pass over every registered
+        plan, and if it raises, each consumer's own pass. The serial scorer
+        runs a consumer's own pass when that consumer opens; here every one
+        runs now, in the consumers' order, so no baseline engine is built in
+        this process while workers run (each worker's cap, and the plan's
+        3 GiB for this process, are sized for reform passes). A consumer's own
+        pass that raises is kept, with its traceback as a note and without
+        its frames, and raised when that consumer opens; a refused batch file
+        propagates at once.
+        """
+        if not self._unserved_baseline_plans:
+            return
+        self._run_merged_baseline_pass()
+        if not self._merged_baseline_failed:
+            return
+        for name, plan in self._unserved_baseline_plans.items():
+            try:
+                self._own_baselines[name] = self._score(
+                    plan, label=f"{name} baseline plan"
+                )
+            except PostExportBatchFileError:
+                raise
+            except Exception as error:
+                self._own_baselines[name] = _without_traceback_frames(
+                    error,
+                    note="Raised by its own baseline pass in the certifying "
+                    "process, before the worker pool started:",
+                )
+            # After a failed pass, outside the handler: a full collection
+            # frees what its frames held in a cycle.
+            collect_pass_garbage()
+
+    # ---- the pool ----------------------------------------------------------
 
     def _reform_units(self, consumer: str) -> tuple[PostExportUnit, ...]:
         recorded = self._requests[consumer]
@@ -7292,12 +7383,13 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         )
 
     def _start(self) -> None:
-        """Run the merged baseline pass, then start the reform units.
+        """Score every baseline pass here, then start the pool on the reform
+        units.
 
         A start that failed is not tried again: every later consumer is
-        refused with :class:`PostExportPoolStoppedError`. A second run that
-        stops later refuses only what needs it (:meth:`_take`); what the
-        merged pass scored is still served.
+        refused with :class:`PostExportPoolStoppedError`. A pool that stops
+        later refuses only what needs it (:meth:`_take`); the baseline values
+        scored here are still served.
         """
         if self._start_failure is not None:
             raise PostExportPoolStoppedError(
@@ -7308,6 +7400,7 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         self._batches()
         self._started = True
         try:
+            self._score_baselines()
             self._start_pool()
         except BaseException as error:
             self._start_failure = error
@@ -7342,118 +7435,19 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         )
 
     def _start_pool(self) -> None:
-        merged = _ascending_period_plan(
-            key for plan in self._unserved_baseline_plans.values() for key in plan
-        )
-        baseline_units = (
-            self._baseline_units(None, "merged baseline plan", merged) if merged else ()
-        )
+        """Start the pool on one unit per reformed simulation, in the order
+        the consumers run; a plan that opens no reform starts no pool."""
         reform_units = tuple(
             unit for name in self._requests for unit in self._reform_units(name)
         )
-        self._units = {"baseline": len(baseline_units), "reform": len(reform_units)}
-        if not baseline_units and not reform_units:
+        self._units = {"reform": len(reform_units)}
+        if not reform_units:
             return
-        self._workers = max(
-            1,
-            min(
-                self._pooling.settings.workers,
-                max(len(baseline_units), len(reform_units)),
-            ),
-        )
+        self._workers = min(self._pooling.settings.workers, len(reform_units))
         self._pool = self._new_pool()
-        if baseline_units:
-            self._run_merged_baseline(baseline_units, merged)
-        if self._merged_baseline_failed:
-            layout = []
-            for name, recorded in self._requests.items():
-                if recorded.baseline_plan:
-                    layout.extend(
-                        self._baseline_units(
-                            name, f"{name} baseline plan", recorded.baseline_plan
-                        )
-                    )
-                layout.extend(self._reform_units(name))
-            stream_units = tuple(layout)
-            self._units["fallback_baseline"] = len(stream_units) - len(reform_units)
-        else:
-            stream_units = reform_units
-        if stream_units:
-            self._stream_units = stream_units
-            self._stream_positions = list(range(len(stream_units)))
-            self._stream = self._pool.map(stream_units)
-
-    def _run_merged_baseline(
-        self, units: Sequence[PostExportUnit], keys: Sequence[PostExportKey]
-    ) -> None:
-        label = units[0].passes[0].label
-        print(
-            f"Scoring post-export {label} ({len(keys)} key(s)) in "
-            f"{self.n_batches} batches of up to {self.max_batch_households:,} "
-            f"households, in {len(units)} pool unit(s) on up to {self._workers} "
-            "worker(s).",
-            flush=True,
-        )
-        sweep = _WorkCounter(
-            stage_id="post_export_scoring", unit="scoring_batch", total=self.n_batches
-        )
-        parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
-            key: [] for key in keys
-        }
-        failure: PostExportUnitFailure | None = None
-        unfinished: WorkerPoolUnitError | None = None
-        results = self._pool.map(units)
-        try:
-            for unit, result in zip(units, results, strict=True):
-                self._report_timing(unit, result)
-                outcome = result.outcomes[0]
-                if isinstance(outcome, PostExportUnitFailure):
-                    if outcome.batch_file_error:
-                        # The scored file's integrity: no consumer's own
-                        # pass could read the batch either.
-                        _raise_post_export_worker_failure(outcome)
-                    failure = failure or outcome
-                    continue
-                if failure is None:
-                    for key, key_parts in zip(keys, outcome.parts, strict=True):
-                        parts[key].extend(key_parts)
-                sweep.advance(
-                    unit.batch_stop - unit.batch_start,
-                    pass_name=label,
-                    batch=unit.batch_stop,
-                    batches=self.n_batches,
-                )
-        except WorkerPoolUnitError as error:
-            # A unit failed on every attempt: its worker ran out of memory,
-            # went over the cap or died. The serial scorer catches a
-            # MemoryError of its merged pass and falls back too; each
-            # consumer's own pass holds fewer keys per engine.
-            unfinished = error
-        finally:
-            results.close()
-        if failure is not None or unfinished is not None:
-            # As the serial scorer: every consumer then scores its own plan.
-            self._merged_baseline_failed = True
-            del parts
-            reason = (
-                f"{type(unfinished).__name__}: {unfinished}"
-                if unfinished is not None
-                else f"{failure.error_name}: {failure.message}"
-            )
-            self._merged_fallback_reason = reason
-            print(
-                f"Post-export merged baseline plan failed ({reason}); each "
-                "consumer scores its own baseline plan instead.",
-                flush=True,
-            )
-            collect_pass_garbage()
-            if unfinished is not None:
-                # The stopped run closed the pool; the rest needs another.
-                self._pool = self._new_pool()
-            return
-        self._merged_baseline = {
-            key: _concatenate_post_export_parts(parts.pop(key)) for key in keys
-        }
+        self._stream_units = reform_units
+        self._stream_positions = list(range(len(reform_units)))
+        self._stream = self._pool.map(reform_units)
 
     def _report_timing(
         self, unit: PostExportUnit, result: PostExportUnitResult
@@ -7480,8 +7474,8 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
                 }
             )
 
-    def _take(self, consumer: str, simulation: int | None):
-        """The next run of stream units for ``(consumer, simulation)``, each
+    def _take(self, consumer: str, simulation: int):
+        """The next run of reform units for ``(consumer, simulation)``, each
         with its result, or with the ``WorkerPoolUnitError`` of a unit that
         failed on every attempt.
 
@@ -7523,20 +7517,16 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
             if ours:
                 taken.append((unit, result))
         if not taken:
-            asked = (
-                "baseline plan"
-                if simulation is None
-                else (f"reformed simulation {simulation}")
-            )
             raise RuntimeError(
-                f"{consumer} asked for its {asked} out of the order its "
-                "engine-free dry run recorded; pooled post-export scoring "
-                "serves each consumer its recorded requests in that order."
+                f"{consumer} asked for its reformed simulation {simulation} out "
+                "of the order its engine-free dry run recorded; pooled "
+                "post-export scoring serves each consumer its recorded requests "
+                "in that order."
             )
         return taken
 
     def _result_of(self, index: int) -> PostExportUnitResult:
-        """The result of the second run's unit at ``index``, the next one due.
+        """The result of the reform unit at ``index``, the next one due.
 
         Workers run ahead of the consumers, and the pool stops a run as soon
         as any unit in flight has failed on every attempt, which may be a
@@ -7638,39 +7628,24 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
                 or name not in self._unserved_baseline_plans
             ):
                 raise RuntimeError(
-                    f"{name}: the pool's merged baseline pass holds no values "
-                    "for it; pooled post-export scoring scores nothing in this "
-                    "process."
+                    f"{name}: the merged baseline pass holds no values for it; "
+                    "pooled post-export scoring scores no baseline pass after "
+                    "its workers start."
                 )
             # The merged pass's values, served as the serial scorer serves them.
             return super()._baseline_for(name, baseline_plan)
-        # The merged pass failed: the consumer's own pass, from the stream.
-        parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
-            key: [] for key in baseline_plan
-        }
-        failure: PostExportUnitFailure | WorkerPoolUnitError | None = None
-        for _, result in self._take(name, None):
-            # The serial scorer stops at the first batch that raises, so the
-            # first range in batch order that failed, either way, is raised.
-            if failure is not None:
-                continue
-            if isinstance(result, WorkerPoolUnitError):
-                failure = result
-                continue
-            outcome = result.outcomes[0]
-            if isinstance(outcome, PostExportUnitFailure):
-                failure = outcome
-            else:
-                for key, key_parts in zip(baseline_plan, outcome.parts, strict=True):
-                    parts[key].extend(key_parts)
-        if failure is not None:
-            del parts
-            if isinstance(failure, WorkerPoolUnitError):
-                raise failure
-            _raise_post_export_worker_failure(failure)
-        return {
-            key: _concatenate_post_export_parts(parts.pop(key)) for key in baseline_plan
-        }, False
+        # The merged pass failed: the consumer's own pass, scored before the
+        # pool started.
+        if name not in self._own_baselines:
+            raise RuntimeError(
+                f"{name}: no baseline pass of its own was scored before the pool "
+                "started; pooled post-export scoring scores no baseline pass "
+                "after its workers start."
+            )
+        outcome = self._own_baselines.pop(name)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome, False
 
     def _open_reform_for(self, consumer: _PostExportConsumer, reform):
         """Hand ``consumer`` its next reformed simulation, if it is the reform
@@ -7833,6 +7808,8 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
                 (started or settings).worker_environment or ()
             ),
             "units": dict(self._units),
+            # The baseline passes run in this process, before the pool.
+            "baseline_passes": [dict(record) for record in self._baseline_passes],
             "resources": self._pooling.resources,
             # Why the merged baseline pass fell back to each consumer's own
             # pass, if it did.

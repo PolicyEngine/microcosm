@@ -530,37 +530,46 @@ one Microsimulation over the whole file.
   - Certification prints the plan: the workers, the planned peak beside the
     budget and each worker's cap. `tools/probe_us_post_export.py` reads the
     same setting the same way.
-  - The pool runs twice. First the shared baseline pass, split into one range
-    of batches per worker. Then one unit per reformed simulation, holding all
-    of that simulation's recorded passes over every batch, in the order the
-    stages run: a worker builds the reform's rules once per unit, as the
-    serial scorer builds them once per reformed simulation. If the shared pass
-    fails, the second run also holds each stage's own baseline pass before
-    that stage's reform units. That includes a range of the shared pass that
-    failed on every attempt (its worker ran out of memory, went over its cap
-    or died), as the serial scorer falls back when its shared pass raises
-    `MemoryError`.
+  - Every baseline pass runs in the certifying process, with the serial
+    scorer's own code, when the first stage opens and before any worker
+    starts (Anthony's decision of 27 November). First the shared baseline
+    pass. If it raises (`MemoryError` included), every stage's own baseline
+    pass runs next, in the order the stages run, where the serial scorer runs
+    each one when its stage opens; a stage whose own pass raised gets that
+    error when it opens. A changed batch file stops scoring at once. Each
+    batch engine is released before the next is built, so no baseline engine
+    is held in the certifying process while workers run.
+  - The pool then runs one unit per reformed simulation, holding all of that
+    simulation's recorded passes over every batch, in the order the stages
+    run: a worker builds the reform's rules once per unit, as the serial
+    scorer builds them once per reformed simulation. A build whose stages
+    open no reform starts no pool.
+  - Why: the worker cap is sized for reform passes. In the pooled export
+    probe on a 5% sample of a published file (27 November), a baseline pass
+    over one batch of 2,000 households went over the 5.25 GiB cap on every
+    attempt, the shared pass at 5.37 and 5.38 GiB and the smoke's own pass
+    at 5.43 and 5.34 GiB, while the reform passes peaked at 1.35 to 2.00
+    GiB. Certification's batches are up to 5,000 households.
   - A worker reads each batch from the scorer's batch file, refusing one that
     changed, and scores it with the serial scorer's own code
     (`_score_post_export_batches`): one engine per batch, keys in ascending
     period order, the population-aggregate refusal in a pass over more than
-    one batch, the baseline-branch refusal and the behavioral-response check
-    of a reform pass.
+    one batch, and the baseline-branch refusal and the behavioral-response
+    check of a reform pass.
   - A failure in a worker comes back with the unit's results. The certifying
     process raises it when the stage asks for that pass, where the serial
     scorer would have raised, as an error with the worker's exception's class
     name and message, so a held-out report that records the error records the
     same text. A changed batch file raises `PostExportBatchFileError`. A unit
-    after the shared pass that failed on every attempt (its worker ran out of
-    memory, went over its cap or died) raises `WorkerPoolUnitError` in the
-    stage that asks for it, even when it failed while workers were still
-    running an earlier stage's units, and the pool goes on with the other
-    units in fresh workers. The shared pool stops a run at such a failure,
-    so the units then in flight, the one due among them, start again in the
-    fresh pool. In a stage's own baseline pass the first range in batch
-    order that failed, either way, is the error raised. A pool whose workers cannot start refuses every
-    stage that needs it (`PostExportPoolStoppedError`); a stage served from
-    the shared pass's values is still served. Each of these is a
+    that failed on every attempt (its worker ran out of memory, went over its
+    cap or died) raises `WorkerPoolUnitError` in the stage that asks for it,
+    even when it failed while workers were still running an earlier stage's
+    units, and the pool goes on with the other units in fresh workers. The
+    shared pool stops a run at such a failure, so the units then in flight,
+    the one due among them, start again in the fresh pool. A pool whose
+    workers cannot start refuses every request that needs it
+    (`PostExportPoolStoppedError`); a stage's baseline values, scored in the
+    certifying process, are still served. Each of these is a
     `WorkerPoolError` and stops certification, the held-out reports included,
     where the serial scorer, which has no memory cap, may have finished.
   - Each stage then runs as in the serial path and builds its own reforms (the
@@ -586,16 +595,18 @@ one Microsimulation over the whole file.
     mix two versions' results (the microcosm packages are not checked).
   - The manifests' `post_export_scoring` block records how scoring ran under
     `execution`: `{"mode": "serial"}`, or the pool's settings, how the worker
-    count was chosen, the plan's memory and core readings, unit counts, why
-    the shared pass fell back if it did, and the report of every pool the
-    scorer ran (worker starts, failed attempts, peak worker memory). That
-    record is run metadata, outside every output comparison (decision 1.1 · 1).
+    count was chosen, the plan's memory and core readings, the number of
+    reform units, each baseline pass run in the certifying process (its
+    label, keys, wall and CPU time, and error if it raised), why the shared
+    pass fell back if it did, and the report of every pool the scorer ran
+    (worker starts, failed attempts, peak worker memory). That record is run
+    metadata, outside every output comparison (decision 1.1 · 1).
   - The 5 GiB per worker comes from reform passes (1.4 · 6's one-batch check
     peaked at about 3.5-4.7 GiB over two reform passes of 2,000 households).
-    The shared pass's units compute about 97 keys per batch engine and
-    reform validation's own pass 75, which nothing has measured yet; the
-    pooled export probe on a 5% sample reports each pool's peak worker
-    memory and every attempt the cap stopped.
+    The plan's 3 GiB for the certifying process applies while workers run,
+    after its baseline engines are released; its peak during the baseline
+    passes is the serial scorer's, with no worker running. Neither figure
+    has been measured at certification's 5,000-household batches.
 - Each batch engine keeps policyengine-us's projection of the release year to
   its last CPI-U year (2035), because the plans request keys in later years
   (reform validation reaches past 2025). The build's own simulations hold

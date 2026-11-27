@@ -101,22 +101,22 @@ take-up diagnostics and geography record counts, read column by column.
 
 Every stage records wall time, CPU time and peak resident memory (sampled
 every 0.5 s with psutil, else the process peak); every batch-outer scoring
-pass is one line of ``passes.jsonl``. With pooled scoring, a line is one pass
-a pool worker ran (a range of the shared baseline pass, or one reform pass),
-with the worker's process ID, its wall and CPU time, and the worker's memory
-footprint and peak resident memory; each stage records the CPU time of the
-worker passes whose results reached it (``worker_cpu_seconds``), and the
-report's ``post_export_scoring.execution`` holds the pool's settings and
-report (worker starts, failed attempts, peak worker memory). A line is written
+pass is one line of ``passes.jsonl``, naming the process that ran it. With
+pooled scoring the baseline passes run in this process, before the pool
+starts, and are written as in the serial path; a reform pass is one pass a
+pool worker ran, with the worker's process ID, its wall and CPU time, and the
+worker's memory footprint and peak resident memory. Each stage records the
+CPU time of the worker passes whose results reached it
+(``worker_cpu_seconds``), and the report's ``post_export_scoring.execution``
+holds the pool's settings and report (worker starts, failed attempts, peak
+worker memory) and each baseline pass run here. A worker's line is written
 when the pass's results reach this process, so a pass whose results never do
 (the stage stopped, or the scorer closed first) has none, and the remaining
 passes of a stage that stopped early are written, and counted, under the stage
 that passes over them. A unit that fails on every attempt fails the stage that
-asks for it (a range of the merged baseline pass instead makes every stage
-score its own baseline pass), and the pool goes on with the other units in
-fresh workers; if no worker can start, each later stage that needs the pool
-records that it could not run as the probe's own failure, not the
-release's.
+asks for it, and the pool goes on with the other units in fresh workers; if
+no worker can start, each later stage that needs the pool records that it
+could not run as the probe's own failure, not the release's.
 
 Usage::
 
@@ -1630,10 +1630,11 @@ class StageClock:
         return record
 
 
-def _timed_scorer_class(builder, passes_path: Path, clock: StageClock):
-    """The release scorer, with one ``passes.jsonl`` line per scoring pass."""
+def _timed_scorer_class(builder, passes_path: Path, clock: StageClock, base=None):
+    """The release scorer (``base``, the serial one unless given), with one
+    ``passes.jsonl`` line per scoring pass it runs in this process."""
 
-    base = builder._HouseholdBatchedPostExportScorer
+    base = base or builder._HouseholdBatchedPostExportScorer
 
     class TimedScorer(base):
         def _score(self, keys, *, label, reform_system=None, **options):
@@ -1654,6 +1655,7 @@ def _timed_scorer_class(builder, passes_path: Path, clock: StageClock):
                     "keys": len(keys),
                     "reform": reform_system is not None,
                     "batches": self.n_batches,
+                    "process": "certifying process",
                     "wall_seconds": round(time.perf_counter() - wall, 3),
                     "cpu_seconds": round(time.process_time() - cpu, 3),
                     "rss_before_gib": _gib(before),
@@ -2579,8 +2581,9 @@ class ExportProbe:
 
         As in certification, every stage's baseline plan is registered, so
         one merged baseline pass serves them all; with ``post_export_pooling``
-        the recorded requests are scored in the shared worker pool, and each
-        pass a worker ran is one line of ``passes.jsonl``.
+        the baseline passes run here and the recorded reform passes in the
+        shared worker pool, and each pass a worker ran is one line of
+        ``passes.jsonl``, as is each pass run here.
         """
         builder = self.builder
         requests = self._record_stage_requests()
@@ -2597,7 +2600,14 @@ class ExportProbe:
         )
         self.scoring_plan = plan
         if self.post_export_pooling is not None:
-            scorer = builder._PooledPostExportScorer(
+            # Its baseline passes run here, each timed as in the serial path.
+            scorer_cls = _timed_scorer_class(
+                builder,
+                self.passes_path,
+                self.clock,
+                base=builder._PooledPostExportScorer,
+            )
+            scorer = scorer_cls(
                 self.export_path,
                 maximum_microsim_batch_size=self.batch_size,
                 consumer_requests=plan.consumer_requests,

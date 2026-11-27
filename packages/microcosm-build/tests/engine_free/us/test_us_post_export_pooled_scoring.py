@@ -1406,7 +1406,12 @@ def test_a_stage_whose_own_baseline_failed_raises_that_error_when_it_opens(
         try:
             for name, consumer in consumers.items():
                 if kept is not None and name == "second":
-                    kept.extend(scorer._own_baselines.values())
+                    # Before it is raised again, which gives it a traceback.
+                    kept.extend(
+                        value.__traceback__
+                        for value in scorer._own_baselines.values()
+                        if isinstance(value, BaseException)
+                    )
                 try:
                     scoring = scorer.open_consumer(name, plan.baseline_plan(name))
                 except RuntimeError as error:
@@ -1428,5 +1433,4 @@ def test_a_stage_whose_own_baseline_failed_raises_that_error_when_it_opens(
     assert pooled.pop("second notes") is True
     serial.pop("second notes")
     assert pooled == serial
-    errors = [value for value in kept if isinstance(value, BaseException)]
-    assert len(errors) == 1 and errors[0].__traceback__ is None
+    assert kept == [None]
