@@ -146,9 +146,9 @@ LEGACY_RESOURCE_PATHS = (
     "ecps_parity_known_gaps.json",
     "ecps_parity_reference.json",
     "federal_eitc_by_state.json",
+    "fiscal_target_references.json",
     # The reviewed registers of the US fiscal target compile (microcosm#1728).
     "fiscal_target_registers.json",
-    "fiscal_target_references.json",
     "gates.json",
     # The ACS local release's declared target construction (microcosm#1728).
     "local_target_construction.json",
