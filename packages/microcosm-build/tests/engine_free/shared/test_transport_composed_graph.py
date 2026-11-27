@@ -56,6 +56,7 @@ import pytest
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
+from microcosm.build.artifact_files import file_artifact
 from microcosm.build.transport import cli as cli_module
 from microcosm.build.transport import compose as compose_module
 from microcosm.build.transport import target_kernels as target_kernels_module
@@ -69,6 +70,7 @@ from microcosm.build.transport.cli import (
     prepare_create_outputs,
     prepare_transport_build,
     through,
+    transport_build_provenance,
 )
 from microcosm.build.transport.compose import (
     TransportGraphConfig,
@@ -2630,6 +2632,7 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
         "pending_outputs": composed.pending_outputs,
     }
     inputs = _inventory(composed.root)
+    spec_hashes = {"target_references": "a" * 64, "release_contract": "b" * 64}
     manifest = execute_transport_graph(
         graph,
         composed.registry,
@@ -2637,6 +2640,7 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
         out=out,
         endpoints=endpoints,
         pending_outputs=composed.pending_outputs,
+        spec_resource_hashes=spec_hashes,
     )
     assert _inventory(composed.root) == inputs
     assert set(manifest.nodes) == {node.id for node in graph.nodes}
@@ -2649,9 +2653,21 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
     status = json.loads((out / "build-status.json").read_text())
     assert status["local_only"] is True
     assert status["not_yet_produced"] == list(composed.pending_outputs)
-    assert {"graph", "skeleton_dataset", "calibration_diagnostics", "explorer"} <= set(
-        status["produced"]
-    )
+    assert {
+        "graph",
+        "skeleton_dataset",
+        "calibration_diagnostics",
+        "explorer",
+        "run_manifest",
+    } <= set(status["produced"])
+    assert status["produced"]["run_manifest"] == file_artifact(out / "manifest.json")
+    # The build records the code and runtime it ran on, for the release
+    # assembler (tracker 5b · 13).
+    provenance = transport_build_provenance()
+    assert status.get("code") == provenance["code"]
+    assert status.get("runtime") == provenance["runtime"]
+    # And the digests of the spec resources it ran on.
+    assert status["spec"] == {"country": graph.country, "resource_hashes": spec_hashes}
     for name in (
         "checkpoint-geography.json",
         "checkpoint-calibration.json",

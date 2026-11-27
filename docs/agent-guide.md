@@ -388,6 +388,10 @@ chooses the tier (certified, or `--evidence-release`), runs the release's
 post-export checks, places the build in that tier's release directory, writes
 the manifests and prints both commands (microcosm#1585 item 11). The ACS
 package stage prints both commands itself.
+A spec country's transport build (BE's releases) goes through
+`tools/assemble_spec_release_dir.py`, which reads the build's `--out` folder,
+writes the release directory with the files the country's release contract
+lists and prints both commands (microcosm#1800).
 `tools/preflight_us_release_gates.py` runs the US national release checks that
 need no calibration on the base before a build, and again with the finished
 build's `--release-manifest`. The emitter changes
@@ -707,7 +711,10 @@ The transport build driver (`tools/build_transport.py`, a shim over
 `microcosm.build.transport.cli`) composes a country's graph from its
 `transport_graph.json` spec resource and runs it locally: every file it
 writes, including its `.graph-store`, lies under `--out`, and it has no
-upload or staging path. Before it opens the store it refuses any link in an
+upload or staging path. Its `build-status.json` records the Microcosm
+commit, whether a tracked file differed from it, the Python and package
+versions and the digest of each JSON spec resource the build ran on, which the
+release step reads. Before it opens the store it refuses any link in an
 existing store tree (the root, `objects`, `tmp` or a shard), because the
 store creates those directories by following links; it does not guard
 against links planted while a build is running. Activation checks run before
