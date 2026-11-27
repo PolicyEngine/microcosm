@@ -113,7 +113,9 @@ _FRAME_CASES = {
         "person_index_dtype": PYTHON_STRING,
         "strata_dtype": PYARROW_STR,
     },
-    "object index, python str strata": {
+    # The writer stores an object index of strings as a pyarrow-backed str
+    # index, as it did before this change.
+    "object index (stored as pyarrow str), python str strata": {
         "person_index_dtype": "object",
         "strata_dtype": PYTHON_STR,
     },
@@ -359,6 +361,12 @@ _EDGE_CASE_VALUES: dict[str, list[str]] = {
     "non-ASCII UTF-8": ["é", "中文", "😀", "a\x00b", "ÿĀ߿ࠀ￿"],
     "one value throughout": ["same"] * 1_000,
     "very long string": ["short", "é" * 3_000_000, "tail"],
+    # Two whole encoding batches and one value more, with lengths 0 to 3 and
+    # non-ASCII text, so each batch's offsets and bytes land in their place.
+    "across encoding batches": [
+        "é" * (position % 4)
+        for position in range(2 * frame_checkpoint_module._STRING_ENCODE_BATCH + 1)
+    ],
 }
 
 
@@ -538,39 +546,119 @@ def test_string_subclasses_go_through_the_per_value_loop(
     assert calls.encoded == [2]
 
 
-@pytest.mark.parametrize("dtype_name", ["python_str", "python_string", "object"])
-def test_writing_python_strings_needs_no_more_memory_than_the_per_value_loop(
-    dtype_name: str,
-) -> None:
-    """Peak traced memory of encoding short strings, against the loop's.
+def _traced_peak(operation: Callable[[], object]) -> int:
+    """Peak memory traced by ``tracemalloc`` while ``operation`` runs."""
 
-    The loop holds the offsets, a growing ``bytearray`` and its final
-    ``bytes`` copy. Encoding every value at once would also hold one
-    ``bytes`` object per value and ``bytes.join``'s buffer table, about six
-    times the loop's peak for short strings.
+    tracemalloc.start()
+    try:
+        operation()
+        return tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+
+def _short_strings(count: int) -> list[str]:
+    return ["".join(["v", str(position % 1_000).zfill(6)]) for position in range(count)]
+
+
+def _long_strings(count: int, length: int) -> list[str]:
+    return [
+        "".join([str(position % 10), "é" * (length - 1)]) for position in range(count)
+    ]
+
+
+# Values for the memory comparisons, built fresh for each test.
+_MEMORY_CASES: dict[str, Callable[[], list[str | None]]] = {
+    "300,000 short strings": lambda: _short_strings(300_000),
+    "1,000 strings of 16 KiB": lambda: _long_strings(1_000, 8_192),
+    "20,000 strings of 400 characters": lambda: _long_strings(20_000, 400),
+}
+
+
+@pytest.mark.parametrize("dtype_name", ["python_str", "python_string", "object"])
+@pytest.mark.parametrize("case", list(_MEMORY_CASES))
+def test_writing_python_strings_needs_no_more_memory_than_the_per_value_loop(
+    case: str, dtype_name: str
+) -> None:
+    """Peak traced memory of encoding Python strings, against the loop's.
+
+    The loop's peak is about twice the payload: its growing ``bytearray``
+    and the final ``bytes`` copy. Encoding every value at once would also
+    hold one ``bytes`` object per value and ``bytes.join``'s buffer table;
+    holding a batch's encoded values, their join and the ``bytearray`` at
+    once would reach three times a batch's text.
     """
 
-    values = np.asarray(
-        ["".join(["v", str(position % 1_000).zfill(6)]) for position in range(300_000)],
-        dtype=object,
-    )
+    values = np.asarray(_MEMORY_CASES[case](), dtype=object)
     series = pd.Series(values, dtype=TEXT_DTYPES[dtype_name], copy=False)
     stored_values = series.to_numpy(dtype=object, copy=False)
 
-    def traced_peak(encode: Callable[[], object]) -> int:
-        tracemalloc.start()
-        try:
-            encode()
-            return tracemalloc.get_traced_memory()[1]
-        finally:
-            tracemalloc.stop()
-
-    loop_peak = traced_peak(lambda: PER_VALUE_ENCODE(stored_values))
-    converted_peak = traced_peak(
+    loop_peak = _traced_peak(lambda: PER_VALUE_ENCODE(stored_values))
+    converted_peak = _traced_peak(
         lambda: frame_checkpoint_module._encode_string_values(series)
     )
 
     assert converted_peak <= loop_peak
+
+
+def _read_as_before(group: object, spec: dict[str, object], path: Path) -> pd.Series:
+    """How ``_read_series`` read an object-encoded series before the change.
+
+    ``_read_bytes_dataset`` returns the payload as ``bytes`` and drops the
+    array HDF5 filled, then the per-value loop decodes it.
+    """
+
+    restore_dtype = frame_checkpoint_module._declared_dtype(
+        spec, path=path, label="column"
+    )
+    offsets = frame_checkpoint_module._read_numpy_dataset(group, "offsets", path)
+    payload = frame_checkpoint_module._read_bytes_dataset(group, "payload", path)
+    values = PER_VALUE_DECODE(offsets, payload, path=path, label="column")
+    return pd.Series(values, dtype=restore_dtype, copy=False)
+
+
+# Allocations of their own that ``_read_series`` makes, such as its checks.
+_READ_PEAK_ALLOWANCE = 64 * 1024
+# The new reader of Python strings peaks about one byte per value above the
+# old one (1.4% for short strings); a second copy of the text, as an earlier
+# version of the change held, would be well above this.
+_READ_PEAK_RATIO = 1.02
+
+
+@pytest.mark.parametrize("missing_value", [False, True], ids=["complete", "missing"])
+@pytest.mark.parametrize("dtype_name", list(TEXT_DTYPES))
+@pytest.mark.parametrize("case", list(_MEMORY_CASES))
+def test_reading_text_needs_no_more_memory_than_before(
+    tmp_path: Path, case: str, dtype_name: str, missing_value: bool
+) -> None:
+    """Peak traced memory of reading a text column, against the old reader's.
+
+    A column with a missing value goes through the per-value loop in both.
+    ``tracemalloc`` counts NumPy arrays but not Arrow's own allocations, so
+    for pyarrow-backed columns it counts all of the new reader's text and
+    none of the old reader's Arrow copy.
+    """
+
+    values: list[str | None] = _MEMORY_CASES[case]()
+    if missing_value:
+        values[len(values) // 2] = None
+    series = pd.Series(values, dtype=TEXT_DTYPES[dtype_name])
+    path = tmp_path / "column.h5"
+    spec = frame_checkpoint_module._series_spec(series, label="column")
+    with h5py.File(path, mode="w") as h5:
+        group = h5.create_group("column", track_times=False)
+        frame_checkpoint_module._write_series(group, series, spec)
+    del series, values
+
+    with h5py.File(path, mode="r") as h5:
+        before_peak = _traced_peak(lambda: _read_as_before(h5["column"], spec, path))
+        converted_peak = _traced_peak(
+            lambda: frame_checkpoint_module._read_series(
+                h5["column"], spec, path, label="column"
+            )
+        )
+
+    assert converted_peak <= before_peak * _READ_PEAK_RATIO + _READ_PEAK_ALLOWANCE
 
 
 @pytest.mark.parametrize("dtype_name", ["python_str", "python_string", "object"])
