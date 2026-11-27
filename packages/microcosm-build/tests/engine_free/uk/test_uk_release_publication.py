@@ -955,6 +955,7 @@ def test_the_command_refuses_a_repository_that_has_not_switched_without_advising
     assert "latest-national.json" in error
     assert "python -m" not in error
     assert "microcosm.build." not in error
+    assert "`copy`" not in error and "`switch`" not in error
     assert "--write" not in error
     assert "keep the files in place" in error
     assert "remove" not in error

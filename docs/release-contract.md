@@ -1016,9 +1016,9 @@ repository that has no `releases.json`.
   (`latest_line_release`) only for an entry whose repository has no
   `releases.json`. `latest_evidence_release` returns the evidence release's
   current build from `releases.json` where the file exists, and reads
-  `latest-evidence.json` otherwise. The switch tool read each repository's
-  pointer files once, to set each release's current build and the record's
-  `default`.
+  `latest-evidence.json` otherwise. Before it was removed, the one-time switch
+  tool was a fourth reader: it read each repository's pointer files once, to
+  set each release's current build and the record's `default`.
 - **The registry.** `microcosm.data.registry.REGISTRY` maps `(country, year,
   variant)` to a `DatasetSpec`. Each names the Hub repository, the dataset
   file, the engine class, the `release` the loader reads through
@@ -1156,7 +1156,8 @@ work.
   - *The default.* The loader takes each country's default release from the
     registry. `releases.json` also names a `default`: the one-time switch
     tool set it once in each of the US, UK and BE repositories, nothing in
-    this repository sets it now, and no loader reads it. The gap: no check at
+    this repository sets it in a live record now (the fixture generator sets
+    it only in the C5 golden records), and no loader reads it. The gap: no check at
     publication confirms that the record's `default` agrees with the registry,
     and nothing here sets it for a new repository, such as AM's or NZ's.
   - *The evidence release.* Its builds answer to
