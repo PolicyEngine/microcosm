@@ -159,6 +159,10 @@ def test_the_build_manifest_records_what_the_build_ran_on(
     )
     assert manifest["created_at"] == CREATED_AT
     assert manifest["spec"]["resource_hashes"] == be_spec["resource_hashes"]
+    # The run manifest's start is that of the command's last pass over the
+    # stored graph, not of the build, so only its key and end are recorded.
+    assert set(manifest["run"]) == {"key", "finished_at"}
+    assert manifest["run"]["finished_at"] == "2026-12-01T10:20:30+00:00"
     assert manifest["dataset"] == {
         "filename": "populace_be_2026.h5",
         "sha256": _sha256(build.path / EXPORT_FILENAME),
@@ -268,6 +272,21 @@ def test_assembly_refuses_a_dataset_that_changed_after_the_build(
     dataset.write_bytes(dataset.read_bytes() + b"\0")
 
     with pytest.raises(SpecReleaseAssemblyError, match=EXPORT_FILENAME):
+        assemble_spec_release(build.path, country="be", out_dir=tmp_path / "releases")
+
+
+def test_assembly_refuses_an_export_descriptor_that_changed_after_the_build(
+    tmp_path: Path,
+) -> None:
+    # The descriptor names the weight entity whose weights the NPZ carries,
+    # so it must be the one the build wrote.
+    build = write_transport_build_folder(tmp_path / "out")
+    descriptor_path = build.path / "export-descriptor.json"
+    descriptor = _read(descriptor_path)
+    descriptor["bindings"] = {"changed": "after the build"}
+    descriptor_path.write_text(json.dumps(descriptor))
+
+    with pytest.raises(SpecReleaseAssemblyError, match="export-descriptor.json"):
         assemble_spec_release(build.path, country="be", out_dir=tmp_path / "releases")
 
 

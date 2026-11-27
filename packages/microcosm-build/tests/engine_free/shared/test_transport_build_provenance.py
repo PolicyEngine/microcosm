@@ -13,7 +13,9 @@ import platform
 import subprocess
 from importlib import metadata
 from pathlib import Path
+from types import SimpleNamespace
 
+from microcosm.build.transport import cli as cli_module
 from microcosm.build.transport.cli import (
     TRANSPORT_RUNTIME_DISTRIBUTIONS,
     transport_build_provenance,
@@ -31,12 +33,12 @@ def _git(repository: Path, *arguments: str) -> str:
     ).stdout.strip()
 
 
-def _repository(root: Path) -> Path:
+def _repository(root: Path, *, content: str = "VALUE = 1\n") -> Path:
     root.mkdir()
     _git(root, "init", "--quiet")
     _git(root, "config", "user.email", "fixture@example.com")
     _git(root, "config", "user.name", "Fixture")
-    (root / "module.py").write_text("VALUE = 1\n")
+    (root / "module.py").write_text(content)
     _git(root, "add", "module.py")
     _git(root, "commit", "--quiet", "-m", "Fixture commit")
     return root
@@ -97,9 +99,10 @@ def test_a_repository_named_by_the_environment_is_not_measured(
     tmp_path: Path, monkeypatch
 ) -> None:
     repository = _repository(tmp_path / "checkout")
-    other = _repository(tmp_path / "other")
+    other = _repository(tmp_path / "other", content="VALUE = 2\n")
     (other / "module.py").write_text("VALUE = 3\n")
     expected = _git(repository, "rev-parse", "HEAD")
+    assert expected != _git(other, "rev-parse", "HEAD")
     monkeypatch.setenv("GIT_DIR", str(other / ".git"))
     monkeypatch.setenv("GIT_WORK_TREE", str(other))
 
@@ -122,3 +125,33 @@ def test_the_runtime_records_python_and_each_distribution(tmp_path: Path) -> Non
     assert set(runtime) == {"python", *TRANSPORT_RUNTIME_DISTRIBUTIONS}
     assert runtime["microcosm-build"] == metadata.version("microcosm-build")
     assert "axiom-rules-engine" in TRANSPORT_RUNTIME_DISTRIBUTIONS
+
+
+def test_the_command_records_the_digests_of_the_spec_it_loaded(
+    tmp_path: Path, monkeypatch
+) -> None:
+    hashes = {"target_references": "a" * 64, "release_contract": "b" * 64}
+    received: dict[str, object] = {}
+    prepared = SimpleNamespace(
+        graph="graph",
+        registry="registry",
+        sources={},
+        endpoints={},
+        pending_outputs=(),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "load_transport_spec",
+        lambda _source: {"country": "be", "resource_hashes": hashes},
+    )
+    monkeypatch.setattr(
+        cli_module, "prepare_transport_build", lambda *_args, **_options: prepared
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "execute_transport_graph",
+        lambda *_args, **options: received.update(options),
+    )
+
+    assert cli_module.main(["--country", "be", "--out", str(tmp_path / "out")]) == 0
+    assert received["spec_resource_hashes"] == hashes

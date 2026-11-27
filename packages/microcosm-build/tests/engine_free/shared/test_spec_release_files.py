@@ -220,6 +220,41 @@ def test_source_coverage_fails_when_the_build_calibrated_a_held_out_reference(
     assert holdout["category_id"] in payload["validation_only_activated"]
 
 
+def test_source_coverage_groups_references_without_a_category_by_family(
+    be_spec: dict,
+) -> None:
+    # NZ's references name a family and no category. Without a fallback the
+    # check would compare nothing and pass whatever the build calibrated.
+    resources = be_spec["resources"]
+    uncategorised = {
+        name: {
+            **document,
+            "hierarchy": {**document["hierarchy"], "categories": {}},
+            "target_references": [
+                {key: value for key, value in row.items() if key != "category_id"}
+                for row in document["target_references"]
+            ],
+        }
+        for name, document in (
+            ("target_references", resources["target_references"]),
+            ("holdout_references", resources["holdout_references"]),
+        )
+    }
+    omitted = demography_references("be")[0]["name"]
+
+    payload = source_coverage_payload(
+        country="be",
+        target_references=uncategorised["target_references"],
+        holdout_references=uncategorised["holdout_references"],
+        diagnostics=calibration_diagnostics("be", omit=[omitted]),
+        source_contract={},
+    )
+
+    assert "demography" in payload["hard_target_families"]
+    assert payload["gate"]["passed"] is False
+    assert payload["missing_hard_targets"] == [omitted]
+
+
 def test_the_added_files_are_the_ones_the_be_contract_declares() -> None:
     # The data shard names BE's added files by artifact key; the build
     # shard's writers must write the same files under the same keys.

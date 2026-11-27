@@ -346,6 +346,7 @@ def write_transport_build_folder(
         "destination facts; not observed destination microdata.",
         "produced": {
             "skeleton_dataset": file_artifact(dataset),
+            "export_descriptor": file_artifact(root / "export-descriptor.json"),
             "calibration_diagnostics": file_artifact(diagnostics_path),
         },
         "not_yet_produced": list(not_yet_produced),
