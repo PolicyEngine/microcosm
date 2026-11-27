@@ -1,0 +1,1 @@
+Add a UK firm capital expenditure fixture (ONS business investment by asset 2024; ABS 2024 capex by section) and a design note (`docs/uk-firm-capex-design.md`). No build reads it: taxable profit is drawn after allowances, so capex is not fed to policyengine-uk.
