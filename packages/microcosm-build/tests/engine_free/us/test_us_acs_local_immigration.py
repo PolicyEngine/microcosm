@@ -793,13 +793,12 @@ def test_entry_clock_is_an_arrival_proxy_with_a_lag_sensitivity() -> None:
     for text in (
         "neither the ACS nor the ASEC donor records the date qualified status",
         "the clock runs from arrival",
-        "the policyengine-us 2.2.1 tests that read the clock",
-        "Medicaid (CHIP follows it) and Washington TANF read it against a "
-        "five-year bar",
+        "the policyengine-us 2.145.3 tests that read the clock",
+        "SNAP's qualified-alien waiting period, the federal Medicaid and CHIP "
+        "immigration-status tests",
+        "read it against a bar, five years for SNAP and Medicaid",
         "Washington RCA reads it as a window that closes",
         "wrongly exclude a recently qualified person from RCA",
-        "federal SNAP status test reads the status, not this clock",
-        "any SNAP effect is indirect",
         "microcosm#1093",
     ):
         assert text in clock["caveat"]

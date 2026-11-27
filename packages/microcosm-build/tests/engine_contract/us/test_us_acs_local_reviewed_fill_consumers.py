@@ -3,8 +3,10 @@
 
 Each register entry declares the means-tested programs its column reaches.
 This test recomputes them with the engine's static dependency graph
-(``PolicyEngineUSVariableMetadataIndex.consumer_receipts``, walked by
-:func:`means_tested_consumers`) and fails when an entry misses a program the
+(``PolicyEngineUSVariableMetadataIndex.consumer_receipts`` with
+``follow_helpers``, so a read inside one of the engine's helper functions is
+its calling variable's, walked by :func:`means_tested_consumers`;
+microcosm#1675) and fails when an entry misses a program the
 walk reaches, or lists one it no longer reaches, so a policyengine-us bump
 cannot silently add a consumer the notes never reviewed. It also checks that
 the program roots are engine variables covering the engine's own CBO
@@ -17,8 +19,8 @@ programs, so the engine-free rule covers it.
 The walk tests hold only for the engine the register was reviewed against.
 On any other engine the ACS local release gate refuses the release (fail
 closed), so they skip until the register is re-reviewed, and one test checks
-that the gate refuses the installed engine meanwhile (policyengine-us 2.145.3:
-microcosm#1675).
+that the gate refuses any other engine meanwhile. The register was re-reviewed
+against policyengine-us 2.145.3 in microcosm#1675.
 """
 
 from __future__ import annotations
@@ -67,7 +69,7 @@ _ON_THE_REVIEWED_ENGINE = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def index() -> PolicyEngineUSVariableMetadataIndex:
-    return PolicyEngineUSVariableMetadataIndex()
+    return PolicyEngineUSVariableMetadataIndex(follow_helpers=True)
 
 
 @pytest.fixture(scope="module")
@@ -173,9 +175,12 @@ def test_each_program_coupling_is_an_engine_edge(index) -> None:
     def consumers(name):
         return {receipt.consumer for receipt in index.consumer_receipts(name)}
 
-    # The bars: Medicaid and CHIP eligibility gate the PTC.
-    assert "pays_aca_premium" in consumers("is_medicaid_eligible")
-    assert "pays_aca_premium" in consumers("is_chip_eligible")
+    # The bars: Medicaid and CHIP eligibility keep a person off the Marketplace
+    # (gov.aca.ineligible_coverage); only an enrollee pays an age-rated premium,
+    # which the PTC requires (policyengine-us 2.145.3).
+    for upstream in ("is_medicaid_eligible", "is_chip_eligible"):
+        assert "is_aca_marketplace_enrollee" in consumers(upstream), upstream
+    assert "pays_aca_premium" in consumers("is_aca_marketplace_enrollee")
     assert "is_aca_ptc_eligible" in consumers("pays_aca_premium")
     # SSI and TANF reach SNAP categorical eligibility.
     assert "meets_snap_categorical_eligibility" in consumers("ssi")
@@ -205,14 +210,37 @@ def test_the_key_snap_paths(index) -> None:
     def reach(column):
         return means_tested_consumers(column, index, _PROGRAMS)
 
+    def consumers(name):
+        return {receipt.consumer for receipt in index.consumer_receipts(name)}
+
     vehicles = reach("household_vehicles_value")
     assert "meets_tanf_non_cash_asset_test" in vehicles["snap"]
     # SNAP's utility allowance does not read the energy subsidy; the subsidy is
     # the LIHEAP program's own value.
     assert reach("spm_unit_energy_subsidy") == {"liheap": ("spm_unit_energy_subsidy",)}
     # No program reads these at all.
-    for column in ("weeks_unemployed", "net_worth", "tenure_type", "ssi_reported"):
+    for column in ("net_worth", "ssi_reported"):
         assert reach(column) == {}, column
+    # Weeks unemployed set the months of UC receipt, which exempt a recipient from
+    # SNAP work registration and so from the ABAWD time limit (policyengine-us
+    # 2.145.3); the modeled UI programs need claim-wage inputs no stage produces
+    # (test_us_weeks_unemployed.py).
+    assert "unemployment_compensation_months" in consumers("weeks_unemployed")
+    assert "is_receiving_unemployment_compensation" in consumers(
+        "unemployment_compensation_months"
+    )
+    assert "is_snap_work_registration_exempt_non_age" in consumers(
+        "is_receiving_unemployment_compensation"
+    )
+    assert "is_snap_abawd_exempt" in consumers(
+        "is_snap_work_registration_exempt_non_age"
+    )
+    assert "snap" in reach("weeks_unemployed")
+    # The household tenure is read only by Colorado's in-kind support and
+    # maintenance exemption for a client who owns their home (_ism_exempt), which
+    # Colorado OAP and AND-CS count, and SNAP counts those grants.
+    assert "co_ssa_in_kind_support_and_maintenance" in consumers("tenure_type")
+    assert "snap" in reach("tenure_type")
     # SNAP's medical deduction reads the medical-expense aggregate, which
     # treats a zero direct premium as not supplied.
     premiums = reach("health_insurance_premiums")["snap"]
@@ -223,9 +251,6 @@ def test_the_key_snap_paths(index) -> None:
 
     # SNAP's shelter deduction reads rent through housing_cost (the shortest
     # path from the rent runs through Arizona TANF, so check the edges).
-    def consumers(name):
-        return {receipt.consumer for receipt in index.consumer_receipts(name)}
-
     assert "rent" in consumers("pre_subsidy_rent")
     assert "housing_cost" in consumers("rent")
     assert "snap_excess_shelter_expense_deduction" in consumers("housing_cost")

@@ -67,7 +67,7 @@ missing ACS cells; donor-spine values and any stored ACS value are kept.
   weight, on its own keyed draw; a record not kept is an ordinary
   non-anchor, which can still draw or be calibrated in. The state's excess
   is recorded. The treatment is state-level because the CMS counts are:
-  policyengine-us 2.2.1 gives CHIP its own ``takes_up_chip_if_eligible`` and
+  policyengine-us 2.145.3 gives CHIP its own ``takes_up_chip_if_eligible`` and
   makes CHIP eligibility exclusive of Medicaid eligibility, so HINS4 CHIP
   children already fall outside the measured (Medicaid-eligible) anchor
   mass, and the ledger has no child/adult split of the Medicaid counts to

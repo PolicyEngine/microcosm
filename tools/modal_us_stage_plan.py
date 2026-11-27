@@ -765,6 +765,9 @@ US_ACS_LOCAL_RELEASE = ToolSpec(
         "batch": OptionFlag("--batch", int),
         "hh_chunk": OptionFlag("--hh-chunk", int),
         "allow_partial_geography": OptionFlag("--allow-partial-geography", bool),
+        # Diagnostic only (microcosm#454): finalize and package record a red
+        # ESI premium verdict instead of failing on it.
+        "allow_esi_premium_gaps": OptionFlag("--allow-esi-premium-gaps", bool),
     },
     owned_flags=frozenset(
         {
@@ -1278,6 +1281,11 @@ US_ACS_MULTISPINE_STAGING = ToolSpec(
             "--location-seed",
             "--location-clones",
             "--block-ladder",
+            # The ESI premium waiver (microcosm#454) is for a diagnostic
+            # build on a donor that predates the meps_esi_premiums stage. The
+            # runner never passes it, so a Modal staging run always
+            # qualifies the donor and enforces both ESI gates.
+            "--allow-esi-premium-gaps",
         }
     ),
     argv_builder=_acs_multispine_staging_argv,

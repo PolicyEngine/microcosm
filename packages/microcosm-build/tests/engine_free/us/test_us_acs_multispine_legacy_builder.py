@@ -18,7 +18,17 @@ from microcosm.build.us_runtime.acs_sources import (
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puf_support import support_channel_column
 from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
-from microcosm.data.build_folder_manifests import ReferencedBuild, referenced_build
+from microcosm.data.build_folder_manifests import (
+    ReferencedBuild,
+    referenced_build,
+    rewrite_release_dir,
+)
+from microcosm.data.contract import (
+    US_EVIDENCE_RELEASE_ID,
+    US_NATIONAL_RELEASE_ID,
+    US_RELEASE_DATASET_FILES,
+    _check_local_area_donor_reference,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
@@ -156,6 +166,15 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert args.donor_channel == builder.ACS_DONOR_CHANNEL_AUTO
     # microcosm#1022: the SIPP donor resolves through the canonical cache.
     assert args.sipp_donor is None
+    # microcosm#454: a release build qualifies the ESI premium donor and
+    # enforces both ESI gates; only a diagnostic build waives them.
+    assert args.allow_esi_premium_gaps is False
+    assert (
+        builder._parse_args(
+            ["--base-h5", "d.h5", "--out-h5", "c.h5", "--allow-esi-premium-gaps"]
+        ).allow_esi_premium_gaps
+        is True
+    )
 
     custom = builder._parse_args(
         [
@@ -195,13 +214,28 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert local.sipp_donor == Path("pu2023.csv")
 
 
-@pytest.mark.parametrize("staging_hours_pass", [True, False])
+@pytest.mark.parametrize(
+    ("staging_hours_pass", "esi_premiums"),
+    [(True, "green"), (False, "green"), (True, "red"), (True, "waived")],
+    ids=["green", "hours_red", "esi_red", "esi_waived"],
+)
 def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     staging_hours_pass: bool,
+    esi_premiums: str,
 ) -> None:
+    """``esi_premiums``: ``"red"`` has a red ESI anchor gate stop the build
+    before the H5 is written; ``"waived"`` is a diagnostic build
+    (``--allow-esi-premium-gaps``) whose donor the ESI qualifier refuses, so
+    the lane neither transfers nor owes the premium (microcosm#454)."""
+
     builder = _load_builder_module()
+    waived = esi_premiums == "waived"
+    waived_refusal = (
+        "Local ESI premium donor was built without the meps_esi_premiums stage "
+        "(invented)."
+    )
     manifest = _manifest()
     base = _frame()
     combined = _frame(spines=("asec_puf", "acs_2024_1yr"))
@@ -225,6 +259,13 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     combined.table("person")["passive_partnership_s_corp_income"] = [0.0, 0.0]
     combined.table("person")["person_tax_unit_id"] = [1, 2]
     combined.table("person")["tax_unit_role_input"] = ["HEAD", "HEAD"]
+    # microcosm#454: the lane transferred the ESI employer premium onto the
+    # ACS row, so the coverage check finds it complete there. A waived build
+    # transferred nothing, so its ACS row carries no premium.
+    combined.table("person")["employer_sponsored_insurance_premiums"] = [
+        9_000.0,
+        np.nan if waived else 0.0,
+    ]
     # What the ACS local immigration stage returns (microcosm#1020): the
     # null audit, hours gate and export must all see this frame, not the
     # unlabelled pool.
@@ -353,7 +394,20 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
                         "column": "takes_up_snap_if_eligible",
                         "family": "benefit_participation",
                         "unmodeled_recipient_rows": 0,
-                    }
+                    },
+                    # The lane owes the ACS spine the employer premium too,
+                    # unless a diagnostic build waived its donor.
+                    *(
+                        []
+                        if waived
+                        else [
+                            {
+                                "column": "employer_sponsored_insurance_premiums",
+                                "family": "source_operator_esi_premiums",
+                                "unmodeled_recipient_rows": 0,
+                            }
+                        ]
+                    ),
                 ],
                 "acs_local_work_disability": work_disability_receipt,
                 "acs_local_income_transfer": income_receipt,
@@ -364,6 +418,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
 
     def fake_write(frame, path, *, period):
         captured["write"] = (frame, path, period)
+        order.append("write")
         path.write_bytes(b"combined-output")
 
     def fake_load_puma_ladder(path):
@@ -470,6 +525,16 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     }
 
     monkeypatch.setattr(builder, "_load_base_frame", lambda path: base)
+    # A block_v1 donor under the legacy rule: the summary records the rule its
+    # base recorded, and the engine the staging ran on.
+    base_location = {
+        "location_rule": "block_v1",
+        "recorded": True,
+        "attributes": {"populace_location_rule": "block_v1"},
+    }
+    monkeypatch.setattr(builder, "_base_location_rule", lambda path: base_location)
+    engine_versions = {"policyengine_us": "9.9.9", "policyengine_core": "8.8.8"}
+    monkeypatch.setattr(builder, "_engine_versions", lambda: engine_versions)
     monkeypatch.setattr(
         builder,
         "prepare_acs_local_hours_donor",
@@ -554,6 +619,52 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     )
     monkeypatch.setattr(builder, "acs_local_ssi_disability_signal_gate", fake_ssi_gate)
 
+    # microcosm#454: the ESI employer premium's donor qualifier and gates.
+    def qualify_esi_premium_donor(frame):
+        captured.setdefault("esi_premium_donors", []).append(frame)
+        order.append("esi_premium_donor")
+        if waived:
+            raise ValueError(waived_refusal)
+        return frame, {"donor_channel": "asec"}
+
+    signal_failures = ("invented: no ACS row carries the premium",) if waived else ()
+    anchor_failures = (
+        () if esi_premiums == "green" else ("invented: +20.0% from the anchor",)
+    )
+
+    def staging_esi_premium_gates(frame, *, time_period):
+        captured["staging_esi_premium_gates"] = (frame, time_period)
+        order.append("esi_premium_gates")
+        return (
+            GateResult(
+                name="esi_premiums_signal",
+                passed=not signal_failures,
+                failures=signal_failures,
+            ),
+            GateResult(
+                name="esi_premiums_anchor",
+                passed=not anchor_failures,
+                failures=anchor_failures,
+                details={"relative_error": 0.0, "cross_check_ratio": float("nan")},
+            ),
+        )
+
+    real_coverage = builder._require_default_transfer_coverage
+
+    def recorded_coverage(result, donor, *, target_families=None):
+        captured["coverage_plan"] = target_families
+        return real_coverage(result, donor, target_families=target_families)
+
+    monkeypatch.setattr(
+        builder, "prepare_acs_local_esi_premium_donor", qualify_esi_premium_donor
+    )
+    monkeypatch.setattr(
+        builder, "acs_local_esi_premium_gates", staging_esi_premium_gates
+    )
+    monkeypatch.setattr(
+        builder, "_require_default_transfer_coverage", recorded_coverage
+    )
+
     arguments = [
         "--base-h5",
         str(base_h5),
@@ -578,12 +689,34 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "--geography-seed",
         "19",
     ]
+    if waived:
+        arguments.append("--allow-esi-premium-gaps")
     if not staging_hours_pass:
         with pytest.raises(
             SystemExit, match="Local staging hours gate failed.*asec_puf"
         ):
             builder.main(arguments)
         assert captured["staging_hours_gate"] is True
+        # The ESI gates grade the frame after the hours gate passes.
+        assert "staging_esi_premium_gates" not in captured
+        assert "write" not in captured
+        assert not output_h5.exists()
+        assert not summary_path.exists()
+        return
+    if esi_premiums == "red":
+        # microcosm#454: a red ESI gate stops the build before the staging H5
+        # (or its summary) is written.
+        with pytest.raises(
+            SystemExit,
+            match=(
+                "Local staging ESI employer premium gates failed: "
+                "esi_premiums_anchor: invented: \\+20.0% from the anchor"
+            ),
+        ):
+            builder.main(arguments)
+        assert captured["staging_esi_premium_gates"][0] is ssi_filled
+        assert order[-1] == "esi_premium_gates"
+        assert "write" not in order
         assert "write" not in captured
         assert not output_h5.exists()
         assert not summary_path.exists()
@@ -600,6 +733,25 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert build_options.pop("puma_ladder") is puma_ladder
     assert callable(build_options.pop("hours_donor_factory"))
     assert build_options.pop("drop_group_quarters_children") is True
+    # microcosm#454: the donor is qualified before the SIPP donor load and the
+    # ACS fetch, and the same qualifier selects its rows when the transfer
+    # runs. The gates grade the frame the H5 is written from: the one the SSI
+    # disability stage returned, the last stage that replaces the frame. A
+    # waived donor refusal leaves the transfer without the factory, and the
+    # coverage check does not owe the premium.
+    assert build_options.pop("esi_premium_donor_factory") is (
+        None if waived else qualify_esi_premium_donor
+    )
+    coverage_families = {
+        family for families in captured["coverage_plan"].values() for family in families
+    }
+    assert ("source_operator_esi_premiums" in coverage_families) is not waived
+    assert "benefit_participation" in coverage_families
+    assert len(captured["esi_premium_donors"]) == 1
+    assert captured["esi_premium_donors"][0] is base
+    gated_frame, gated_period = captured["staging_esi_premium_gates"]
+    assert gated_frame is ssi_filled
+    assert gated_period == 2024
     assert build_options == {
         "chunksize": 2000,
         "acs_share": 0.4,
@@ -608,6 +760,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "work_disability_inputs": True,
         "income_transfer": True,
         "native_receipt_anchors": True,
+        "wic_take_up": True,
         "semp_covers_partnership_income": True,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,
@@ -624,8 +777,11 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     # the SIPP donor is verified before the ACS fetch, and the SSI disability
     # stage runs after the income gate and before the input-null audit.
     # microcosm#1022: the native FS receipt anchor's gate grades the pooled
-    # frame first, before any stage that replaces the frame.
+    # frame first, before any stage that replaces the frame. microcosm#454:
+    # the ESI premium donor is qualified first, and its gates run last,
+    # before the H5 is written.
     assert order == [
+        "esi_premium_donor",
         "sipp_load",
         "acs_fetch",
         "receipt_anchor_gate",
@@ -635,10 +791,14 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "ssi_disability",
         "ssi_disability_gate",
         "null_audit",
+        "esi_premium_gates",
+        "write",
     ]
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["artifact_kind"] == "nullable_precalibration_staging_h5"
+    assert summary["base"]["location"] == base_location
+    assert summary["engine_versions"] == engine_versions
     assert summary["calibration_applied"] is False
     assert summary["simulation_ready"] is False
     assert summary["simulation_ready_except_calibration"] is True
@@ -708,6 +868,27 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert self_employment["details"]["partnership_on_spouse_rows"] == 0
     assert self_employment["details"]["partnership_on_blank_semp_rows"] == 0
     assert self_employment["details"]["passive_without_line_32_rows"] == 0
+    # A waived build records its red verdicts and the refusal it waived.
+    assert summary["local_esi_premiums"] == {
+        "enforced": not waived,
+        "transferred": not waived,
+        "donor_qualification_waived": waived_refusal if waived else None,
+        "provenance": None,
+        "signal_gate": {
+            "name": "esi_premiums_signal",
+            "passed": not waived,
+            "failures": list(signal_failures),
+            "details": {},
+        },
+        "anchor_gate": {
+            "name": "esi_premiums_anchor",
+            "passed": not waived,
+            "failures": list(anchor_failures),
+            # Strict JSON: a non-finite detail is written as null.
+            "details": {"relative_error": 0.0, "cross_check_ratio": None},
+        },
+    }
+    assert summary["orchestration"]["allow_esi_premium_gaps"] is waived
     assert "pending_engine_input_nulls" not in summary
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
     assert summary["geography_ladder"] == {
@@ -764,6 +945,165 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         },
     }
     assert summary["output"]["sha256"] == hashlib.sha256(b"combined-output").hexdigest()
+
+
+def test_esi_premium_donor_is_qualified_before_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """microcosm#454: a donor without the stage's premium stops the build
+    before the SIPP donor load and the ACS fetch."""
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder.acs_sources, "load_acs_source_manifest", lambda path: _manifest()
+    )
+    monkeypatch.setattr(builder, "_load_base_frame", lambda path: _frame())
+    monkeypatch.setattr(builder, "_sha256", lambda path: "0" * 64)
+    monkeypatch.setattr(
+        builder, "_require_dense_donor_coverage", lambda frame, **kwargs: None
+    )
+    # microcosm#1020/#1022: this donor carries no immigration columns, ASEC
+    # observation role or SSI disability criteria; this test checks the ESI
+    # premium qualification only.
+    monkeypatch.setattr(builder, "_require_immigration_donor", lambda *_a, **_k: None)
+    monkeypatch.setattr(builder, "_require_income_donor", lambda *_a: None)
+    monkeypatch.setattr(builder, "_require_ssi_disability_donor", lambda *_a: None)
+
+    def must_not_load_sipp(*_args, **_kwargs):
+        pytest.fail("the SIPP donor must not load for an unqualified ESI donor")
+
+    def must_not_fetch(*_args, **_kwargs):
+        pytest.fail("source fetch must not run for an unqualified ESI donor")
+
+    monkeypatch.setattr(builder, "_load_ssi_disability_donor", must_not_load_sipp)
+    monkeypatch.setattr(builder.acs_sources, "fetch_acs_pums_sources", must_not_fetch)
+
+    with pytest.raises(SystemExit) as exc:
+        builder.main(["--base-h5", "prestage.h5", "--out-h5", "combined.h5"])
+
+    message = str(exc.value)
+    assert "failed the ESI employer premium qualification" in message
+    assert "employer_sponsored_insurance_premiums" in message
+    assert "meps_esi_premiums stage" in message
+    assert "--allow-esi-premium-gaps" in message
+
+
+def test_esi_premium_donor_refusal_is_a_recorded_waiver_for_a_diagnostic_build() -> (
+    None
+):
+    builder = _load_builder_module()
+
+    waiver = builder._qualify_esi_premium_donor(_frame(), allow_gaps=True)
+
+    assert waiver is not None
+    assert "built without the meps_esi_premiums stage" in waiver
+
+
+def test_local_coverage_plan_owes_the_premium_only_when_it_was_transferred() -> None:
+    builder = _load_builder_module()
+    hours_only = builder.acs_local_transfer_target_families()
+
+    with_premium = builder._local_coverage_plan(esi_premiums=True)
+    without_premium = builder._local_coverage_plan(esi_premiums=False)
+
+    assert with_premium["person"]["source_operator_esi_premiums"] == (
+        "employer_sponsored_insurance_premiums",
+    )
+    assert without_premium == hours_only
+    assert {
+        family: targets
+        for family, targets in with_premium["person"].items()
+        if family != "source_operator_esi_premiums"
+    } == dict(hours_only["person"])
+    # The composition copies: the shared plans are not edited in place.
+    assert builder.acs_local_transfer_target_families() == hours_only
+    assert (
+        "source_operator_esi_premiums"
+        not in (builder.declared_acs_transfer_target_families()["person"])
+    )
+
+
+def _esi_premium_gates(*, signal: tuple[str, ...] = (), anchor: tuple[str, ...] = ()):
+    return lambda frame, *, time_period: (
+        GateResult(name="esi_premiums_signal", passed=not signal, failures=signal),
+        GateResult(name="esi_premiums_anchor", passed=not anchor, failures=anchor),
+    )
+
+
+def test_red_staging_esi_premium_gates_abort_before_export(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(frame=_frame(), provenance={})
+    monkeypatch.setattr(
+        builder,
+        "acs_local_esi_premium_gates",
+        _esi_premium_gates(anchor=("off the anchor",)),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        builder._local_esi_premium_evidence(
+            result, period=2024, waiver=None, allow_gaps=False
+        )
+
+    assert "Local staging ESI employer premium gates failed" in str(exc.value)
+    assert "esi_premiums_anchor: off the anchor" in str(exc.value)
+
+
+def test_waived_staging_esi_premium_gates_are_recorded_red(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_builder_module()
+    result = builder.AcsMultispineResult(frame=_frame(), provenance={})
+    missing = ("person column missing: employer_sponsored_insurance_premiums.",)
+    monkeypatch.setattr(
+        builder,
+        "acs_local_esi_premium_gates",
+        _esi_premium_gates(signal=missing, anchor=missing),
+    )
+
+    evidence = builder._local_esi_premium_evidence(
+        result,
+        period=2024,
+        waiver="Local ESI premium donor lacks the column.",
+        allow_gaps=True,
+    )
+
+    assert evidence["enforced"] is False
+    assert evidence["transferred"] is False
+    assert evidence["donor_qualification_waived"] == (
+        "Local ESI premium donor lacks the column."
+    )
+    assert evidence["signal_gate"]["passed"] is False
+    assert evidence["signal_gate"]["failures"] == list(missing)
+    assert evidence["anchor_gate"]["failures"] == list(missing)
+    json.dumps(evidence, allow_nan=False)
+
+
+def test_staging_esi_premium_evidence_on_a_real_lane_is_strict_json() -> None:
+    """The real gates on the real lane orchestration's result: green, and
+    written to the strict-JSON staging summary as is, the transfer and anchor
+    receipts included (the summary also records the whole provenance)."""
+
+    from test_support.microcosm_build.us_acs_local_esi_premiums import (
+        build_lane,
+        dense_donor,
+        raw_acs,
+    )
+
+    builder = _load_builder_module()
+    result = build_lane(dense_donor(), raw_acs())
+
+    evidence = builder._local_esi_premium_evidence(
+        result, period=2024, waiver=None, allow_gaps=False
+    )
+
+    assert evidence["signal_gate"]["passed"] is True
+    assert evidence["anchor_gate"]["passed"] is True
+    assert evidence["provenance"] is result.provenance["local_esi_premiums"]
+    assert set(evidence["provenance"]) == {"source", "anchor"}
+    json.dumps(evidence, sort_keys=True, allow_nan=False)
+    json.dumps(result.provenance, sort_keys=True, allow_nan=False)
 
 
 def test_immigration_stage_failures_abort_staging(monkeypatch) -> None:
@@ -1819,6 +2159,79 @@ def test_donor_release_identity_verifies_sha_and_pins_provenance(
         folder="releases/populace-us-2024-buildo-sparse-x",
     )
     assert module._donor_release_identity(None, sha) is None
+
+
+@pytest.mark.parametrize(
+    ("release", "build"),
+    [
+        (US_NATIONAL_RELEASE_ID, "populace-us-2024-20261121T010000Z-d596fcb60"),
+        (
+            US_EVIDENCE_RELEASE_ID,
+            "populace-us-2024-evidence-20261121T010000Z-d596fcb60",
+        ),
+    ],
+    ids=["certified", "evidence"],
+)
+def test_a_certified_national_build_is_a_donor_staging_can_name(
+    tmp_path: Path, release: str, build: str
+) -> None:
+    """Certification writes the national build's manifests in the tagged
+    shape and rewrites them into its tier's build folder (microcosm#1570,
+    #1585 item 11). The rewritten release manifest is one staging accepts as
+    --donor-release-manifest, and the reference it records is one the
+    local-area release contract accepts, at either tier."""
+
+    module = _load_builder_module()
+    sha = "a" * 64
+    dataset = US_RELEASE_DATASET_FILES[release]
+    release_dir = tmp_path / "releases" / release
+    release_dir.mkdir(parents=True)
+
+    def entry(path: str, digest: str, kind: str) -> dict[str, str]:
+        # The national release tool's _artifact_entry.
+        return {
+            "kind": kind,
+            "path": path,
+            "repo_id": "policyengine/populace-us",
+            "revision": build,
+            "sha256": digest,
+        }
+
+    (release_dir / "release_manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "dataset_role": "national_default",
+                "is_default": False,
+                "build": {"build_id": build, "built_at": "2026-11-21T01:00:00Z"},
+                "artifacts": {
+                    Path(dataset).stem: entry(dataset, sha, "microdata"),
+                    "calibration": entry("calibration.npz", "b" * 64, "calibration"),
+                    "us_source_coverage": entry(
+                        "us_source_coverage.json", "c" * 64, "diagnostics"
+                    ),
+                },
+            }
+        )
+    )
+    rewrite_release_dir(release_dir, build=build)
+
+    identity = module._donor_release_identity(
+        release_dir / "release_manifest.json", sha
+    )
+
+    assert identity["release"] == release
+    assert identity["build"] == build
+    assert identity["artifact"] == Path(dataset).stem
+    assert "revision" not in identity
+    assert referenced_build(identity) == ReferencedBuild(
+        repo_id="policyengine/populace-us",
+        revision="main",
+        folder=f"releases/{release}/{build}",
+    )
+    failures: list[str] = []
+    _check_local_area_donor_reference(identity, failures)
+    assert failures == []
 
 
 def _build_folder_donor_manifest(sha: str) -> dict:

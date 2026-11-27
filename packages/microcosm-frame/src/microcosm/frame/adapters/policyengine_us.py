@@ -478,6 +478,24 @@ def _installed_policyengine_us_variable_sources() -> _PolicyEngineUSSourceIndex:
     return _PolicyEngineUSSourceIndex(
         definitions=MappingProxyType(definitions),
         consumers=source_index.consumers,
+        helper_consumers=source_index.helper_consumers,
+    )
+
+
+@lru_cache(maxsize=1)
+def _installed_policyengine_us_consumers_following_helpers() -> Mapping[
+    str, tuple[ConsumerReceipt, ...]
+]:
+    """Every reference site, a helper's reads also under its calling variables."""
+
+    source_index = _installed_policyengine_us_variable_sources()
+    merged = {
+        target: set(receipts) for target, receipts in source_index.consumers.items()
+    }
+    for target, receipts in source_index.helper_consumers.items():
+        merged.setdefault(target, set()).update(receipts)
+    return MappingProxyType(
+        {target: tuple(sorted(receipts)) for target, receipts in merged.items()}
     )
 
 
@@ -505,12 +523,24 @@ class PolicyEngineUSVariableMetadataIndex:
     compact metadata. The default system's generated variables come from a
     compact audited snapshot whose source and activation files are fingerprinted;
     an unreviewed wheel version or source change fails closed.
+
+    A read inside a module-level helper function in ``variables/`` belongs to
+    the helper's name, which :meth:`variable_dependency_closure` does not
+    follow, so by default a variable's graph stops where its formula calls
+    such a helper. That is the graph the pool's pinned SSI contract and the
+    US engine ABI lock record. With ``follow_helpers``, each helper read is
+    also a read of every variable whose formula reaches the helper call,
+    directly or through other helpers, at the helper's own reference site.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, follow_helpers: bool = False) -> None:
         source_index = _installed_policyengine_us_variable_sources()
         self._definitions = source_index.definitions
-        self._consumers = source_index.consumers
+        self._consumers = (
+            _installed_policyengine_us_consumers_following_helpers()
+            if follow_helpers
+            else source_index.consumers
+        )
         self._engine_version = distribution("policyengine-us").version
         # Public names the engine migrates to their sources: storable inputs
         # although their classes have formulas.

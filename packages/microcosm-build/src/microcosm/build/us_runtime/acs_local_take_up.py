@@ -27,6 +27,18 @@ ACS-spine rows; donor-spine values and any stored ACS value are kept.
   ``receives_tanf``, the receipt cross-tabs the two on ACS units and reports
   the weighted share of TANF reporters that drew ``False`` (informational,
   never graded).
+- EITC uses the same contract's seeded Bernoulli draw, on tax units, at the
+  National Taxpayer Advocate's rates by number of qualifying children
+  (counted from members' ages), also with no receipt anchor (microcosm#1675).
+  At the engine default every eligible ACS tax unit claimed the credit, and
+  the release's state SOI EITC targets then shrank the weights of eligible
+  ACS units instead of choosing claimants among them, the bias the SSI and
+  Medicaid stage avoids for Medicaid (microcosm#170).
+- WIC take-up is not drawn here: staging draws the ACS rows' decisions with
+  the national generator
+  (:mod:`~microcosm.build.us_runtime.acs_local_wic_take_up`, microcosm#1154).
+  This stage refuses a frame where the column is incomplete, and the gate
+  grades it on both spines.
 
 Three more inputs reached the engine pass missing on every ACS row and took
 an engine default that biases SNAP (microcosm#1022). None needs the engine:
@@ -83,8 +95,8 @@ per-state recalibration of the ASEC lane is not applied; the release's state
 SNAP household targets reweight instead. Other ``takes_up_*`` flags on ACS
 rows are not this stage's: SSI and Medicaid take-up are assigned after an
 engine pre-pass by
-:mod:`~microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up`, and EITC,
-Early Head Start and the rest still ship at the engine default
+:mod:`~microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up`, and Early
+Head Start, the ACA credit and the rest still ship at the engine default
 (microcosm#1022); the gate here does not grade them.
 """
 
@@ -106,6 +118,10 @@ from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
     grade_vehicles_owned,
     head_start_fill,
     vehicles_available_summary,
+)
+from microcosm.build.us_runtime.acs_local_wic_take_up import (
+    US_WIC_TAKE_UP_COLUMN,
+    require_complete_us_wic_take_up,
 )
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.acs_transfer import ASEC_PUF_DONOR_SPINE
@@ -130,6 +146,7 @@ from microcosm.build.us_runtime.snap_take_up import (
 )
 from microcosm.build.us_runtime.take_up import (
     US_TAKE_UP_SHARE_BAND,
+    _eitc_child_count_by_tax_unit,
     _seed_program,
     _stable_unit_draws,
     _units_with_source_identity,
@@ -142,11 +159,13 @@ from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
+    "ACS_LOCAL_EITC_TAKE_UP_ISSUE",
     "ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE",
     "ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS",
     "ACS_LOCAL_TAKE_UP_COLUMNS",
     "ACS_LOCAL_TAKE_UP_GATE_NAME",
     "ACS_VEHICLES_AVAILABLE_RECEIPT",
+    "US_EITC_TAKE_UP_OUTPUT_COLUMN",
     "US_HOUSING_ASSISTANCE_RECEIPT_COLUMN",
     "US_TANF_TAKE_UP_OUTPUT_COLUMN",
     "acs_local_take_up_signal_gate",
@@ -155,6 +174,9 @@ __all__ = [
 
 US_TANF_TAKE_UP_OUTPUT_COLUMN = "takes_up_tanf_if_eligible"
 US_HOUSING_ASSISTANCE_RECEIPT_COLUMN = "receives_housing_assistance"
+#: The tax-unit take-up flag this stage owns on ACS rows (microcosm#1675).
+US_EITC_TAKE_UP_OUTPUT_COLUMN = "takes_up_eitc"
+ACS_LOCAL_EITC_TAKE_UP_ISSUE = "microcosm#1675"
 
 #: The SPM-unit take-up flags this stage owns on ACS rows.
 ACS_LOCAL_TAKE_UP_COLUMNS: tuple[str, ...] = (
@@ -185,6 +207,7 @@ ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS: tuple[tuple[str, str], ...] = (
 ACS_VEHICLES_AVAILABLE_RECEIPT = "vehicles_available"
 
 _ID_COLUMN = "spm_unit_id"
+_TAX_UNIT_ID_COLUMN = "tax_unit_id"
 #: Reported SNAP receipt: the survey anchor (on ACS rows, native household
 #: FS from staging, microcosm#1022; the QRF transfer's before it).
 _REPORTED_SNAP_COLUMN = "receives_snap"
@@ -196,6 +219,13 @@ _SHARE_BANDS: dict[str, tuple[float, float]] = {
     US_SNAP_TAKE_UP_OUTPUT_COLUMN: _SNAP_TAKE_UP_SHARE_BAND,
     US_TANF_TAKE_UP_OUTPUT_COLUMN: US_TAKE_UP_SHARE_BAND[US_TANF_TAKE_UP_OUTPUT_COLUMN],
 }
+#: The weighted ACS share band of the EITC take-up flag the gate grades beside
+#: the SPM-unit flags: the contract's band. WIC take-up has none here: the
+#: national generator draws it at its category rates and staging records the
+#: shares (microcosm#1154).
+_EITC_SHARE_BAND = US_TAKE_UP_SHARE_BAND[US_EITC_TAKE_UP_OUTPUT_COLUMN]
+#: The contract's EITC rate bins by number of qualifying children.
+_EITC_CHILD_BINS = ("0", "1", "2", "3+")
 
 _AGE_COLUMN = "age"
 _DISCRETIONARY_OPERATION = "derive_snap_abawd_discretionary_exemption"
@@ -226,6 +256,8 @@ _ENGINE_DEFAULT_EFFECT = {
     _HOUSING: "no one receives housing assistance",
     _MEDICARE: "every eligible person enrolls in Medicare",
     _HEAD_START: "every Head Start-eligible child aged 3-5 takes Head Start up",
+    US_EITC_TAKE_UP_OUTPUT_COLUMN: "every eligible tax unit claims the EITC",
+    US_WIC_TAKE_UP_COLUMN: "every eligible person takes WIC up",
 }
 
 
@@ -278,13 +310,28 @@ def _covered_age(age: np.ndarray) -> np.ndarray:
     return (age >= low) & (age <= high)
 
 
-def _tanf_program() -> TakeUpProgram:
+def _contract_program(variable: str) -> TakeUpProgram:
     for program in seeded_take_up_programs():
-        if program.variable == US_TANF_TAKE_UP_OUTPUT_COLUMN:
+        if program.variable == variable:
             return program
-    raise ValueError(
-        f"The take-up contract does not seed {US_TANF_TAKE_UP_OUTPUT_COLUMN!r}."
+    raise ValueError(f"The take-up contract does not seed {variable!r}.")
+
+
+def _tanf_program() -> TakeUpProgram:
+    return _contract_program(US_TANF_TAKE_UP_OUTPUT_COLUMN)
+
+
+def _eitc_program() -> TakeUpProgram:
+    return _contract_program(US_EITC_TAKE_UP_OUTPUT_COLUMN)
+
+
+def _eitc_child_bins(frame: Frame) -> np.ndarray:
+    """Each tax unit's contract rate bin ("0", "1", "2", "3+"), in table order."""
+    ids = frame.table("tax_unit")[_TAX_UNIT_ID_COLUMN]
+    counts = (
+        _eitc_child_count_by_tax_unit(frame).reindex(ids).fillna(0).to_numpy(dtype=int)
     )
+    return np.where(counts >= 3, "3+", counts.astype(str))
 
 
 def _filled(values: pd.Series, missing: np.ndarray, assigned: np.ndarray) -> pd.Series:
@@ -575,6 +622,8 @@ def _assignment_sha256(
     units: np.ndarray,
     person: pd.DataFrame,
     persons: np.ndarray,
+    tax_unit: pd.DataFrame,
+    tax_units: np.ndarray,
 ) -> str:
     """Digest of the ACS rows' ids and assigned cells, to prove two passes
     agree. ACS ``VEH`` is not in it: it reaches no engine input."""
@@ -597,6 +646,16 @@ def _assignment_sha256(
                 },
             }
         ),
+        pd.DataFrame(
+            {
+                _TAX_UNIT_ID_COLUMN: tax_unit.loc[
+                    tax_units, _TAX_UNIT_ID_COLUMN
+                ].to_numpy(),
+                US_EITC_TAKE_UP_OUTPUT_COLUMN: _flags(
+                    tax_unit.loc[tax_units, US_EITC_TAKE_UP_OUTPUT_COLUMN]
+                )[0],
+            }
+        ),
     )
     digest = hashlib.sha256()
     for table in selected:
@@ -612,7 +671,10 @@ def with_acs_local_take_up_inputs(
 
     Args:
         frame: The local lane's multispine US frame. Its spm_unit and person
-            tables must carry complete origin tags; spm_unit both take-up
+            and tax_unit tables must carry complete origin tags; tax_unit
+            ``takes_up_eitc``; person a complete boolean
+            ``takes_up_wic_if_eligible``, which staging draws for ACS rows;
+            spm_unit both take-up
             columns, ``receives_snap``, ``receives_housing_assistance`` and
             the transferred ``takes_up_housing_assistance_if_eligible``;
             person ``is_snap_abawd_discretionary_exempt``,
@@ -641,13 +703,16 @@ def with_acs_local_take_up_inputs(
     spm_unit = frame.table("spm_unit")
     person = frame.table("person")
     household = frame.table("household")
+    tax_unit = frame.table("tax_unit")
     tag = spine_column("spm_unit")
     person_tag = spine_column("person")
     household_tag = spine_column("household")
+    tax_tag = spine_column("tax_unit")
     for table, column in (
         (spm_unit, tag),
         (person, person_tag),
         (household, household_tag),
+        (tax_unit, tax_tag),
     ):
         if column not in table or table[column].isna().any():
             raise ValueError(
@@ -663,6 +728,14 @@ def with_acs_local_take_up_inputs(
             f"ACS local take-up requires spm_unit column(s) {absent}; a missing "
             "donor column would reach the engine as universal take-up."
         )
+    if US_EITC_TAKE_UP_OUTPUT_COLUMN not in tax_unit:
+        raise ValueError(
+            "ACS local take-up requires tax_unit column "
+            f"{US_EITC_TAKE_UP_OUTPUT_COLUMN!r}; a missing donor column would "
+            "reach the engine as universal take-up."
+        )
+    # microcosm#1154: staging draws the ACS rows' WIC decisions; never filled.
+    require_complete_us_wic_take_up(person, what="ACS local take-up")
     absent = [
         f"{entity}.{column}"
         for entity, columns in (
@@ -701,6 +774,7 @@ def with_acs_local_take_up_inputs(
         household[household_tag].eq(ACS_2024_1YR_SPINE).to_numpy(dtype=bool)
     )
     donor_persons = person[person_tag].eq(ASEC_PUF_DONOR_SPINE).to_numpy(dtype=bool)
+    acs_tax_units = tax_unit[tax_tag].eq(ACS_2024_1YR_SPINE).to_numpy(dtype=bool)
     units = _units_with_source_identity(frame, "spm_unit")
     if not np.array_equal(units[_ID_COLUMN].to_numpy(), spm_unit[_ID_COLUMN]):
         raise ValueError("SPM-unit source identity does not align with the table.")
@@ -742,6 +816,17 @@ def with_acs_local_take_up_inputs(
         raise ValueError("Seeded TANF take-up does not align with the spm_unit table.")
     tanf_assigned = np.asarray(seeded[US_TANF_TAKE_UP_OUTPUT_COLUMN], dtype=bool)
     tanf_missing = acs & ~_flags(spm_unit[US_TANF_TAKE_UP_OUTPUT_COLUMN])[1]
+
+    # EITC (microcosm#1675): the contract's seeded Bernoulli draw by number of
+    # qualifying children, no receipt anchor, as for TANF.
+    eitc_program = _eitc_program()
+    eitc_seeded, _ = _seed_program(frame, eitc_program, seed=int(seed))
+    if not np.array_equal(
+        eitc_seeded[_TAX_UNIT_ID_COLUMN], tax_unit[_TAX_UNIT_ID_COLUMN].to_numpy()
+    ):
+        raise ValueError("Seeded EITC take-up does not align with the tax_unit table.")
+    eitc_assigned = np.asarray(eitc_seeded[US_EITC_TAKE_UP_OUTPUT_COLUMN], dtype=bool)
+    eitc_missing = acs_tax_units & ~_flags(tax_unit[US_EITC_TAKE_UP_OUTPUT_COLUMN])[1]
 
     # microcosm#1022: the engine-free fills.
     discretionary_missing, discretionary_assigned, discretionary = _discretionary_fill(
@@ -792,6 +877,12 @@ def with_acs_local_take_up_inputs(
         ):
             updated[column] = _filled(person[column], missing, assigned)
         replaced["person"] = updated
+    if eitc_missing.any():
+        updated = tax_unit.copy()
+        updated[US_EITC_TAKE_UP_OUTPUT_COLUMN] = _filled(
+            tax_unit[US_EITC_TAKE_UP_OUTPUT_COLUMN], eitc_missing, eitc_assigned
+        )
+        replaced["tax_unit"] = updated
     if replaced:
         result = Frame(
             {
@@ -806,7 +897,13 @@ def with_acs_local_take_up_inputs(
         )
     final = result.table("spm_unit")
     final_person = result.table("person")
+    final_tax_unit = result.table("tax_unit")
     acs_weights = weights[acs]
+    tax_weights = np.asarray(
+        result.resolve_weights("tax_unit").values, dtype=np.float64
+    )
+    eitc_flags = _flags(final_tax_unit[US_EITC_TAKE_UP_OUTPUT_COLUMN])[0]
+    child_bins = _eitc_child_bins(result)
     person_weights = np.asarray(
         result.resolve_weights("person").values, dtype=np.float64
     )
@@ -839,6 +936,7 @@ def with_acs_local_take_up_inputs(
         "seed": int(seed),
         "spine": ACS_2024_1YR_SPINE,
         "acs_spm_units": int(acs.sum()),
+        "acs_tax_units": int(acs_tax_units.sum()),
         "programs": {
             US_SNAP_TAKE_UP_OUTPUT_COLUMN: {
                 "rate": rate,
@@ -866,6 +964,31 @@ def with_acs_local_take_up_inputs(
                 ),
                 "receipt_crosstab": _tanf_receipt_crosstab(final.loc[acs], acs_weights),
             },
+            US_EITC_TAKE_UP_OUTPUT_COLUMN: {
+                "issue": ACS_LOCAL_EITC_TAKE_UP_ISSUE,
+                "entity": "tax_unit",
+                "rates_by_num_children": eitc_program.rate.get(
+                    "values_by_num_children"
+                ),
+                "rate_source": eitc_program.rate.get("source"),
+                "filled_rows": int(eitc_missing.sum()),
+                "preserved_rows": int((acs_tax_units & ~eitc_missing).sum()),
+                "weighted_take_up_share": _share(
+                    tax_weights[acs_tax_units], eitc_flags[acs_tax_units]
+                ),
+                "by_num_children": {
+                    label: {
+                        "acs_tax_units": int(
+                            (acs_tax_units & (child_bins == label)).sum()
+                        ),
+                        "weighted_take_up_share": _share(
+                            tax_weights[acs_tax_units & (child_bins == label)],
+                            eitc_flags[acs_tax_units & (child_bins == label)],
+                        ),
+                    }
+                    for label in _EITC_CHILD_BINS
+                },
+            },
         },
         "engine_free_fills": {
             "issue": ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE,
@@ -879,7 +1002,9 @@ def with_acs_local_take_up_inputs(
             },
             ACS_VEHICLES_AVAILABLE_RECEIPT: vehicles_available,
         },
-        "assigned_sha256": _assignment_sha256(final, acs, final_person, acs_persons),
+        "assigned_sha256": _assignment_sha256(
+            final, acs, final_person, acs_persons, final_tax_unit, acs_tax_units
+        ),
     }
     return result, receipt
 
@@ -1125,6 +1250,53 @@ def _grade_medicare(
     return failures
 
 
+def _grade_take_up_flag(
+    table: pd.DataFrame,
+    selected: np.ndarray,
+    column: str,
+    weights: np.ndarray,
+    band: tuple[float, float] | None,
+    *,
+    entity: str,
+    graded: bool,
+    columns: dict[str, object],
+) -> list[str]:
+    """Grade one tax-unit or person take-up flag on one spine's rows.
+
+    ``band`` is the ACS spine's weighted share band, or ``None`` for none.
+    """
+    if column not in table:
+        return [f"missing {entity}.{column}."]
+    if not selected.any():
+        return [f"no {entity} rows."]
+    flags, present = _flags(table.loc[selected, column])
+    share = _share(weights[selected], flags)
+    unique = len(np.unique(flags[present]))
+    columns[column] = {
+        "entity": entity,
+        "missing_rows": int((~present).sum()),
+        "unique_values": unique,
+        "take_up_share": share,
+        "share_band": None if band is None else list(band),
+    }
+    failures: list[str] = []
+    if not present.all():
+        failures.append(
+            f"{column} has missing rows; an engine-default fill means "
+            f"{_ENGINE_DEFAULT_EFFECT[column]}."
+        )
+    if unique < 2:
+        failures.append(
+            f"{column} is constant; universal take-up is the engine-default landmine."
+        )
+    if graded and band is not None and not (band[0] <= share <= band[1]):
+        failures.append(
+            f"{column} take-up share {share:.3f} outside plausibility band "
+            f"[{band[0]}, {band[1]}]."
+        )
+    return failures
+
+
 def acs_local_take_up_signal_gate(frame: Frame) -> GateResult:
     """Require complete, anchored, plausible ACS-lane runtime inputs per origin.
 
@@ -1139,7 +1311,11 @@ def acs_local_take_up_signal_gate(frame: Frame) -> GateResult:
     (``False`` in group quarters), Medicare take-up equal to ``HINS3 == 1``
     with a high share at 65+ (blank and invalid ``HINS3`` cells are counted
     in the ACS detail but not graded), and Head Start take-up only at ages
-    3-5, at a share around the donor spine's. The owned vehicle count must be
+    3-5, at a share around the donor spine's. EITC take-up (tax unit,
+    microcosm#1675) and WIC take-up (person, microcosm#1154) are held to the
+    same completeness and variation on both spines, and EITC take-up on the
+    ACS spine to the contract's band; WIC's category shares are staging's
+    receipt, drawn by the national generator. The owned vehicle count must be
     complete and vary on the donor spine and stay at the reviewed default on
     the ACS spine (missing, or 0 once filled): ACS ``VEH`` counts vehicles
     available, not owned, and is recorded beside it as information only
@@ -1151,9 +1327,11 @@ def acs_local_take_up_signal_gate(frame: Frame) -> GateResult:
     spm_unit = frame.table("spm_unit")
     person = frame.table("person")
     household = frame.table("household")
+    tax_unit = frame.table("tax_unit")
     tag = spine_column("spm_unit")
     person_tag = spine_column("person")
     household_tag = spine_column("household")
+    tax_tag = spine_column("tax_unit")
     failures: list[str] = []
     by_spine: dict[str, object] = {}
     if tag not in spm_unit or spm_unit[tag].isna().any():
@@ -1162,12 +1340,15 @@ def acs_local_take_up_signal_gate(frame: Frame) -> GateResult:
         failures.append(f"Missing person origin tags: {person_tag}.")
     elif household_tag not in household or household[household_tag].isna().any():
         failures.append(f"Missing household origin tags: {household_tag}.")
+    elif tax_tag not in tax_unit or tax_unit[tax_tag].isna().any():
+        failures.append(f"Missing tax-unit origin tags: {tax_tag}.")
     else:
         weights = np.asarray(frame.resolve_weights("spm_unit").values, dtype=float)
         person_weights = np.asarray(frame.resolve_weights("person").values, dtype=float)
         household_weights = np.asarray(
             frame.resolve_weights("household").values, dtype=float
         )
+        tax_weights = np.asarray(frame.resolve_weights("tax_unit").values, dtype=float)
         head_start_share: float | None = None
         if _HEAD_START in person and _AGE_COLUMN in person:
             try:
@@ -1253,11 +1434,43 @@ def acs_local_take_up_signal_gate(frame: Frame) -> GateResult:
                     columns=columns,
                 )
             ]
+            for table, entity, selected_rows, entity_weights, column, band in (
+                (
+                    tax_unit,
+                    "tax_unit",
+                    tax_unit[tax_tag].eq(spine).to_numpy(dtype=bool),
+                    tax_weights,
+                    US_EITC_TAKE_UP_OUTPUT_COLUMN,
+                    _EITC_SHARE_BAND,
+                ),
+                (
+                    person,
+                    "person",
+                    person[person_tag].eq(spine).to_numpy(dtype=bool),
+                    person_weights,
+                    US_WIC_TAKE_UP_COLUMN,
+                    None,
+                ),
+            ):
+                failures += [
+                    f"{spine}: {failure}"
+                    for failure in _grade_take_up_flag(
+                        table,
+                        selected_rows,
+                        column,
+                        entity_weights,
+                        band,
+                        entity=entity,
+                        graded=graded,
+                        columns=columns,
+                    )
+                ]
         known = {ASEC_PUF_DONOR_SPINE, ACS_2024_1YR_SPINE}
         if (
             set(spm_unit[tag].unique()) - known
             or set(person[person_tag].unique()) - known
             or set(household[household_tag].unique()) - known
+            or set(tax_unit[tax_tag].unique()) - known
         ):
             failures.append("Local take-up origin tags contain an unsupported spine.")
     return GateResult(

@@ -2119,6 +2119,29 @@ def unsupported_counties(households, county_populations, *, county_column):
     )
 
 
+def counties_without_agi(
+    households, household_agi, county_populations, *, county_column=COUNTY_COLUMN
+):
+    """Counties with support whose households all store an AGI of 0.
+
+    Such a county's AGI row is empty, and ``attach_surface`` refuses it after
+    the engine pass (microcosm#1661). ``household_agi`` is in ``households``
+    order; R2 stores the household measures as float32.
+    """
+    codes = county_codes(households, county_column=county_column)
+    universe = support_universe(households)
+    nonzero = np.asarray(household_agi, dtype=np.float32) != 0
+    supported = {int(code) for code in np.unique(codes[universe])}
+    with_agi = {int(code) for code in np.unique(codes[nonzero])}
+    return sorted(
+        int(code)
+        for code, population in county_populations.items()
+        if float(population) > 0
+        and int(code) in supported
+        and int(code) not in with_agi
+    )
+
+
 def plan_minimum_support(
     households,
     county_populations,
@@ -2127,6 +2150,7 @@ def plan_minimum_support(
     county_column=COUNTY_COLUMN,
     per_county=DEFAULT_COUNTY_MIN_SUPPORT,
     key=COUNTY_MIN_SUPPORT_KEY,
+    household_agi=None,
 ):
     """Choose ``per_county`` donor households for each unsupported county.
 
@@ -2140,6 +2164,22 @@ def plan_minimum_support(
     move or none do (the county is then still unsupported and named).
     Counties with support are never chosen; state and PUMA never change.
     Returns ``(moves, receipt)``.
+
+    With ``household_agi`` (each household's AGI as the SOI materializer
+    stores it, in ``households`` order) the step also gives every county's
+    SOI rows support (microcosm#1661). A county whose households all store an
+    AGI of 0 gets an empty county AGI row, which ``attach_surface`` refuses
+    after the engine pass. In the first pass, when none of a county's
+    ``per_county`` picks has a positive AGI, the last pick is swapped for the
+    next eligible household in rank order that has one (its move carries
+    ``"reason": "positive_agi"``), so the other picks keep their PUMA's AGI
+    mix; ``soi_support["first_pass"]`` reports the movers' share with a
+    positive AGI beside their PUMAs' share. After the first pass, each county
+    with support and no household whose AGI is nonzero receives
+    ``per_county`` more households, chosen as above but with a positive AGI
+    (``soi_support`` in the receipt; their moves carry
+    ``"reason": "soi_support"``). No move leaves a donor county without a
+    household whose AGI is nonzero. Without it, nothing differs from before.
     """
     if per_county < 0:
         raise ValueError("Minimum county support must be nonnegative.")
@@ -2151,6 +2191,17 @@ def plan_minimum_support(
     unsupported = unsupported_counties(
         households, county_populations, county_column=county_column
     )
+    agi = None
+    if household_agi is not None:
+        # R2 stores household measures as float32 and keeps only nonzeros.
+        agi = np.asarray(household_agi, dtype=np.float32)
+        if agi.shape != (len(households),) or not np.isfinite(agi).all():
+            raise ValueError(
+                "household_agi must give one finite AGI per household, in the "
+                "household table's order."
+            )
+        nonzero = agi != 0
+        positive = agi > 0
     receipt = {
         "households_per_county": int(per_county),
         "key": key,
@@ -2166,7 +2217,49 @@ def plan_minimum_support(
         "counties": {},
         "moves": [],
     }
-    if per_county == 0 or not unsupported:
+    if agi is not None:
+        receipt["soi_support"] = {
+            "issue": "microcosm#1661",
+            "criterion": (
+                "a county with a household in the household universe and no "
+                "household whose AGI, as R2 stores it (float32), is nonzero"
+            ),
+            "donors": (
+                "eligible as above, with a positive AGI; the donor county "
+                "keeps a household with a nonzero AGI"
+            ),
+            "first_pass": {
+                "rule": (
+                    "the households_per_county eligible households first in "
+                    "rank order; when none of them has a positive AGI, the "
+                    "last is swapped for the next eligible household in rank "
+                    'order that has one (its move carries "reason": '
+                    '"positive_agi")'
+                ),
+                "movers": 0,
+                "movers_with_positive_agi": 0,
+                "mover_share_with_positive_agi": None,
+                "puma_share_with_positive_agi": None,
+                "puma_share_basis": (
+                    "for each first-pass mover, the share of its PUMA's "
+                    "eligible households with a positive AGI before any "
+                    "move, averaged over the movers"
+                ),
+                "swapped_counties": [],
+            },
+            "needed": [],
+            "counties": {},
+            "still_without_agi": [],
+        }
+    if per_county == 0 or (
+        not unsupported
+        and (
+            agi is None
+            or not counties_without_agi(
+                households, agi, county_populations, county_column=county_column
+            )
+        )
+    ):
         receipt["moves_sha256"] = _moves_digest([])
         return [], receipt
     pumas = _household_pumas(households)
@@ -2195,9 +2288,215 @@ def plan_minimum_support(
     counts = defaultdict(int)
     for code in codes[universe]:
         counts[int(code)] += 1
+    # The AGI floor counts every household, as the county's SOI row does.
+    with_agi = defaultdict(int)
+    if agi is not None:
+        for code in codes[nonzero]:
+            with_agi[int(code)] += 1
+
+    def keeps_agi(position, donor, taken):
+        """Whether moving ``position`` leaves ``donor`` an AGI household."""
+        if agi is None or not nonzero[position]:
+            return True
+        pending = sum(
+            1
+            for taken_position, from_county, _r in taken
+            if from_county == donor and nonzero[taken_position]
+        )
+        return with_agi[donor] - pending - 1 >= 1
+
+    def record_move(position, donor, county, puma, reason=None):
+        counts[donor] -= 1
+        counts[county] += 1
+        if agi is not None and nonzero[position]:
+            with_agi[donor] -= 1
+            with_agi[county] += 1
+        moved[position] = True
+        household_id = ids[position]
+        move = {
+            "household_id": (
+                int(household_id)
+                if isinstance(household_id, (int, np.integer))
+                else str(household_id)
+            ),
+            "from_county": f"{donor:05d}",
+            "to_county": f"{county:05d}",
+            "puma": f"{puma:07d}",
+            "rank": support_rank(key, county, household_id),
+        }
+        if reason is not None:
+            move["reason"] = reason
+        moves.append(move)
+
     moved = np.zeros(len(households), dtype=bool)
     moves = []
+
+    def visit(county, order, tried):
+        """Eligible unmoved households of ``county``'s PUMAs, in rank order.
+
+        PUMAs come largest ladder overlap first, each one's households in
+        :func:`support_rank` order; ``tried`` names the PUMAs reached.
+        """
+        for puma, _population in order:
+            if puma // 100_000 != county // 1000:
+                raise ValueError(
+                    f"Ladder overlap puts county {county:05d} in PUMA {puma:07d} "
+                    "of another state."
+                )
+            tried.append(f"{puma:07d}")
+            positions = by_puma.get(puma, np.empty(0, dtype=np.int64))
+            for position in sorted(
+                (
+                    position
+                    for position in positions.tolist()
+                    if eligible[position] and not moved[position]
+                ),
+                key=lambda position: (
+                    support_rank(key, county, ids[position]),
+                    position,
+                ),
+            ):
+                yield puma, position
+
+    def can_take(position, donor, taken):
+        """Whether ``donor`` keeps both floors once ``position`` moves too."""
+        pending = sum(1 for _p, from_county, _r in taken if from_county == donor)
+        if counts[donor] - pending - 1 < per_county:
+            return False
+        return keeps_agi(position, donor, taken)
+
+    first_movers = []
     for county in unsupported:
+        order = overlaps.get(county, [])
+        tried, taken = [], []
+        candidates = visit(county, order, tried)
+        for puma, position in candidates:
+            donor = int(codes[position])
+            if can_take(position, donor, taken):
+                taken.append((position, donor, puma))
+                if len(taken) == per_county:
+                    break
+        swapped = None
+        if (
+            agi is not None
+            and len(taken) == per_county
+            and not any(positive[position] for position, _d, _p in taken)
+        ):
+            # The county's AGI row needs a household with an AGI. The last
+            # pick gives way to the next one in rank order that has one, and
+            # the other picks keep their PUMA's AGI mix.
+            kept = taken[:-1]
+            for puma, position in candidates:
+                donor = int(codes[position])
+                if positive[position] and can_take(position, donor, kept):
+                    taken = [*kept, (position, donor, puma)]
+                    swapped = position
+                    break
+        status = "moved" if len(taken) == per_county else "insufficient_eligible_donors"
+        if status == "moved":
+            for position, donor, puma in taken:
+                record_move(
+                    position,
+                    donor,
+                    county,
+                    puma,
+                    reason="positive_agi" if position == swapped else None,
+                )
+                first_movers.append((position, puma))
+        receipt["counties"][f"{county:05d}"] = {
+            "ladder_population": float(county_populations[county]),
+            "pumas_by_overlap": [f"{puma:07d}" for puma, _population in order],
+            "pumas_tried": tried,
+            "moved": per_county if status == "moved" else 0,
+            "status": status,
+        }
+        if swapped is not None:
+            receipt["soi_support"]["first_pass"]["swapped_counties"].append(
+                f"{county:05d}"
+            )
+    if agi is not None:
+        _report_first_pass_agi(
+            receipt["soi_support"]["first_pass"],
+            first_movers,
+            positive=positive,
+            eligible=eligible,
+            by_puma=by_puma,
+        )
+        _plan_soi_support(
+            receipt["soi_support"],
+            county_populations,
+            overlaps,
+            per_county=per_county,
+            key=key,
+            ids=ids,
+            by_puma=by_puma,
+            eligible=eligible & positive,
+            moved=moved,
+            codes=codes,
+            counts=counts,
+            with_agi=with_agi,
+            keeps_agi=keeps_agi,
+            record_move=record_move,
+        )
+    receipt["moves"] = moves
+    receipt["moves_sha256"] = _moves_digest(moves)
+    receipt["moved_counties"] = sorted({move["to_county"] for move in moves})
+    return moves, receipt
+
+
+def _report_first_pass_agi(report, movers, *, positive, eligible, by_puma):
+    """Fill ``soi_support["first_pass"]``: the first-pass movers' share with a
+    positive AGI beside the share their PUMAs would give a random draw.
+
+    ``movers`` is ``[(position, puma), ...]``. A PUMA's share is that of its
+    eligible households (``eligible`` before any move) with a positive AGI.
+    """
+    shares = {}
+    for _position, puma in movers:
+        if puma not in shares:
+            pool = by_puma[puma][eligible[by_puma[puma]]]
+            shares[puma] = float(positive[pool].mean()) if len(pool) else 0.0
+    count = len(movers)
+    with_positive = sum(bool(positive[position]) for position, _puma in movers)
+    report["movers"] = count
+    report["movers_with_positive_agi"] = with_positive
+    if count:
+        report["mover_share_with_positive_agi"] = round(with_positive / count, 6)
+        report["puma_share_with_positive_agi"] = round(
+            sum(shares[puma] for _position, puma in movers) / count, 6
+        )
+
+
+def _plan_soi_support(
+    receipt,
+    county_populations,
+    overlaps,
+    *,
+    per_county,
+    key,
+    ids,
+    by_puma,
+    eligible,
+    moved,
+    codes,
+    counts,
+    with_agi,
+    keeps_agi,
+    record_move,
+):
+    """The SOI support pass of :func:`plan_minimum_support` (microcosm#1661).
+
+    ``eligible`` already requires a positive AGI. Each county with support
+    and no household whose AGI is nonzero gets exactly ``per_county`` donors
+    from its PUMAs, largest ladder overlap first, or none.
+    """
+    needed = sorted(
+        int(code)
+        for code, population in county_populations.items()
+        if float(population) > 0 and counts[int(code)] > 0 and not with_agi[int(code)]
+    )
+    receipt["needed"] = [f"{code:05d}" for code in needed]
+    for county in needed:
         order = overlaps.get(county, [])
         tried, taken = [], []
         for puma, _population in order:
@@ -2212,7 +2511,9 @@ def plan_minimum_support(
                 (
                     position
                     for position in positions.tolist()
-                    if eligible[position] and not moved[position]
+                    if eligible[position]
+                    and not moved[position]
+                    and int(codes[position]) != county
                 ),
                 key=lambda position: (
                     support_rank(key, county, ids[position]),
@@ -2228,40 +2529,33 @@ def plan_minimum_support(
                 )
                 if counts[donor] - pending - 1 < per_county:
                     continue
+                if not keeps_agi(position, donor, taken):
+                    continue
                 taken.append((position, donor, puma))
             if len(taken) == per_county:
                 break
         status = "moved" if len(taken) == per_county else "insufficient_eligible_donors"
+        before = counts[county]
         if status == "moved":
             for position, donor, puma in taken:
-                counts[donor] -= 1
-                counts[county] += 1
-                moved[position] = True
-                household_id = ids[position]
-                moves.append(
-                    {
-                        "household_id": (
-                            int(household_id)
-                            if isinstance(household_id, (int, np.integer))
-                            else str(household_id)
-                        ),
-                        "from_county": f"{donor:05d}",
-                        "to_county": f"{county:05d}",
-                        "puma": f"{puma:07d}",
-                        "rank": support_rank(key, county, household_id),
-                    }
-                )
+                record_move(position, donor, county, puma, reason="soi_support")
         receipt["counties"][f"{county:05d}"] = {
-            "ladder_population": float(county_populations[county]),
+            "supporting_households_before": int(before),
             "pumas_by_overlap": [f"{puma:07d}" for puma, _population in order],
             "pumas_tried": tried,
             "moved": per_county if status == "moved" else 0,
             "status": status,
         }
-    receipt["moves"] = moves
-    receipt["moves_sha256"] = _moves_digest(moves)
-    receipt["moved_counties"] = sorted({move["to_county"] for move in moves})
-    return moves, receipt
+    receipt["still_without_agi"] = [
+        f"{code:05d}"
+        for code in sorted(
+            int(code)
+            for code, population in county_populations.items()
+            if float(population) > 0
+            and counts[int(code)] > 0
+            and not with_agi[int(code)]
+        )
+    ]
 
 
 def _county_value(template, code):
@@ -2524,10 +2818,15 @@ def prepare_run(args, geographies, populations, *, surface=None):
             raise SystemExit(str(error)) from error
 
 
-def check_support(frame, populations, args):
+def check_support(frame, populations, args, *, household_agi=None):
     """Apply minimum support, write county_support.json, refuse what remains.
 
     Returns the frame, with county columns rewritten for any moved household.
+    ``household_agi`` (each household's AGI as the SOI materializer stores
+    it, in the household table's order) turns on the SOI support pass of
+    :func:`plan_minimum_support`, and a county that still has households but
+    none with a nonzero AGI is refused here, before the engine pass, rather
+    than by ``attach_surface`` after it (microcosm#1661).
     """
     if "county" not in populations:
         return frame
@@ -2541,13 +2840,23 @@ def check_support(frame, populations, args):
         needed = unsupported_counties(
             households, populations["county"], county_column=column
         )
-        overlaps = county_puma_overlaps(args.ladder, column) if needed else {}
+        without_agi = (
+            counties_without_agi(
+                households, household_agi, populations["county"], county_column=column
+            )
+            if household_agi is not None
+            else []
+        )
+        overlaps = (
+            county_puma_overlaps(args.ladder, column) if needed or without_agi else {}
+        )
         moves, support = plan_minimum_support(
             households,
             populations["county"],
             overlaps,
             county_column=column,
             per_county=per_county,
+            household_agi=household_agi,
         )
         if moves:
             frame = with_household_table(
@@ -2570,6 +2879,12 @@ def check_support(frame, populations, args):
             "moved_counties": support.get("moved_counties", []),
             "rewritten_columns": support["rewritten_columns"],
         }
+        if "soi_support" in support:
+            args.county_support_receipt["soi_supported_counties"] = sorted(
+                county
+                for county, record in support["soi_support"]["counties"].items()
+                if record["status"] == "moved"
+            )
     # A state_county run trains an ACS households row for every county, which
     # only household-universe records support; refuse a county with group
     # quarters alone here, before the engine pass, not after it.
@@ -2600,6 +2915,14 @@ def check_support(frame, populations, args):
         raise SystemExit(f"Households name counties outside the ladder: {unknown}.")
     smoke = bool(args.allow_partial_geography and args.sample_fraction < 1)
     require_support(report["unsupported_counties"], capped_smoke=smoke)
+    without_agi = ((support or {}).get("soi_support") or {}).get("still_without_agi")
+    if without_agi and not smoke:
+        raise SystemExit(
+            "County cells have households but none with a nonzero AGI after "
+            f"minimum support: {without_agi}. Their county AGI rows would be "
+            "empty, which the run refuses after the engine pass; refusing "
+            "before it (microcosm#1661)."
+        )
     return frame
 
 

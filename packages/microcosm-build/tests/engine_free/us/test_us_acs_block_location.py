@@ -854,9 +854,9 @@ def _run_block_v1_main(
     monkeypatch.setattr(builder, "_load_base_frame", lambda path: base)
     # The donor checks and local-input stages main gained since September
     # (SPM role, immigration, income, SIPP SSI disability, work experience,
-    # receipt anchors, self-employment identity) pass through: these tests
-    # exercise the location wiring, and test_us_acs_multispine_legacy_builder
-    # covers those stages.
+    # receipt anchors, self-employment identity, ESI employer premium) pass
+    # through: these tests exercise the location wiring, and
+    # test_us_acs_multispine_legacy_builder covers those stages.
     for name in (
         "_require_donor_spm_independence_role",
         "_require_immigration_donor",
@@ -864,8 +864,13 @@ def _run_block_v1_main(
         "_require_ssi_disability_donor",
         "_require_donor_work_experience",
         "_require_pooled_spm_independence_role",
+        "_qualify_esi_premium_donor",
     ):
         monkeypatch.setattr(builder, name, lambda *a, **k: None)
+    monkeypatch.setattr(
+        builder, "acs_local_esi_premium_transfer_target_families", lambda: {}
+    )
+    monkeypatch.setattr(builder, "_local_esi_premium_evidence", lambda result, **k: {})
     monkeypatch.setattr(
         builder, "_load_ssi_disability_donor", lambda *a, **k: (None, {})
     )
@@ -985,12 +990,14 @@ def test__legacy_tool__block_v1_main_records_rule_seed_gate_and_attributes(
         "work_disability_inputs": True,
         "income_transfer": True,
         "native_receipt_anchors": True,
+        "wic_take_up": True,
         "drop_group_quarters_children": False,
         "location_rule": "block_v1",
         "location_seed": 5,
         "location_clones": 1,
         "donor_location_rule": "block_v1",
         "semp_covers_partnership_income": True,
+        "esi_premium_donor_factory": builder.prepare_acs_local_esi_premium_donor,
     }
 
     location = summary["household_location"]

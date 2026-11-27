@@ -253,6 +253,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Exact source-universe validator/receipt owner; no population treatment.
         "acs_income_universe.py",
         "acs_inputs.py",
+        # Legacy local-lane employer premium (#454): donor qualification, a
+        # one-family transfer plan and narrow views for the pool anchor and
+        # the two ESI gates. It selects donors by support role and tells the
+        # rows apart by whether the raw ASEC fields are present, never by a
+        # spine or support-channel column, so it owns no provenance boundary.
+        "acs_local_esi_premiums.py",
         # Legacy source-hours completion and release gate; outside the registry.
         "acs_local_hours.py",
         # Legacy local-lane take-up fill and release gate; outside the registry.
@@ -279,6 +285,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # receipt and grade helpers (#1022); tag-free, the take-up stage
         # passes the spine masks. Outside the registry.
         "acs_local_vehicles_head_start.py",
+        # Legacy local-lane WIC take-up draw on the ACS-only frame before
+        # pooling, and its completeness check (#1154); tag-free: it runs before
+        # origin tags exist, and the take-up gate grades both spines. Outside
+        # the registry.
+        "acs_local_wic_take_up.py",
         # Reviewed-fill consumer register loader, dependency walk and release
         # gate (#1022); reads fill manifests and the packaged register, never a
         # frame. Outside the registry.
@@ -344,8 +355,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "engine_lifecycle.py",
         # MEPS-IC employer-premium input (#454): a base-builder pre-clone
         # stage keyed on restored ASEC coverage fields,
-        # not yet a multispine pool operator. Reads no spine or support-channel
-        # column and remains subject to the all-runtime source-identity scan.
+        # not yet a multispine pool operator. Its gates also grade frames that
+        # mix CPS rows with rows a transfer filled (allow_transferred_rows,
+        # d2283), telling them apart by whether the raw ASEC fields are
+        # present. Reads no spine or support-channel column and remains
+        # subject to the all-runtime source-identity scan.
         "esi_premiums.py",
         "exact_k_ladder.py",  # Calibration/selection seam; no source treatment.
         "fiscal_targets.py",
@@ -3555,12 +3569,13 @@ def test_acs_local_hours_provenance_is_limited_to_reviewed_boundaries() -> None:
 def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> None:
     """Pin the ACS-row take-up fill and per-origin take-up gate (#1019).
 
-    Each boundary reads exactly three origin tags, spm_unit, person and
-    household: the engine-free fills (#1022) are person- and SPM-unit-level,
-    and the ACS VEH availability receipt and owned-count grade are
-    household-level. Their helpers, including the tag-free
-    acs_local_vehicles_head_start module, receive the resulting masks and
-    read no tag themselves.
+    Each boundary reads exactly four origin tags, spm_unit, person, household
+    and tax_unit: the engine-free fills (#1022) are person- and SPM-unit-level,
+    the ACS VEH availability receipt and owned-count grade are
+    household-level, and EITC take-up (#1675) is tax-unit-level. Their
+    helpers, including the tag-free acs_local_vehicles_head_start module,
+    receive the resulting masks and read no tag themselves, and the WIC
+    take-up module (#1154) runs before pooling, so it reads none either.
     """
 
     source = (_US_RUNTIME / "acs_local_take_up.py").read_text()
@@ -3570,7 +3585,7 @@ def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> Non
     )
     assert tuple(
         sorted(caller for caller, _line in _function_callers(source, "spine_column"))
-    ) == tuple(sorted(boundaries * 3))
+    ) == tuple(sorted(boundaries * 4))
     tree = ast.parse(source)
     remaining = ast.Module(
         body=[
@@ -3584,9 +3599,10 @@ def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> Non
         type_ignores=[],
     )
     assert not _source_spine_accesses(ast.unparse(remaining))
-    helpers = (_US_RUNTIME / "acs_local_vehicles_head_start.py").read_text()
-    assert not _function_callers(helpers, "spine_column")
-    assert not _source_spine_accesses(helpers)
+    for module in ("acs_local_vehicles_head_start.py", "acs_local_wic_take_up.py"):
+        helpers = (_US_RUNTIME / module).read_text()
+        assert not _function_callers(helpers, "spine_column"), module
+        assert not _source_spine_accesses(helpers), module
 
 
 def test_acs_local_immigration_provenance_is_limited_to_reviewed_boundaries() -> None:

@@ -27,9 +27,11 @@ into any county the staging frame leaves empty.
   ACS validation families never enter the loss, the target registry, the
   matrix or the weights.
 - Minimum support never moves a household into a county that already has
-  one, never changes a household's state or PUMA, rewrites only the county
-  columns, moves exactly the configured number of households into each
-  county it fills (or none), and is deterministic.
+  one, except to give a county's SOI rows support (below), never changes a
+  household's state or PUMA, rewrites only the county columns, moves exactly
+  the configured number of households into each county it fills (or none),
+  never leaves a donor county without a household whose AGI is nonzero, and
+  is deterministic.
 - Kalawao (`15005`) shares one declared SOI cell with Maui (`15009`) for the
   SOI families only; any other county missing from SOI is refused.
 - Reliability reports show supporting rows, distinct source households, Kish
@@ -250,6 +252,28 @@ moves' SHA256; the export stage re-applies the recorded moves to the reloaded
 staging frame and refuses moves that no longer match. Filled counties are
 graded normally with status `minimum_support`.
 
+On a county SOI surface (`--soi-mode state_county` with county geography and
+`--county-min-support` above 0) the step also gives every county's SOI rows
+support (microcosm#1661). A county whose households all store an AGI of 0
+gets an empty county AGI row, which `attach_surface` refuses after the engine
+pass. So materialize first computes each household's AGI as the state SOI AGI
+row stores it, with the engine pass's own input projection and reviewed-null
+fill, one 100,000-household chunk at a time (in the build's year the AGI reads
+no county column, so the moves leave it unchanged). In the first pass, when
+none of a county's K picks has a positive AGI, the K-th gives way to the next
+eligible household in rank order that has one (its move carries
+`"reason": "positive_agi"`), so the other picks keep their PUMA's AGI mix.
+`minimum_support.soi_support.first_pass` reports the first-pass movers' share
+with a positive AGI beside the share among their PUMAs' eligible households,
+and names the counties where the swap happened. A second pass moves K more same-PUMA
+households with a positive AGI, chosen and ranked as above, into each county
+that has supporting households but none with a nonzero AGI. These moves carry
+`"reason": "soi_support"`, and `county_support.json` records the pass under
+`minimum_support.soi_support`. No move leaves a donor county without a
+household whose AGI is nonzero. A county still without one is refused here,
+before the engine pass. The moves replay in calibrate and export as the first
+pass's do.
+
 The step is for legacy-location staging. Under `--location-rule block_v1`
 ([US household location](us-location-v1.md)) every household carries a
 `block_geoid` and `tract_geoid`, so no household is eligible: an empty county
@@ -353,7 +377,32 @@ for `22incyallnoagi.csv` and
 `abcc8720d669e793bbfdcd440eeec37a78db3b452adbe4ccd1eadf7c72b522b9`
 for `co-est2024-alldata.csv`.
 
+## Checks between staging and R2 (microcosm#922)
+
+Two checks read the staging output in minutes and say whether R2 would refuse
+it hours later. Run both after the staging (R1) and before R2:
+
+- `tools/check_us_acs_local_reviewed_fills.py --staging-summary <summary>
+  --out <report>` reads the summary's `reviewed_engine_input_nulls` (names and
+  counts only), builds the fill records R2 writes with the installed engine's
+  defaults, and runs R2's own finalize gate on them, in seconds. Exit 0: R2's
+  fill rules pass. Exit 2: R2 would refuse; the report says why. A missing
+  register entry is a reviewed ruling, committed before R2's calibrate stage.
+- `tools/check_us_acs_county_agi_support.py --h5 <staging> --county-column
+  county_fips_2023 --puma-ladder <ladder> --out <report>` computes each
+  household's AGI as R2 stores it, with R2's own load, fill and engine
+  functions, and applies R2's minimum-support moves, its SOI support moves
+  included. Exit 0: every county's SOI rows have support. Exit 2: a county
+  that still has households but none with a nonzero AGI, which R2 refuses.
+  Exit 3 (precedence over 2): a county outside the ladder or without a
+  household-universe record, which R2's `check_support` refuses before its
+  engine pass. It needs memory for the full staging frame (40.7 GiB on the
+  17 November proof-of-concept staging, in 3.6 minutes).
+
 ## Full-run requirements and command
+
+The final County Files build's operator steps, from the national donor to
+the preflight, are in [the final build runbook](us-county-files-final-build.md).
 
 A full run needs the pinned main feed and its SHA256, the pinned county facts
 file and its SHA256,

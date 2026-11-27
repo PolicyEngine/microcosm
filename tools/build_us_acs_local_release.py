@@ -63,8 +63,9 @@ package; each is separately resumable):
                 participation rate).
   finalize    : release-style gate report (PUMA-ladder gate, calibration
                 gate, district ESS collapse gate -- report-only unless
-                ``--district-ess-gate-blocking`` --, spine-composition
-                evidence) + the reviewed-limitations
+                ``--district-ess-gate-blocking`` --, both ESI employer-premium
+                gates on the calibrated artifact (microcosm#454),
+                spine-composition evidence) + the reviewed-limitations
                 register for this lineage (inherited #507 SSI aged-band
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
@@ -114,6 +115,7 @@ from __future__ import annotations
 import argparse
 import gc
 import hashlib
+import io
 import json
 import resource
 import shutil
@@ -122,9 +124,11 @@ import sys
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -133,6 +137,11 @@ from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.program_telemetry import program_telemetry
 from microcosm.build.us_runtime import target_loss_weights as loss_weighting
 from microcosm.build.us_runtime.acs_inputs import acs_self_employment_identity_gate
+from microcosm.build.us_runtime.acs_local_esi_premiums import (
+    acs_local_esi_premium_anchor_gate,
+    acs_local_esi_premium_gate_payload,
+    acs_local_esi_premium_signal_gate,
+)
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
 from microcosm.build.us_runtime.acs_local_immigration import (
     ACS_LOCAL_IMMIGRATION_COLUMNS,
@@ -181,11 +190,13 @@ from microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up import (
     with_recorded_acs_local_ssi_medicaid_take_up,
 )
 from microcosm.build.us_runtime.acs_local_take_up import (
+    ACS_LOCAL_EITC_TAKE_UP_ISSUE,
     ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
     ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE,
     ACS_LOCAL_TAKE_UP_COLUMNS,
     ACS_LOCAL_TAKE_UP_GATE_NAME,
     ACS_VEHICLES_AVAILABLE_RECEIPT,
+    US_EITC_TAKE_UP_OUTPUT_COLUMN,
     acs_local_take_up_signal_gate,
     with_acs_local_take_up_inputs,
 )
@@ -193,12 +204,16 @@ from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
     US_VEHICLES_OWNED_COLUMN,
     US_VEHICLES_VALUE_COLUMN,
 )
+from microcosm.build.us_runtime.acs_local_wic_take_up import (
+    ACS_LOCAL_WIC_TAKE_UP_ISSUE,
+    US_WIC_TAKE_UP_COLUMN,
+)
 from microcosm.build.us_runtime.acs_local_work_disability import (
     ACS_LOCAL_DISABILITY_COLUMNS,
     ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
     ACS_LOCAL_WORK_DISABILITY_ISSUE,
     ACS_NATIVE_PROVENANCE,
-    WEEKS_WORKED_EXPORT_BLOCKER,
+    WEEKS_WORKED_INPUT_CHANGE,
     acs_local_work_disability_signal_gate,
 )
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
@@ -233,9 +248,11 @@ from microcosm.data.build_folder_manifests import (
     rewrite_release_dir,
 )
 from microcosm.data.contract import (
+    US_EVIDENCE_RELEASE_ID,
     US_LOCAL_AREA_SPM_MEASUREMENT_STAGE,
     US_LOCAL_AREA_STORED_INPUTS_STAGE,
     US_LOCAL_RELEASE_ID,
+    US_NATIONAL_RELEASE_ID,
     US_RELEASE_DATASET_FILES,
     US_SPM_MEASUREMENT_EVIDENCE_KEY,
     US_STORED_INPUTS_EVIDENCE_KEY,
@@ -843,6 +860,13 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
         )
         for column in ACS_LOCAL_TAKE_UP_COLUMNS
     },
+    # microcosm#1675: likewise EITC take-up, which the ACS take-up stage draws
+    # from the take-up contract on ACS tax units.
+    ("tax_unit", US_EITC_TAKE_UP_OUTPUT_COLUMN): (
+        "the engine default is universal EITC take-up "
+        f"({ACS_LOCAL_EITC_TAKE_UP_ISSUE}); run the ACS local take-up stage "
+        "first"
+    ),
     # microcosm#1020: the immigration defaults are a citizen with a valid SSN
     # and 5 years since entry; staging's ACS local immigration stage fills
     # them.
@@ -935,6 +959,14 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
             ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS, ("SSI", "Medicaid"), strict=True
         )
     },
+    # microcosm#1154: the WIC take-up default, True, is universal take-up;
+    # staging draws the ACS rows' decisions with the national generator and
+    # the donor release carries its own.
+    ("person", US_WIC_TAKE_UP_COLUMN): (
+        "the engine default is universal WIC take-up "
+        f"({ACS_LOCAL_WIC_TAKE_UP_ISSUE}); re-run staging with the current "
+        "builder"
+    ),
 }
 NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
 
@@ -1044,6 +1076,7 @@ def fill_reviewed_nulls(
     *,
     engine=None,
     system=None,
+    quiet: bool = False,
 ):
     """Apply the nullable-artifact contract for the engine pass (H5 untouched).
 
@@ -1056,7 +1089,9 @@ def fill_reviewed_nulls(
     one, or a null one, raises :class:`DeclaredSourceInputNullError`. Nor
     is the ESI employer premium input, registered or not: a null there
     refuses the build. ``engine`` and ``system`` default to the
-    PolicyEngine-US adapter and tax-benefit system.
+    PolicyEngine-US adapter and tax-benefit system. ``quiet`` logs nothing,
+    for a pass over one household chunk of the frame, whose null counts
+    never match the register's.
     """
 
     denied = [
@@ -1070,9 +1105,12 @@ def fill_reviewed_nulls(
             f"Refusing to default-fill runtime-owned input(s): {'; '.join(denied)}."
         )
 
-    # microcosm#454: the ESI employer premium exists only where the
-    # meps_esi_premiums stage ran (the ASEC donor rows). Refuse before any
-    # fill: a registered null here would become a silent zero on the ACS spine.
+    # microcosm#454: the staging build transfers the ESI employer premium onto
+    # the ACS spine and holds it to the donor rows' scale, so every row of a
+    # current staging frame carries it. A null means a staging H5 built before
+    # that, or a diagnostic one that waived it (--allow-esi-premium-gaps).
+    # Refuse before any fill: a registered null here would become a silent
+    # zero on the ACS spine.
     refuse_unassigned_us_esi_premiums(
         frame, consumer="ACS local release (fill_reviewed_nulls)"
     )
@@ -1182,16 +1220,17 @@ def fill_reviewed_nulls(
                 indent=2,
             )
         )
-    log(
-        f"reviewed-null fill: {len(fills)} registered column(s), "
-        f"{sum(f['filled_rows'] for f in fills):,} values (engine pass only)"
-    )
-    for drift in drift_warnings:
+    if not quiet:
         log(
-            f"  WARNING count drift {drift['entity']}.{drift['column']}: "
-            f"actual {drift['filled_rows']} vs register "
-            f"{drift['register_missing_rows']}"
+            f"reviewed-null fill: {len(fills)} registered column(s), "
+            f"{sum(f['filled_rows'] for f in fills):,} values (engine pass only)"
         )
+        for drift in drift_warnings:
+            log(
+                f"  WARNING count drift {drift['entity']}.{drift['column']}: "
+                f"actual {drift['filled_rows']} vs register "
+                f"{drift['register_missing_rows']}"
+            )
     if violations:
         detail = "; ".join(
             f"{v['entity']}.{v['column']} ({v['missing_rows']} null rows, "
@@ -1310,6 +1349,109 @@ def _household_codes(release_tool, households, column: str) -> np.ndarray:
         ),
         dtype=np.int64,
     )
+
+
+def _needs_county_soi_support(args, geographies) -> bool:
+    """Whether minimum support must give county SOI rows support too.
+
+    Only a county SOI surface (``--soi-mode state_county`` with county
+    geography) builds county AGI rows, and ``--county-min-support 0`` turns
+    minimum support off altogether (microcosm#1661).
+    """
+
+    return (
+        getattr(args, "soi_mode", None) == SOI_MODE_STATE_COUNTY
+        and "county" in geographies
+        and int(getattr(args, "county_min_support", 0) or 0) > 0
+    )
+
+
+#: Households per chunk of the AGI pass: the AGI's dependencies alone are
+#: light (the pre-R2 AGI check's chunk).
+AGI_PASS_HH_CHUNK = 100_000
+
+
+def _household_agi(
+    frame,
+    summary_path: Path,
+    *,
+    hh_chunk: int = AGI_PASS_HH_CHUNK,
+    period: int = PERIOD,
+) -> np.ndarray:
+    """Each household's AGI as the state SOI AGI row stores it, before the
+    engine pass (microcosm#1661).
+
+    The household sum of ``adjusted_gross_income`` over its tax units, in the
+    household table's order, from the same input projection and reviewed-null
+    fill as :func:`materialize_chunked`, one household chunk at a time so no
+    second copy of the frame is held. Minimum support reads it to give a
+    county whose households all store an AGI of 0 households with an AGI. In
+    the build's year the AGI does not read a household's county, so the moves
+    that follow leave it unchanged.
+    """
+
+    import build_us_fiscal_refresh_release as release_tool
+    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
+
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    engine = PolicyEngineUSEngine()
+    system = CountryTaxBenefitSystem()
+    household_ids = frame.table("household")["household_id"].to_numpy()
+    n_households = len(household_ids)
+    positions = pd.Index(household_ids)
+    if not positions.is_unique:
+        raise ValueError("Household ids must be unique.")
+    person_position = positions.get_indexer(
+        frame.table("person")["person_household_id"].to_numpy()
+    )
+    if (person_position < 0).any():
+        raise RuntimeError(
+            "person rows reference household ids absent from the household "
+            "table; frame is invalid."
+        )
+    if n_households > hh_chunk:
+        release_tool._assert_group_entities_nest_in_households(frame)
+    agi = np.zeros(n_households, dtype=np.float64)
+    started = time.time()
+    for low in range(0, n_households, hh_chunk):
+        high = min(low + hh_chunk, n_households)
+        chunk = frame.select((person_position >= low) & (person_position < high))
+        projected, _held = project_input_only(chunk, period=period)
+        fill_reviewed_nulls(
+            projected,
+            summary_path,
+            manifest_path=None,
+            period=period,
+            engine=engine,
+            system=system,
+            quiet=True,
+        )
+        simulation = Microsimulation(
+            dataset=release_tool._dataset_from_frame(
+                projected, assert_no_formula_owned_columns=False, period_only=True
+            )
+        )
+        got = np.asarray(simulation.calculate("household_id", period).values)
+        if not np.array_equal(got, household_ids[low:high]):
+            raise RuntimeError(
+                "The AGI pass's engine chunk does not carry its households in "
+                "frame order; refusing to place its AGI."
+            )
+        agi[low:high] = np.asarray(
+            simulation.calculate(
+                "adjusted_gross_income", period, map_to="household"
+            ).values,
+            dtype=np.float64,
+        )
+        del simulation, projected, chunk
+        gc.collect()
+    log(
+        f"household AGI for county SOI support: {n_households} households, "
+        f"{int((agi.astype(np.float32) != 0).sum())} with a nonzero AGI "
+        f"({time.time() - started:.1f}s)"
+    )
+    return agi
 
 
 def materialize_chunked(
@@ -2300,6 +2442,12 @@ def do_materialize(args) -> None:
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
     _require_local_receipt_anchors(staging_summary)
+    _require_staging_engine(staging_summary)
+    # microcosm#1661: the donor's REVIEWED_DONOR_LINEAGES entry is required
+    # from calibrate on, not here. Materialize writes nothing the entry
+    # decides, so it can run while the new donor's evidence is reviewed;
+    # calibrate fixes the commit package accepts, so the entry must be in
+    # the checkout before calibrate starts, and finalize checks it again.
     # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
     # and compile path, before the staging frame is loaded.
     ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(args.feed)
@@ -2360,8 +2508,18 @@ def do_materialize(args) -> None:
         Path(args.gate_report).unlink(missing_ok=True)
     # microcosm#922: a county with ladder population but no household gets a
     # fixed number of same-PUMA households before any measure is built; the
-    # frame returned carries their rewritten county columns.
-    frame = county_surface.check_support(frame, populations, args)
+    # frame returned carries their rewritten county columns. On a county SOI
+    # surface, a county whose households all store an AGI of 0 gets
+    # households with an AGI too (microcosm#1661), so the AGI comes first.
+    household_agi = (
+        _household_agi(frame, summary_path, period=PERIOD)
+        if _needs_county_soi_support(args, geographies)
+        else None
+    )
+    frame = county_surface.check_support(
+        frame, populations, args, household_agi=household_agi
+    )
+    del household_agi
     materialized = materialize_chunked(
         frame,
         registry.specs,
@@ -3029,6 +3187,10 @@ def do_calibrate(args) -> None:
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
     _require_local_receipt_anchors(staging_summary)
+    # microcosm#1661: and a donor of another lineage whose inherited
+    # limitations nobody reviewed. Calibrate fixes the commit package accepts,
+    # so the entry must be in the checkout before the solve starts.
+    _require_reviewed_donor_lineage(staging_summary)
     # microcosm#1022: and a checkpoint without the recorded ACS SSI/Medicaid
     # take-up the export must apply.
     _recorded_ssi_medicaid_take_up(identity, args.checkpoint_dir)
@@ -3463,12 +3625,9 @@ def _write_calibrated_artifact(
             f"{len(staging_ids)} households."
         )
 
-    # TODO(policyengine-us#9660): the staging ACS rows carry native
-    # weeks_worked (microcosm#1021), but the pinned policyengine-us gives it a
-    # formula_2025, so this projection holds it back as formula-owned. Once
-    # #9660 part A1 deletes that formula and the pin/ABI lock are bumped, it
-    # becomes an input and ships; the donor rows then need weeks_worked from
-    # WKSWORK too (US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS).
+    # On policyengine-us 2.145.3 weeks_worked is an input (policyengine-us#9660
+    # part A1), so this projection keeps it: ACS rows carry native WKWN weeks
+    # (microcosm#1021), and donor rows the national's WKSWORK weeks.
     projected, dropped = project_input_only(frame, period=PERIOD)
     del frame
     gc.collect()
@@ -4078,6 +4237,53 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
 #: release discloses the inherited erasure.
 DONORS_WITHOUT_SOCIAL_SECURITY_ERASURE: frozenset[str] = frozenset()
 
+#: The inherited limitations ``finalize_reviewed_limitations`` writes about
+#: the donor. Each describes the Build O lineage (the certified Build O sparse
+#: release and the enrichments built on it): its aged SSI take-up, its
+#: miscellaneous income loss side, its tip-return count, its 57,240-household
+#: selection and its Social Security erasure.
+BUILD_O_LINEAGE_LIMITATIONS = (
+    "ssi_aged_band_collapse_inherited",
+    "miscellaneous_income_loss_side_donor_defect",
+    "tips_return_count_carrier_deficit_inherited",
+    "donor_sparse_selection_training_set",
+    "social_security_cps_reporters_erased_inherited",
+)
+#: Donor builds outside the Build O lineage, each with the
+#: :data:`BUILD_O_LINEAGE_LIMITATIONS` that a review of its own evidence found
+#: to hold for it; the others leave its releases' register (microcosm#1661).
+REVIEWED_DONOR_LINEAGES: Mapping[str, frozenset[str]] = MappingProxyType({})
+#: A national build published into a build folder of these releases (since
+#: microcosm#1570 and #1585 item 11) is not of the Build O lineage, so a
+#: staging from one is refused until it has a :data:`REVIEWED_DONOR_LINEAGES`
+#: entry.
+_REVIEWED_LINEAGE_DONOR_RELEASES = frozenset(
+    {US_NATIONAL_RELEASE_ID, US_EVIDENCE_RELEASE_ID}
+)
+
+
+def _require_reviewed_donor_lineage(staging_summary: dict) -> None:
+    """Refuse a national donor whose inherited limitations nobody reviewed.
+
+    A release's register says what its donor carries. Without this, a donor
+    of another lineage would publish the Build O lineage's limitations as its
+    own (microcosm#1661).
+    """
+
+    donor = (staging_summary.get("base") or {}).get("donor_release") or {}
+    if donor.get("release") not in _REVIEWED_LINEAGE_DONOR_RELEASES:
+        return
+    build = _donor_build_id(donor)
+    if build not in REVIEWED_DONOR_LINEAGES:
+        raise SystemExit(
+            f"The staging's donor is national build {build!r} of "
+            f"{donor.get('release')!r}, which is not of the Build O lineage "
+            "that the release's inherited limitations "
+            f"({', '.join(BUILD_O_LINEAGE_LIMITATIONS)}) describe. Review each "
+            "against the donor's own evidence and add the build to "
+            "REVIEWED_DONOR_LINEAGES with those that hold (microcosm#1661)."
+        )
+
 
 def _donor_build_id(donor_release: dict) -> str | None:
     """The donor build's ID from either reference form (microcosm#1570).
@@ -4244,10 +4450,13 @@ def finalize_reviewed_limitations(
                 "donor spine's share among ages 3-5 "
                 "(acs_engine_free_default_fills), and SSI and Medicaid "
                 "take-up are assigned after an engine pre-pass "
-                "(acs_local_ssi_medicaid_take_up). The other runtime-owned "
-                "takes_up_* flags (EITC, ACA, Early Head Start and the rest) "
-                "are neither transferred nor seeded on ACS rows, so they ship "
-                "at the engine default, universal take-up; the reviewed-fill "
+                "(acs_local_ssi_medicaid_take_up). EITC take-up is the take-up "
+                "contract's seeded draw by number of qualifying children "
+                "(microcosm#1675), and WIC take-up the national generator's "
+                "draw, made in staging (microcosm#1154). The other "
+                "runtime-owned takes_up_* flags (ACA, Early Head Start and the "
+                "rest) are neither transferred nor seeded on ACS rows, so they "
+                "ship at the engine default, universal take-up; the reviewed-fill "
                 "consumer register records their known biases "
                 "(acs_reviewed_default_fill_consumers). The QA "
                 "probe's SNAP take-up table is a December-eligible snapshot "
@@ -4325,21 +4534,24 @@ def finalize_reviewed_limitations(
                 "at home and available to the household, long-term leased and "
                 "employer-provided ones included, while the donor's SIPP "
                 "TVEH_NUM and the engine count vehicles owned. policyengine-us "
-                "2.2.1 reads the owned count on its own in San Francisco CAAP's "
-                "one-vehicle limit for a single person "
+                "2.145.3 reads the owned count on its own only in San "
+                "Francisco CAAP's one-vehicle limit for a single person "
                 "(ca_sf_caap_vehicle_eligible), Los Angeles General Relief's "
                 "vehicle cap (la_general_relief_motor_vehicle_value_eligible) "
                 "and lives_in_vehicle, which Los Angeles and Marin General "
                 "Relief read, so VEH as the owned count would deny a single San "
-                "Francisco applicant who leases two cars and owns none. The "
-                "engine has no vehicles-available input, so VEH is recorded in "
+                "Francisco applicant who leases two cars and owns none. Its "
+                "other readers only scale exemptions of the value by the count "
+                "or average the value over it, which the zero value leaves at "
+                "zero. The engine has no vehicles-available input, so VEH is "
+                "recorded in "
                 "the take-up receipt as availability only. A zero count always "
                 "passes the San Francisco CAAP and Los Angeles General Relief "
                 "count caps, so they overstate eligibility for households that "
                 "own more vehicles than the cap, the same direction as the zero "
                 "value; lives_in_vehicle is never true on ACS rows, which only "
                 "picks Los Angeles's value limit and Marin's vehicle exemption, "
-                "both applied to the zero value. In policyengine-us 2.2.1 the "
+                "both applied to the zero value. In policyengine-us 2.145.3 the "
                 "value's only SNAP consumer is Texas's broad-based categorical "
                 "eligibility asset test (meets_tanf_non_cash_asset_test), which "
                 "counts vehicle value above $22,500 for the first vehicle and "
@@ -4407,16 +4619,16 @@ def finalize_reviewed_limitations(
                 "arriving (arrival in 2014 and status in 2023 gives 10 "
                 "modeled years in 2024, against one qualifying year; "
                 "policyengine-us#9658). That affects the policyengine-us "
-                "2.2.1 tests that read the clock: Medicaid (CHIP follows "
-                "it) and Washington TANF read it against a five-year bar, "
-                "so the long clock can clear the bar early; Washington RCA "
-                "reads it as a window that closes (years_since_us_entry < "
-                "window_years), so the long clock can wrongly exclude a "
-                "recently qualified person from RCA. Under the statute the "
-                "SNAP five-year bar also runs from entry with qualified "
-                "status, but the pinned engine's federal SNAP status test "
-                "reads the status, not this clock, so any SNAP effect is "
-                "indirect. The receipt "
+                "2.145.3 tests that read the clock. SNAP's qualified-alien "
+                "waiting period, the federal Medicaid and CHIP "
+                "immigration-status tests, Medicare Part B for permanent "
+                "residents, Washington TANF, Missouri and New Hampshire SSP, "
+                "Nevada LIHEAP and Utah HEAT read it against a bar, five years "
+                "for SNAP and Medicaid, so the long clock can clear the bar "
+                "early; Washington RCA reads it as a window that closes "
+                "(years_since_us_entry < window_years), so the long clock can "
+                "wrongly exclude a recently qualified person from RCA. The "
+                "receipt "
                 "reports the size of the affected group under each lag of "
                 "one to ten, 15 and 20 years; the real-data check is "
                 "microcosm#1093."
@@ -4447,10 +4659,11 @@ def finalize_reviewed_limitations(
                 "definition), and is_blind is DEYE == 1. An item below its "
                 "minimum question age (5 for DPHY/DREM/DDRS, 15 for DOUT) is "
                 "blank and reads as no difficulty. Native ACS weeks_worked "
-                "(WKWN, under the WKHP universe rules) is carried on the "
-                "staging ACS spine only: the pinned policyengine-us gives "
-                "weeks_worked a formula_2025, so the export holds it back as "
-                f"formula-owned until {WEEKS_WORKED_EXPORT_BLOCKER}. is_veteran "
+                "(WKWN, under the WKHP universe rules) is exported on ACS "
+                "rows: on policyengine-us 2.145.3 it is an input "
+                f"({WEEKS_WORKED_INPUT_CHANGE}). Its blank cells, persons "
+                "under 16 among them, take the reviewed fill 0, the value the "
+                "donor gives its own not-in-universe rows. is_veteran "
                 "(ACS MIL == 2) is not exported because policyengine-us "
                 "computes it from veterans_benefits for every year; "
                 "is_incapable_of_self_care stays on the ASEC transfer."
@@ -4584,7 +4797,7 @@ def finalize_reviewed_limitations(
                 "probability residual / anchored eligible weight on a keyed "
                 "draw, and the state's excess is recorded. The treatment is "
                 "state-level because the CMS counts carry no child/adult "
-                "split; policyengine-us 2.2.1 keeps CHIP take-up separate "
+                "split; policyengine-us 2.145.3 keeps CHIP take-up separate "
                 "and CHIP eligibility exclusive of Medicaid eligibility. "
                 "Draws are keyed on acs_2024_1yr:SERIALNO:SPORDER and the "
                 "build seed. The targets bind the pre-calibration frame; the "
@@ -4772,6 +4985,15 @@ def finalize_reviewed_limitations(
     acs_wic = _acs_wic_takeup_limitation(consumer_export)
     if acs_wic is not None:
         limitations.append(acs_wic)
+    # A donor outside the Build O lineage keeps only the inherited
+    # limitations its review found to hold (microcosm#1661).
+    reviewed = REVIEWED_DONOR_LINEAGES.get(_donor_build_id(donor_release))
+    if reviewed is not None:
+        limitations = [
+            item
+            for item in limitations
+            if item["id"] not in BUILD_O_LINEAGE_LIMITATIONS or item["id"] in reviewed
+        ]
     deduped: dict[str, dict] = {}
     for limitation in limitations:
         deduped[limitation["id"]] = limitation
@@ -5441,6 +5663,32 @@ REVIEWED_FILL_MANIFESTS = (
 )
 
 
+def _require_staging_engine(
+    staging_summary: dict, *, installed: str | None = None
+) -> None:
+    """Refuse a staging run made on another policyengine-us than this one.
+
+    Staging audits the nulls of every input its own engine defines
+    (``reviewed_engine_input_nulls``), so on another engine the fill step
+    meets inputs that audit never listed, hours into materialize, and package
+    refuses the columns that engine retired. A staging summary that records
+    no engine predates the record, so it is refused too: re-run staging on
+    this engine. ``installed`` defaults to the installed policyengine-us (the
+    reviewed-fill pre-check passes its own).
+    """
+
+    recorded = (staging_summary.get("engine_versions") or {}).get("policyengine_us")
+    if installed is None:
+        installed = _installed_engine_version()
+    if recorded != installed:
+        raise SystemExit(
+            f"The staging summary records policyengine-us {recorded!r} and this "
+            f"release runs {installed!r}. Staging audits the nulls of the "
+            "inputs its own engine defines, so re-run staging on this engine "
+            "(the summary's engine_versions)."
+        )
+
+
 def _installed_engine_version() -> str:
     try:
         from importlib.metadata import version
@@ -5615,6 +5863,64 @@ _SELF_EMPLOYMENT_DOUBLE_COUNT_DETAILS = (
 )
 
 
+#: The lane's verdict on the ESI employer premium (microcosm#454), in the
+#: gate report finalize writes and package requires.
+ESI_PREMIUM_GATE_NAMES = ("esi_premiums_signal", "esi_premiums_anchor")
+
+
+def _esi_premium_gate_entry(gate, *, artifact_sha256: str, enforced: bool) -> dict:
+    """One ESI premium verdict, bound to the artifact bytes it graded."""
+
+    payload = acs_local_esi_premium_gate_payload(gate)
+    return {
+        "passed": payload["passed"],
+        "failures": payload["failures"],
+        "detail": payload["details"],
+        "artifact_sha256": artifact_sha256,
+        "enforced": enforced,
+    }
+
+
+def _require_esi_premium_gates(gates, *, h5_sha: str, allow_gaps: bool) -> None:
+    """Refuse to package without the lane's ESI premium verdict on these bytes.
+
+    Without ``--allow-esi-premium-gaps`` both gates must be present, passing
+    and bound to the bytes being packaged, the check every other finalize
+    gate gets (:func:`_require_bound_finalize_gate`). With it, each gate must
+    still carry a boolean verdict bound to these bytes: a report finalized
+    before the gates existed carries neither and is always refused. A red
+    gate then packages only as the waiver finalize recorded (``enforced:
+    false``), so the shipped report says the waiver was taken; a red gate
+    finalize enforced is refused, whatever this stage's flag says.
+    """
+
+    for name in ESI_PREMIUM_GATE_NAMES:
+        if not allow_gaps:
+            _require_bound_finalize_gate(gates, name, h5_sha)
+            continue
+        gate = gates.get(name) if isinstance(gates, dict) else None
+        if not isinstance(gate, dict) or not isinstance(gate.get("passed"), bool):
+            raise SystemExit(
+                f"The finalize gate report carries no {name} verdict "
+                "(microcosm#454); an old simulation_ready summary is "
+                "insufficient. Re-run --stage finalize."
+            )
+        if gate.get("artifact_sha256") != h5_sha:
+            raise SystemExit(
+                f"The {name} gate is missing its artifact binding or certifies "
+                "different H5 bytes. Re-run --stage finalize against the "
+                "current artifact."
+            )
+        if not gate["passed"] and gate.get("enforced") is not False:
+            raise SystemExit(
+                f"The {name} gate is red and finalize did not record a waiver "
+                "for it (enforced is not false), so the report would ship a "
+                "red verdict marked enforced. --allow-esi-premium-gaps at "
+                "package admits only a waiver finalize recorded: re-run --stage "
+                "finalize with --allow-esi-premium-gaps."
+            )
+
+
 def do_finalize(args) -> None:
     from microcosm.build.us_runtime.hours_worked import (
         US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
@@ -5627,6 +5933,7 @@ def do_finalize(args) -> None:
     from microcosm.calibrate import TargetRegistry
 
     staging_summary = _load_json(_staging_summary_path(args))
+    _require_reviewed_donor_lineage(staging_summary)
     diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     if not diagnostics:
         raise SystemExit(
@@ -5751,7 +6058,8 @@ def do_finalize(args) -> None:
     # microcosm#1021: refuse ACS disability flags that are missing, constant,
     # or not the native ACS difficulty items on the packaged bytes, or a
     # staging receipt that shows them imputed. weeks_worked is graded at
-    # staging only: the export holds it back until policyengine-us#9660.
+    # staging, where its blanks are the ACS universe's; the packaged file
+    # carries it with the reviewed fill in those cells.
     work_disability_gate = shadow_gate(
         "us_local_work_disability",
         lambda frame=frame: acs_local_work_disability_signal_gate(
@@ -5833,6 +6141,24 @@ def do_finalize(args) -> None:
                     "acs_local_receipt_anchors"
                 )
             },
+        ),
+    )
+    # microcosm#454: the lane's own verdict on the ESI employer premium, on
+    # the calibrated bytes. The donor rows get the MEPS-IC recomputation, the
+    # ACS rows are compared with them, and the anchor-universe total is held
+    # to the stage's national anchor at the calibrated weights.
+    esi_signal_gate = _shadow_local_frame_gate(
+        "us_local_esi_premiums_signal",
+        lambda frame=frame: acs_local_esi_premium_signal_gate(frame),
+        frame,
+    )
+    esi_anchor_gate = shadow_gate(
+        "us_local_esi_premiums_anchor",
+        lambda frame=frame: acs_local_esi_premium_anchor_gate(
+            frame, time_period=PERIOD
+        ),
+        lambda frame=frame: EvidenceContext(
+            frame=frame, artifacts={"time_period": PERIOD}
         ),
     )
     del frame
@@ -6003,17 +6329,35 @@ def do_finalize(args) -> None:
             ),
             "detail": diagnostics.get("weight_origin"),
         },
+        "esi_premiums_signal": _esi_premium_gate_entry(
+            esi_signal_gate,
+            artifact_sha256=hours_artifact_sha,
+            enforced=not args.allow_esi_premium_gaps,
+        ),
+        "esi_premiums_anchor": _esi_premium_gate_entry(
+            esi_anchor_gate,
+            artifact_sha256=hours_artifact_sha,
+            enforced=not args.allow_esi_premium_gaps,
+        ),
         "input_coverage": {
-            # Enforced upstream: the staging driver's donor-coverage gate
-            # hard-fails before transfer, so reaching finalize means it held.
-            "passed": True,
+            # The donor's own coverage is enforced upstream: the staging
+            # driver's donor-coverage gate hard-fails before transfer, so
+            # reaching finalize means it held. That says nothing about a
+            # required input on the ACS spine, so the one this lane produces
+            # there from a stage output, the ESI employer premium, is graded
+            # on this artifact by the two gates above (microcosm#454).
+            "passed": bool(esi_signal_gate.passed and esi_anchor_gate.passed),
             "binds": "donor_certified_release",
+            "graded_on_artifact": list(ESI_PREMIUM_GATE_NAMES),
             "note": (
                 "Input coverage is enforced on the certified donor release "
                 "before transfer; the ACS spine inherits required inputs via "
-                "QRF transfer. ACS native GQ-housing / source-universe nulls "
-                "are reviewed_limitations (calibration_blocker: false) and "
-                "are NOT re-imposed on the ACS spine. Take-up draws are not "
+                "QRF transfer. The ESI employer premium (microcosm#454) is "
+                "also graded on the calibrated artifact: esi_premiums_signal "
+                "and esi_premiums_anchor. ACS native GQ-housing / "
+                "source-universe nulls are reviewed_limitations "
+                "(calibration_blocker: false) and are NOT re-imposed on the "
+                "ACS spine. Take-up draws are not "
                 "transferred: ACS SNAP/TANF take-up is seeded by this tool "
                 "and gated by acs_local_take_up_signal (microcosm#1019). The "
                 "same stage fills the ACS rows' discretionary ABAWD exemption "
@@ -6041,8 +6385,8 @@ def do_finalize(args) -> None:
                 "row, gated by acs_local_work_disability_signal "
                 "(microcosm#1021; reviewed limitation "
                 "acs_work_disability_inputs). Native ACS weeks_worked is "
-                "staged but held back from the export until "
-                f"{WEEKS_WORKED_EXPORT_BLOCKER}. ACS child support "
+                "exported: on policyengine-us 2.145.3 it is an input "
+                f"({WEEKS_WORKED_INPUT_CHANGE}). ACS child support "
                 "received/paid, workers' compensation, disability benefits "
                 "and 401(k)/403(b)/SEP/Keogh/Roth-IRA distributions come from "
                 "a separate local QRF pass on the donor's ASEC observation "
@@ -6168,6 +6512,12 @@ def do_finalize(args) -> None:
         hard_failures.append(DISTRICT_ESS_GATE)
     if block_location_gate is not None and not block_location_gate.passed:
         hard_failures.append("us_block_location_gate")
+    # microcosm#454: --allow-esi-premium-gaps records a red ESI premium gate
+    # without failing a diagnostic build; the gate entries keep what was red.
+    if not args.allow_esi_premium_gaps:
+        hard_failures += [
+            name for name in ESI_PREMIUM_GATE_NAMES if not gates[name]["passed"]
+        ]
     updated_summary = dict(staging_summary)
     updated_summary.update(
         {
@@ -6188,7 +6538,7 @@ def do_finalize(args) -> None:
         "reviewed_limitations": limitations,
         "generated_at": datetime.now(UTC).isoformat(),
     }
-    args.gate_report.write_text(json.dumps(gate_report, indent=2))
+    _write_gate_report(args, gate_report)
     if hard_failures:
         raise SystemExit(
             f"finalize: hard gate failure(s): {hard_failures} — see {args.gate_report}."
@@ -6448,7 +6798,7 @@ def do_package(args) -> dict:
             "calibration_summary.json has no valid calibration_diagnostics status; "
             "run --stage calibrate with the current builder."
         )
-    gate_report = _load_json(args.gate_report)
+    gate_report = _load_gate_report(args)
     staging_summary = _load_json(_staging_summary_path(args))
     final_summary = _load_json(args.out_summary)
     held_back = _load_json(args.checkpoint_dir / "held_back_columns.json")
@@ -6529,6 +6879,14 @@ def do_package(args) -> dict:
         out_h5=calibrated_h5,
         out_h5_sha256=h5_sha,
         stage="package",
+    )
+    # microcosm#454: the lane's verdict on the ESI employer premium must be
+    # in the report and bound to these bytes. A refusal leaves no release
+    # directory behind.
+    _require_esi_premium_gates(
+        gate_report.get("gates"),
+        h5_sha=h5_sha,
+        allow_gaps=args.allow_esi_premium_gaps,
     )
 
     code = _repo_code_identity(args.allow_dirty)
@@ -7235,6 +7593,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument(
+        "--allow-esi-premium-gaps",
+        action="store_true",
+        help=(
+            "Diagnostic escape hatch (microcosm#454): record the ESI premium "
+            "gates on the calibrated artifact -- "
+            "employer_sponsored_insurance_premiums absent, zero-mass, missing "
+            "on the ACS spine, missing its raw ASEC coverage columns, or off "
+            "the stage's national anchor -- without failing finalize or "
+            "package (for example on a staging H5 built from a donor that "
+            "predates the meps_esi_premiums stage). The failures are still "
+            "written to the gate report. Package takes a red gate only as the "
+            "waiver finalize recorded, so finalize needs the flag too. Release "
+            "builds must leave this unset."
+        ),
+    )
+    parser.add_argument(
         "--allow-partial-geography",
         action="store_true",
         help=(
@@ -7358,7 +7732,282 @@ def _local_stage_observations(args, stage: str) -> Path:
     return _local_gate_shadow_directory(args) / f"{stage}.observations.json"
 
 
-def _local_gate_shadow(args, directory: Path) -> GateBatteryShadow:
+#: The --allow-* flags that waive one of this scope's entries today, by
+#: argparse destination: (destination, flag, stage, entry ids), where the
+#: stage is the one that evaluates those entries. The shadow records them by
+#: entry id; the battery evaluates every entry as if unwaived. The stages may
+#: run as separate processes with different flags, so an entry's waiver is
+#: the one its own stage ran with (:func:`_recorded_local_gate_waivers`).
+_LOCAL_GATE_WAIVERS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    (
+        "allow_esi_premium_gaps",
+        "--allow-esi-premium-gaps",
+        "finalize",
+        ("us_local_esi_premiums_signal", "us_local_esi_premiums_anchor"),
+    ),
+)
+
+
+def _local_gate_waivers(args, *, stage: str | None = None) -> dict[str, list[str]]:
+    """The waivers these flags apply, by entry id.
+
+    With ``stage``, only to the entries that stage evaluates.
+    """
+
+    waivers: dict[str, list[str]] = {}
+    for destination, flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS:
+        if stage is not None and evaluated_at != stage:
+            continue
+        if getattr(args, destination, False):
+            for entry_id in entry_ids:
+                waivers.setdefault(entry_id, []).append(flag)
+    return waivers
+
+
+def _local_stage_waivers(args, stage: str) -> Path:
+    return _local_gate_shadow_directory(args) / f"{stage}.waivers.json"
+
+
+#: The stage that writes the gate report package selects (``--gate-report``).
+#: Its waiver record names that report by SHA-256, so the shadow attaches the
+#: record only to the report the same finalize run wrote.
+_GATE_REPORT_STAGE = "finalize"
+
+
+def _gate_report_sha256(args) -> str | None:
+    """The SHA-256 of the gate report at ``args.gate_report``; None without one."""
+
+    path = getattr(args, "gate_report", None)
+    if path is None or not Path(path).is_file():
+        return None
+    return _sha256(Path(path))
+
+
+def _write_gate_report(args, gate_report: dict) -> None:
+    """Finalize's write of its gate report to ``args.gate_report``.
+
+    Once the write succeeds, it sets ``args.gate_report_bytes_sha256`` to the
+    SHA-256 of the bytes written, which finalize's waiver record names
+    (:func:`_local_gate_shadow_stage`).
+    """
+
+    payload = json.dumps(gate_report, indent=2).encode("utf-8")
+    Path(args.gate_report).write_bytes(payload)
+    args.gate_report_bytes_sha256 = hashlib.sha256(payload).hexdigest()
+
+
+def _load_gate_report(args) -> dict:
+    """Package's read of the gate report, parsed as :func:`_load_json` parses it.
+
+    It reads ``args.gate_report`` once and sets ``args.gate_report_bytes_sha256``
+    to the SHA-256 of the bytes it parses (None without a file), so the
+    shadow matches finalize's waiver record to those bytes, not to whatever
+    file the path holds when the stage ends.
+    """
+
+    path = Path(args.gate_report)
+    if not path.exists():
+        args.gate_report_bytes_sha256 = None
+        return {}
+    payload = path.read_bytes()
+    args.gate_report_bytes_sha256 = hashlib.sha256(payload).hexdigest()
+    # Decoded as ``Path.read_text`` decodes: default encoding, universal newlines.
+    with io.TextIOWrapper(io.BytesIO(payload)) as text:
+        return json.loads(text.read())
+
+
+def _save_local_stage_waivers(
+    args, stage: str, *, gate_report_sha256: str | None = None
+) -> None:
+    """Record the waivers ``stage`` applied to its own entries, for later stages.
+
+    The gate report stage's record also names, by SHA-256, the gate report
+    that stage wrote, or None when it wrote none.
+    """
+
+    record: dict[str, object] = {"waivers": _local_gate_waivers(args, stage=stage)}
+    if stage == _GATE_REPORT_STAGE:
+        record["gate_report_sha256"] = gate_report_sha256
+    path = _local_stage_waivers(args, stage)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = path.with_name(f"{path.name}.tmp")
+    staging.write_text(
+        json.dumps(record, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    staging.replace(path)
+
+
+#: A record's ``gate_report_sha256`` when it has none: records saved before
+#: they named a gate report held only the waivers, by entry id.
+_NO_RECORDED_GATE_REPORT = object()
+
+
+def _read_local_stage_waivers(
+    path: Path, stage: str
+) -> tuple[dict[str, list[str]], object]:
+    """A stage's saved waivers by entry id, and the gate report digest it names.
+
+    Raises ``FileNotFoundError`` when there is no file, and another
+    ``OSError``, ``RecursionError`` (JSON nested past the decoder's depth) or
+    ``ValueError`` (``json.JSONDecodeError`` among them) when it cannot read
+    the file or the file is not a waiver record: a mapping of the entries
+    ``stage`` evaluates to lists of flags, under ``waivers`` with an optional
+    ``gate_report_sha256``, or bare, as earlier records were.
+    """
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(saved, dict):
+        raise ValueError(f"the record is a {type(saved).__name__}, not a mapping")
+    digest: object = _NO_RECORDED_GATE_REPORT
+    waivers = saved
+    if "waivers" in saved:
+        unexpected = sorted(set(saved) - {"waivers", "gate_report_sha256"})
+        if unexpected:
+            raise ValueError(f"the record has unexpected keys {unexpected}")
+        waivers = saved["waivers"]
+        digest = saved.get("gate_report_sha256", _NO_RECORDED_GATE_REPORT)
+        if digest is not None and digest is not _NO_RECORDED_GATE_REPORT:
+            if not (
+                isinstance(digest, str)
+                and len(digest) == 64
+                and all(character in "0123456789abcdef" for character in digest)
+            ):
+                raise ValueError(
+                    f"gate_report_sha256 {digest!r} is not a SHA-256 hex digest"
+                )
+    if not isinstance(waivers, dict) or not all(
+        isinstance(flags, list) and all(isinstance(flag, str) for flag in flags)
+        for flags in waivers.values()
+    ):
+        raise ValueError("its waivers are not lists of flags by entry id")
+    evaluated = {
+        entry_id
+        for _destination, _flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS
+        if evaluated_at == stage
+        for entry_id in entry_ids
+    }
+    foreign = sorted(set(waivers) - evaluated)
+    if foreign:
+        raise ValueError(
+            f"it names entries the {stage} stage does not waive: {foreign}"
+        )
+    return {entry_id: list(flags) for entry_id, flags in waivers.items()}, digest
+
+
+#: ``args.gate_report_bytes_sha256`` before package reads the gate report.
+_GATE_REPORT_NOT_READ = object()
+
+
+def _waiver_gate_report_mismatch(args, stage: str, recorded: object) -> str | None:
+    """Why ``stage``'s waiver record does not belong to the selected gate
+    report, or None when it names that report's digest, or names none and
+    the selected path holds no file (package then refuses: no gate report).
+
+    The selected report is the bytes package parsed (:func:`_load_gate_report`).
+    A package run stopped before it read the report has none, so the shadow
+    then hashes the file at the path when the stage ends.
+    """
+
+    selected = getattr(args, "gate_report_bytes_sha256", _GATE_REPORT_NOT_READ)
+    if selected is _GATE_REPORT_NOT_READ:
+        try:
+            selected = _gate_report_sha256(args)
+        except OSError as error:
+            return (
+                f"the selected gate report {getattr(args, 'gate_report', None)} "
+                f"could not be read to match the {stage} stage's waiver record "
+                f"to it ({type(error).__name__}: {error})"
+            )
+    if recorded is _NO_RECORDED_GATE_REPORT:
+        return (
+            f"the {stage} stage's waiver record names no gate report, so it "
+            "cannot be matched to the selected gate report "
+            f"{selected or 'none (no file)'}"
+        )
+    if recorded != selected:
+        unnamed = (
+            "none (that run wrote no gate report, or its report could not be read)"
+        )
+        return (
+            f"the {stage} stage's waiver record belongs to gate report "
+            f"{recorded or unnamed}, not to the selected gate report "
+            f"{selected or 'none (no file)'}"
+        )
+    return None
+
+
+#: What the shadow records as the waiver of an entry whose stage's waiver
+#: record it cannot attach, since it then cannot know the flags that stage
+#: ran with.
+_UNKNOWN_STAGE_WAIVER = "unknown: {reason}"
+
+
+def _recorded_local_gate_waivers(args, stage: str) -> dict[str, list[str]]:
+    """Each entry's waivers as the stage that evaluated it ran, by entry id.
+
+    This stage's come from ``args``, and an earlier stage's from the record it
+    saved beside its observations (:func:`_local_gate_shadow_stage`), so a
+    later stage's flags never rewrite the waivers an earlier stage took or
+    refused. Finalize's record also names, by SHA-256, the gate report bytes
+    that run wrote, and the shadow attaches it only when those are the bytes
+    package read (:func:`_waiver_gate_report_mismatch`): a package run on
+    another finalize run's report would otherwise show that run's waiver.
+
+    Each entry an earlier stage can waive records
+    :data:`_UNKNOWN_STAGE_WAIVER`, with the reason, instead of a waiver when
+    the stage left observations without a record (as a checkpoint saved
+    before stages kept one does), when the shadow cannot open or read its
+    record (JSON nested past the decoder's depth among the causes) or it is
+    not a waiver record, or when finalize's names another gate report, names
+    none while package read a gate report, or lacks the digest (as records
+    saved before they named one do). The shadow still rebuilds the
+    comparison. An earlier stage with neither file contributes none. The
+    shadow matches only the waiver to the gate report: it reads the latest
+    saved finalize observations, whichever report package selects.
+    """
+
+    waivers = _local_gate_waivers(args, stage=stage)
+    for name in _LOCAL_GATE_SHADOW_STAGES[: _LOCAL_GATE_SHADOW_STAGES.index(stage)]:
+        path = _local_stage_waivers(args, name)
+        # The read tells an absent record from one the shadow cannot open;
+        # ``Path.is_file`` would report a stat error as no file.
+        try:
+            saved, recorded = _read_local_stage_waivers(path, name)
+        except FileNotFoundError:
+            if not _local_stage_observations(args, name).is_file():
+                continue
+            reason = f"the {name} stage saved no waiver record"
+        except (OSError, RecursionError, ValueError) as error:
+            reason = (
+                f"{path.name} could not be read as a waiver record "
+                f"({type(error).__name__}: {error})"
+            )
+        else:
+            reason = (
+                _waiver_gate_report_mismatch(args, name, recorded)
+                if name == _GATE_REPORT_STAGE
+                else None
+            )
+            if reason is None:
+                for entry_id, flags in saved.items():
+                    waivers.setdefault(entry_id, []).extend(flags)
+                continue
+        unknown = _UNKNOWN_STAGE_WAIVER.format(reason=reason)
+        for _destination, _flag, evaluated_at, entry_ids in _LOCAL_GATE_WAIVERS:
+            if evaluated_at == name:
+                for entry_id in entry_ids:
+                    waivers.setdefault(entry_id, []).append(unknown)
+        log(
+            f"WARNING: gate battery shadow: {reason}; it records the {name} "
+            "stage's waivers as unknown."
+        )
+    return waivers
+
+
+def _local_gate_shadow(
+    args, directory: Path, *, waivers: dict[str, list[str]] | None = None
+) -> GateBatteryShadow:
     gates = us_scoped_gate_manifest(US_LOCAL_GATE_SCOPE)
     report_path, comparison_path = shadow_file_paths(directory, US_LOCAL_GATE_SCOPE)
     return GateBatteryShadow(
@@ -7368,6 +8017,7 @@ def _local_gate_shadow(args, directory: Path) -> GateBatteryShadow:
         report_path=report_path,
         comparison_path=comparison_path,
         registry=us_gate_registry(US_LOCAL_GATE_SCOPE, tool=globals()),
+        waivers=_local_gate_waivers(args) if waivers is None else waivers,
         overrides=us_flag_overrides(gates, us_gate_specs(US_LOCAL_GATE_SCOPE), args),
     )
 
@@ -7386,7 +8036,11 @@ def _finish_local_gate_scope(args, *, stage: str, stopped_by=None) -> None:
         stages_run = _LOCAL_GATE_SHADOW_STAGES[
             : _LOCAL_GATE_SHADOW_STAGES.index(stage) + 1
         ]
-        shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args))
+        shadow = _local_gate_shadow(
+            args,
+            _local_gate_shadow_directory(args),
+            waivers=_recorded_local_gate_waivers(args, stage),
+        )
         for name in _LOCAL_GATE_SHADOW_STAGES:
             observations = _local_stage_observations(args, name)
             if observations.is_file():
@@ -7412,11 +8066,14 @@ def _finish_local_gate_scope(args, *, stage: str, stopped_by=None) -> None:
 def _local_gate_shadow_stage(args, stage: str):
     """Observe one stage's gates in shadow, then bring the scope's files up to date.
 
-    The stages may run as separate processes, so each saves what it observed
-    beside the checkpoint, and rerunning a stage discards its own and every
-    later stage's observations. Afterwards the scope's report and comparison
-    are rebuilt from every stage saved so far. With the switch off (the test
-    suite) the stage runs without a shadow and touches no shadow file.
+    The stages may run as separate processes, so each saves what it observed,
+    and the waivers its flags applied to its own entries, beside the
+    checkpoint; finalize's waiver record also names, by SHA-256, the gate
+    report bytes that run wrote (:func:`_write_gate_report`), or none.
+    Rerunning a stage discards its own and every later stage's files.
+    Afterwards the scope's report and comparison are rebuilt from every stage
+    saved so far. With the switch off (the test suite) the stage runs without
+    a shadow and touches no shadow file.
     """
 
     if not tool_gate_shadows_enabled():
@@ -7425,6 +8082,7 @@ def _local_gate_shadow_stage(args, stage: str):
     try:
         for name in _LOCAL_GATE_SHADOW_STAGES[_LOCAL_GATE_SHADOW_STAGES.index(stage) :]:
             _local_stage_observations(args, name).unlink(missing_ok=True)
+            _local_stage_waivers(args, name).unlink(missing_ok=True)
         # The scope's report and comparison were built from observations just
         # discarded, so they go too: a stage that never reaches its end, killed
         # before it rebuilds them, must not leave an earlier run's verdict.
@@ -7434,10 +8092,25 @@ def _local_gate_shadow_stage(args, stage: str):
             stale.unlink(missing_ok=True)
     except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
         log(f"WARNING: gate battery shadow could not clear earlier files: {error}")
+    # Only this stage's own write or read of the gate report counts
+    # (:func:`_write_gate_report`, :func:`_load_gate_report`): finalize's
+    # record names the bytes it wrote, none if it wrote none, and package's
+    # match uses the bytes it read.
+    try:
+        del args.gate_report_bytes_sha256
+    except AttributeError:
+        pass
     shadow = _local_gate_shadow(args, _local_gate_shadow_directory(args) / stage)
 
     def save() -> None:
         try:
+            # The waiver record first, so observations this code saves always
+            # have one (:func:`_recorded_local_gate_waivers`).
+            _save_local_stage_waivers(
+                args,
+                stage,
+                gate_report_sha256=getattr(args, "gate_report_bytes_sha256", None),
+            )
             shadow.save_observations(_local_stage_observations(args, stage))
         except Exception as error:  # noqa: BLE001 - the shadow never stops a stage
             log(f"WARNING: gate battery shadow could not save {stage}: {error}")
