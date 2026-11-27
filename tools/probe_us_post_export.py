@@ -37,9 +37,9 @@ The engine stages run in ``_main``'s order (smoke, validation, demographics on
 one scorer, then source coverage). As in certification, the scorer registers
 every engine stage's recorded baseline plan, so one shared baseline pass, run
 when the first stage opens, serves them all; with the release tool's
-``_PostExportPooling`` (``ExportProbe(post_export_pooling=...)``) the stages'
-recorded requests are scored in the shared worker pool, as certification
-scores them. The command does so by default, with certification's worker
+``_PostExportPooling`` (``ExportProbe(post_export_pooling=...)``) the baseline
+passes run in this process and the stages' recorded reform passes in the
+shared worker pool, as certification scores them. The command does so by default, with certification's worker
 settings, unless ``MICROCOSM_POST_EXPORT_WORKERS=serial``. The frame-based stages (1-3) run first,
 while the loaded frame is held, instead of after the scorer as in ``_main``:
 they read only the frame, so the order changes no verdict. Unlike the
@@ -1646,10 +1646,13 @@ def _timed_scorer_class(builder, passes_path: Path, clock: StageClock, base=None
             before = sampler.reset() if sampler else 0
             wall = time.perf_counter()
             cpu = time.process_time()
+            failed = True
             try:
-                return super()._score(
+                values = super()._score(
                     keys, label=label, reform_system=reform_system, **options
                 )
+                failed = False
+                return values
             finally:
                 row = {
                     "stage": clock.current,
@@ -1658,6 +1661,7 @@ def _timed_scorer_class(builder, passes_path: Path, clock: StageClock, base=None
                     "reform": reform_system is not None,
                     "batches": self.n_batches,
                     "process": "certifying process",
+                    "failed": failed,
                     "wall_seconds": round(time.perf_counter() - wall, 3),
                     "cpu_seconds": round(time.process_time() - cpu, 3),
                     "rss_before_gib": _gib(before),

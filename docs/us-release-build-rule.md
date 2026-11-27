@@ -504,9 +504,10 @@ one Microsimulation over the whole file.
   Nothing records the descriptors in a file; pooled scoring (next item) and
   the guard sweep below rebuild each reform from its descriptor in the worker
   that scores it.
-- Certification scores in the shared worker pool by default
-  (`_PooledPostExportScorer`, `microcosm.build.worker_pool`), and the stages
-  run afterwards in the certifying process, over the results. The worker
+- Certification scores the reform passes in the shared worker pool by
+  default (`_PooledPostExportScorer`, `microcosm.build.worker_pool`), after
+  running the baseline passes itself, and the stages run afterwards in the
+  certifying process, over the results. The worker
   settings are tracker decision 1.4 · 6's, until task 2.6 · 2's planner
   replaces them (`plan_post_export_workers` in
   `microcosm.build.us_runtime.post_export_pool`):
@@ -536,8 +537,11 @@ one Microsimulation over the whole file.
     pass. If it raises (`MemoryError` included), every stage's own baseline
     pass runs next, in the order the stages run, where the serial scorer runs
     each one when its stage opens; a stage whose own pass raised gets that
-    error when it opens, with the original traceback as a note. A changed
-    batch file stops scoring at once. Each batch engine is released before
+    error when it opens, with the original traceback as a note, and the
+    exceptions it was raised from or while handling, so the build's run
+    outcome still reads them (out of memory, terminated). A changed batch
+    file, or an error raised while the build is being interrupted or
+    terminated, stops scoring at once. Each batch engine is released before
     the next is built, so no baseline engine is held in the certifying
     process while workers run.
   - After a failed shared pass this differs from the serial scorer in time
@@ -621,8 +625,9 @@ one Microsimulation over the whole file.
     after its baseline engines are released; its peak during the baseline
     passes is the serial scorer's, with no worker running. Neither figure
     has been measured at certification's 5,000-household batches, and freed
-    memory is not always returned to the system, so the footprint recorded
-    when the workers start is the check on the 3 GiB.
+    memory is not always returned to the system. The execution record
+    reports the process's footprint when the workers start, so a run shows
+    how it compares with the 3 GiB; nothing checks it or changes the plan.
 - Each batch engine keeps policyengine-us's projection of the release year to
   its last CPI-U year (2035), because the plans request keys in later years
   (reform validation reaches past 2025). The build's own simulations hold

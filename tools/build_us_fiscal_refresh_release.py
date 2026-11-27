@@ -5772,8 +5772,8 @@ class _PostExportScoringPlan:
         error: str | None = None,
     ) -> None:
         """``consumer_requests`` holds every request of each consumer's dry
-        run, which pooled scoring sends to workers; the record of the plan
-        leaves it out, as it does the reform pass counts."""
+        run, whose reform passes pooled scoring sends to workers; the record
+        of the plan leaves it out, as it does the reform pass counts."""
         self.n_households = int(n_households)
         self.maximum_batch_size = maximum_batch_size
         self.baseline_plans = {
@@ -6450,16 +6450,64 @@ def _post_export_error_text(error: BaseException) -> str:
         return type(error).__name__
 
 
-def _without_traceback_frames(error: BaseException, *, note: str) -> BaseException:
-    """``error``, kept to raise later, holding no frames: its formatted
-    traceback, with those of the exceptions it was raised from or while
-    handling, is added as a note after ``note``; then its traceback and its
-    links to those exceptions are dropped (each of them is left unchanged), so
-    it holds no failed pass's per-batch values and no caller's exception."""
-    error.add_note(note + "\n" + "".join(traceback.format_exception(error)))
-    error.__traceback__ = None
-    error.__cause__ = None
-    error.__context__ = None
+def _exception_chain(error: BaseException) -> Iterator[BaseException]:
+    """``error`` and every exception it was raised from or while handling,
+    each once."""
+    pending, seen = [error], set()
+    while pending:
+        linked = pending.pop()
+        if id(linked) in seen:
+            continue
+        seen.add(id(linked))
+        yield linked
+        pending.extend(
+            chained
+            for chained in (linked.__cause__, linked.__context__)
+            if chained is not None
+        )
+
+
+def _raised_while_interrupted(error: BaseException) -> bool:
+    """Whether ``error`` was raised from, or while handling, an interrupt
+    (``KeyboardInterrupt``, or SIGTERM's ``BuildTerminatedError``)."""
+    return any(
+        isinstance(linked, KeyboardInterrupt) for linked in _exception_chain(error)
+    )
+
+
+def _without_traceback_frames(
+    error: BaseException,
+    *,
+    note: str,
+    callers_exception: BaseException | None = None,
+) -> BaseException:
+    """``error``, kept to raise later, holding no frames of the pass it ended.
+
+    Its formatted traceback, with those of the exceptions it was raised from
+    or while handling, is added as a note after ``note`` (a short note says
+    so if formatting runs out of memory). Then the traceback of ``error`` and
+    of each exception in its chain is dropped, except ``callers_exception``,
+    the exception the caller was handling when the pass ran, and that
+    exception's own chain, which are left unchanged. The links stay, so the
+    build's run outcome still reads the chain (a MemoryError, a termination).
+    """
+    try:
+        formatted = "".join(traceback.format_exception(error))
+    except MemoryError:
+        formatted = "(Its traceback could not be formatted: out of memory.)\n"
+    error.add_note(note + "\n" + formatted)
+    pending, seen = [error], set()
+    while pending:
+        linked = pending.pop()
+        if linked is callers_exception or id(linked) in seen:
+            continue
+        seen.add(id(linked))
+        linked.__traceback__ = None
+        pending.extend(
+            chained
+            for chained in (linked.__cause__, linked.__context__)
+            if chained is not None
+        )
     return error
 
 
@@ -7338,11 +7386,14 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         this process while workers run (each worker's cap, and the plan's
         3 GiB for this process, are sized for reform passes). A consumer's own
         pass that raises is kept, with its traceback as a note and without
-        its frames, and raised when that consumer opens; a refused batch file
-        propagates at once.
+        its frames, and raised when that consumer opens; a refused batch file,
+        or an error raised while the build is being interrupted or
+        terminated, propagates at once.
         """
         if not self._unserved_baseline_plans:
             return
+        # What the caller is handling, if anything: left as it is.
+        callers_exception = sys.exception()
         self._run_merged_baseline_pass()
         if not self._merged_baseline_failed:
             return
@@ -7354,10 +7405,14 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
             except PostExportBatchFileError:
                 raise
             except Exception as error:
+                if _raised_while_interrupted(error):
+                    # The build is stopping: no later stage's pass runs.
+                    raise
                 self._own_baselines[name] = _without_traceback_frames(
                     error,
                     note="Raised by its own baseline pass in the certifying "
                     "process, before the worker pool started:",
+                    callers_exception=callers_exception,
                 )
             # After a failed pass, outside the handler: a full collection
             # frees what its frames held in a cycle.
