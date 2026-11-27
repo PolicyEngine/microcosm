@@ -8,6 +8,10 @@ when separate stage processes write them at different wall-clock times.
 
 Object columns use a small deterministic scalar codec.  Checkpoints are local
 build artifacts and must not be loaded from untrusted sources.
+
+A column of strings with no missing value is converted with Arrow buffers
+instead of one value at a time; it produces and parses the same bytes as the
+per-value codec, which still handles every other column.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 
 from microcosm.frame import (
     EntitySchema,
@@ -562,9 +567,10 @@ def _write_series(group: Any, series: pd.Series, spec: Mapping[str, object]) -> 
         _write_numpy_dataset(group, "values", values)
         return
     if encoding == _ENCODING_OBJECT:
-        offsets, payload = _encode_object_values(
-            series.to_numpy(dtype=object, copy=False)
-        )
+        encoded = _encode_string_values(series)
+        if encoded is None:
+            encoded = _encode_object_values(series.to_numpy(dtype=object, copy=False))
+        offsets, payload = encoded
         _write_numpy_dataset(group, "offsets", offsets)
         _write_bytes_dataset(group, "payload", payload)
         return
@@ -604,9 +610,14 @@ def _read_series(
         series = pd.Series(values.view(np.dtype(dtype)), copy=False)
     elif encoding == _ENCODING_OBJECT:
         offsets = _read_numpy_dataset(group, "offsets", path)
-        payload = _read_bytes_dataset(group, "payload", path)
-        values = _decode_object_values(offsets, payload, path=path, label=label)
-        series = pd.Series(values, dtype=restore_dtype, copy=False)
+        payload = _read_uint8_dataset(group, "payload", path)
+        _check_object_offsets(offsets, len(payload), path=path, label=label)
+        series = _decode_string_values(offsets, payload, restore_dtype)
+        if series is None:
+            values = _decode_object_values(
+                offsets, payload.tobytes(), path=path, label=label
+            )
+            series = pd.Series(values, dtype=restore_dtype, copy=False)
     elif encoding == _ENCODING_NULLABLE_BOOLEAN:
         if dtype != "boolean":
             raise ValueError(
@@ -759,6 +770,118 @@ def _encode_object_scalar(value: object) -> bytes:
     )
 
 
+def _encode_string_values(series: pd.Series) -> tuple[np.ndarray, np.ndarray] | None:
+    """The per-value codec's offsets and payload, built from Arrow buffers.
+
+    The per-value codec stores each value as the string tag byte followed by
+    its UTF-8 bytes, and ``offsets[i + 1]`` is where value ``i`` ends. An
+    Arrow string array holds the same UTF-8 bytes back to back with its own
+    end offsets, so in the payload value ``i`` ends ``i + 1`` tag bytes later.
+    Returns ``None`` when a value is missing or is not a string; the
+    per-value codec writes those columns.
+    """
+
+    strings = _string_values_as_arrow(series)
+    if strings is None:
+        return None
+    value_count = len(strings)
+    if value_count == 0:
+        return np.zeros(1, dtype=np.int64), np.empty(0, dtype=np.uint8)
+    _validity, offsets_buffer, data_buffer = strings.buffers()
+    string_offsets = np.frombuffer(offsets_buffer, dtype=np.int64)[
+        strings.offset : strings.offset + value_count + 1
+    ]
+    first, last = int(string_offsets[0]), int(string_offsets[-1])
+    offsets = string_offsets - first + np.arange(value_count + 1, dtype=np.int64)
+    payload = np.empty(int(offsets[-1]), dtype=np.uint8)
+    tag_positions = offsets[:-1]
+    payload[tag_positions] = _TAG_STRING
+    if last > first:
+        is_value_byte = np.ones(len(payload), dtype=np.bool_)
+        is_value_byte[tag_positions] = False
+        payload[is_value_byte] = np.frombuffer(data_buffer, dtype=np.uint8)[first:last]
+    return offsets, payload
+
+
+def _string_values_as_arrow(series: pd.Series) -> pa.LargeStringArray | None:
+    """The values as one Arrow large-string array, or ``None``.
+
+    ``None`` when a value is missing or is not a ``str``, or when Arrow
+    refuses a value (a lone surrogate, or stored bytes that are not UTF-8),
+    so the per-value codec handles the column and raises its own error.
+    """
+
+    dtype = series.dtype
+    try:
+        if isinstance(dtype, pd.StringDtype) and dtype.storage == "pyarrow":
+            stored = pa.array(series.array)
+            if stored.null_count:
+                return None
+            # Widen each chunk to 64-bit offsets before joining the chunks,
+            # so text past 2**31 bytes never passes through 32-bit offsets.
+            strings = stored.cast(pa.large_string())
+            if isinstance(strings, pa.ChunkedArray):
+                strings = strings.combine_chunks()
+            strings.validate(full=True)
+            return strings
+        values = series.to_numpy(dtype=object, copy=False)
+        if pd.api.types.infer_dtype(values, skipna=False) not in ("string", "empty"):
+            return None
+        return pa.array(values, type=pa.large_string())
+    except (pa.ArrowInvalid, pa.ArrowTypeError, UnicodeEncodeError):
+        return None
+
+
+def _decode_string_values(
+    offsets: np.ndarray,
+    payload: np.ndarray,
+    restore_dtype: str | pd.BooleanDtype | pd.StringDtype,
+) -> pd.Series | None:
+    """Parse checked offsets and payload in which every value is a string.
+
+    Returns ``None`` when the declared dtype is not text, when a value's tag
+    is not the string tag, or when a value is not valid UTF-8; the per-value
+    codec reads those columns and raises its own error for invalid values.
+    """
+
+    is_object = isinstance(restore_dtype, str) and restore_dtype == "object"
+    if not (is_object or isinstance(restore_dtype, pd.StringDtype)):
+        return None
+    tag_positions = offsets[:-1]
+    if not (payload[tag_positions] == _TAG_STRING).all():
+        return None
+    is_value_byte = np.ones(len(payload), dtype=np.bool_)
+    is_value_byte[tag_positions] = False
+    string_offsets = offsets - np.arange(len(offsets), dtype=np.int64)
+    strings = pa.LargeStringArray.from_buffers(
+        len(tag_positions),
+        pa.py_buffer(string_offsets),
+        pa.py_buffer(payload[is_value_byte]),
+    )
+    try:
+        strings.validate(full=True)  # UTF-8, as the per-value decode checks
+    except pa.ArrowInvalid:
+        return None
+    if isinstance(restore_dtype, pd.StringDtype) and restore_dtype.storage == "pyarrow":
+        return pd.Series(pd.array(strings, dtype=restore_dtype), copy=False)
+    return pd.Series(
+        strings.to_numpy(zero_copy_only=False), dtype=restore_dtype, copy=False
+    )
+
+
+def _check_object_offsets(
+    offsets: np.ndarray, payload_size: int, *, path: Path, label: str
+) -> None:
+    if offsets.ndim != 1 or offsets.dtype != np.dtype(np.int64) or len(offsets) < 1:
+        raise ValueError(
+            f"Frame checkpoint {path} {label!r} has malformed object offsets."
+        )
+    if offsets[0] != 0 or offsets[-1] != payload_size or (np.diff(offsets) < 1).any():
+        raise ValueError(
+            f"Frame checkpoint {path} {label!r} has invalid object boundaries."
+        )
+
+
 def _decode_object_values(
     offsets: np.ndarray,
     payload: bytes,
@@ -766,14 +889,7 @@ def _decode_object_values(
     path: Path,
     label: str,
 ) -> np.ndarray:
-    if offsets.ndim != 1 or offsets.dtype != np.dtype(np.int64) or len(offsets) < 1:
-        raise ValueError(
-            f"Frame checkpoint {path} {label!r} has malformed object offsets."
-        )
-    if offsets[0] != 0 or offsets[-1] != len(payload) or (np.diff(offsets) < 1).any():
-        raise ValueError(
-            f"Frame checkpoint {path} {label!r} has invalid object boundaries."
-        )
+    _check_object_offsets(offsets, len(payload), path=path, label=label)
     values = np.empty(len(offsets) - 1, dtype=object)
     for index, (start, stop) in enumerate(zip(offsets[:-1], offsets[1:], strict=True)):
         chunk = payload[int(start) : int(stop)]
@@ -812,7 +928,7 @@ def _write_numpy_dataset(group: Any, name: str, values: np.ndarray) -> None:
     group.create_dataset(name, data=np.asarray(values), track_times=False)
 
 
-def _write_bytes_dataset(group: Any, name: str, value: bytes) -> None:
+def _write_bytes_dataset(group: Any, name: str, value: bytes | np.ndarray) -> None:
     group.create_dataset(
         name,
         data=np.frombuffer(value, dtype=np.uint8),
@@ -826,12 +942,16 @@ def _read_numpy_dataset(group: Any, name: str, path: Path) -> np.ndarray:
 
 
 def _read_bytes_dataset(group: Any, name: str, path: Path) -> bytes:
+    return _read_uint8_dataset(group, name, path).tobytes()
+
+
+def _read_uint8_dataset(group: Any, name: str, path: Path) -> np.ndarray:
     values = _read_numpy_dataset(group, name, path)
     if values.ndim != 1 or values.dtype != np.dtype(np.uint8):
         raise ValueError(
             f"Frame checkpoint {path} HDF dataset {name!r} must be uint8 bytes."
         )
-    return values.tobytes()
+    return values
 
 
 def _read_metadata(root: Any, path: Path) -> dict[str, Any]:

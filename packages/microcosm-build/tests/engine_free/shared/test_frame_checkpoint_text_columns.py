@@ -384,8 +384,13 @@ def _concatenated_pyarrow_series() -> pd.Series:
     )
 
 
-def _sliced_pyarrow_series() -> pd.Series:
+def _sliced_chunks_pyarrow_series() -> pd.Series:
     return _concatenated_pyarrow_series().iloc[1:].reset_index(drop=True)
+
+
+def _sliced_chunk_pyarrow_series() -> pd.Series:
+    series = pd.Series(["dropped", "é", "", "kept"], dtype=PYARROW_STR)
+    return series.iloc[1:].reset_index(drop=True)
 
 
 def _narrow_offset_pyarrow_series() -> pd.Series:
@@ -395,10 +400,16 @@ def _narrow_offset_pyarrow_series() -> pd.Series:
     return pd.Series(pd.arrays.ArrowStringArray(chunks), copy=False)
 
 
-_PYARROW_LAYOUTS: dict[str, Callable[[], pd.Series]] = {
-    "two chunks": _concatenated_pyarrow_series,
-    "chunks starting at an offset": _sliced_pyarrow_series,
-    "32-bit offset chunks": _narrow_offset_pyarrow_series,
+# Each layout's builder, chunk count and the first chunk's starting offset.
+_PYARROW_LAYOUTS: dict[str, tuple[Callable[[], pd.Series], int, int]] = {
+    "two chunks": (_concatenated_pyarrow_series, 2, 0),
+    "two chunks, the first starting at an offset": (
+        _sliced_chunks_pyarrow_series,
+        2,
+        1,
+    ),
+    "one chunk starting at an offset": (_sliced_chunk_pyarrow_series, 1, 1),
+    "chunks built with 32-bit offsets": (_narrow_offset_pyarrow_series, 2, 0),
 }
 
 
@@ -406,8 +417,11 @@ _PYARROW_LAYOUTS: dict[str, Callable[[], pd.Series]] = {
 def test_pyarrow_text_layouts_keep_the_per_value_loop_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str
 ) -> None:
-    series = _PYARROW_LAYOUTS[layout]()
-    assert series.array.__arrow_array__().num_chunks >= 1
+    build_series, chunk_count, first_chunk_offset = _PYARROW_LAYOUTS[layout]
+    series = build_series()
+    chunks = series.array.__arrow_array__()
+    assert chunks.num_chunks == chunk_count
+    assert chunks.chunk(0).offset == first_chunk_offset
     calls = _LoopCalls(monkeypatch)
 
     _assert_matches_loop(tmp_path / "column.h5", series)
@@ -577,7 +591,7 @@ _LARGE_TEXT_VARIABLE = "MICROCOSM_FRAME_CHECKPOINT_LARGE_TEXT_TEST"
 @pytest.mark.slow
 @pytest.mark.skipif(
     os.environ.get(_LARGE_TEXT_VARIABLE) != "1",
-    reason=f"set {_LARGE_TEXT_VARIABLE}=1 to run; it needs about 10 GB of memory",
+    reason=f"set {_LARGE_TEXT_VARIABLE}=1 to run; it needs about 6 GB of memory",
 )
 @pytest.mark.parametrize("dtype_name", ["pyarrow_str", "object"])
 def test_text_payload_over_two_gibibytes_keeps_the_per_value_loop_bytes(
