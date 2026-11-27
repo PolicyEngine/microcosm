@@ -1144,14 +1144,12 @@ work.
     without looking for `releases.json`, and `publish_release`, which writes
     it. They leave once no registered repository lacks `releases.json`. The
     plan names no owner or milestone for them yet.
-  - *The policyengine.py certification tool.*
-    `tools/certify_uk_cut_in_policyengine_py.py` still reads a national
-    build's manifests at its tag (`--national-tag`), so it cannot certify a
-    build published into its own folder, such as one `tools/run_uk_cut.py`
-    publishes through `microcosm-publish-release-build`.
   - *policyengine.py's pins.* Its bundle, read on 2026-11-11 at 5b6d7901c,
     pins builds by tag; version 1 pins each by release and build in its
-    folder.
+    folder. Its UK national and local-area builds have been pinned that way
+    since policyengine.py#759 (merged 2026-11-16), and
+    `tools/certify_uk_cut_in_policyengine_py.py` certifies a UK build only
+    from its folder (#1762).
   - *The default.* The loader takes each country's default release from the
     registry. `releases.json` also names a `default`: in this repository only
     the switch tool sets it, and no loader reads it. The gap: no check at
