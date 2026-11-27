@@ -69,6 +69,7 @@ from microcosm.build.transport.cli import (
     prepare_create_outputs,
     prepare_transport_build,
     through,
+    transport_build_provenance,
 )
 from microcosm.build.transport.compose import (
     TransportGraphConfig,
@@ -2652,6 +2653,11 @@ def test_cli_checkpoints_write_only_under_out_and_resume_warm(composed, tmp_path
     assert {"graph", "skeleton_dataset", "calibration_diagnostics", "explorer"} <= set(
         status["produced"]
     )
+    # The build records the code and runtime it ran on, for the release
+    # assembler (tracker 5b · 13).
+    provenance = transport_build_provenance()
+    assert status.get("code") == provenance["code"]
+    assert status.get("runtime") == provenance["runtime"]
     for name in (
         "checkpoint-geography.json",
         "checkpoint-calibration.json",

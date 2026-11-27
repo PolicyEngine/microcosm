@@ -86,6 +86,7 @@ from .unit_declarations import CREATE_V1_REF, create_unit_declaration
 
 __all__ = [
     "EXPORT_FILENAME",
+    "TRANSPORT_RUNTIME_DISTRIBUTIONS",
     "PreparedTransportBuild",
     "execute_transport_graph",
     "main",
@@ -93,6 +94,7 @@ __all__ = [
     "prepare_create_outputs",
     "prepare_transport_build",
     "through",
+    "transport_build_provenance",
 ]
 
 #: The skeleton's exported dataset, written under ``--out``.
@@ -103,6 +105,25 @@ _CONTENT_BASIS = (
     "Transported donor support records reweighted to destination facts; "
     "not observed destination microdata."
 )
+
+
+#: The distributions whose versions a transport build records (tracker
+#: 5b · 13). Placeholder: filled in the next commit.
+TRANSPORT_RUNTIME_DISTRIBUTIONS: tuple[str, ...] = ()
+
+
+def transport_build_provenance(
+    *, checkout: str | Path | None = None
+) -> dict[str, dict[str, object]]:
+    """Placeholder for tracker 5b · 13: written in the next commit."""
+    return {
+        "code": {
+            "repository": "PolicyEngine/microcosm",
+            "git_commit": "",
+            "git_dirty": False,
+        },
+        "runtime": {},
+    }
 
 
 @dataclass(frozen=True)
