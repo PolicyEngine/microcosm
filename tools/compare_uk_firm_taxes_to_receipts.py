@@ -150,7 +150,14 @@ MODEL_CAVEATS: Mapping[str, str] = {
         "official: cash receipts. Bank Levy is not compared."
     ),
     "firm_business_rates": (
-        "England only on both sides: the model gives 0 outside England. Model: "
+        "England only on both sides: the model gives 0 outside England. Assumed "
+        "input: with --rateable-value-dir, firm_rateable_value allots the VOA "
+        "2023-list stock of hereditaments in England to firms by headcount rank, "
+        "one property per firm, so small business rate relief is overstated "
+        "for multi-site firms and properties of non-firm ratepayers are handed "
+        "to firms. Every ONS non-profit body (legal status 7) is assumed a "
+        "charity (firm_is_charity), so it takes mandatory charitable rate relief "
+        "and the total is lower than if only registered charities did. Model: "
         "gross rates less reliefs, one aggregate property per firm; official: "
         "NNDR3 gross rates payable less reliefs, before transitional "
         "arrangements, and including non-firm ratepayers (e.g. public bodies)."

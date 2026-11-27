@@ -87,8 +87,13 @@ in-sample) and R&D expenditure (`--rd-tax-credits-dir`, HMRC R&D tax credit
 statistics) are opt-in assumed inputs. Both go to ONS status 1 companies
 only, so public corporations pay no corporation tax.
 
-The other policyengine-uk firm inputs (rateable value, capital expenditure,
-the other pay-distribution inputs and several flags) wait for sources.
+Rateable value (`--rateable-value-dir`, the VOA rating-list stock) is an
+opt-in assumed input. `uk_runtime/firm_empty_property.py` reads the MHCLG
+empty-property figures as a standalone diagnostic; the build does not set
+the empty-property inputs.
+
+The other policyengine-uk firm inputs (capital expenditure, the other
+pay-distribution inputs and several flags) wait for sources.
 
 ## External Prerequisites
 

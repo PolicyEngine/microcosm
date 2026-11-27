@@ -526,6 +526,7 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
         "firm_claims_employment_allowance",
         "firm_is_single_director_company",
         "firm_taxable_trading_profit",
+        "firm_rateable_value",
         "firm_employees_below_secondary_threshold",
         "firm_paybill_below_secondary_threshold",
     }
@@ -548,6 +549,7 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
         "employment_allowance",
         "pay_distribution",
         "profit",
+        "rateable_value",
         "sic_division",
         "labour_link",
         "employment_allowance_takeup",
@@ -559,6 +561,7 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
         allowance,
         pay_distribution,
         profit,
+        rateable_value,
         sic_division,
         labour_link,
         takeup,
@@ -600,7 +603,10 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
     assert allowance.policyengine_uk_columns == UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS
     assert allowance.microcosm_columns == ()
     assert allowance.requires == ("attributes",)
-    for group, column in ((profit, "firm_taxable_trading_profit"),):
+    for group, column in (
+        (profit, "firm_taxable_trading_profit"),
+        (rateable_value, "firm_rateable_value"),
+    ):
         assert group.source_columns == (column,)
         assert group.policyengine_uk_columns == (column,)
         assert group.microcosm_columns == ()
@@ -620,6 +626,7 @@ def test_layouts_are_the_base_and_each_closed_set_of_groups() -> None:
         "employment_allowance",
         "pay_distribution",
         "profit",
+        "rateable_value",
         "sic_division",
         "labour_link",
         "employment_allowance_takeup",
@@ -700,6 +707,17 @@ def test_employment_allowance_export_follows_status_and_employment() -> None:
     )
     with pytest.raises(ValueError, match="does not follow"):
         validate_uk_firm_table(broken)
+
+
+def test_rateable_value_must_be_zero_outside_england() -> None:
+    # Rows are firms 4, 2, 1, 3: Wales, North East, Scotland, London.
+    firms = _attributed_firms().assign(firm_rateable_value=[0.0, 2000.0, 0.0, 500.0])
+    table = to_policyengine_uk_firm_table(firms, threshold_k=90.0)
+    validate_uk_firm_table(table)
+    outside = ~table["firm_in_england"].to_numpy(bool)
+    wrong = table["firm_rateable_value"].where(~outside, 100.0)
+    with pytest.raises(ValueError, match="zero outside England"):
+        validate_uk_firm_table(table.assign(firm_rateable_value=wrong))
 
 
 def test_public_sector_link_leaves_out_public_corporations() -> None:

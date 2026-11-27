@@ -1,0 +1,15 @@
+snapshot_date,variable,label,england_hereditaments
+2023-12-31,hdit_mr_empty,Mandatory Relief for empty premises,175870
+2023-12-31,hdit_mr_emptyind,"Empty premises that are classed as ""industrial property"" above the exemption threshold",12081
+2023-12-31,hdit_mr_emptylisted,"Empty premises those that have ""listed building status""",26317
+2023-12-31,hdit_mr_emptycasc,"Empty premises that are ""Community Amateur Sports Clubs""",570
+2023-12-31,hdit_mr_emptycharity,"Empty premises that are ""charities""",973
+2023-12-31,hdit_mr_emptyoth,Empty premises not included in previous four categories,93557
+2023-12-31,hdit_mr_emptyabove,"Empty premises that are classed as ""non-industrial"" above the exemption threshold",42372
+2024-12-31,hdit_mr_empty,Mandatory Relief for empty premises,178507
+2024-12-31,hdit_mr_emptyind,"Empty premises that are classed as ""industrial property"" above the exemption threshold",12873
+2024-12-31,hdit_mr_emptylisted,"Empty premises those that have ""listed building status""",26832
+2024-12-31,hdit_mr_emptycasc,"Empty premises that are ""Community Amateur Sports Clubs""",16
+2024-12-31,hdit_mr_emptycharity,"Empty premises that are ""charities""",1294
+2024-12-31,hdit_mr_emptyoth,Empty premises not included in previous four categories,97733
+2024-12-31,hdit_mr_emptyabove,"Empty premises that are classed as ""non-industrial"" above the exemption threshold",39759

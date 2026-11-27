@@ -502,8 +502,8 @@ def test_employment_allowance_build_adds_only_the_assumed_flags(
 
 def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> None:
     """Every opt-in source at once: public sector headcounts change only
-    central government and local authority rows, and profit adds one
-    column."""
+    central government and local authority rows, and profit and rateable
+    value add one column each."""
 
     rules = _StandardRateDouble()
     built = build_uk_firm_dataset(
@@ -516,6 +516,7 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
         employment_allowance=True,
         public_sector_dir=FIXTURES / "firm_public_sector_2025",
         profit_dir=FIXTURES / "firm_ct_2024",
+        rateable_value_dir=FIXTURES / "firm_rateable_value_2024",
         pay_distribution_dir=FIXTURES / "firm_pay_distribution_2024",
     )
     table = built["table"]
@@ -525,6 +526,7 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
         "ons_public_sector_employment",
         "ashe_pay_distribution",
         "hmrc_ct_statistics",
+        "voa_rating_list",
     ):
         assert receipt["data_years"][key] == UK_FIRM_INPUT_DATA_YEARS[key]
     base = builds[0]["table"]
@@ -535,6 +537,7 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
             "employment_allowance",
             "pay_distribution",
             "profit",
+            "rateable_value",
         ]
     )
     validate_uk_firm_table(pd.read_parquet(built["table_path"]))
@@ -564,12 +567,16 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
     assert receipt["uk_firm_profit"]["weighted_profit_gbp"] == pytest.approx(
         float((weight * profit).sum())
     )
+    value = table["firm_rateable_value"].to_numpy(float)
+    assert value.max() > 0
+    assert not value[~table["firm_in_england"].to_numpy(bool)].any()
+    assert receipt["uk_firm_rateable_value"]["status"] == "assumed"
     below = table["firm_employees_below_secondary_threshold"].to_numpy()
     assert 0 < below.sum() and (below <= table["firm_employees"].to_numpy()).all()
     assert receipt["uk_firm_pay_distribution"]["threshold_gbp"] == 9_100.0
-    for role in ("public_sector", "profit", "pay_distribution"):
+    for role in ("public_sector", "profit", "rateable_value", "pay_distribution"):
         assert len(receipt["inputs"][role]) == 1
-    for key in ("uk_firm_public_sector", "uk_firm_profit"):
+    for key in ("uk_firm_public_sector", "uk_firm_profit", "uk_firm_rateable_value"):
         assert key not in builds[0]["receipt"]
 
 
@@ -719,6 +726,7 @@ def test_labour_link_sources_need_their_prerequisites(tmp_path: Path) -> None:
         ("employment_allowance_takeup_dir", "firm_employment_allowance_takeup_2024_25"),
         ("public_sector_dir", "firm_public_sector_2025"),
         ("profit_dir", "firm_ct_2024"),
+        ("rateable_value_dir", "firm_rateable_value_2024"),
         ("pay_distribution_dir", "firm_pay_distribution_2024"),
     ],
 )

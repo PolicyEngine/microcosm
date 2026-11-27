@@ -68,6 +68,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--rateable-value-dir",
+        type=Path,
+        help=(
+            "directory holding the VOA rateable value bands; sets the assumed "
+            "firm_rateable_value"
+        ),
+    )
+    parser.add_argument(
         "--pay-distribution-dir",
         type=Path,
         help=(
@@ -185,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         employment_allowance=args.employment_allowance_flags,
         public_sector_dir=args.public_sector_dir,
         profit_dir=args.profit_dir,
+        rateable_value_dir=args.rateable_value_dir,
         pay_distribution_dir=args.pay_distribution_dir,
         bpe_dir=args.bpe_dir,
         employment_allowance_takeup_dir=args.employment_allowance_takeup_dir,

@@ -45,6 +45,9 @@ The groups today:
 - ``profit``: the assumed ``firm_taxable_trading_profit`` (pounds, from
   ``firm_profit.assign_uk_firm_taxable_profit``), zero for firms other than ONS status 1 companies.
   It extends ``attributes``.
+- ``rateable_value``: the assumed ``firm_rateable_value`` (pounds, from
+  ``firm_rateable_value.assign_uk_firm_rateable_value``), zero outside
+  England. It extends ``attributes``.
 - ``sic_division``: Microcosm-only ``firm_sic_division``, the generator's
   SIC 2007 division, a linkage key the labour groups
   extend. It extends ``attributes``.
@@ -320,7 +323,10 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         # allotted to companies by turnover rank. In-sample for CT. Only when
         # the build is given a profit source.
         "firm_taxable_trading_profit": "assumed",
-        "firm_rateable_value": "not_set",
+        # Assumed (firm_rateable_value.py): VOA 2023-list hereditaments in
+        # England allotted to firms by headcount rank. Only when the build is
+        # given a rateable value source.
+        "firm_rateable_value": "assumed",
         # Not drawn: no source yet. Placeholders would flow into NIC, CT,
         # VAT and business rates revenue.
         "firm_n_associated_companies": "not_set",
@@ -669,6 +675,12 @@ def _validate_profit_columns(df: pd.DataFrame) -> None:
         )
 
 
+def _validate_rateable_value_columns(df: pd.DataFrame) -> None:
+    value = _non_negative(df, "firm_rateable_value")
+    if np.any(value[~df["firm_in_england"].to_numpy(bool)]):
+        raise ValueError("UK firm firm_rateable_value must be zero outside England.")
+
+
 #: ONS legal statuses the labour link marks ``firm_is_public_sector``:
 #: central government (5) and local authorities (6). Public corporations (4),
 #: public bodies for ``firm_is_public_body``, are left out.
@@ -864,6 +876,15 @@ UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
         requires=("attributes",),
         columns=_single_column("firm_taxable_trading_profit"),
         validate=_validate_profit_columns,
+    ),
+    UKFirmExportGroup(
+        name="rateable_value",
+        source_columns=("firm_rateable_value",),
+        policyengine_uk_columns=("firm_rateable_value",),
+        microcosm_columns=(),
+        requires=("attributes",),
+        columns=_single_column("firm_rateable_value"),
+        validate=_validate_rateable_value_columns,
     ),
     UKFirmExportGroup(
         name="sic_division",

@@ -109,6 +109,12 @@ from microcosm.build.uk_runtime.firm_public_sector import (
     scale_uk_firm_public_sector_employment,
     uk_firm_public_sector_diagnostics,
 )
+from microcosm.build.uk_runtime.firm_rateable_value import (
+    UK_FIRM_RATEABLE_VALUE_METHOD,
+    UK_FIRM_RATEABLE_VALUE_STATUS,
+    assign_uk_firm_rateable_value,
+    read_uk_firm_rateable_value_source,
+)
 from microcosm.build.uk_runtime.firm_rd_tax_credits import (
     UK_FIRM_RD_METHOD,
     UK_FIRM_RD_STATUS,
@@ -124,6 +130,7 @@ from microcosm.build.uk_runtime.firm_rules import (
 )
 from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_EA_RULE_CLAIMS_COLUMN,
+    UK_FIRM_ENGLISH_REGION_CODES,
     to_policyengine_uk_firm_table,
     validate_uk_firm_table,
 )
@@ -161,6 +168,8 @@ UK_FIRM_INPUT_DATA_YEARS: Mapping[str, str] = MappingProxyType(
         "hmrc_ct_statistics": "2024-25",
         # HMRC R&D Tax Credits statistics, September 2026: 2024-25 provisional.
         "hmrc_rd_statistics": "2024-25",
+        # VOA non-domestic rating stock at 31 March 2026, 2023 rating lists.
+        "voa_rating_list": "31 Mar 2026 (2023 list)",
     }
 )
 
@@ -204,6 +213,7 @@ def build_uk_firm_dataset(
     employment_allowance: bool = False,
     public_sector_dir: str | Path | None = None,
     profit_dir: str | Path | None = None,
+    rateable_value_dir: str | Path | None = None,
     pay_distribution_dir: str | Path | None = None,
     bpe_dir: str | Path | None = None,
     employment_allowance_takeup_dir: str | Path | None = None,
@@ -228,7 +238,9 @@ def build_uk_firm_dataset(
     scales the headcount of central government and local authority rows to
     ONS public sector employment before the paybill is set;
     ``profit_dir`` (``tests/fixtures/uk/firm_ct_2024``) adds the assumed
-    ``firm_taxable_trading_profit``. Each is opt-in, reads its own fixed-seed
+    ``firm_taxable_trading_profit``; ``rateable_value_dir``
+    (``tests/fixtures/uk/firm_rateable_value_2024``) the assumed
+    ``firm_rateable_value``. Each is opt-in, reads its own fixed-seed
     generator if any, and leaves the table and receipt unchanged when
     omitted. ``pay_distribution_dir``
     (``tests/fixtures/uk/firm_pay_distribution_2024``), which needs a
@@ -272,6 +284,7 @@ def build_uk_firm_dataset(
     for name, directory in (
         ("public_sector_dir", public_sector_dir),
         ("profit_dir", profit_dir),
+        ("rateable_value_dir", rateable_value_dir),
         ("pay_distribution_dir", pay_distribution_dir),
         ("bpe_dir", bpe_dir),
         ("employment_allowance_takeup_dir", employment_allowance_takeup_dir),
@@ -401,6 +414,19 @@ def build_uk_firm_dataset(
             firm_qualifying_rd_expenditure=rd_draw.qualifying_rd_expenditure,
             firm_is_sme=rd_draw.is_sme,
         )
+    rateable_value_source = None
+    if rateable_value_dir is not None:
+        rateable_value_source = read_uk_firm_rateable_value_source(rateable_value_dir)
+        in_england = firms.assign(
+            firm_in_england=firms["ons_region_code"].isin(
+                list(UK_FIRM_ENGLISH_REGION_CODES)
+            )
+        )
+        firms = firms.assign(
+            firm_rateable_value=assign_uk_firm_rateable_value(
+                in_england, rateable_value_source
+            )
+        )
     if bpe_source is not None:
         firms = firms.assign(
             firm_sic_division=pd.to_numeric(firms["sic_code"])
@@ -475,6 +501,7 @@ def build_uk_firm_dataset(
                     ),
                     "hmrc_ct_statistics": profit_dir is not None,
                     "hmrc_rd_statistics": rd_tax_credits_dir is not None,
+                    "voa_rating_list": rateable_value_dir is not None,
                 }
             ),
         },
@@ -629,6 +656,17 @@ def build_uk_firm_dataset(
                 (weight * table["firm_qualifying_rd_expenditure"]).sum()
             ),
             **dict(rd_draw.diagnostics),
+        }
+    if rateable_value_source is not None:
+        receipt["inputs"]["rateable_value"] = {
+            rateable_value_source.file: rateable_value_source.sha256
+        }
+        receipt["uk_firm_rateable_value"] = {
+            "status": UK_FIRM_RATEABLE_VALUE_STATUS,
+            "method": UK_FIRM_RATEABLE_VALUE_METHOD,
+            "weighted_rateable_value_gbp": float(
+                (weight * table["firm_rateable_value"]).sum()
+            ),
         }
     receipt = _json_safe(receipt)
     receipt_path = output / UK_FIRM_RECEIPT_FILE
