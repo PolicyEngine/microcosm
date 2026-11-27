@@ -27,6 +27,13 @@ them:
 After Stage A, each decision is an edit to the declaration, and for some an
 allocator. It is not a new mechanism.
 
+One point is ruled since (27 Nov 2026): the Historic Table 2 state row is the
+state parent of a district row on every surface, and a parent that it does
+not contain is not removed. The proposed rule for all levels, with a
+recommendation for each open decision, is in
+[US target nesting rule: design for rulings](us-target-nesting-rule-design.md).
+No code applies it yet.
+
 ## One operator, one declaration
 
 The US uses the cross-grain operator that the UK uses,
