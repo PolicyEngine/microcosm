@@ -362,6 +362,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "gate_shadow.py",
         "geography_ladder.py",
         "hours_worked.py",
+        # Lists the engine columns a household pass reads, from the installed
+        # policyengine-us; reads no frame and treats no population.
+        "household_pass_inputs.py",
         "h5_io.py",  # US artifact I/O; no population treatment.
         "immigration.py",
         "input_mass.py",
