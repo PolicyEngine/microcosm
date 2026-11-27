@@ -130,6 +130,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.declared_registers import (
+    DeclaredRegisterError,
     ReviewWindow,
     canonical_date,
     read_strict_json,
@@ -658,8 +659,13 @@ def _read_register_payload(
         label = str(source)
 
     # Duplicate keys, non-finite numbers and malformed text are refused
-    # (microcosm#1759: the shared strict reader).
-    payload = read_strict_json(raw, label=label)
+    # (microcosm#1759: the shared strict reader). A gate that fails closed
+    # records the class of the error (gate_battery, ``evaluation_error.type``),
+    # so the refusal stays a plain ValueError with the reader's text.
+    try:
+        payload = read_strict_json(raw, label=label)
+    except DeclaredRegisterError as error:
+        raise ValueError(str(error)) from error
     if not isinstance(payload, Mapping):
         raise ValueError(f"{label}: exclusion register must be a JSON object.")
     return payload, label

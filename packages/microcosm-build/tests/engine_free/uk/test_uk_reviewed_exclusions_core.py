@@ -7,7 +7,9 @@ reviewed-exclusion files (``read_strict_json``), the date checks of
 (``ReviewWindow``). ``test_support/microcosm_build/
 uk_reviewed_exclusion_reference.py`` holds the old code verbatim. On the
 packaged files, on changed texts and on the days around every packaged
-entry's window, the two give the same value or the same refusal text.
+entry's window, the two give the same value or the same refusal: the same
+error class and the same text. A gate that fails closed records the class
+name in its report, so the class is part of the output.
 """
 
 from __future__ import annotations
@@ -31,8 +33,8 @@ RESOURCES = (
 def _outcome(call):
     try:
         return ("value", call())
-    except ValueError as error:
-        return ("refused", str(error))
+    except Exception as error:  # noqa: BLE001 - the refusal is the outcome
+        return ("refused", type(error).__name__, str(error))
 
 
 @pytest.mark.parametrize("resource", RESOURCES)
@@ -103,7 +105,7 @@ def test_the_date_checks_refuse_the_same(approved_on, expires_on) -> None:
     outcome = _outcome(new)
     assert outcome[0] == old[0]
     if old[0] == "refused":
-        assert outcome[1] == old[1]
+        assert outcome[1:] == old[1:]
 
 
 def _packaged_entries():

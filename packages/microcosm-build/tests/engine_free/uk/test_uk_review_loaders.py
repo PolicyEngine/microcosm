@@ -37,7 +37,7 @@ def _outcome(call):
         try:
             value = call()
         except Exception as error:  # noqa: BLE001 - the refusal is the outcome
-            value = ("refused", isinstance(error, ValueError), str(error))
+            value = ("refused", type(error).__name__, str(error))
     return value, [(w.category.__name__, str(w.message)) for w in caught]
 
 
