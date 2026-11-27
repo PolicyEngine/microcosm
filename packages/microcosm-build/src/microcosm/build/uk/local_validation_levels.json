@@ -8,7 +8,7 @@
     "sha256": "7a6a83b0396cce0662f7eadd1db343a6ab8793d2b74814c6bfcbc6ebe12f9297",
     "manifest_sha256": "7488dbf86b546eafeacb2b560aeb09ca894353e7f25ee55efad614d62b660397",
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "4e7d77460a08985c48667f902ce0d9b3119e25f9"
+    "source_commit": "e4d46c93112f69da0c9cea5ce89a43bd8adf0cf9"
   },
   "rows": [
     {

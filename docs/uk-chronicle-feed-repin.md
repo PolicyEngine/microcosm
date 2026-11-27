@@ -540,12 +540,13 @@ MJF7 and TS054 by MSOA from this feed. The regional targets' values move, so the
 register of the candidate evaluation (uk-candidate-eval) is due to be re-frozen before the next
 national solve.
 
-The `4e7d7746` re-pin (microcosm#1717) is the head of PolicyEngine/chronicle#450, on Chronicle main
-`ece6bb29`. It adds ONS Family Spending, financial year ending 2025: mean weekly household expenditure
+The `e4d46c93` re-pin (microcosm#1717) is the merge of PolicyEngine/chronicle#450 into Chronicle
+main. It adds ONS Family Spending, financial year ending 2025: mean weekly household expenditure
 by commodity group, with each decile's weighted households and sample size, by equivalised disposable
 income decile on both equivalence scales and by gross income decile. That is 487 rows, 2,160,837 in
-all, under the same row contract. #450's base is Chronicle main, so its merge has its head's tree, and
-the artifact is built from that head. It follows `15040ea5` (2,160,350 rows, PolicyEngine/chronicle#443),
+all, under the same row contract. The merge commit's tree is the pull request head's (`4e7d7746`),
+merged onto an unmoved base (`ece6bb29`), so the artifact was built from that head's bundle and carries
+the merge commit's identity. It follows `15040ea5` (2,160,350 rows, PolicyEngine/chronicle#443),
 whose rows are all byte-identical in it. Chronicle main's other merges since then add no UK facts: #445
 registers CenTax's childcare workbook raw-only, and #448 is US. The new
 `ons_family_spending_income_decile_facts.json` holds Table 3.1E's deciles on the updated OECD-modified

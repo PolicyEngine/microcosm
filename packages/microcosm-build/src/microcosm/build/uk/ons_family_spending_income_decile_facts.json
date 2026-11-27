@@ -21,7 +21,7 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "4e7d77460a08985c48667f902ce0d9b3119e25f9",
+    "source_commit": "e4d46c93112f69da0c9cea5ce89a43bd8adf0cf9",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
     "fact_row_count": 2160837,

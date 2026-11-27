@@ -282,7 +282,7 @@
    "source_manifest_sha256": "0bc39317a0d0d565705d188f228d54c2f29dcc6e580942b8d6887ac4d37a39d1",
    "source_vintages": {
     "conditioning_resource": "hmrc_cgt_conditioning_facts.json",
-    "conditioning_resource_sha256": "c18e8c50933a8606ea5b0088fcc6a8adb3dffe66d815dedb26cb2514bcbc79c1",
+    "conditioning_resource_sha256": "fa9a6996930b8d169e4d80748ffea8d4f66fd48b4548862b563be77f18fe5c7f",
     "conditioning_surface": "2024-25",
     "hmrc_surface": "2024-25",
     "mapped_build_period": "2024"
