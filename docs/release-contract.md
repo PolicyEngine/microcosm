@@ -1123,6 +1123,29 @@ work.
     BE builder in this repository stages and the collector registers no BE
     staging repository; a BE build whose manifest records no staging is not
     refused for it.
+  - *BE's release files and release step* (microcosm#1800). A BE build's
+    three added files come from `microcosm.build.spec_release_files`, which
+    reads only the country's spec and the build's calibration diagnostics:
+    `source_coverage.json` has the US file's fields under the contract name
+    `be_source_coverage`, with the spec's target categories as its source
+    families; `demographics.json` has the US file's fields for the spec's
+    demography references, whose fit is in-sample because BE calibrates
+    them; and `reform_validation.json` lists no reforms, with
+    `out_of_sample_simulated` false, until microcosm#264. The release step
+    for a transport build, `tools/assemble_spec_release_dir.py`
+    (`microcosm.build.spec_release_assembly`), reads the build's `--out`
+    folder as the UK national assembler reads its candidate's outputs:
+    `build-status.json` (nothing owed; a clean Microcosm commit and the
+    runtime, which a transport build records there), the H5 read back
+    against its export descriptor, the calibration diagnostics and the run
+    manifest (every gate passed). It writes `<out-dir>/<release>/` with each
+    file the country's release contract requires, puts the H5 and a weights
+    file beside the build under the manifests' names, validates the
+    directory and prints the publish and promote commands; it uploads
+    nothing. The release is `microcosm-<country>-<year>-national` for the
+    export's year, and only a name `publishes_to_build_folder` admits is
+    taken. BE's spec declares no transport graph yet, so no BE build runs
+    through this step until it does.
   - *The first build of a new UK `k`* (2026-11-13). `validate_release_dir`
     refuses every layout of a local-area release until a registry entry names
     it, and `build_folder_identity` and `microcosm-publish-release-build`

@@ -12,7 +12,9 @@ Everything is written under ``--out``: ``graph.json``, ``manifest.json``, a
 manifest per checkpoint, each opaque artifact and an index of them, the
 skeleton H5 and its descriptor, the calibration diagnostics file, the graph
 explorer page and ``build-status.json``. The status file lists the outputs
-the spec declares as still owed by a later package. There is no upload,
+the spec declares as still owed by a later package, and the Microcosm commit
+and the Python and package versions the build ran on, which the spec release
+assembler (``microcosm.build.spec_release_assembly``) reads. There is no upload,
 staging or publication path; ``--local-only`` is the only mode.
 
 The currency check guards new runs only: ``auto`` and ``forbid`` require
@@ -25,10 +27,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
+import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
+from importlib import metadata
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import MappingProxyType
@@ -107,22 +112,78 @@ _CONTENT_BASIS = (
 )
 
 
-#: The distributions whose versions a transport build records (tracker
-#: 5b · 13). Placeholder: filled in the next commit.
-TRANSPORT_RUNTIME_DISTRIBUTIONS: tuple[str, ...] = ()
+#: The distributions whose versions a transport build records beside its
+#: Python version (tracker 5b · 13): Microcosm's packages, the numeric stack
+#: its kernels declare, and the Axiom rules engine, which installs from a
+#: checkout. One that is not installed is recorded as ``"unavailable"``.
+TRANSPORT_RUNTIME_DISTRIBUTIONS: tuple[str, ...] = (
+    "microcosm-build",
+    "microcosm-calibrate",
+    "microcosm-data",
+    "microcosm-diagnostics",
+    "microcosm-fit",
+    "microcosm-frame",
+    "microcosm-graph",
+    "numpy",
+    "pandas",
+    "scipy",
+    "pydantic",
+    "tables",
+    "axiom-rules-engine",
+)
+_MICROCOSM_REPOSITORY = "PolicyEngine/microcosm"
+
+
+def _git_output(checkout: Path, *arguments: str) -> str | None:
+    """Git's output in ``checkout``, or None when git cannot answer."""
+    try:
+        result = subprocess.run(
+            ["git", *arguments],
+            cwd=checkout,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def transport_build_provenance(
     *, checkout: str | Path | None = None
 ) -> dict[str, dict[str, object]]:
-    """Placeholder for tracker 5b · 13: written in the next commit."""
+    """The code and runtime a transport build runs on, for its build status.
+
+    ``code`` is the Microcosm commit of ``checkout`` (by default the checkout
+    this module runs from) and whether a tracked file differs from it,
+    measured as the UK full build measures them; both are None when git
+    cannot answer, as from an installed wheel, so a release assembler records
+    the commit as unmeasured rather than clean. ``runtime`` is the Python
+    version and each of :data:`TRANSPORT_RUNTIME_DISTRIBUTIONS`' versions.
+    The spec release assembler (:mod:`microcosm.build.spec_release_assembly`)
+    reads both from ``build-status.json``, as the UK national assembler reads
+    its build's from the build's diagnostics.
+    """
+    root = Path(checkout) if checkout is not None else Path(__file__).resolve().parent
+    commit = _git_output(root, "rev-parse", "HEAD")
+    changes = (
+        _git_output(root, "status", "--porcelain", "--untracked-files=no")
+        if commit
+        else None
+    )
+    runtime: dict[str, object] = {"python": platform.python_version()}
+    for distribution in TRANSPORT_RUNTIME_DISTRIBUTIONS:
+        try:
+            runtime[distribution] = metadata.version(distribution)
+        except metadata.PackageNotFoundError:
+            runtime[distribution] = "unavailable"
     return {
         "code": {
-            "repository": "PolicyEngine/microcosm",
-            "git_commit": "",
-            "git_dirty": False,
+            "repository": _MICROCOSM_REPOSITORY,
+            "git_commit": commit or None,
+            "git_dirty": None if changes is None else bool(changes),
         },
-        "runtime": {},
+        "runtime": runtime,
     }
 
 
@@ -565,6 +626,7 @@ def execute_transport_graph(
     if resume not in {"auto", "require", "forbid"}:
         raise ValueError("resume must be 'auto', 'require' or 'forbid'.")
     compiled = compile_graph(graph)
+    provenance = transport_build_provenance()
     output = Path(out).resolve()
     supplied = {name: Path(path).resolve() for name, path in sources.items()}
     _check_disjoint(output, supplied)
@@ -684,6 +746,7 @@ def execute_transport_graph(
                 "content_basis": _CONTENT_BASIS,
                 "produced": produced,
                 "not_yet_produced": list(pending_outputs),
+                **provenance,
             }
         ),
         _destination(output, "build-status.json"),
