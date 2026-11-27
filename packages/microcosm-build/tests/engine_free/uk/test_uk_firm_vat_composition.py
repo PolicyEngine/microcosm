@@ -14,9 +14,11 @@ from microcosm.build.uk_runtime.firm_vat_composition import (
     UK_FIRM_INPUT_RATIO_BOUNDS,
     UK_FIRM_VAT_COMPOSITION_FILES,
     UK_FIRM_VAT_COMPOSITION_RULE_COLUMNS,
+    UK_FIRM_VAT_COMPOSITION_SHARE_COLUMNS,
     UK_FIRM_VAT_SUPPLY_COLUMNS,
     UK_FIRM_VAT_TREATMENTS,
     UKFirmVATCompositionRules,
+    add_uk_firm_vat_composition_columns,
     compose_uk_firm_vat_supplies,
     read_uk_firm_vat_composition_source,
     rescale_uk_firm_input_costs,
@@ -235,3 +237,27 @@ def test_relief_checks_are_reported_not_targets():
         "NS4 domestic fuel and power (reduced)", "ratio"
     ] == pytest.approx(0.999, abs=1e-3)
     assert checks.loc["NS6 prescription drugs (zero)", "model_base_gbp_bn"] == 0.0
+
+
+def test_columns_only_mode_adds_shares_and_leaves_scored_columns_alone():
+    firms = pd.DataFrame(
+        {
+            "firm_id": [1, 2],
+            "firm_turnover": [1e6, 2e5],
+            "firm_input_costs": [6e5, 1e5],
+            "firm_sic_section": ["G", "Q"],
+            "firm_standard_rated_supplies": [1e6, 0.0],
+            "firm_exempt_supplies": [0.0, 2e5],
+            "firm_input_vat": [1.2e5, 2e4],
+        }
+    )
+    out = add_uk_firm_vat_composition_columns(firms, _shares())
+    pd.testing.assert_frame_equal(out[firms.columns], firms)
+    assert set(out.columns) - set(firms.columns) == set(
+        UK_FIRM_VAT_COMPOSITION_SHARE_COLUMNS.values()
+    )
+    assert out.loc[1, "firm_sut_exempt_share"] == pytest.approx(
+        _shares().loc["Q", "exempt"]
+    )
+    with pytest.raises(ValueError, match="already"):
+        add_uk_firm_vat_composition_columns(out, _shares())

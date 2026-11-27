@@ -66,6 +66,18 @@ modelled. The 2024-25 part year of VAT on private school fees (from 1 January
 ``NEGATIVE_LIABILITY_SECTORS`` / ``HIGH_LIABILITY_SECTORS`` input-ratio shifts
 still apply before the rescale and now overlap with the composition.
 
+**Status after review (gate B2, 27 Nov 2026).** The supported use is the
+columns-only mode (:func:`add_uk_firm_vat_composition_columns`): the shares
+are attached as Microcosm-only columns and nothing the build scores changes.
+:class:`UKFirmVATCompositionRules` with :func:`rescale_uk_firm_input_costs`
+(the calibration seam) is experimental and failed B2. On a full 2024-25 build
+it held the in-sample bands but missed the VAT liability band bar (0.998973
+against 0.999), and it doubled the held-out error of VAT by section (sum of
+absolute section errors £168.0bn against £79.8bn without it). The frame
+carries about half of BPE's private turnover, so realistic net VAT rates
+cannot reach the liability totals without the solver moving weight into
+high-net sections (I at 3.6 times HMRC, G at 0.19 times).
+
 **Checks, never targets** (:func:`uk_firm_vat_relief_checks`): the modelled
 household base of each zero- or reduced-rated relief against HMRC tax relief
 statistics (January 2026) cost / rate.
@@ -604,17 +616,59 @@ def uk_firm_vat_relief_checks(source: UKFirmVATCompositionSource) -> pd.DataFram
     return pd.DataFrame(rows).T
 
 
+#: Microcosm-only columns the columns-only mode adds (not policyengine-uk inputs).
+UK_FIRM_VAT_COMPOSITION_SHARE_COLUMNS = {
+    "standard": "firm_sut_standard_rated_share",
+    "reduced": "firm_sut_reduced_rated_share",
+    "zero": "firm_sut_zero_rated_share",
+    "exempt": "firm_sut_exempt_share",
+    "export_share": "firm_sut_export_share",
+    "input_vat_rate": "firm_sut_input_vat_rate",
+    "input_ratio_target": "firm_sut_input_ratio",
+}
+
+
+def add_uk_firm_vat_composition_columns(
+    firms: pd.DataFrame, shares: pd.DataFrame
+) -> pd.DataFrame:
+    """``firms`` with the section composition as Microcosm-only share columns.
+
+    The columns-only mode (gate B2, 27 Nov 2026): the shares are attached
+    for analysis and linkage, while every policyengine-uk input, including
+    the supply columns and ``firm_input_vat``, keeps the value the build
+    solved its weights for. Refuses a table that already has a share column
+    and a section with no shares.
+    """
+
+    clash = sorted(
+        set(UK_FIRM_VAT_COMPOSITION_SHARE_COLUMNS.values()) & set(firms.columns)
+    )
+    if clash:
+        raise ValueError(f"firm table already has {clash}.")
+    sections = firms["firm_sic_section"].astype(str)
+    missing = sorted(set(sections) - set(shares.index))
+    if missing:
+        raise ValueError(f"No VAT composition shares for sections {missing}.")
+    rows = shares.reindex(sections.to_numpy())
+    out = firms.copy()
+    for key, column in UK_FIRM_VAT_COMPOSITION_SHARE_COLUMNS.items():
+        out[column] = rows[key].to_numpy(np.float64)
+    return out
+
+
 __all__ = [
     "UK_FIRM_INPUT_RATIO_BOUNDS",
     "UK_FIRM_NEW_DWELLING_FRACTION",
     "UK_FIRM_VAT_COMPOSITION_FILES",
     "UK_FIRM_VAT_COMPOSITION_RULE_COLUMNS",
+    "UK_FIRM_VAT_COMPOSITION_SHARE_COLUMNS",
     "UK_FIRM_VAT_COMPOSITION_STATUS",
     "UK_FIRM_VAT_RELIEF_COSTS",
     "UK_FIRM_VAT_SUPPLY_COLUMNS",
     "UK_FIRM_VAT_TREATMENTS",
     "UKFirmVATCompositionRules",
     "UKFirmVATCompositionSource",
+    "add_uk_firm_vat_composition_columns",
     "compose_uk_firm_vat_supplies",
     "read_uk_firm_vat_composition_source",
     "rescale_uk_firm_input_costs",
