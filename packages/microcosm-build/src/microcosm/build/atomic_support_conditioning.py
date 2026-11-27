@@ -15,7 +15,10 @@ This module builds the columns, and names no country's sources or columns:
 - :func:`extend_atomic_support` adds declared columns to a support's bytes;
 - :func:`zero_mass_cells` lists every constraint cell, at each fallback level,
   where a weight column has no sampling mass, so a draw can choose its
-  fallback ahead of time rather than fail on an empty cell.
+  fallback ahead of time rather than fail on an empty cell;
+- :func:`choose_fallback_levels` makes that choice for each household: the
+  first level of a declared ladder (:class:`FallbackLevel`) whose cell has
+  mass in the weight the household samples by there.
 """
 
 from __future__ import annotations
@@ -306,3 +309,242 @@ def zero_mass_cells(
                     empty.append(list(cell))
             table.append({"constraints": list(level), "weight": weight, "cells": empty})
     return table
+
+
+def _name(value: object) -> bool:
+    return isinstance(value, str) and bool(value) and value.strip() == value
+
+
+@dataclass(frozen=True)
+class FallbackLevel:
+    """One level of a conditioned draw's fallback ladder.
+
+    ``constraints`` names the household inputs the level keeps as exact-match
+    constraints, each a key of :func:`choose_fallback_levels`'
+    ``constraint_columns``. ``weight_by`` says whether the level samples by
+    the weight column chosen for each household (``True``) or by the default
+    weight (``False``). A draw at the level reads every input it does not keep
+    as missing.
+    """
+
+    name: str
+    constraints: tuple[str, ...]
+    weight_by: bool
+
+    def __post_init__(self) -> None:
+        _require(_name(self.name), "a fallback level needs a name")
+        _require(
+            type(self.constraints) is tuple
+            and all(_name(column) for column in self.constraints)
+            and len(set(self.constraints)) == len(self.constraints),
+            "a fallback level keeps a tuple of distinct input columns",
+        )
+        _require(type(self.weight_by) is bool, "a fallback level's weight_by is a bool")
+
+
+def _observed(series: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    """Where a household input is present, and the input as Python objects."""
+    present = ~series.isna().to_numpy(dtype=bool)
+    codes = series.to_numpy(dtype=object)
+    _require(
+        all(_name(code) for code in codes[present]),
+        "present input codes must be nonempty strings",
+    )
+    return present, codes
+
+
+def _cell_mass(
+    support: AtomicSupport, columns: Sequence[str], weights: Sequence[str]
+) -> tuple[pd.MultiIndex | None, np.ndarray]:
+    """The support's cells over ``columns``, each with its summed weights.
+
+    Row ``i`` of the mass table is cell ``i``'s total in each of ``weights``,
+    in order. Without columns the whole support is one cell (``None``).
+    Totals stay exact: the decoder holds each weight column's total within
+    the exact sampling range.
+    """
+    values = np.stack(
+        [np.asarray(support.arrays[weight], dtype=np.int64) for weight in weights],
+        axis=1,
+    )
+    if not columns:
+        return None, values.sum(axis=0, keepdims=True)
+    codes, cells = pd.MultiIndex.from_arrays(
+        [support.arrays[column] for column in columns]
+    ).factorize()
+    mass = np.zeros((len(cells), len(weights)), dtype=np.int64)
+    np.add.at(mass, codes, values)
+    return cells, mass
+
+
+def choose_fallback_levels(
+    support: AtomicSupport,
+    households: pd.DataFrame,
+    *,
+    constraint_columns: Mapping[str, str],
+    weight_by: Mapping[str, object] | None,
+    default_weight: str,
+    levels: Sequence[FallbackLevel],
+) -> np.ndarray:
+    """Each household's first fallback level whose support cell has mass.
+
+    The shared draw (:func:`~microcosm.build.atomic_geography.assign_atomic`)
+    refuses a household whose constraint cell has no sampling mass in the
+    weight column it samples by. A country that conditions its draw declares
+    a fallback ladder, ``levels``, in order. A household takes the first level
+    whose inputs are present (every constraint the level keeps and, where the
+    level samples by the household's own weight, a code ``weight_by`` maps)
+    and whose cell, the support's areas matching the household on every
+    constraint the level keeps, has positive summed weight in the column the
+    household samples by there. A household no level takes is refused; the
+    refusal names no count, household or value.
+
+    ``constraint_columns`` maps each household input a level may keep to the
+    support code column it must match. ``weight_by`` is ``None`` or
+    ``{"input": column, "map": {code: weight column}}``: a level whose
+    ``weight_by`` is true samples by the column ``map`` names for the
+    household's ``input`` code. Every other level samples by
+    ``default_weight``, the draw's ``weight_by`` default or its one
+    ``weight``. The rule's input may not also be a key of
+    ``constraint_columns``: the draw samples by a present code's weight
+    whatever the level, so a level could not keep that input without
+    sampling by the code's weight, nor drop it and keep the household's own
+    weight. A present input must be a nonempty string without surrounding
+    whitespace, as the draw requires. A draw that keeps a household's level's
+    inputs, reads every other input as missing and samples each stage by this
+    rule then meets no empty cell.
+
+    Vectorised: one grouped mass table per level, read for the households no
+    earlier level took. Returns each household's level name, in row order.
+    """
+    _require(
+        isinstance(support, AtomicSupport), "support must be a decoded atomic support"
+    )
+    _require(isinstance(households, pd.DataFrame), "households must be a DataFrame")
+    columns = support.metadata["columns"]
+
+    def is_weight(name: object) -> bool:
+        return _name(name) and columns.get(name, {}).get("kind") == "weight"
+
+    _require(
+        isinstance(constraint_columns, Mapping)
+        and all(
+            _name(column)
+            and _name(matched)
+            and matched != "area"
+            and columns.get(matched, {}).get("kind") == "code"
+            for column, matched in constraint_columns.items()
+        )
+        and len(set(constraint_columns.values())) == len(constraint_columns),
+        "constraint_columns must map inputs to distinct support code columns "
+        "other than the area",
+    )
+    _require(
+        is_weight(default_weight), "default_weight must be a support weight column"
+    )
+    _require(
+        weight_by is None
+        or (
+            isinstance(weight_by, Mapping)
+            and set(weight_by) == {"input", "map"}
+            and _name(weight_by["input"])
+            and isinstance(weight_by["map"], Mapping)
+            and bool(weight_by["map"])
+            and all(
+                _name(code) and is_weight(weight)
+                for code, weight in weight_by["map"].items()
+            )
+        ),
+        "weight_by must map codes of one input to support weight columns",
+    )
+    _require(
+        weight_by is None or weight_by["input"] not in constraint_columns,
+        "the weight_by input must not also be a constraint input",
+    )
+    _require(
+        isinstance(levels, Sequence)
+        and bool(levels)
+        and all(isinstance(level, FallbackLevel) for level in levels),
+        "levels must be a nonempty sequence of FallbackLevel",
+    )
+    levels = tuple(levels)
+    _require(
+        len({level.name for level in levels}) == len(levels),
+        "fallback level names must be distinct",
+    )
+    _require(
+        all(set(level.constraints) <= set(constraint_columns) for level in levels),
+        "a fallback level keeps an input constraint_columns does not map",
+    )
+    weighted = any(level.weight_by for level in levels)
+    _require(
+        weight_by is not None or not weighted,
+        "a fallback level samples by weight_by, but no weight_by is given",
+    )
+    inputs = {column for level in levels for column in level.constraints}
+    if weighted:
+        inputs.add(weight_by["input"])
+    missing = sorted(inputs - set(households.columns))
+    _require(not missing, f"households lack input columns {missing}")
+    _require(
+        not households.columns[households.columns.isin(sorted(inputs))]
+        .duplicated()
+        .any(),
+        "households repeat an input column",
+    )
+    observed = {column: _observed(households[column]) for column in sorted(inputs)}
+
+    # Each household's own weight, as a position in the rule's weight columns
+    # (-1 where its code is missing or unmapped).
+    rows = len(households)
+    rule_weights: tuple[str, ...] = ()
+    own_weight = np.full(rows, -1, dtype=np.int64)
+    if weighted:
+        rule = weight_by["map"]
+        rule_weights = tuple(dict.fromkeys(rule.values()))
+        present, codes = observed[weight_by["input"]]
+        mapped = pd.Index(list(rule)).get_indexer(codes[present])
+        column_of_code = np.asarray(
+            [rule_weights.index(rule[code]) for code in rule], dtype=np.int64
+        )
+        holders = np.flatnonzero(present)
+        own_weight[holders[mapped >= 0]] = column_of_code[mapped[mapped >= 0]]
+
+    chosen = np.full(rows, -1, dtype=np.int64)
+    for position, level in enumerate(levels):
+        open_rows = chosen < 0
+        for column in level.constraints:
+            open_rows &= observed[column][0]
+        if level.weight_by:
+            open_rows &= own_weight >= 0
+        candidates = np.flatnonzero(open_rows)
+        if not len(candidates):
+            continue
+        cells, mass = _cell_mass(
+            support,
+            [constraint_columns[column] for column in level.constraints],
+            rule_weights if level.weight_by else (default_weight,),
+        )
+        if cells is None:
+            cell = np.zeros(len(candidates), dtype=np.intp)
+        else:
+            cell = cells.get_indexer(
+                pd.MultiIndex.from_arrays(
+                    [observed[column][1][candidates] for column in level.constraints]
+                )
+            )
+        weight = (
+            own_weight[candidates]
+            if level.weight_by
+            else np.zeros(len(candidates), dtype=np.int64)
+        )
+        found = cell >= 0
+        has_mass = np.zeros(len(candidates), dtype=bool)
+        has_mass[found] = mass[cell[found], weight[found]] > 0
+        chosen[candidates[has_mass]] = position
+    _require(
+        bool(np.all(chosen >= 0)),
+        "a household has no fallback level whose inputs are present and whose "
+        "cell has sampling mass",
+    )
+    return np.asarray([level.name for level in levels], dtype="U")[chosen]

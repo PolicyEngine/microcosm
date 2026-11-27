@@ -12,14 +12,27 @@ from __future__ import annotations
 import pytest
 
 from microcosm.build.uk_runtime.full_measure import UK_WEIGHT_SHARE_FORMULA_INPUTS
+from microcosm.frame.adapters.policyengine_uk_population import UK_ENGINE_POPULATION
 
 #: The allocation-key variable each weight-share formula divides by, as the
-#: engine's formula reads it (``x * w / sum(x * w)``).
+#: engine's formula reads it (``x * w / sum(x * w)``). Since policyengine-uk
+#: 2.179.2, corporate_land_value reads shareholding instead of dividing.
 ALLOCATION_KEYS = {
-    "corporate_land_value": "corporate_sector_wealth",
     "shareholding": "corporate_sector_wealth",
     "consumption_shareholding": "consumption",
 }
+
+
+def test_the_constant_is_the_declarations_keys_and_the_engines_adds(system):
+    """The frame columns the measure step sums for each block's pool-share
+    correction are the inputs the UK declaration names for the key the
+    formula divides by, which are the engine's own adds (microcosm#931)."""
+
+    assert dict(UK_ENGINE_POPULATION.corrected) == ALLOCATION_KEYS
+    for formula, key in ALLOCATION_KEYS.items():
+        declared = UK_ENGINE_POPULATION.key_adds[key]
+        assert UK_WEIGHT_SHARE_FORMULA_INPUTS[formula] == declared
+        assert tuple(system.variables[key].adds) == declared
 
 
 @pytest.fixture(scope="module")

@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "763db010a4f44a1fec0437ad37a47a6e4b1c7c8e61f8021689c879dae51de631"
+    "31eeba9ac55c55f1da0d44a7434a2ab8488d8deb9963ccaad5cd3f891aea1981"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "5a9bb7ba492a2ca320769b4122d6fb71efddcc3d2c5c281ca43eafdc9cec604d"
+    "26cb5b862fa88d18b724dda1ed323ef79e5896e01e12383393ada7ee041887c5"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "5554179e4f7dfc5c13ca90b3a3e0ab09db3bc73af496f574cc3507d22f07ae7c"
+    "44c6f5cb87e2244d968c09e737c52e1ece7e2b4398a33d43210ca3156346209d"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "7906286f9ca7eacea56276d2f63f37746031866c6edd8e5c29adbd3749e90e52"
@@ -347,7 +347,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
-    "uk_stage_regional_home_values_ranking": (
+    "uk_stage_area_home_values_ranking": (
         "stage_health",
         "transferred",
         None,
@@ -372,6 +372,16 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_stage_company_cars_invariants": ("stage_health", "transferred", None),
     "uk_stage_spi_employment_shell_fit": ("stage_health", "transferred", None),
     "uk_stage_aps_occupation_fit": ("stage_health", "transferred", None),
+    # The spine geography gates (microcosm#931).
+    "uk_atomic_area_mapping_integrity": ("stage_health", "assembled", None),
+    "uk_spi_copy_area_mapping_integrity": ("stage_health", "transferred", None),
+    "uk_high_value_copy_area_mapping_integrity": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_copy_area_agreement": ("stage_health", "transferred", None),
+    "uk_council_tax_reduction_within_bill": ("stage_health", "transferred", None),
     "uk_stage_frs_take_up_signal": (
         "stage_health",
         "assembled",
@@ -442,7 +452,9 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_aggregate_admin": ("aggregate_admin", "terminal", "aggregate_vs_admin"),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
-    "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
+    "uk_brma_enum_domain": ("enum_domain", "transferred", "enum_domain"),
+    "uk_local_authority_enum_domain": ("enum_domain", "transferred", "enum_domain"),
+    "uk_geography_ladder": ("spine_agreement", "transferred", None),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled", "enum_domain"),
     "uk_capital_gains_asset_type_enum_domain": (
         "enum_domain",
@@ -489,7 +501,6 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         None,
     ),
-    "uk_local_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
     "uk_local_area_support": ("area_support", "terminal", None),
     "uk_local_target_fit": ("target_fit", "terminal", None),
     "uk_local_per_family_fit": ("per_family_fit", "terminal", None),
@@ -1206,12 +1217,14 @@ def _terminal_gate_details(name: str) -> dict:
             }
         }
     if name == "enum_domain":
-        # Mirrors enum_domain_gate's detail block.
+        # Mirrors the UK enum_domain binding's detail block, which rebuilds the
+        # shared gate's without its counts or examples of values outside the
+        # domain (battery_bindings._count_free_enum_domain_result, C-32,
+        # microcosm#931).
         return {
             "columns_checked": 1,
-            "invalid_counts": {},
-            "invalid_examples": {},
             "allowed_values": {"brma": ["CENTRAL_LONDON"]},
+            "columns_outside_domain": [],
         }
     if name == "column_implication":
         # Mirrors _evaluate_column_implication's composite detail block.
@@ -1478,7 +1491,7 @@ def _gate_battery_payload(
         "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
-        "uk_stage_regional_home_values_ranking": "regional_home_values",
+        "uk_stage_area_home_values_ranking": "was_wealth",
         "uk_stage_property_purchases_fit": "property_purchases",
         "uk_stage_uc_legacy_closure_take_up_contract": "uc_legacy_closure_take_up",
         "uk_stage_frs_person_draws_apprentices": "frs_person_draws",
@@ -1487,6 +1500,11 @@ def _gate_battery_payload(
         "uk_stage_company_cars_invariants": "company_cars",
         "uk_stage_spi_employment_shell_fit": "spi_employment_shell",
         "uk_stage_aps_occupation_fit": "aps_occupation",
+        "uk_atomic_area_mapping_integrity": "atomic_area_assign",
+        "uk_spi_copy_area_mapping_integrity": "spi_copy_areas",
+        "uk_high_value_copy_area_mapping_integrity": "high_value_home_support",
+        "uk_copy_area_agreement": "cgt_residential_split",
+        "uk_council_tax_reduction_within_bill": "council_tax_localise",
         "uk_stage_frs_take_up_signal": "frs_take_up",
         "uk_stage_frs_person_draws_take_up_signal": "frs_person_draws",
         "uk_stage_frs_household_draws_take_up_signal": "frs_household_draws",
@@ -1533,12 +1551,20 @@ def _gate_battery_payload(
                 "worst_year": 2030,
                 "bound": 73_000.0,
             }
-        elif entry_id.startswith("uk_local_") or entry_id in UK_DIAGNOSTIC_ENTRY_IDS:
+        elif (
+            entry_id in contract._UK_DENSE_GATE_ENTRY_IDS
+            or entry_id in UK_DIAGNOSTIC_ENTRY_IDS
+        ):
             # Local candidate gates are explicitly excluded from national
-            # certification, and the microcosm#1240 high-value homes gates and
-            # the microcosm#1717 decile fit are report-only; this full-report
-            # fixture needs only their authenticated envelope, not
-            # candidate-only evidence details.
+            # certification, and the microcosm#1240 high-value homes gates are
+            # report-only; this full-report fixture needs only their
+            # authenticated envelope, not candidate-only evidence details.
+            # (uk_local_authority_enum_domain is a spine gate, not one of
+            # them, whatever its prefix, microcosm#931.)
+            details = {}
+        elif gate == "spine_agreement":
+            # The spine's ladder gate (microcosm#931): the contract checks no
+            # detail of it, so the fixture needs only its envelope.
             details = {}
         elif gate == "stage_health":
             details = {

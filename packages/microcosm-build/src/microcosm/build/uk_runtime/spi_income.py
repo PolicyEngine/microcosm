@@ -19,6 +19,9 @@ from microcosm.build.stochastic_assignment import (
     integer_record_keys,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.annuity_trust_column import (
+    ANNUITY_AND_TRUST_INCOME_COLUMN,
+)
 from microcosm.build.uk_runtime.frs_annual_income import (
     ANNUAL_SHARE_COLUMNS,
     EMPLOYMENT_INCOME_ANNUAL_SHARE,
@@ -38,7 +41,6 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_UBISJA_COLUMN,
 )
 from microcosm.build.uk_runtime.frs_spine import (
-    ANNUITY_AND_TRUST_INCOME_COLUMN,
     FRS_LANDLORD_CARRIER_COLUMN,
     ISA_INTEREST_COLUMN,
     WEEKS_IN_YEAR,
@@ -48,7 +50,10 @@ from microcosm.build.uk_runtime.hmrc_income import (
     LOSS_RELIEF_COLUMN,
     self_employment_income_after_loss_relief,
 )
-from microcosm.build.uk_runtime.household_lineage import collapse_geographic_clones
+from microcosm.build.uk_runtime.household_lineage import (
+    fold_geographic_clones,
+    geographic_fold_receipt,
+)
 from microcosm.build.uk_runtime.pension_coherence import (
     cap_net_pay_contributions,
     coherence_receipt,
@@ -70,6 +75,7 @@ from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
     extreme_count,
     floored_share,
+    record_clone_zero_rows,
     record_source_households,
     rounded_count,
     small_cell_share,
@@ -378,11 +384,11 @@ SPI_HMRC_EMPLOYED_INCOME_SOURCE_COLUMN_MAP = {
     SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN: ("MOTHINC",),
 }
 SPI_HMRC_EMPLOYED_INCOME_FORMULA = (
-    "max(0, hmrc_spi_pay + hmrc_spi_employment_benefits - "
+    "max(0, max(0, hmrc_spi_pay + hmrc_spi_employment_benefits - "
     "hmrc_spi_employment_expenses) + hmrc_spi_incapacity_benefit_income + "
     "hmrc_spi_other_social_security_income + hmrc_spi_taxable_termination_pay + "
     "hmrc_spi_unemployment_benefit_income + "
-    "hmrc_spi_miscellaneous_employment_income"
+    "hmrc_spi_miscellaneous_employment_income)"
 )
 # The FRS instrument can source three full concepts and two explicitly named
 # subsets. The remaining full SPI concepts are donor-only: they must be absent
@@ -1075,7 +1081,11 @@ def _floor_employment_pay_at_minimum_wage(
         * floor.weeks_in_year
         * floor.hourly_rate(reference["age"].to_numpy(dtype=np.float64))
     )
-    below_their_floor = int((eligible & (floored_pay < minimum * (1.0 - 1e-12))).sum())
+    # The source households whose eligible rows stay below their floor, over
+    # every clone: zero exactly when no row does (microcosm#931).
+    below_their_floor = distinct_count(
+        sources, eligible & (floored_pay < minimum * (1.0 - 1e-12))
+    )
     hourly_pay_check = {
         "spi_drawn_employees": {
             "source_households": rounded_count(eligible_sources),
@@ -1166,6 +1176,8 @@ class UKSPIIncomeImputationResult:
     pension_coherence: Mapping[str, object] | None = None
     employment_pay_floor: Mapping[str, object] | None = None
     gift_anchor: Mapping[str, object] | None = None
+    #: The employed-income identity's floor at zero on the SPI rows.
+    employed_income_floor: Mapping[str, object] | None = None
     #: Each gated target's gate outcome, for the fits not on the in-sample gate.
     gate_outcomes: Mapping[str, str] | None = None
     #: How the stage-1 donor frame was drawn, for a design other than the
@@ -1174,6 +1186,9 @@ class UKSPIIncomeImputationResult:
     #: The predictor levels each stage-1 gate's calibration offsets on their
     #: own, for a stage 1 that declares ``gate_level_columns``.
     gate_levels: Mapping[str, object] | None = None
+    #: How the FRS forests' geographic fold met their survey records
+    #: (``household_lineage.geographic_fold_receipt``); None on one clone.
+    geographic_fold: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1605,20 +1620,24 @@ def impute_uk_spi_income_support(
     if not training_people.any():
         raise ValueError("FRS-only stage has no canonical base training rows.")
     # Both forests train on each survey record once: its geographic clones
-    # that agree on what the forests read fold into its first row with their
-    # weight, clones that differ stay rows of their own, and every other
-    # copy stays its own row; a frame without geographic clones keeps every
-    # row and weight (household_lineage.collapse_geographic_clones,
-    # microcosm#931).
-    kept, training_weight_values = collapse_geographic_clones(
-        {"person": person, "household": household},
+    # that agree on what the forests read fold into its lowest-id clone with
+    # their weight, clones that differ stay rows of their own, and every
+    # other copy stays its own row; a frame without geographic clones keeps
+    # every row and weight (household_lineage.fold_geographic_clones,
+    # microcosm#931). On more than one clone the evidence records the fold.
+    lineage_tables = {"person": person, "household": household}
+    fold = fold_geographic_clones(
+        lineage_tables,
         "person",
         training_people.to_numpy(dtype=bool),
         person_weights.to_numpy(dtype=np.float64),
         inputs=_forest_inputs(person, household),
     )
-    training_people = pd.Series(kept, index=person.index)
-    training_weights = pd.Series(training_weight_values, index=person.index)
+    geographic_fold = geographic_fold_receipt(
+        lineage_tables, "person", fold, stage="The SPI income stage"
+    )
+    training_people = pd.Series(fold.kept, index=person.index)
+    training_weights = pd.Series(fold.weights, index=person.index)
     # The reference forest's population mirrors the draw's: FRS claimants and
     # partners aged 16 and over with taxable income under the same rule.
     reference_people = (
@@ -1733,23 +1752,59 @@ def impute_uk_spi_income_support(
             "the person table (the support lineage column the manifest declares)."
         )
     identity_column = SPI_TRANSPORT_KEY_COLUMN
+    # The transport keys its training rows on this column and refuses a key
+    # it meets twice. On the clone-first spine every clone carries its own:
+    # geographic_expand mints each clone's ids before the support channel
+    # keys every row on its own id, so clones that the fold above keeps
+    # apart, as they differ on what the forests read, train under keys of
+    # their own. Clones made after the support channel (the dense pool's)
+    # share their record's key, so a frame whose differing clones would meet
+    # the transport under one key is refused here, by its cause
+    # (microcosm#931).
+    training_identities = person.loc[reference_people, identity_column].to_numpy()
+    if not pd.Index(training_identities).is_unique:
+        raise ValueError(
+            "The SPI income stage's transport training rows repeat a "
+            f"{identity_column} after the geographic fold: clones of one survey "
+            "record made after the support channel share its key, and clones "
+            "that differ on what the forests read stay training rows of their "
+            "own. On the clone-first spine each clone carries its own key "
+            "(microcosm#931)."
+        )
+    recipient_identities = person.loc[spi_people, identity_column].to_numpy()
+    # The transport's uniformity receipt reads geographic clone 0's recipients
+    # and counts them in true source households (microcosm#931).
+    recipient_rows = spi_people.to_numpy(dtype=bool)
     transport = cross_fit_transport(
         fit_reference,
         training_predictors=reference_predictors,
         encoded_training=encoded_reference,
         training_observed=observed_analogues(person.loc[reference_people]),
         training_folds=training_folds,
-        training_identities=person.loc[reference_people, identity_column].to_numpy(),
+        training_identities=training_identities,
         used=used_folds,
         recipient_predictors=recipient_predictors,
         encoded_recipients=encoded_recipient,
         observed=observed_analogues(person.loc[spi_people]),
-        identities=person.loc[spi_people, identity_column].to_numpy(),
+        identities=recipient_identities,
         groups=recipient_predictors["main_source"].to_numpy(),
         seed=seed,
         folds=SPI_TRANSPORT_FOLDS,
         allow_in_sample=allow_in_sample_reference,
         outputs=SPI_INCOME_QRF_OUTPUT_COLUMNS,
+        # A copy's twin may have folded into its record's lowest-id clone
+        # above, so the twin check finds the twin where the training rows
+        # hold it, while each copy's uniforms stay keyed on its own twin
+        # (microcosm#931).
+        twin_identities=_folded_twin_identities(
+            person[identity_column].to_numpy(),
+            fold.representative,
+            recipient_identities,
+        ),
+        sources=record_source_households(
+            lineage_tables, "person", stage="The SPI income stage"
+        )[recipient_rows],
+        counted=record_clone_zero_rows(lineage_tables, "person")[recipient_rows],
     )
     # The tape forest reads a located sign uniform as the reference's gate
     # wrote it only when both gates order the same classes (microcosm#840): a
@@ -2034,6 +2089,9 @@ def impute_uk_spi_income_support(
     # Non-ISA interest is the stage-1 taxable draw; ISA interest is the stage-2
     # draw beside it (microcosm#1360).
     person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw
+    employed_income_floor = _employed_income_floor_receipt(
+        person, household, spi_people=spi_people
+    )
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
     person = _move_losses_brought_forward_to_loss_relief(person, spi_people=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
@@ -2094,6 +2152,7 @@ def impute_uk_spi_income_support(
         pension_coherence=pension_coherence,
         employment_pay_floor=pay_floor_receipt,
         gift_anchor=gift_anchor,
+        employed_income_floor=employed_income_floor,
         donor_frame=donor_frame_receipt,
         gate_outcomes={
             **gate_outcomes(SPI_DONOR_FIT_NAME, stage1_evidence),
@@ -2118,6 +2177,7 @@ def impute_uk_spi_income_support(
             if stage1_level_columns
             else None
         ),
+        geographic_fold=geographic_fold,
     )
 
 
@@ -3247,6 +3307,77 @@ def _derive_policyengine_employment_input(
     return result
 
 
+def _hmrc_employed_income_before_floor(numeric: pd.DataFrame) -> np.ndarray:
+    """The HMRC employed-income identity over its leaves, before its floor."""
+
+    return (
+        np.maximum(
+            numeric[SPI_HMRC_PAY_COLUMN]
+            + numeric[SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN]
+            - numeric[SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN],
+            0.0,
+        )
+        + numeric[SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN]
+        + numeric[SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN]
+        + numeric[SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN]
+        + numeric[SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN]
+        + numeric[SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN]
+    ).to_numpy(dtype=float)
+
+
+def hmrc_employed_income_floored(
+    person: pd.DataFrame,
+    *,
+    row_mask: pd.Series | np.ndarray | None = None,
+) -> np.ndarray:
+    """Which rows' employed income :func:`derive_hmrc_income_auxiliaries` floors.
+
+    One boolean per row of ``person``: true on a selected row whose
+    employed-income identity is below zero before the floor, which only a
+    negative miscellaneous employment leaf can make (microcosm#931).
+    """
+
+    _require_columns(
+        person, SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS, label="HMRC employed income"
+    )
+    mask = _hmrc_auxiliary_row_mask(person, row_mask)
+    numeric = person.loc[mask, list(SPI_HMRC_EMPLOYED_INCOME_LEAF_COLUMNS)].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    _require_finite_numeric(numeric, label="HMRC employed income leaves")
+    floored = np.zeros(len(person), dtype=bool)
+    floored[mask] = _hmrc_employed_income_before_floor(numeric) < 0.0
+    return floored
+
+
+def _employed_income_floor_receipt(
+    person: pd.DataFrame, household: pd.DataFrame, *, spi_people: pd.Series
+) -> dict[str, object]:
+    """The employed-income floor on the SPI rows, as the receipts count.
+
+    The distinct source households among geographic clone 0's rows whose
+    identity the floor lifts to zero, rounded (``receipt_counts``): a count
+    of one or two is "<3", and no row's value is given (microcosm#931).
+    """
+
+    floored = hmrc_employed_income_floored(person, row_mask=spi_people)
+    tables = {"person": person, "household": household}
+    sources = record_source_households(tables, "person", stage="The SPI income stage")
+    counted = record_clone_zero_rows(tables, "person")
+    return {
+        "rule": (
+            "hmrc_spi_employed_income is the employed-income identity floored at "
+            "zero, which only a negative miscellaneous employment leaf can take "
+            "below it"
+        ),
+        "floored": {
+            "source_households": rounded_count(
+                distinct_count(sources, floored & counted)
+            )
+        },
+    }
+
+
 def derive_hmrc_income_auxiliaries(
     person: pd.DataFrame,
     *,
@@ -3296,19 +3427,11 @@ def derive_hmrc_income_auxiliaries(
     # Taxable interest is the non-ISA interest the producer stores
     # (microcosm#1360), held non-negative with the other leaves above.
     taxable_interest = numeric["savings_interest_income"]
-    employed_income = (
-        np.maximum(
-            numeric[SPI_HMRC_PAY_COLUMN]
-            + numeric[SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN]
-            - numeric[SPI_HMRC_EMPLOYMENT_EXPENSES_COLUMN],
-            0.0,
-        )
-        + numeric[SPI_HMRC_INCAPACITY_BENEFIT_INCOME_COLUMN]
-        + numeric[SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN]
-        + numeric[SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN]
-        + numeric[SPI_HMRC_UNEMPLOYMENT_BENEFIT_INCOME_COLUMN]
-        + numeric[SPI_HMRC_MISCELLANEOUS_EMPLOYMENT_INCOME_COLUMN]
-    ).to_numpy(dtype=float)
+    # The miscellaneous employment leaf may be negative, as the tape's MOTHINC
+    # is on a few records, and can take the identity below zero; employed
+    # income is floored at zero there, as the stage declares it non-negative,
+    # and the earned and assessable totals add the floored value (microcosm#931).
+    employed_income = np.maximum(_hmrc_employed_income_before_floor(numeric), 0.0)
     total_earned = (
         employed_income
         + numeric[SPI_HMRC_OTHER_INCOME_COLUMN]
@@ -3410,6 +3533,38 @@ def _forest_inputs(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFram
         .reset_index(drop=True)
         .assign(household_region=person["person_household_id"].map(region).to_numpy())
     )
+
+
+def _folded_twin_identities(
+    identities: np.ndarray, representative: np.ndarray, recipients: np.ndarray
+) -> np.ndarray:
+    """Each recipient's twin as the folded training rows hold it.
+
+    ``identities`` is every person's transport key, ``representative`` the
+    stage's geographic fold's map of each training row to the row it trains
+    on (-1 off the training rows), and ``recipients`` the recipients' keys,
+    each its own twin's. A twin folded into another clone's row is held by
+    that row, so its key reads as that row's; every other key is returned as
+    it is. Without geographic clones no training row folds into another, so
+    the recipients' keys come back unchanged (microcosm#931).
+    """
+
+    rows = np.flatnonzero(representative >= 0)
+    folded = rows[representative[rows] != rows]
+    recipients = np.asarray(recipients)
+    if not folded.size:
+        return recipients
+    held = pd.Index(identities[folded])
+    if not held.is_unique:
+        raise ValueError(
+            "The SPI income forests' folded training rows repeat a transport "
+            "key, so a copy's twin would be ambiguous."
+        )
+    position = held.get_indexer(recipients)
+    twins = recipients.copy()
+    found = position >= 0
+    twins[found] = identities[representative[folded[position[found]]]]
+    return twins
 
 
 def _person_predictors(
@@ -4139,8 +4294,13 @@ def _refresh_carer_link(
         )
         .to_numpy()
     )
+    # The FRS channel holds every geographic clone of each survey household,
+    # so the share's households are counted as true sources (microcosm#931).
     share = frs_disability.carer_link_share(
-        person.loc[~channel], weights=weights[~channel], min_hours=float(min_hours)
+        person.loc[~channel],
+        weights=weights[~channel],
+        min_hours=float(min_hours),
+        support_keys=sources[~channel],
     )
     link, evidence = frs_disability.derive_carer_link(
         person.loc[channel],
@@ -4148,6 +4308,11 @@ def _refresh_carer_link(
         min_hours=float(min_hours),
         share=share,
         support_keys=sources[channel],
+        # The evidence counts the channel's carers in true source households
+        # among geographic clone 0's rows (microcosm#931).
+        counted=record_clone_zero_rows(
+            {"person": person, "household": household}, "person"
+        )[channel],
     )
     before = person.loc[channel, column].to_numpy(dtype=bool)
     changed = sources[channel][before != link]
@@ -4605,6 +4770,7 @@ __all__ = [
     "VerifiedSPIDonorIdentity",
     "assert_frs_hmrc_auxiliary_crosswalk_available",
     "derive_hmrc_income_auxiliaries",
+    "hmrc_employed_income_floored",
     "impute_uk_spi_income_support",
     "verify_spi_donor_identity",
 ]

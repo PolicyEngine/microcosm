@@ -39,6 +39,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_lineage import record_sources
+from microcosm.build.uk_runtime.geographic_clones import ladder_clone_index_column
 from microcosm.build.uk_runtime.household_lineage import UK_COPY_LINEAGE
 from microcosm.build.uk_runtime.national_frame import UK_NATIONAL_SCHEMA
 from microcosm.frame.concepts import SOURCE_HOUSEHOLD_ID_COLUMN
@@ -84,10 +85,13 @@ def record_source_households(
     (``microcosm.build.source_lineage.record_sources``) on the UK's copy
     lineage. A frame without the column is refused, and so is a null source:
     it drops out of a distinct count, so a cell would read fewer sources than
-    it rests on. A stage that runs before the SPI support channel, the first
-    copying step, says so with ``before_copies``: no row is a copy yet, so
-    each household is its own source and its id serves, unless the frame
-    already carries copy lineage.
+    it rests on. A stage that can run before the first copying step says so
+    with ``before_copies``: on a frame without the column and without copy
+    lineage, no row is a copy yet, so each household is its own source and its
+    id serves. On the clone-first spine the first copying step is
+    ``geographic_expand``, which writes the column, so a stage after it that
+    says so, ``frs_take_up`` for one, reads it and counts a household's
+    geographic clones once (microcosm#931).
     """
 
     if not isinstance(tables, Mapping):
@@ -106,12 +110,65 @@ def record_source_households(
         ) from error
 
 
+def record_clone_zero_rows(
+    tables: Mapping[str, pd.DataFrame] | Any, entity: str
+) -> np.ndarray:
+    """Whether each ``entity`` row belongs to geographic clone 0 (microcosm#931).
+
+    ``tables`` is a frame or its tables by entity, as for
+    :func:`record_source_households`. A row's clone is its household's
+    ``household_clone_index``: a person's household's, or that of the
+    household a benefit unit's members share. A frame without the index is
+    one clone, so every row is clone 0's. Each clone draws its own flags and
+    its own support copies, so a receipt counts a drawn or copied group in
+    distinct source households among clone 0's rows: the count does not grow
+    with the clone count, and it is the count a one-clone spine gives. A
+    person whose household is absent, or a unit without members, is refused.
+    """
+
+    if not isinstance(tables, Mapping):
+        tables = {name: tables.table(name) for name in UK_NATIONAL_SCHEMA.entities}
+    household = tables[UK_COPY_LINEAGE.entity]
+    column = ladder_clone_index_column(UK_COPY_LINEAGE.entity)
+    if column not in household.columns:
+        return np.ones(len(tables[entity]), dtype=bool)
+    clone_zero = household[column].to_numpy(dtype=np.int64) == 0
+    if entity == UK_COPY_LINEAGE.entity:
+        return clone_zero
+    by_household = pd.Series(
+        clone_zero,
+        index=household[UK_NATIONAL_SCHEMA.id_column(UK_COPY_LINEAGE.entity)],
+    )
+    person = tables[UK_NATIONAL_SCHEMA.person_entity]
+    members = person[UK_NATIONAL_SCHEMA.membership_column(UK_COPY_LINEAGE.entity)]
+    if not members.isin(by_household.index).all():
+        raise ValueError(
+            "Every person needs a household on the frame to read its geographic clone."
+        )
+    on_person = members.map(by_household).to_numpy(dtype=bool)
+    if entity == UK_NATIONAL_SCHEMA.person_entity:
+        return on_person
+    by_unit = (
+        pd.Series(
+            on_person,
+            index=person[UK_NATIONAL_SCHEMA.membership_column(entity)].to_numpy(),
+        )
+        .groupby(level=0)
+        .first()
+    )
+    units = tables[entity][UK_NATIONAL_SCHEMA.id_column(entity)]
+    if not units.isin(by_unit.index).all():
+        raise ValueError(f"A {entity} without members has no geographic clone to read.")
+    return units.map(by_unit).to_numpy(dtype=bool)
+
+
 def own_source_households(person: pd.DataFrame) -> np.ndarray:
     """Each person's own household as its true source: the rule before copies.
 
     For a caller that holds a person table without the frame's lineage, as
-    every household is its own source before the SPI support channel copies
-    any; a frame with copies counts through :func:`record_source_households`.
+    every household is its own source before the first copying step,
+    ``geographic_expand`` on the clone-first spine (microcosm#931); a frame
+    with clones or copies counts through :func:`record_source_households`.
     """
 
     return person[UK_NATIONAL_SCHEMA.membership_column("household")].to_numpy()

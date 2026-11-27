@@ -631,14 +631,20 @@ def test_a_change_to_table_copies_moves_the_hashes_of_the_kernels_copying_with_i
     """``source_hash`` does not follow imports, so the copy is bound explicitly.
 
     The UK stage kernels copy their inputs through ``_minimal_frame``, and the
-    population and calibration kernels through ``context_frame``; both call
+    national and calibration kernels through ``context_frame``; both call
     ``copy_table``. An edit to it must re-key those nodes, so a graph store
-    built before the edit cannot serve them. The geography identity kernel,
+    built before the edit cannot serve them. The pool checkpoint kernel,
     whose own hash lists neither module, keeps its hash: the edit reaches
-    only hashes that list ``table_copies``.
+    only hashes that list ``table_copies``. The clone-first spine has no
+    population sampling kernels, so the national problem stands for them
+    (microcosm#931).
     """
 
-    from microcosm.build.uk_runtime import graph_calibration, graph_population
+    from microcosm.build.uk_runtime import (
+        graph_calibration,
+        graph_national,
+        graph_population,
+    )
     from microcosm.build.uk_runtime.graph import uk_registry, uk_spine_graph
     from microcosm.frame import table_copies
 
@@ -647,14 +653,14 @@ def test_a_change_to_table_copies_moves_the_hashes_of_the_kernels_copying_with_i
     stage = graph.node("frs_employment").kernel
     hashes: dict[str, Callable[[], str]] = {
         "stage": lambda: registry.implementation_hash(stage),
-        "population": lambda: (
-            graph_population.UKSampleNormalizationKernel().implementation_hash()
+        "national": lambda: (
+            graph_national.UKNationalProblemKernel().implementation_hash()
         ),
         "calibration": lambda: (
             graph_calibration.UKSizeFilterKernel().implementation_hash()
         ),
     }
-    control = graph_population.UKGeographyIdentityKernel
+    control = graph_population.UKPoolCheckpointKernel
     before = {name: hash_of() for name, hash_of in hashes.items()}
     control_before = control().implementation_hash()
     helper_path = Path(table_copies.__file__).resolve()

@@ -472,6 +472,12 @@ class TestImplementationHashes:
                 "microcosm.frame.adapters.axiom",
                 # S2: the producer calls schema.entity_id_column.
                 "microcosm.frame.schema",
+                # microcosm#931: the engines are RulesEngines, and the
+                # AxiomEngine class builds its tables through materialize,
+                # which checks the frame's shared columns (microcosm#1683).
+                "microcosm.frame.rules",
+                "microcosm.frame.materialize",
+                "microcosm.frame.shared_columns",
                 "microcosm.graph.canonical",
                 "microcosm.build.transport.evidence_contract",
             ),
@@ -484,6 +490,8 @@ class TestImplementationHashes:
                 "microcosm.calibrate.solve",
                 # S2: the trace finds these in run(); the list missed them.
                 "microcosm.calibrate.target",
+                # microcosm#931: the decoded problem's targets carry it.
+                "microcosm.calibrate.hierarchy",
                 "microcosm.frame.schema",
                 "microcosm.frame.weights",
                 "microcosm.graph.canonical",

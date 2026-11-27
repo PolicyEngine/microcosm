@@ -679,11 +679,14 @@ def impute_soc2020_sub_major_group(
         "donors": {
             group: rounded_count(count) for group, count in donor_support.items()
         },
+        # The people drawn, in distinct source households, a household's
+        # clones and copies once (microcosm#931).
         "drawn": {
-            "people": rounded_count(int(coded.sum())),
             "source_households": rounded_count(distinct_count(sources, coded)),
             "spi_income_recipients": rounded_count(
-                int((coded & table["spi_income_recipient"].to_numpy()).sum())
+                distinct_count(
+                    sources, coded & table["spi_income_recipient"].to_numpy(dtype=bool)
+                )
             ),
             "unseen_category_households": rounded_count(
                 distinct_count(sources, unseen)

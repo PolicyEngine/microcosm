@@ -137,13 +137,20 @@ def test_consistency_failures_report_blank_unknown_and_mismatched_rows() -> None
 
     failures = local_authority_consistency_failures(household)
 
+    # Each text names the check and the column, never a count of rows or an
+    # example (C-32, microcosm#931).
     assert failures == [
-        "local_authority: 1/5 row(s) are blank",
-        "local_authority_code: 1/5 row(s) are not on the April 2023 local "
-        "authority roster; examples ['E08000020']",
-        "local_authority: 1/5 row(s) disagree with local_authority_code; "
-        "examples ['E09000001->MAIDSTONE']",
+        "local_authority: some row(s) are blank",
+        "local_authority_code: some row(s) are not on the April 2023 local "
+        "authority roster",
+        "local_authority: some row(s) disagree with local_authority_code",
     ]
+    # The roster's declared year is the only digit any of them carries.
+    assert not any(
+        character.isdigit()
+        for failure in failures
+        for character in failure.replace("April 2023", "")
+    )
     assert local_authority_consistency_failures(household.iloc[[0, 4]]) == []
     assert local_authority_consistency_failures(
         household.drop(columns=["local_authority"])

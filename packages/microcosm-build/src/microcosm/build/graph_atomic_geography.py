@@ -8,13 +8,11 @@ These nodes do not change weights, rows, memberships or observed columns.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
 
 import pandas as pd
 
 from microcosm.build import atomic_geography as geography
 from microcosm.graph import (
-    ArtifactInput,
     ArtifactOutput,
     ArtifactType,
     Capabilities,
@@ -23,11 +21,8 @@ from microcosm.graph import (
     KernelContext,
     KernelRegistry,
     KernelResult,
-    Node,
     Numeric,
-    Owned,
     SeedSource,
-    Slice,
     source_hash,
 )
 from microcosm.graph.canonical import canonical_json
@@ -44,12 +39,19 @@ _DEPENDENCIES = ("numpy", "pandas")
 
 class _GeographyKernel(KernelBase):
     def implementation_hash(self) -> str:
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.graph import store as graph_store
+
+        # load_source_bytes takes a content store, whose frame encoding writes
+        # through frame_materialize (microcosm#931).
         return source_hash(
             type(self),
             geography,
             canonical_json,
             keyed_uniform,
             load_source_bytes,
+            graph_store,
+            frame_materialize,
             dependencies=_DEPENDENCIES,
         )
 
@@ -188,90 +190,6 @@ class AtomicGeographyGateKernel(_GeographyKernel):
             receipt=receipt,
             artifacts={"validation": canonical_json(receipt)} if outputs else {},
         )
-
-
-def atomic_geography_nodes(
-    spec: Mapping,
-    columns: Sequence[Owned],
-    *,
-    base: str,
-    prefix: str = "geography",
-    emit_validation_artifact: bool = False,
-) -> tuple[Node, ...]:
-    """Append shared nodes to an existing population, refusing column rewrites.
-
-    SourceRef declarations use each system's ``source`` and ``raw-bytes-v1``.
-    ``identity`` must be stable across the country's sampling rungs; this builder
-    cannot establish that property merely from a column name.
-
-    The optional typed gate result orders downstream consumers. Its bytes alone
-    do not authenticate their receiving population or source ancestry.
-    """
-    if type(emit_validation_artifact) is not bool:
-        raise ValueError("Atomic geography validation artifact flag must be boolean.")
-    spec = geography.validate_assignment_spec(spec)
-    inventory = {(o.entity, o.column): o for o in columns}
-    if len(inventory) != len(columns):
-        raise ValueError("Atomic geography input inventory repeats columns.")
-    inputs = set(spec["identity"])
-    for system in spec["systems"]:
-        inputs.update(system["selector"])
-        inputs.update(c["input"] for c in system["constraints"])
-        inputs.update(
-            s["weight_by"]["input"] for s in system["stages"] if "weight_by" in s
-        )
-        if system["observed_area"]:
-            inputs.add(system["observed_area"])
-    assignment = tuple(spec["outputs"].values())
-    layers = tuple(
-        sorted({layer["output"] for s in spec["systems"] for layer in s["layers"]})
-    )
-    if any(("household", c) not in inventory for c in inputs):
-        raise ValueError("Atomic geography is missing a declared household input.")
-    if any(("household", c) in inventory for c in (*assignment, *layers)):
-        raise ValueError("Atomic geography refuses to overwrite existing columns.")
-    imports, artifacts = [], []
-    for i, system in enumerate(spec["systems"]):
-        name = f"{prefix}.support.{i}"
-        imports.append(
-            Node(
-                id=name,
-                kernel=AtomicSupportImportKernel.ref,
-                population=base,
-                sources=(system["source"],),
-                params={"source": system["source"], "system": system["id"]},
-                artifact_outputs=(ArtifactOutput("support", ATOMIC_SUPPORT_TYPE),),
-            )
-        )
-        artifacts.append(
-            ArtifactInput(system["id"], name, "support", ATOMIC_SUPPORT_TYPE)
-        )
-
-    def node(suffix, kernel, read, write=()):
-        return Node(
-            id=f"{prefix}.{suffix}",
-            kernel=kernel.ref,
-            population=base,
-            inputs=(Slice("household", tuple(sorted(read))),),
-            outputs=tuple(Owned("household", c, "string") for c in write),
-            params={
-                "definition": canonical_json(spec).decode(),
-                "stream": tuple(spec["stream"]),
-            },
-            artifact_inputs=tuple(artifacts),
-            artifact_outputs=(
-                (ArtifactOutput("validation", ATOMIC_GEOGRAPHY_VALIDATION_TYPE),)
-                if suffix == "gate" and emit_validation_artifact
-                else ()
-            ),
-        )
-
-    return (
-        *imports,
-        node("assign", AtomicAssignKernel, inputs, assignment),
-        node("derive", AtomicDeriveKernel, inputs | set(assignment), layers),
-        node("gate", AtomicGeographyGateKernel, inputs | set(assignment) | set(layers)),
-    )
 
 
 def register_atomic_geography_kernels(registry: KernelRegistry) -> None:

@@ -3307,8 +3307,18 @@ def uk_local_target_surface(
         off_surface_rows=off_surface_rows,
         deferred_cells=placed_deferrals,
     )
+    # A share_of_parent member may be missing only where the membership signs
+    # its cell off the surface and no control moves its leg; any other gap in
+    # a partition refuses (microcosm#931).
     reconciled, partition_receipt = apply_cross_grain_partitions(
-        raw_surface, reconciled, UK_CROSS_GRAIN_PARTITIONS
+        raw_surface,
+        reconciled,
+        UK_CROSS_GRAIN_PARTITIONS,
+        signed_absent=tuple(
+            (str(cell["target_id"]), str(cell["geography_id"]))
+            for cell in off_surface_cells
+            if cell.get("reason_id") is not None
+        ),
     )
     receipt["fanout_targets_not_controls"] = fanout_targets_not_controls
     receipt["partitions"] = partition_receipt

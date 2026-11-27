@@ -369,6 +369,37 @@ def test_the_carer_link_takes_a_share_from_other_households() -> None:
     }
 
 
+def test_the_carer_link_share_counts_its_base_in_the_support_keys_given() -> None:
+    """On the clone-first spine a household's geographic clones are separate
+    households (microcosm#931), so the share counts its base in the support
+    keys it is given: four households that are two survey households' clones
+    rest on two, which the receipt withholds."""
+
+    from microcosm.build.uk_runtime import frs_disability
+
+    people = _carer_link_people()
+    weights = np.ones(len(people))
+    households = people["person_household_id"]
+    # Households 1 to 4 make the base: read them as two clones each of
+    # survey households 1 and 3.
+    keys = households.where(~households.isin([2, 4]), households - 1).to_numpy(
+        dtype=np.int64
+    )
+    by_household = frs_disability.carer_link_share(
+        people, weights=weights, min_hours=35.0
+    )
+    by_source = frs_disability.carer_link_share(
+        people, weights=weights, min_hours=35.0, support_keys=keys
+    )
+    assert (by_household, by_source) == ((0.5, 4), (0.5, 2))
+    # Without a share given, the evidence's share counts the same keys.
+    _, evidence = frs_disability.derive_carer_link(
+        people, weights=weights, min_hours=35.0, support_keys=keys
+    )
+    assert evidence["share"] == "<3"
+    assert evidence["share_support"] == "<3"
+
+
 def test_the_carer_link_is_checked_against_dwps_uc_carer_element() -> None:
     """A3 (f): DWP's record of the UC carer element checks the link, and
     changes no value. A claim counts once, by its UC row's carrier, against
@@ -531,3 +562,43 @@ def test_a_dwp_carer_at_the_line_is_linked_whatever_the_care_tab_says() -> None:
         evidence["dwp_carer_element"]["set_true_by_it"]
         == evidence["dwp_carer_element"]["carers"]
     )
+
+
+def test_the_carer_link_counts_source_households_in_clone_zero_at_any_k() -> None:
+    """Given source households, as the SPI channel's refresh passes them on the
+    clone-first spine, the evidence counts each route's carers in distinct
+    source households among geographic clone 0's rows: three clones of every
+    household give the one-clone counts, where counts of rows would read three
+    times as many (microcosm#931)."""
+
+    from microcosm.build.uk_runtime import frs_disability
+
+    people = _carer_link_people()
+    evidences = {}
+    for clones in (1, 3):
+        cloned = pd.concat(
+            [
+                people.assign(
+                    person_id=people["person_id"] + k * 10**9,
+                    person_household_id=people["person_household_id"] + k * 10**9,
+                )
+                for k in range(clones)
+            ],
+            ignore_index=True,
+        )
+        _, evidences[clones] = frs_disability.derive_carer_link(
+            cloned,
+            weights=np.full(len(cloned), 1.0 / clones),
+            min_hours=35.0,
+            share=(0.5, 4),
+            support_keys=np.tile(people["person_household_id"].to_numpy(), clones),
+            counted=np.arange(len(cloned)) < len(people),
+        )
+    one, three = evidences[1], evidences[3]
+    for name, route in one["routes_at_the_line"].items():
+        cloned_route = three["routes_at_the_line"][name]
+        assert cloned_route["carers"] == route["carers"], name
+        assert cloned_route["support"] == route["support"], name
+        if name != "outside_drawn":
+            assert cloned_route["true"] == route["true"], name
+    assert one["routes_at_the_line"]["outside_drawn"]["carers"] == "3-9"

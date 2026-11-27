@@ -390,7 +390,6 @@ def _identity(builder, extra):
         learning_rate=0.02,
         sample_fraction=1.0,
         sample_seed=1,
-        source_lineage_modulus=None,
         target_weight_rule="grain_equal",
         engine_blocks=1,
         measure_exclusions=None,

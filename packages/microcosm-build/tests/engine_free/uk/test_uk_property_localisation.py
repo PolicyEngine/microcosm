@@ -9,25 +9,12 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import property_localisation as pl
-from microcosm.build.uk_runtime.atomic_area_support import (
-    uk_atomic_assignment_definition,
-)
 from microcosm.build.uk_runtime.household_lineage import (
     uk_household_clone_paths,
     without_geographic_branch,
 )
-from microcosm.graph import ContentStore, compile_graph, run_graph
 from test_support.microcosm_build.uk_atomic_support_fixtures import (
     toy_property_resources,
-    toy_support_sources,
-    write_toy_property_resources,
-    write_toy_supports,
-)
-from test_support.microcosm_build.uk_full_population_graph import (
-    graph_and_registry,
-)
-from test_support.microcosm_build.uk_ladder_rowwise_clone import (
-    toy_ladder as toy_ladder,
 )
 
 STREAM = ("sha256-u53-v1", pl.PROPERTY_STREAM_EXPERIMENT, 0, 7)
@@ -66,148 +53,178 @@ def test_resource_loaders_validate_shape() -> None:
 # Uniforms
 
 
-def _pool(k: int) -> pd.DataFrame:
-    # Three spine households (two London owners, one London renter), K clones each.
+_SEAT = "E14000001"
+_OTHER_SEAT = "E14000002"
+
+
+def _slices(frame: pd.DataFrame) -> tuple[np.ndarray, dict[str, object]]:
+    return pl.owner_slice_uniforms(
+        key=frame["key"].to_numpy(dtype=object),
+        cell=frame["cell"].to_numpy(dtype=object),
+        stratum=frame["clone"].to_numpy(dtype=np.int64),
+        tenure_type=frame["tenure_type"].to_numpy(dtype=object),
+        value=frame["value"].to_numpy(dtype=float),
+        weight=frame["weight"].to_numpy(dtype=float),
+        stream=STREAM,
+    )
+
+
+def _frame(rows: list[tuple]) -> pd.DataFrame:
+    return pd.DataFrame(
+        rows, columns=["key", "cell", "clone", "tenure_type", "value", "weight"]
+    )
+
+
+def test_each_owner_takes_a_point_inside_its_own_weight_slice() -> None:
+    # One English seat: owners by value b (weight 2), c (1), a (1), so their
+    # slices of the seat's weight are [0, 0.5), [0.5, 0.75) and [0.75, 1).
+    frame = _frame(
+        [
+            ("a", _SEAT, 0, "OWNED_OUTRIGHT", 300_000.0, 1.0),
+            ("b", _SEAT, 0, "OWNED_WITH_MORTGAGE", 100_000.0, 2.0),
+            ("c", _SEAT, 0, "OWNED_OUTRIGHT", 200_000.0, 1.0),
+            ("renter", _SEAT, 0, "RENT_PRIVATELY", 0.0, 1.0),
+            ("scot", "S14000001", 0, "OWNED_OUTRIGHT", 250_000.0, 1.0),
+        ]
+    )
+    u, receipt = _slices(frame)
+    by_key = dict(zip(frame["key"], u, strict=True))
+    assert 0.0 <= by_key["b"] < 0.5
+    assert 0.5 <= by_key["c"] < 0.75
+    assert 0.75 <= by_key["a"] < 1.0
+    assert 0.0 <= by_key["renter"] < 1.0 and 0.0 <= by_key["scot"] < 1.0
+    assert receipt == {
+        "ranked_rows": 3,
+        "cells": 1,
+        "cells_without_weight": 0,
+        "rank_basis": pl.OWNER_RANK_BASIS,
+    }
+    assert pl.OWNER_RANK_BASIS == "weighted_slice_within_constituency_and_clone"
+
+
+def test_constituencies_and_clones_rank_apart() -> None:
+    # Two seats and two clones: each (seat, clone) cell holds two equal owners,
+    # so in every cell the lower value takes [0, 0.5) and the higher [0.5, 1),
+    # whatever the other cells hold.
     rows = []
-    for key, region, tenure, value, weight in (
-        ("a", "LONDON", "OWNED_OUTRIGHT", 500_000.0, 2.0),
-        ("b", "LONDON", "OWNED_WITH_MORTGAGE", 300_000.0, 2.0),
-        ("c", "LONDON", "RENT_PRIVATELY", 0.0, 2.0),
-    ):
-        for clone in range(k):
+    for seat in (_SEAT, _OTHER_SEAT):
+        for clone in (0, 1):
+            low = 100_000.0 * (1 + clone) + (5_000.0 if seat == _OTHER_SEAT else 0.0)
             rows.append(
-                {
-                    "key": key,
-                    "region": region,
-                    "tenure_type": tenure,
-                    "value": value,
-                    "weight": weight / k,
-                    "clone": clone,
-                }
+                (f"{seat}-{clone}-low", seat, clone, "OWNED_OUTRIGHT", low, 1.0)
             )
-    return pd.DataFrame(rows)
+            rows.append(
+                (f"{seat}-{clone}-high", seat, clone, "OWNED_OUTRIGHT", 9 * low, 3.0)
+            )
+    frame = _frame(rows)
+    u, receipt = _slices(frame)
+    low = frame["key"].str.endswith("low").to_numpy()
+    assert np.all((u[low] >= 0.0) & (u[low] < 0.25))
+    assert np.all((u[~low] >= 0.25) & (u[~low] < 1.0))
+    assert receipt["cells"] == 4
 
 
-@pytest.mark.parametrize("k", [1, 3])
-def test_owner_uniforms_rank_within_region_and_are_clone_invariant(k) -> None:
-    pool = _pool(k)
-    u, receipt = pl.owner_uniforms(
-        spine_key=pool["key"].to_numpy(dtype=object),
-        region=pool["region"].to_numpy(),
-        tenure_type=pool["tenure_type"].to_numpy(),
-        value=pool["value"].to_numpy(),
-        weight=pool["weight"].to_numpy(),
-        stream=STREAM,
+def test_clone_zero_takes_the_one_clone_uniforms() -> None:
+    rng = np.random.default_rng(5)
+    n = 40
+    seats = np.where(np.arange(n) % 3 == 0, _OTHER_SEAT, _SEAT)
+    values = rng.uniform(1e5, 2e6, n)
+    weights = rng.uniform(0.5, 3.0, n)
+    one = _frame(
+        [
+            (f"h{i}", seats[i], 0, "OWNED_OUTRIGHT", values[i], weights[i])
+            for i in range(n)
+        ]
     )
-    by_key = pd.Series(u).groupby(pool["key"]).agg(["min", "max", "nunique"])
-    assert (by_key["nunique"] == 1).all()  # one uniform per spine household
-    # Two equal-weight owners: mid-ranks 0.25 (lower value) and 0.75.
-    assert by_key.loc["b", "min"] == pytest.approx(0.25)
-    assert by_key.loc["a", "min"] == pytest.approx(0.75)
-    assert 0.0 <= by_key.loc["c", "min"] < 1.0  # renter: identity uniform
-    assert receipt["ranked_owner_households_by_region"] == {"LONDON": 2}
-    assert receipt["spine_households"] == 3 and receipt["pool_rows"] == 3 * k
-
-
-def test_owner_uniforms_do_not_depend_on_k() -> None:
-    draws = []
-    for k in (1, 2, 5):
-        pool = _pool(k)
-        u, _ = pl.owner_uniforms(
-            spine_key=pool["key"].to_numpy(dtype=object),
-            region=pool["region"].to_numpy(),
-            tenure_type=pool["tenure_type"].to_numpy(),
-            value=pool["value"].to_numpy(),
-            weight=pool["weight"].to_numpy(),
-            stream=STREAM,
-        )
-        draws.append(pd.Series(u).groupby(pool["key"]).first().to_dict())
-    assert draws[0] == draws[1] == draws[2]
-
-
-def test_support_copies_take_a_keyed_uniform_inside_the_top_stratum() -> None:
-    pool = _pool(2)
-    support = (pool["key"] == "b").to_numpy()
-    u, receipt = pl.owner_uniforms(
-        spine_key=pool["key"].to_numpy(dtype=object),
-        region=pool["region"].to_numpy(),
-        tenure_type=pool["tenure_type"].to_numpy(),
-        value=pool["value"].to_numpy(),
-        weight=pool["weight"].to_numpy(),
-        stream=STREAM,
-        support_copy=support,
-        support_stratum_lower=0.9,
-    )
-    assert np.all(u[support] >= 0.9) and np.all(u[support] < 1.0)
-    assert receipt["support_copies"] == 1
-    # The support copy is ranked beside the other owner (review finding 1 of
-    # microcosm#1270): b (300k) then a (500k), equal spine weights, so a's
-    # mid-rank is 0.75 and the copy's own draw replaces its 0.25.
-    assert pd.Series(u).groupby(pool["key"]).first()["a"] == pytest.approx(0.75)
-
-
-def test_support_copies_keep_the_stratum_mass_at_the_selected_share() -> None:
-    # Four thousand equal-weight owners in one region: the stage selects the
-    # top five per cent and copies each six ways; the pool's uniforms must
-    # leave exactly that share of the owner mass at or above the stratum.
-    from microcosm.build.uk_runtime.high_value_home_support import (
-        select_high_value_support_households,
-    )
-
-    n = 4_000
-    ids = np.arange(1, n + 1, dtype=np.int64)
-    values = 100_000.0 + 1_000.0 * np.arange(n, dtype=float)
-    region = np.full(n, "LONDON", dtype=object)
-    tenure = np.full(n, "OWNED_OUTRIGHT", dtype=object)
-    weights = np.ones(n, dtype=float)
-    selected, _ = select_high_value_support_households(
-        household_ids=ids,
-        weights=weights,
-        region=region,
-        tenure_type=tenure,
-        value=values,
-        stratum_lower=0.95,
-    )
-    assert selected.sum() == pytest.approx(0.05 * n, abs=2)
-    copies = 6
+    k = 3
     rows = []
-    for index in range(n):
-        if selected[index]:
-            for copy in range(copies):
-                rows.append(
-                    (f"{ids[index]}#{copy}", values[index], 1.0 / copies, copy > 0)
-                )
-        else:
-            rows.append((str(ids[index]), values[index], 1.0, False))
-    pool = pd.DataFrame(rows, columns=["key", "value", "weight", "support"])
-    u, receipt = pl.owner_uniforms(
-        spine_key=pool["key"].to_numpy(dtype=object),
-        region=np.full(len(pool), "LONDON", dtype=object),
-        tenure_type=np.full(len(pool), "OWNED_OUTRIGHT", dtype=object),
-        value=pool["value"].to_numpy(),
-        weight=pool["weight"].to_numpy(),
-        stream=STREAM,
-        support_copy=pool["support"].to_numpy(),
-        support_stratum_lower=0.95,
+    for clone in range(k):
+        for i in range(n):
+            key = f"h{i}" if clone == 0 else f"h{i}#{clone}"
+            seat = seats[i] if clone == 0 else (_SEAT, _OTHER_SEAT)[(i + clone) % 2]
+            value = values[i] if clone == 0 else rng.uniform(1e5, 2e6)
+            rows.append((key, seat, clone, "OWNED_OUTRIGHT", value, weights[i] / k))
+    many = _frame(rows)
+    u_one, _ = _slices(one)
+    u_many, _ = _slices(many)
+    clone_zero = (many["clone"] == 0).to_numpy()
+    np.testing.assert_allclose(u_many[clone_zero], u_one, rtol=0, atol=1e-12)
+
+
+def test_the_uniforms_do_not_depend_on_row_order() -> None:
+    rng = np.random.default_rng(11)
+    frame = _frame(
+        [
+            (
+                f"h{i}",
+                (_SEAT, _OTHER_SEAT)[i % 2],
+                i % 3,
+                "OWNED_OUTRIGHT",
+                float(rng.integers(1, 6)) * 1e5,
+                rng.uniform(0.5, 2.0),
+            )
+            for i in range(60)
+        ]
     )
-    total = float(pool["weight"].sum())
-    mass_top = float(pool["weight"].to_numpy()[u >= 0.95].sum()) / total
-    mass_top_1 = float(pool["weight"].to_numpy()[u >= 0.99].sum()) / total
-    assert mass_top == pytest.approx(0.05, abs=0.003)
-    assert mass_top_1 == pytest.approx(0.01, abs=0.003)
-    assert receipt["support_copies"] == int(selected.sum()) * (copies - 1)
+    u, _ = _slices(frame)
+    shuffled = frame.sample(frac=1.0, random_state=3).reset_index(drop=True)
+    u_shuffled, _ = _slices(shuffled)
+    expected = dict(zip(frame["key"], u, strict=True))
+    assert [expected[key] for key in shuffled["key"]] == list(u_shuffled)
 
 
-def test_owner_uniforms_refuse_clones_that_disagree() -> None:
-    pool = _pool(2)
-    pool.loc[0, "value"] = 999.0
-    with pytest.raises(ValueError, match="different stored home values"):
-        pl.owner_uniforms(
-            spine_key=pool["key"].to_numpy(dtype=object),
-            region=pool["region"].to_numpy(),
-            tenure_type=pool["tenure_type"].to_numpy(),
-            value=pool["value"].to_numpy(),
-            weight=pool["weight"].to_numpy(),
+def test_owners_weighted_uniforms_are_uniform_even_in_small_cells() -> None:
+    # Two thousand seats of two equal owners each: a mid-rank would put every
+    # owner at 0.25 or 0.75; the slice points spread the owner weight evenly,
+    # so each share above a threshold is the threshold's complement.
+    rows = []
+    for seat in range(2_000):
+        code = f"E14{seat:06d}"
+        rows.append((f"s{seat}-a", code, 0, "OWNED_OUTRIGHT", 1e5, 1.0))
+        rows.append((f"s{seat}-b", code, 0, "OWNED_OUTRIGHT", 2e5, 1.0))
+    u, _ = _slices(_frame(rows))
+    for threshold in (0.5, 0.9, 0.99):
+        assert float(np.mean(u >= threshold)) == pytest.approx(1 - threshold, abs=0.02)
+    assert float(np.max(u)) > 0.99
+
+
+def test_a_cell_without_weight_takes_equal_slices() -> None:
+    frame = _frame(
+        [
+            ("a", _SEAT, 0, "OWNED_OUTRIGHT", 100_000.0, 0.0),
+            ("b", _SEAT, 0, "OWNED_OUTRIGHT", 200_000.0, 0.0),
+        ]
+    )
+    u, receipt = _slices(frame)
+    assert 0.0 <= u[0] < 0.5 <= u[1] < 1.0
+    assert receipt["cells_without_weight"] == 1
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        (lambda f: f.assign(key=["a", "a"]), "own key"),
+        (lambda f: f.assign(weight=[1.0, -1.0]), "non-negative"),
+        (lambda f: f.assign(weight=[1.0, np.nan]), "non-negative"),
+    ],
+)
+def test_owner_slice_uniforms_refuse(change, match) -> None:
+    frame = _frame(
+        [
+            ("a", _SEAT, 0, "OWNED_OUTRIGHT", 100_000.0, 1.0),
+            ("b", _SEAT, 0, "OWNED_OUTRIGHT", 200_000.0, 1.0),
+        ]
+    )
+    with pytest.raises(ValueError, match=match):
+        _slices(change(frame))
+    with pytest.raises(ValueError, match="align"):
+        pl.owner_slice_uniforms(
+            key=np.array(["a", "b"], dtype=object),
+            cell=np.array([_SEAT], dtype=object),
+            stratum=np.zeros(2, dtype=np.int64),
+            tenure_type=np.array(["OWNED_OUTRIGHT"] * 2, dtype=object),
+            value=np.ones(2),
+            weight=np.ones(2),
             stream=STREAM,
         )
 
@@ -261,6 +278,59 @@ def test_localise_values_interpolates_caps_and_leaves_others_untouched() -> None
             property_wealth=values[:1],
             knots=knots,
         )
+
+
+def test_the_value_half_is_localise_values_values_bit_for_bit() -> None:
+    """The WAS chain reads its home values through the value half of
+    localise_values (microcosm#931): the same values, bit for bit, and the
+    rows it rewrote."""
+
+    knots = _knots()
+    seats = sorted(knots.quantiles)
+    rng = np.random.default_rng(931)
+    n = 64
+    codes = np.asarray(
+        [seats[i % len(seats)] for i in range(n - 8)]
+        + ["S14000001"] * 4
+        + ["N05000001"] * 4,
+        dtype=object,
+    )
+    tenure = np.resize(
+        np.asarray(["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE", "RENT_PRIVATELY"]), n
+    )
+    values = np.where(rng.uniform(size=n) < 0.2, 0.0, rng.uniform(50_000, 900_000, n))
+    u = rng.uniform(size=n)
+
+    new_value, target = pl.localise_main_residence_values(
+        u=u, constituency_code=codes, tenure_type=tenure, value=values, knots=knots
+    )
+    whole, _, receipt = pl.localise_values(
+        u=u,
+        constituency_code=codes,
+        tenure_type=tenure,
+        value=values,
+        property_wealth=values + 5.0,
+        knots=knots,
+    )
+
+    assert new_value.view(np.int64).tolist() == whole.view(np.int64).tolist()
+    assert int(target.sum()) == receipt["rows_rewritten"]
+    assert not target[codes == "S14000001"].any()
+    assert (new_value[~target] == values[~target]).all()
+
+
+def test_the_value_half_refuses_a_seat_without_knots_by_a_count_free_text() -> None:
+    with pytest.raises(ValueError, match="No value knots") as caught:
+        pl.localise_main_residence_values(
+            u=np.array([0.5]),
+            constituency_code=np.array(["E14999999"]),
+            tenure_type=np.array(["OWNED_OUTRIGHT"]),
+            value=np.array([1.0]),
+            knots=_knots(),
+        )
+    # The text names no constituency: a row's constituency is its place.
+    assert "E14999999" not in str(caught.value)
+    assert not any(character.isdigit() for character in str(caught.value))
 
 
 def test_localise_bands_is_monotone_in_the_uniform_and_skips_scotland() -> None:
@@ -404,79 +474,3 @@ def test_spine_keys_drop_the_geographic_branch_only() -> None:
     assert spine[0] == spine[1] == ()
     keys = pl.spine_household_keys(household, source="frs", source_vintage="v")
     assert keys[0] == keys[1] != keys[2]
-
-
-# ----------------------------------------------------------------------------
-# Graph
-
-
-@pytest.mark.parametrize("k", [1, 3])
-def test_property_nodes_rewrite_values_and_bands_per_clone_and_replay(
-    k, toy_ladder, tmp_path
-) -> None:
-    _, ladder_path = toy_ladder
-    payloads, paths = write_toy_supports(tmp_path / "supports")
-    resource_paths = write_toy_property_resources(tmp_path / "property")
-    definition = uk_atomic_assignment_definition(payloads, seed=7)
-    graph, registry = graph_and_registry(
-        k,
-        geography_assignment="atomic",
-        definition=definition,
-        property_localisation_mode="price_paid",
-    )
-    compiled = compile_graph(graph)
-    order = compiled.order
-    assert order.index("uk.full.geography.derive") < order.index(
-        "uk.full.property.value"
-    )
-    assert order.index("uk.full.property.value") < order.index("uk.full.property.band")
-    assert order.index("uk.full.property.band") < order.index("uk.full.geography_gate")
-    sources = {
-        "uk_ladder": ladder_path,
-        "fixture": ladder_path,
-        **toy_support_sources(paths),
-        **resource_paths,
-    }
-    store = ContentStore(tmp_path / "store")
-    first = run_graph(compiled, sources=sources, store=store, kernels=registry)
-    household = first.population("uk.full.expand").table("household")
-    value_receipt = first.nodes["uk.full.property.value"].receipt
-    band_receipt = first.nodes["uk.full.property.band"].receipt
-    england_wales = household["constituency_code"].astype(str).str[0].isin(["E", "W"])
-    owners = household["tenure_type"].isin(
-        ["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE"]
-    ) & (household["main_residence_value"] > 0)
-    # Every England-and-Wales owner clone reads its value off the toy knots.
-    rewritten = household[england_wales & owners]
-    assert len(rewritten) == 2 * k and value_receipt["rows_rewritten"] == 2 * k
-    assert (rewritten["main_residence_value"] >= 100_000).all()
-    assert (rewritten["main_residence_value"] <= 2_000_000).all()
-    # Clones of one spine household share one uniform, so one value.
-    per_source = rewritten.groupby("source_household_id")[
-        "main_residence_value"
-    ].nunique()
-    assert (per_source == 1).all()
-    # Scotland and Northern Ireland keep the spine's values and bands.
-    untouched = household[~england_wales]
-    assert set(untouched["main_residence_value"]) <= {0.0}
-    assert band_receipt["rows_untouched_outside_england_wales"] == len(untouched)
-    assert band_receipt["monotone_violations"] == 0
-    assert set(household.loc[england_wales, "council_tax_band"]) <= set("ABCDEFGH")
-    assert value_receipt["weights"] == "unchanged"
-    _, fresh = graph_and_registry(
-        k,
-        geography_assignment="atomic",
-        definition=definition,
-        property_localisation_mode="price_paid",
-    )
-    replay = run_graph(
-        compiled, sources=sources, store=store, kernels=fresh, resume="require"
-    )
-    assert all(receipt.hit for receipt in replay.nodes.values())
-
-
-def test_property_localisation_needs_the_atomic_assignment() -> None:
-    with pytest.raises(ValueError, match="atomic geography assignment"):
-        graph_and_registry(
-            1, geography_assignment="legacy", property_localisation_mode="price_paid"
-        )

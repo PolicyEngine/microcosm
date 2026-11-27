@@ -7,8 +7,10 @@ from test_support.microcosm_frame.policyengine_uk_adapter import *
 def test_policyengine_uk_adapter_builds_a_real_engine_dataset() -> None:
     # Regression: the real UKSingleYearDataset constructor takes fiscal_year,
     # not time_period — a kwarg mismatch the protocol tests above cannot see
-    # because they never import the engine. Dataset construction is cheap
-    # (no simulation), so this runs wherever the uk extra is installed.
+    # because they never import the engine. Building the dataset runs no
+    # simulation, but it builds the adapter's CountryTaxBenefitSystem, whose
+    # id variables the adapter checks its int32 declaration against
+    # (microcosm#931). It runs wherever the uk extra is installed.
     import numpy as np
     import pandas as pd
 

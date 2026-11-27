@@ -22,6 +22,14 @@ from microcosm.build.atomic_geography import (
     validate_assignment_spec,
 )
 from microcosm.build.atomic_support_conditioning import extend_atomic_support
+
+# The household key the assignment draws on. The clone-first spine's
+# geographic_identity stage writes it too, so the name lives in the
+# geographic_clones leaf, which that stage hashes; re-exported here, so a
+# kernel that reads it here is held to the leaf (microcosm#931).
+from microcosm.build.uk_runtime.geographic_clones import (
+    GEOGRAPHY_HOUSEHOLD_KEY_COLUMN as IDENTITY_COLUMN,
+)
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
 from microcosm.graph.canonical import canonical_json
 
@@ -31,7 +39,6 @@ SYSTEMS = (
     "uk_ni_data_zone_2021",
 )
 SOURCES = {system: system + "_support" for system in SYSTEMS}
-IDENTITY_COLUMN = "geography_household_key"
 #: Assignment outputs the shared operators write on the household table.
 ASSIGNMENT_COLUMNS = ("atomic_area_code", "atomic_area_system", "atomic_area_basis")
 #: Nation-native aliases of derived layers; NA outside their own nation and

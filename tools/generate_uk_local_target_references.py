@@ -679,6 +679,41 @@ def _area_signed_deferrals(
         area_ids=("W06000010",),
         defer_if_compiles=True,
     )
+    # microcosm#931: the geography-first K=15 spine of microcosm#1538 leaves
+    # one constituency cell in each of two UC child buckets without a household.
+    for target_id, area_id, seat, bucket in (
+        (
+            "dwp.uc.households_by_area_children_2",
+            "E14001593",
+            "Wokingham",
+            "two children",
+        ),
+        (
+            "dwp.uc.households_by_area_children_3plus",
+            "E14001526",
+            "Stratford-on-Avon",
+            "three or more children",
+        ),
+    ):
+        add(
+            target_id=target_id,
+            geography_level="constituency",
+            reason_id="uc_children_constituency_spine_support_absent",
+            rationale=(
+                "The dense pool on the geography-first K=15 spine of "
+                f"microcosm#1538 leaves {seat} ({area_id}) with no Universal "
+                f"Credit household with {bucket}: the rowwise driver's support "
+                "check refuses the cell (nonzero target, zero household "
+                "support) while every other Great Britain constituency cell of "
+                "the bucket draws at least one household and binds. The dense "
+                "pool on main's route carried the cell. Deferred so the spine "
+                "can be calibrated and compared with main's route; the "
+                "assignment's support for the cell stays open under "
+                "microcosm#931 (María's ruling of 2026-11-24)."
+            ),
+            area_ids=(area_id,),
+            defer_if_compiles=True,
+        )
     # microcosm#1301: the high-value homes family is controlled by its region
     # rows on the local line and binds its local-authority cells down to the
     # signed hvcts_la_household_floor rule, so its constituency level is

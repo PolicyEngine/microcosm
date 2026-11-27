@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.build.uk_runtime.receipt_counts import (
     distinct_count,
+    record_clone_zero_rows,
     record_source_households,
     rounded_count,
     small_cell_share,
@@ -267,7 +268,14 @@ def assign_trading_allowance_claim_status(
 
 @dataclass(frozen=True)
 class UKTradingAllowanceReceiptsResult:
-    """The frame with the stored claim statuses, and the stage's receipt."""
+    """The frame with the stored claim statuses, and the stage's receipt.
+
+    ``traders``, ``claimants`` and ``full_relief`` count distinct source
+    households among geographic clone 0's rows
+    (``receipt_counts.record_clone_zero_rows``), a household's copies once:
+    each clone draws its own statuses, so a count over every clone would grow
+    with the clone count. The evidence rounds them.
+    """
 
     frame: Frame
     traders: int
@@ -281,7 +289,8 @@ class UKTradingAllowanceReceiptsResult:
             "stage": TRADING_ALLOWANCE_RECEIPTS_STAGE_NAME,
             "seed": TRADING_ALLOWANCE_CLAIMANT_SEED,
             "draw": TRADING_ALLOWANCE_CLAIMANT_DRAW,
-            # Record counts are rounded, never exact (UKDS CD137 cl. 8).
+            # Counts of source households, rounded, never exact (UKDS CD137
+            # cl. 8).
             "traders": rounded_count(self.traders),
             "claimants": rounded_count(self.claimants),
             "full_relief": {
@@ -380,6 +389,9 @@ def store_trading_allowance_claim_status(
         "person",
         stage=TRADING_ALLOWANCE_RECEIPTS_STAGE_NAME,
     )
+    counted = record_clone_zero_rows(
+        {"person": person, "household": household}, "person"
+    )
     rates = claimant_rates(profit.to_numpy(dtype=np.float64))
     trader = profit.to_numpy(dtype=np.float64) > 0.0
     claimant = statuses.claimant
@@ -421,9 +433,9 @@ def store_trading_allowance_claim_status(
     validate_uk_national_frame(result)
     return UKTradingAllowanceReceiptsResult(
         frame=result,
-        traders=int(trader.sum()),
-        claimants=int(claimant.sum()),
-        full_relief=int(statuses.full_relief.sum()),
+        traders=distinct_count(sources, trader & counted),
+        claimants=distinct_count(sources, claimant & counted),
+        full_relief=distinct_count(sources, statuses.full_relief & counted),
         full_relief_support=support_band(
             distinct_count(sources, statuses.full_relief, weights)
         ),

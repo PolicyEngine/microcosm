@@ -131,12 +131,24 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
         "_pre_split_household_weights",
         "writes-into-existing-array",
         "np.add.at(weights, lineage.root_positions, weights[lineage.copy_positions])",
-        "6cc4521d9bc0",
+        "88cad28e8a13",
     ): (
         "np.add.at writes into the array _pre_clone_household_weights returns, "
-        "which _pre_residential_household_weights creates with "
-        "np.asarray(...).copy() from the household weights. Review again if "
-        "either of those functions changes."
+        "_pre_clone_fold's first array, which _pre_residential_household_weights "
+        "creates with np.asarray(...).copy() from the household weights. Review "
+        "again if any of those functions changes."
+    ),
+    (
+        "tools/verify_uk_identity_stability.py",
+        "_pre_high_value_household_weights",
+        "writes-into-existing-array",
+        "np.add.at(weights, lineage.root_positions, weights[lineage.copy_positions])",
+        "c6d258cb6a6b",
+    ): (
+        "np.add.at writes into the array _pre_split_household_weights returns, "
+        "the same copy of the household weights its own entry describes "
+        "(microcosm#931). Review again if it or the functions it rests on "
+        "change."
     ),
     (
         "packages/microcosm-frame/src/microcosm/frame/shared_columns.py",
@@ -192,12 +204,20 @@ _REVIEWED_FINDINGS: dict[tuple[str, str, str, str, str], str] = {
 _REVIEWED_HELPERS: dict[tuple[str, str], str] = {
     (
         "tools/verify_uk_identity_stability.py",
+        "_pre_clone_fold",
+    ): "bb389467cc29",
+    (
+        "tools/verify_uk_identity_stability.py",
         "_pre_clone_household_weights",
-    ): "5edc525581d7",
+    ): "9d4045e667d2",
     (
         "tools/verify_uk_identity_stability.py",
         "_pre_residential_household_weights",
-    ): "e39cc12da417",
+    ): "6cdb2cd9265e",
+    (
+        "tools/verify_uk_identity_stability.py",
+        "_pre_split_household_weights",
+    ): "88cad28e8a13",
     (
         "packages/microcosm-graph/src/microcosm/graph/executor.py",
         "_read_only_view",

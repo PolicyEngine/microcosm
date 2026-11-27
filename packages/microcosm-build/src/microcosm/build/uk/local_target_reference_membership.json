@@ -3,12 +3,12 @@
   "target_period": 2025,
   "candidate_count": 31347,
   "contract_target_count": 62,
-  "active_reference_count": 27157,
+  "active_reference_count": 27155,
   "status_counts": {
-    "active": 27157,
+    "active": 27155,
     "no_fact_for_area": 1247,
     "signed_deferral_compile_error": 1,
-    "signed_deferred": 2942
+    "signed_deferred": 2944
   },
   "areas_by_geography_level": {
     "constituency": [
@@ -12518,6 +12518,26 @@
       "rationale": "The dense pool on the spine of microcosm#1535's merge leaves Carmarthenshire (W06000010) with no band-I household at the ruled K=15: the rowwise driver's support check refuses the cell (nonzero target, zero household support) while every other Welsh band-I cell above the dwelling floor draws at least one band-I clone and binds. The cell bound on the spine of microcosm#1491's pair (Mar\u00eda's ruling of 2026-11-07, microcosm#1095).",
       "area_ids": [
         "W06000010"
+      ],
+      "defer_if_compiles": true
+    },
+    {
+      "target_id": "dwp.uc.households_by_area_children_2",
+      "geography_level": "constituency",
+      "reason_id": "uc_children_constituency_spine_support_absent",
+      "rationale": "The dense pool on the geography-first K=15 spine of microcosm#1538 leaves Wokingham (E14001593) with no Universal Credit household with two children: the rowwise driver's support check refuses the cell (nonzero target, zero household support) while every other Great Britain constituency cell of the bucket draws at least one household and binds. The dense pool on main's route carried the cell. Deferred so the spine can be calibrated and compared with main's route; the assignment's support for the cell stays open under microcosm#931 (Mar\u00eda's ruling of 2026-11-24).",
+      "area_ids": [
+        "E14001593"
+      ],
+      "defer_if_compiles": true
+    },
+    {
+      "target_id": "dwp.uc.households_by_area_children_3plus",
+      "geography_level": "constituency",
+      "reason_id": "uc_children_constituency_spine_support_absent",
+      "rationale": "The dense pool on the geography-first K=15 spine of microcosm#1538 leaves Stratford-on-Avon (E14001526) with no Universal Credit household with three or more children: the rowwise driver's support check refuses the cell (nonzero target, zero household support) while every other Great Britain constituency cell of the bucket draws at least one household and binds. The dense pool on main's route carried the cell. Deferred so the spine can be calibrated and compared with main's route; the assignment's support for the cell stays open under microcosm#931 (Mar\u00eda's ruling of 2026-11-24).",
+      "area_ids": [
+        "E14001526"
       ],
       "defer_if_compiles": true
     },
@@ -403719,13 +403739,12 @@
               "target_id": "dwp.uc.households_by_area_children_2",
               "geography_level": "constituency",
               "geography_id": "E14001593",
-              "status": "active",
+              "status": "signed_deferred",
               "matched_fact_count_overall": 12,
               "matched_fact_count_at_or_before_period": 12,
-              "resolved_period": 2025,
-              "resolved_value": 814.4166666666666,
-              "resolved_fact_period": "2025-12",
-              "resolved_fact_key": "ledger_aggregate_fact_v2_6443eb5d7ba7410600a34528"
+              "signed_reason_id": "uc_children_constituency_spine_support_absent",
+              "signed_rationale": "The dense pool on the geography-first K=15 spine of microcosm#1538 leaves Wokingham (E14001593) with no Universal Credit household with two children: the rowwise driver's support check refuses the cell (nonzero target, zero household support) while every other Great Britain constituency cell of the bucket draws at least one household and binds. The dense pool on main's route carried the cell. Deferred so the spine can be calibrated and compared with main's route; the assignment's support for the cell stays open under microcosm#931 (Mar\u00eda's ruling of 2026-11-24).",
+              "deferred_value": 814.4166666666666
             },
             {
               "name": "dwp.uc.households_by_area_children_2@E14001594",
@@ -411291,13 +411310,12 @@
               "target_id": "dwp.uc.households_by_area_children_3plus",
               "geography_level": "constituency",
               "geography_id": "E14001526",
-              "status": "active",
+              "status": "signed_deferred",
               "matched_fact_count_overall": 36,
               "matched_fact_count_at_or_before_period": 36,
-              "resolved_period": 2025,
-              "resolved_value": 628.9166666666666,
-              "resolved_fact_period": "2025-12",
-              "resolved_fact_key": "ledger_aggregate_fact_v2_06ae4f1ea3aa788edb3cba29"
+              "signed_reason_id": "uc_children_constituency_spine_support_absent",
+              "signed_rationale": "The dense pool on the geography-first K=15 spine of microcosm#1538 leaves Stratford-on-Avon (E14001526) with no Universal Credit household with three or more children: the rowwise driver's support check refuses the cell (nonzero target, zero household support) while every other Great Britain constituency cell of the bucket draws at least one household and binds. The dense pool on main's route carried the cell. Deferred so the spine can be calibrated and compared with main's route; the assignment's support for the cell stays open under microcosm#931 (Mar\u00eda's ruling of 2026-11-24).",
+              "deferred_value": 628.9166666666666
             },
             {
               "name": "dwp.uc.households_by_area_children_3plus@E14001527",

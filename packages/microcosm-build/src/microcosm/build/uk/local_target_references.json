@@ -408079,51 +408079,6 @@
       "value_operation": "monthly_window_average"
     },
     {
-      "name": "dwp.uc.households_by_area_children_2@E14001593",
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.uc_households",
-        "source_measure_id": "universal_credit_households_by_children",
-        "dimensions": [
-          "number_of_children",
-          "payment_indicator"
-        ],
-        "period_type": "month",
-        "period_value": [
-          "2025-01",
-          "2025-02",
-          "2025-03",
-          "2025-04",
-          "2025-05",
-          "2025-06",
-          "2025-07",
-          "2025-08",
-          "2025-09",
-          "2025-10",
-          "2025-11",
-          "2025-12"
-        ],
-        "dimension_values": {
-          "number_of_children": 2,
-          "payment_indicator": "Yes"
-        },
-        "geography_level": "constituency",
-        "geography_id": "E14001593"
-      },
-      "entity": "benunit",
-      "measure": "uc_hh_2_children",
-      "family": "dwp_universal_credit",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "dwp.uc.households_by_area_children_2",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001593"
-      },
-      "period_match_policy": "source_window",
-      "value_operation": "monthly_window_average"
-    },
-    {
       "name": "dwp.uc.households_by_area_children_2@E14001594",
       "ledger_selector": {
         "source_name": "dwp",
@@ -444591,75 +444546,6 @@
         "measure_kind": "prepared_column",
         "geography_level": "constituency",
         "geography_id": "E14001525"
-      },
-      "period_match_policy": "source_window",
-      "value_operation": "monthly_window_sum_average",
-      "value_operands": [
-        {
-          "dimension_values": {
-            "number_of_children": 3,
-            "payment_indicator": "Yes"
-          }
-        },
-        {
-          "dimension_values": {
-            "number_of_children": 4,
-            "payment_indicator": "Yes"
-          }
-        },
-        {
-          "dimension_values": {
-            "number_of_children": "5 or more",
-            "payment_indicator": "Yes"
-          }
-        }
-      ]
-    },
-    {
-      "name": "dwp.uc.households_by_area_children_3plus@E14001526",
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.uc_households",
-        "source_measure_id": "universal_credit_households_by_children",
-        "dimensions": [
-          "number_of_children",
-          "payment_indicator"
-        ],
-        "period_type": "month",
-        "period_value": [
-          "2025-01",
-          "2025-02",
-          "2025-03",
-          "2025-04",
-          "2025-05",
-          "2025-06",
-          "2025-07",
-          "2025-08",
-          "2025-09",
-          "2025-10",
-          "2025-11",
-          "2025-12"
-        ],
-        "dimension_values": {
-          "number_of_children": [
-            3,
-            4,
-            "5 or more"
-          ],
-          "payment_indicator": "Yes"
-        },
-        "geography_level": "constituency",
-        "geography_id": "E14001526"
-      },
-      "entity": "benunit",
-      "measure": "uc_hh_3plus_children",
-      "family": "dwp_universal_credit",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "dwp.uc.households_by_area_children_3plus",
-        "measure_kind": "prepared_column",
-        "geography_level": "constituency",
-        "geography_id": "E14001526"
       },
       "period_match_policy": "source_window",
       "value_operation": "monthly_window_sum_average",

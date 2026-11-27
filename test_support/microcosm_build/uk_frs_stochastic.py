@@ -17,7 +17,6 @@ from microcosm.build.source_manifest import (
 )
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_brma import (
-    UKFRSBRMAStageTransform,
     assign_brma_by_cell,
     collapse_benunit_brma_to_household,
 )
@@ -98,18 +97,6 @@ class _Contract:
         return SimpleNamespace(raw={"entity": "person"})
 
     build_year = 2024
-
-
-class _FakeEngine:
-    country = "uk"
-
-    def __init__(self, lha_category):
-        self.lha_category = lha_category
-
-    def materialize(self, frame, variables, period):
-        assert tuple(variables) == ("LHA_category",)
-        assert period == "2024"
-        return {"LHA_category": self.lha_category}
 
 
 def _frame() -> object:

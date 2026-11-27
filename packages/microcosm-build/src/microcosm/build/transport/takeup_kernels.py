@@ -43,7 +43,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 
-from . import graph_inputs, target_kernels, weight_quality
+from . import artifact_types, graph_inputs, target_kernels, weight_quality
 from .artifact_types import CELL_DIAGNOSTICS_TYPE
 from .graph_inputs import (
     canonical_document_param,
@@ -882,7 +882,13 @@ class TakeupBandsKernel(KernelBase):
 
     def implementation_hash(self) -> str:
         return source_hash(
-            type(self), graph_inputs, dependencies=self.capabilities.dependencies
+            type(self),
+            graph_inputs,
+            # The kernel decodes its scenario tables and encodes its bands as
+            # canonical JSON, and checks its document parameters' spelling
+            # through the encoder (microcosm#931).
+            canonical_json,
+            dependencies=self.capabilities.dependencies,
         )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -1001,7 +1007,16 @@ class TakeupCellDiagnosticsKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
-        return source_hash(type(self), decode_cell_diagnostics, graph_inputs)
+        return source_hash(
+            type(self),
+            decode_cell_diagnostics,
+            graph_inputs,
+            # The kernel types its output (artifact_types), and decodes its
+            # scenario tables and encodes its output as canonical JSON
+            # (microcosm#931).
+            artifact_types,
+            canonical_json,
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         require_params(context, self.ref, required=frozenset({"artifact_scenarios"}))

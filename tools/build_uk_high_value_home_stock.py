@@ -13,8 +13,9 @@ three committed resources under the UK country package:
   nation, in consumer-fact row shape under the Microcosm-owned
   ``microcosm.derived_fact.`` key namespace;
 - ``high_value_home_value_knots.json``: weighted quantile knots of the
-  basis value per constituency, region and nation, for the post-geography
-  value map;
+  basis value per constituency, region and nation; the spine's WAS stage
+  reads home values off the constituency knots (``area_home_values``,
+  microcosm#931);
 - ``high_value_home_stock.provenance.json``: inputs, parameters and receipts.
 
 The deduplicated dwelling table is cached under ``--cache-dir`` keyed by the
@@ -1139,12 +1140,16 @@ def main(argv: list[str] | None = None) -> int:
         "country": "uk",
         "licence": LICENCE,
         "policy": (
-            "Support bounds for the two household columns the post-geography value "
-            "node rewrites (microcosm#1240): main_residence_value is winsorised at the "
-            "value knots' declared cap, and property_wealth moves by the same amount, so "
-            "its bound is the cap plus the WAS donor bound's headroom over the main "
-            "residence. Listed after was_wealth_support_bounds.json in uk_support so "
-            "these bounds win for the two columns. Public caps, never donor values."
+            "Support bounds for the two household columns the spine's WAS stage can "
+            "take past the WAS donor's support when it reads home values off the "
+            "constituency knots (area_home_values, microcosm#931; first built for the "
+            "dense value node of microcosm#1240). main_residence_value is read off the "
+            "knots, winsorised at their declared cap. property_wealth can exceed the "
+            "WAS donor's largest property total by as much as the main residence "
+            "exceeds the donor's largest main residence, so its bound is the cap plus "
+            "the WAS donor bound's headroom over the main residence. Listed after "
+            "was_wealth_support_bounds.json in uk_support so these bounds win for the "
+            "two columns. Public caps, never donor values."
         ),
         "source": {
             "knots_resource": args.knots_out.name,

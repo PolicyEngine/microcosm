@@ -4,9 +4,10 @@ Reads the VOA ``CTSOP1.1`` zip registered in Chronicle
 (``voa-council-tax-stock-by-lad-2025``, properties by band and area at
 31 March 2025), verifies it against the manifest pin, and writes
 ``uk/voa_council_tax_band_mix_lsoa.json``: for every 2021 LSOA the
-cumulative share of properties in bands A to I. The post-geography band node
-reads a clone's band off its assigned LSOA's cumulative shares at the same
-uniform that placed its home value, so value and band agree by construction.
+cumulative share of properties in bands A to I. The dense line's band node
+read the mix until microcosm#931 retired that node.
+``tools/build_uk_conditioned_area_supports.py`` now reads it, for each England
+and Wales area's households by band, which the spine's area draw weights by.
 
 VOA prints ``-`` for a zero or negligible count and ``..`` for a band that
 does not apply (band I outside Wales); both read as zero, and the resource

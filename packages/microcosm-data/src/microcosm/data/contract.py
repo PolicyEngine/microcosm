@@ -737,13 +737,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "763db010a4f44a1fec0437ad37a47a6e4b1c7c8e61f8021689c879dae51de631"
+    "31eeba9ac55c55f1da0d44a7434a2ab8488d8deb9963ccaad5cd3f891aea1981"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "5a9bb7ba492a2ca320769b4122d6fb71efddcc3d2c5c281ca43eafdc9cec604d"
+    "26cb5b862fa88d18b724dda1ed323ef79e5896e01e12383393ada7ee041887c5"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "5554179e4f7dfc5c13ca90b3a3e0ab09db3bc73af496f574cc3507d22f07ae7c"
+    "44c6f5cb87e2244d968c09e737c52e1ece7e2b4398a33d43210ca3156346209d"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -762,7 +762,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
-    "uk_local_brma_enum_domain": "enum_domain",
+    "uk_local_authority_enum_domain": "enum_domain",
     "uk_ons_household_type_enum_domain": "enum_domain",
     "uk_capital_gains_asset_type_enum_domain": "enum_domain",
     "uk_council_tax_band_domain": "enum_domain",
@@ -845,7 +845,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "transferred",
     ),
     "uk_stage_student_loans_realization": ("stage_health", "transferred"),
-    "uk_stage_regional_home_values_ranking": ("stage_health", "transferred"),
+    "uk_stage_area_home_values_ranking": ("stage_health", "transferred"),
     "uk_stage_property_purchases_fit": ("stage_health", "transferred"),
     "uk_stage_uc_legacy_closure_take_up_contract": ("stage_health", "transferred"),
     "uk_stage_frs_person_draws_apprentices": ("stage_health", "transferred"),
@@ -854,6 +854,12 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_company_cars_invariants": ("stage_health", "transferred"),
     "uk_stage_spi_employment_shell_fit": ("stage_health", "transferred"),
     "uk_stage_aps_occupation_fit": ("stage_health", "transferred"),
+    # The spine geography gates (microcosm#931).
+    "uk_atomic_area_mapping_integrity": ("stage_health", "assembled"),
+    "uk_spi_copy_area_mapping_integrity": ("stage_health", "transferred"),
+    "uk_high_value_copy_area_mapping_integrity": ("stage_health", "transferred"),
+    "uk_copy_area_agreement": ("stage_health", "transferred"),
+    "uk_council_tax_reduction_within_bill": ("stage_health", "transferred"),
     "uk_stage_frs_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_person_draws_take_up_signal": ("stage_health", "assembled"),
     "uk_stage_frs_household_draws_take_up_signal": ("stage_health", "assembled"),
@@ -877,7 +883,9 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_aggregate_admin": ("aggregate_admin", "terminal"),
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
-    "uk_brma_enum_domain": ("enum_domain", "assembled"),
+    "uk_brma_enum_domain": ("enum_domain", "transferred"),
+    "uk_local_authority_enum_domain": ("enum_domain", "transferred"),
+    "uk_geography_ladder": ("spine_agreement", "transferred"),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled"),
     "uk_capital_gains_asset_type_enum_domain": ("enum_domain", "transferred"),
     "uk_council_tax_band_domain": ("enum_domain", "transferred"),
@@ -901,7 +909,6 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "spine_agreement",
         "terminal",
     ),
-    "uk_local_brma_enum_domain": ("enum_domain", "terminal"),
     "uk_local_area_support": ("area_support", "terminal"),
     "uk_local_target_fit": ("target_fit", "terminal"),
     "uk_local_per_family_fit": ("per_family_fit", "terminal"),
@@ -969,7 +976,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_cgt_incidence_anchor_composition",
         "uk_stage_salary_sacrifice_realization",
         "uk_stage_student_loans_realization",
-        "uk_stage_regional_home_values_ranking",
+        "uk_stage_area_home_values_ranking",
         "uk_stage_property_purchases_fit",
         "uk_stage_uc_legacy_closure_take_up_contract",
         "uk_stage_frs_person_draws_apprentices",
@@ -978,6 +985,11 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_company_cars_invariants",
         "uk_stage_spi_employment_shell_fit",
         "uk_stage_aps_occupation_fit",
+        "uk_atomic_area_mapping_integrity",
+        "uk_spi_copy_area_mapping_integrity",
+        "uk_high_value_copy_area_mapping_integrity",
+        "uk_copy_area_agreement",
+        "uk_council_tax_reduction_within_bill",
         "uk_stage_frs_take_up_signal",
         "uk_stage_frs_person_draws_take_up_signal",
         "uk_stage_frs_household_draws_take_up_signal",
@@ -1098,7 +1110,6 @@ _UK_DENSE_INCUMBENT_FILES = (
 _UK_DENSE_GATE_ENTRY_IDS = frozenset(
     {
         "uk_local_area_support",
-        "uk_local_brma_enum_domain",
         "uk_local_geography_ladder_post_calibration",
         "uk_local_per_family_fit",
         "uk_local_target_fit",
@@ -1109,9 +1120,9 @@ _UK_DENSE_GATE_ENTRY_IDS = frozenset(
 _UK_DENSE_RELEASE_BLOCKING_IDS = _UK_DENSE_GATE_ENTRY_IDS
 _UK_DENSE_GATE_PHASES = ("terminal",)
 _UK_DENSE_GATE_DIGESTS = {
-    "gates_manifest_sha256": "e5bc33678ce84ed255ba118016f99fb61e5260e00347aa78f616bf53d04de309",
-    "policy_sha256": "7b97d72a15756b983ecf32a7b4155e0558533044408eb02e6a2d8be52ebe55d4",
-    "spec_fingerprint": "b4d77cdd8c75dcb67e3533040f82273944e45432d9605595cdb14bf58658c955",
+    "gates_manifest_sha256": "238f51220fc1e3bfb5907fd4c934e23fa5c7cd0a86d34f436d31b3775e194de1",
+    "policy_sha256": "6d5f12892a04d1b99b86d0c9a4c4d108243aab1a024444bb679e99b2a8acb0f4",
+    "spec_fingerprint": "1b37bbb587487d2934badc14a319ff4c9bd5bbed2a95b010f3c6ed72268e6e91",
 }
 _UK_DENSE_SOURCE_COVERAGE_KEYS = (
     "spine",
@@ -1280,7 +1291,6 @@ _UK_CERTIFICATION_SHARED_GATE_IDS = frozenset({"uk_aggregate_admin"})
 _UK_CERTIFICATION_EXCLUDED_GATE_IDS = frozenset(
     {
         "uk_local_geography_ladder_post_calibration",
-        "uk_local_brma_enum_domain",
         "uk_local_area_support",
         "uk_local_target_fit",
         "uk_local_per_family_fit",
@@ -1298,10 +1308,17 @@ _UK_CERTIFICATION_PART_PHASES: Mapping[str, tuple[str, ...]] = {
 _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
     "spine": frozenset(
         {
+            "uk_atomic_area_mapping_integrity",
             "uk_brma_enum_domain",
             "uk_capital_gains_asset_type_enum_domain",
+            "uk_copy_area_agreement",
             "uk_council_tax_band_domain",
+            "uk_council_tax_reduction_within_bill",
+            "uk_geography_ladder",
+            "uk_high_value_copy_area_mapping_integrity",
+            "uk_local_authority_enum_domain",
             "uk_ons_household_type_enum_domain",
+            "uk_spi_copy_area_mapping_integrity",
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_support_split_mass",
             "uk_stage_cgt_residential_split_mass",
@@ -1345,7 +1362,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_pension_credit_take_up",
             "uk_stage_property_components",
             "uk_stage_property_purchases_fit",
-            "uk_stage_regional_home_values_ranking",
+            "uk_stage_area_home_values_ranking",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_benefit_coherence",
             "uk_stage_spi_support_channel_mass",
@@ -1399,10 +1416,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "211d176b909e2b63df867aefded5b222ba601f963a9c24347333376a902a1086"
+            "01455c9b551106847d19a45ac9d338d71e0925cf17f0b09690a17ca0c2472b71"
         ),
         "policy_sha256": (
-            "b8f68c5cb8dcd33aefcf7756de0218813dc0e840d163a0c29e5b96395fb65162"
+            "7749b423484bc4953b88d386f8c220a2ae7ff46fcc8c5cf3f022d977b4e96792"
         ),
     },
     "calibration_seam": {
@@ -1415,7 +1432,7 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "f8c201e9da37448fdf9297b55daaedb360e0351aba3c8d04d090402ce57256ee"
+            "a1fc92804f4613ce29ae0334f68ece82273960d4cb432a38fdb44a2191ddeeff"
         ),
         "policy_sha256": (
             "c5228ffee556e0366e32697561462c223ae186f9589b670e17b63dcb59bd4a96"
@@ -5705,7 +5722,7 @@ def _check_uk_dense_gate_report(
     """Verify the signed local gate-battery report the dense line ships.
 
     Same producer and signing dance as the exact-k terminal report, scoped to
-    the local battery: the seven local entries, one terminal phase, the local
+    the local battery: the six local entries, one terminal phase, the local
     scoped digests, release posture attested, every release-blocking entry
     passed, ``gate_outcomes_sha256`` recomputed, and the HMAC over the
     canonical report re-nulled at the signature slot.

@@ -306,10 +306,12 @@ microcosm#1006, comments 5812328880 and 5814299594):
 
 ## SPI rows before the donor imputations
 
-The SPI block (`frs_hmrc_spine_leaves`, `spi_support_channel`,
-`spi_income_band_donors`, `hmrc_spi_income_spine`) runs right after
-`frs_brma`, ahead of `was_wealth`, `regional_property_uprating`,
-`nts_bus_travel`, `lcfs_consumption`, `etb_vat` and `etb_services`. Those six
+`frs_hmrc_spine_leaves` now runs with the source stages, before the geographic
+clones, and `frs_brma` retired into `area_brma` (microcosm#931). The SPI block
+(`spi_support_channel`, `spi_income_band_donors`, `hmrc_spi_income_spine`)
+runs right after `area_brma`, and `spi_copy_areas` after `spi_housing_shell`, still ahead of
+`was_wealth`, `regional_property_uprating`, `nts_bus_travel`,
+`lcfs_consumption`, `etb_vat` and `etb_services`. Those six
 stages condition on income, and the support stages copy whole FRS households.
 In the enhanced FRS order, which the spine used to follow, each SPI copy kept
 the wealth, spending, VAT rate, public-service use and bus travel drawn for its
@@ -366,6 +368,20 @@ Benefit a rented one, and council tax benefit is capped at council tax. Both
 drawn benefits land on the household reference person, with every other
 person's zeroed, and the stage checks it. Region, single-adult status, BRMA and
 composition stay the recipient's; FRS rows are unchanged.
+
+Since microcosm#931 the stage writes the council tax of Great Britain's copies
+and band donors by statute. Council tax stays a chained target for every row,
+so the chain's other draws are as before. After the learned zeros and the
+tenure rules, each Great Britain row the SPI support channel copied takes the
+2024-25 statute bill for its nation and drawn band, less the single-adult
+discount where it applies, at its reference Band D: the expected 2024-25
+Band D of the cell `spi_copy_areas` draws its area from, its region by the
+households of the drawn band, or by all households where the region holds
+none of it. The drawn council tax benefit is then capped at that bill. The
+bill reads neither the copy's area nor its local authority, so
+`council_tax_localise` stays the one step that prices council tax by area.
+Bands are drawn as before, and Northern Ireland's copies keep the chained bill
+and reduction (María's ruling of 2026-11-14).
 
 Imputation was chosen over whole-record donor matching on a holdout of FRS
 households (`tools/validate_uk_housing_imputation.py`). Within FRS support the

@@ -39,7 +39,50 @@ class UKInspectionExportPrepareKernel(graph_terminal.UKExportPrepareKernel):
     ref = "uk.full-export.prepare-inspection@1"
 
     def implementation_hash(self) -> str:
-        return source_hash(sys.modules[__name__], graph_terminal)
+        from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame import table_copies as frame_table_copies
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
+
+        from .. import gates
+        from . import (
+            atomic_area_support,
+            geographic_clones,
+            geography_ladder,
+            graph_population,
+            hmrc_uprating,
+            local_authority_input,
+            national_frame,
+            rowwise_dataset,
+            rowwise_geography,
+            weight_year,
+        )
+
+        # The description computes through what the export kernel's does
+        # (microcosm#931): the ladder gate's results and region codes, the
+        # area code frames, the engine tables and the clone index columns
+        # geographic_clones names, the dataset year's weights and the
+        # engine's projection factor, the frame it rebuilds with the UK
+        # totals, the ISA income contract and the savings income projection
+        # the engine adapter defines, and the descriptor's canonical encoding.
+        return source_hash(
+            sys.modules[__name__],
+            graph_terminal,
+            gates,
+            atomic_area_support,
+            geographic_clones,
+            geography_ladder,
+            graph_population,
+            frame_table_copies,
+            hmrc_uprating,
+            local_authority_input,
+            national_frame,
+            rowwise_dataset,
+            rowwise_geography,
+            weight_year,
+            frame_materialize,
+            uk_engine_adapter,
+            canonical_json,
+        )
 
     def run(self, context: KernelContext) -> KernelResult:
         if context.params.get("inspection_export") is not True:
@@ -52,8 +95,12 @@ class UKInspectionExportPrepareKernel(graph_terminal.UKExportPrepareKernel):
         bindings["artifacts"] = {
             name: value.key for name, value in context.artifacts.items()
         }
+        # The year the weights were solved at, which the export node carries
+        # and the description requires, as the export kernel passes it.
         descriptor = graph_terminal.describe_uk_export(
-            context_frame(context), bindings=bindings
+            context_frame(context),
+            bindings=bindings,
+            solve_year=int(context.params["solve_year"]),
         )
         return KernelResult(artifacts={"export_descriptor": canonical_json(descriptor)})
 

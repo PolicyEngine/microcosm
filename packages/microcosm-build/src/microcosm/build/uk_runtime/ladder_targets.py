@@ -1,8 +1,8 @@
 """Diagnostic household sums from the sha-pinned UK OA ladder.
 
-The ladder remains the geography-assignment artifact and stage-one sampling
-weight. Its household sums are diagnostics only: calibration targets compile
-from the pinned Chronicle feed.
+The ladder supplies target compilation's rosters and dispersion checks; the
+spine's own stages assign areas (microcosm#931). Its household sums are
+diagnostics only: calibration targets compile from the pinned Chronicle feed.
 """
 
 from __future__ import annotations
