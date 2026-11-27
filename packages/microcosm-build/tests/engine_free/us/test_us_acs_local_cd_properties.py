@@ -17,6 +17,7 @@ Invariants, each for every input Hypothesis draws:
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import math
 
@@ -851,6 +852,49 @@ def test_a_concept_with_two_parent_sources_is_refused() -> None:
     with pytest.raises(ValueError, match="one concept has one parent source"):
         _CD.state_cd_soi_surface(
             mixed,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges={"charitable_amount": "return_count"},
+        )
+
+
+def test_a_block_that_leaves_the_surface_still_holds_its_members() -> None:
+    """A distrusted level bridge drops its block. An incomplete block is refused."""
+
+    ratios = {"10": 1.0, "11": 1.0, "12": 1.0, "13": 1.0, "14": 2.0}
+    specs, crosswalk = _bridge_world(ratios, {})
+
+    def surface(candidates):
+        return _CD.state_cd_soi_surface(
+            candidates,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges={"charitable_amount": "return_count"},
+        )
+
+    # State 14's bridge is out of band, so its charitable block is dropped.
+    assert (
+        surface(specs).receipt["dropped"]["level_bridge_out_of_band:charitable_amount"]
+        == 3
+    )
+    # The same block with one district absent is refused, as a kept block is.
+    incomplete = [
+        spec for spec in specs if spec.name != "cdfile.1402.charitable_amount"
+    ]
+    with pytest.raises(
+        ValueError,
+        match=r"leg 'state:14': missing \['congressional_district:1402'\]",
+    ):
+        surface(incomplete)
+
+
+def test_a_district_row_that_appears_twice_is_refused() -> None:
+    specs, crosswalk = _bridge_world({"10": 1.0, "11": 1.0, "12": 1.0}, {})
+    twin = next(spec for spec in specs if spec.name == "cdfile.1001.return_count")
+    twice = [*specs, dataclasses.replace(twin, name="cdfile.1001.return_count.copy")]
+    with pytest.raises(ValueError, match=r"repeated \['congressional_district:1001'\]"):
+        _CD.state_cd_soi_surface(
+            twice,
             state_surface_predicate=_TOOL.soi_surface_predicate("state"),
             crosswalk=crosswalk,
             level_bridges={"charitable_amount": "return_count"},

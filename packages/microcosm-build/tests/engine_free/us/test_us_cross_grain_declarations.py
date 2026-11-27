@@ -188,6 +188,38 @@ def test_the_allocators_are_declared_to_go_at_the_feed_repin() -> None:
     assert declarations.us_allocator_name("another_pass") is None
 
 
+def test_a_derived_control_names_a_derivation_that_the_adapter_runs() -> None:
+    assert declarations.us_derivation(declarations.COUNTY_ACS_HOUSEHOLDS) == (
+        "sum_of_lower_rows"
+    )
+    assert set(declarations.US_DERIVATIONS) == set(target_nesting.DERIVATIONS)
+    with pytest.raises(ValueError, match="Unknown US cross-grain derived control"):
+        declarations.us_derivation(declarations.COUNTY_SOI)
+
+
+def test_the_limits_of_a_bound_and_a_lower_target_with_no_pair() -> None:
+    district = declarations.us_bridge_selector(declarations.DISTRICT_SOI)
+    assert target_nesting.bound_limits(district) == (0.8, 1.25)
+    unbounded = declarations.us_bridge_selector(
+        declarations.DISTRICT_SOI, bounded=False
+    )
+    assert target_nesting.bound_limits(unbounded) == (0.0, float("inf"))
+    # A band that a caller asks for, as a ratio to the median.
+    wider = target_nesting.bounded_selector(declarations.COUNTY_SOI, 1.5)
+    assert target_nesting.bound_limits(wider) == pytest.approx((1 / 1.5, 1.5))
+    assert target_nesting.bounded_selector(
+        declarations.COUNTY_SOI, 1.25
+    ) == declarations.us_bridge_selector(declarations.COUNTY_SOI)
+    # A lower target that the selector pairs with nothing has no control.
+    unpaired = {declarations.COUNTY_SOI: ("county_file|wages|2022",)}
+    with pytest.raises(ValueError, match="pairs no higher target"):
+        target_nesting.refuse_unpaired(declarations.COUNTY_SOI, unpaired)
+    target_nesting.refuse_unpaired(
+        declarations.COUNTY_SOI, unpaired, own_control=["county_file|wages|2022"]
+    )
+    target_nesting.refuse_unpaired(declarations.COUNTY_SOI, {})
+
+
 def test_a_selector_is_the_operators_selector() -> None:
     district = declarations.us_bridge_selector(declarations.DISTRICT_SOI)
     assert district == CrossGrainBridgeSelector(
@@ -284,6 +316,27 @@ def _tampered(change) -> dict:
                 {"another_pass": "proportional_fsum"}
             ),
             "must name a declared pass and one of",
+        ),
+        (lambda d: d.update(inventory=[]), "unknown key"),
+        (
+            lambda d: d.update(bridges=[{"bridge_id": "by_id"}]),
+            "no US pass runs them yet",
+        ),
+        (
+            lambda d: d.update(partitions=[{"partition_id": "bands"}]),
+            "no US pass runs them yet",
+        ),
+        (
+            lambda d: d["relations"][0].update(
+                part=d["relations"][0]["whole"], whole=d["relations"][0]["part"]
+            ),
+            "a lower level than its whole",
+        ),
+        (
+            lambda d: d["until_the_feed_repin"]["compile_rules"][0].update(
+                higher_level="tract"
+            ),
+            "a reason and an issue",
         ),
         (lambda d: d["relations"][0].update(relation="equal"), "is malformed"),
         (lambda d: d["relations"][0].update(reason=""), "is malformed"),

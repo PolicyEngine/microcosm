@@ -9,8 +9,10 @@ until the feed re-pin, or a known gap. These tests read it:
 - the eight rows of the issue each have one entry, and each compile rule
   names code that exists;
 - ``us_cross_grain_coverage_violations`` finds a family at a lower level that
-  nothing covers, a declaration whose rows are gone, a compile rule whose
-  marker is on no row, and a subset that is larger than its whole;
+  nothing covers, a role that two levels measure with no relation of its own,
+  a declaration whose rows are gone, a compile rule whose marker is on no
+  row, a subset that is larger than its whole, and a whole that is not one
+  positive row;
 - on the pinned feed, the compiled registry has no violation. That test runs
   only when ``MICROCOSM_US_CHRONICLE_FACTS`` names the pinned feed, because
   ``main`` has no committed list of the US families and levels.
@@ -123,8 +125,13 @@ def _covered_specs() -> list:
             if marker
             else {}
         )
+        # An entry that lists roles is about rows that carry them.
         specs += [
-            _spec(entry["family"], level, **metadata) for level in entry["levels"]
+            _spec(entry["family"], level, **metadata, **role)
+            for level in entry["levels"]
+            for role in (
+                [{"target_role": name} for name in entry.get("roles", ())] or [{}]
+            )
         ]
     return specs
 
@@ -203,6 +210,77 @@ def test_a_subset_larger_than_its_whole_is_a_violation() -> None:
     (violation,) = declarations.us_cross_grain_coverage_violations(beyond)
     assert violation["kind"] == "subset_exceeded"
     assert violation["where"].startswith("cms_medicaid.medicaid_enrollment@state is ")
+
+
+def test_a_role_at_two_levels_needs_a_relation_of_its_own() -> None:
+    """A family is covered as a whole, so a new role in it must not pass unseen."""
+
+    covered = _covered_specs()
+    # A new role of a covered family, at state level and at the top level.
+    two_levels = [
+        *covered,
+        _spec("usda_snap", "state", 5.0, target_role="snap_new_role"),
+        _spec("usda_snap", "country", 9.0, target_role="snap_new_role"),
+    ]
+    assert declarations.us_cross_grain_coverage_violations(two_levels) == [
+        {
+            "kind": "role_at_two_levels_without_relation",
+            "family": "usda_snap",
+            "level": "state",
+            "where": "usda_snap.snap_new_role",
+        }
+    ]
+    # A known gap can list the role: then the gap is declared, with its issue.
+    listed = [
+        *covered,
+        _spec("irs_soi", "country", 9.0, target_role="soi_fiscal_distribution"),
+    ]
+    assert declarations.us_cross_grain_coverage_violations(listed) == []
+    # The rows of the gap are there, and none carries the role it lists.
+    without_listed_role = [
+        _spec(spec.family, spec.metadata["ledger_geography_level"])
+        if spec.metadata.get("target_role") == "population_age"
+        else spec
+        for spec in covered
+    ]
+    assert declarations.us_cross_grain_coverage_violations(without_listed_role) == [
+        {
+            "kind": "stale_declaration",
+            "family": "census_population",
+            "level": "state",
+            "where": "population_age",
+        }
+    ]
+    # A role at one level only measures nothing twice.
+    one_level = [*covered, _spec("usda_snap", "state", 5.0, target_role="snap_other")]
+    assert declarations.us_cross_grain_coverage_violations(one_level) == []
+
+
+def test_a_subset_whole_must_be_one_positive_row() -> None:
+    covered = _covered_specs()
+    second_whole = [
+        *covered,
+        _spec("usda_snap", "country", 100.0, target_role="snap_total"),
+    ]
+    assert declarations.us_cross_grain_coverage_violations(second_whole) == [
+        {
+            "kind": "subset_whole_not_one_positive_row",
+            "family": "usda_snap",
+            "level": "country",
+            "where": "usda_snap.snap_total@country holds 2 row(s)",
+        }
+    ]
+    negative = [
+        _spec(spec.family, "country", -100.0, **spec.metadata)
+        if spec.family == "usda_snap"
+        and spec.metadata.get("target_role") == "snap_total"
+        and spec.metadata["ledger_geography_level"] == "country"
+        else spec
+        for spec in covered
+    ]
+    (violation,) = declarations.us_cross_grain_coverage_violations(negative)
+    assert violation["kind"] == "subset_whole_not_one_positive_row"
+    assert violation["where"] == "usda_snap.snap_total@country holds 1 row(s)"
 
 
 def test_the_coverage_check_is_a_receipt_and_refuses_nothing() -> None:

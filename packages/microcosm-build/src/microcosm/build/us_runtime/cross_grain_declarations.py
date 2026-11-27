@@ -46,7 +46,28 @@ COUNTY_POPULATION = "ladder_population_state_vs_county"
 
 _RELATION_KINDS = ("subset", "independent")
 _LOCAL_ROUTE_KINDS = ("no_higher_control",)
-_DERIVATIONS = ("sum_of_lower_rows",)
+#: The derivations that the adapter can run for a derived control.
+US_DERIVATIONS = ("sum_of_lower_rows",)
+#: Every key of the file. A key outside this set would be read by nothing.
+_KEYS = frozenset(
+    {
+        "schema_version",
+        "description",
+        "grain_precedence",
+        "control_grains",
+        "signature_fields",
+        "bridges",
+        "bridge_selectors",
+        "derived_controls",
+        "same_measurement",
+        "partitions",
+        "relations",
+        "local_routes",
+        "members",
+        "registers",
+        "until_the_feed_repin",
+    }
+)
 
 
 @functools.lru_cache(maxsize=1)
@@ -68,6 +89,20 @@ def load_us_cross_grain_declarations() -> Mapping[str, Any]:
 
 
 def _validate(payload: Mapping[str, Any]) -> None:
+    unknown = sorted(set(payload) - _KEYS)
+    if unknown:
+        raise ValueError(
+            f"US cross-grain declarations hold unknown key(s) {unknown}; "
+            "nothing would read them."
+        )
+    # The US passes take their bridges from ``bridge_selectors`` and declare no
+    # partition. A bridge by id or a partition written here would not run.
+    for key in ("bridges", "partitions"):
+        if payload[key]:
+            raise ValueError(
+                f"US cross-grain declarations hold {key!r} entries, and no US "
+                "pass runs them yet; declare a bridge selector, or add the pass."
+            )
     grains = tuple(payload["grain_precedence"])
     controls = tuple(payload["control_grains"])
     unknown_controls = [grain for grain in controls if grain not in grains]
@@ -103,11 +138,11 @@ def _validate(payload: Mapping[str, Any]) -> None:
         pass_ids.append(selector["bridge_id"])
     for derived in payload["derived_controls"]:
         nests(derived["bridge_id"], derived["higher_grain"], derived["lower_grain"])
-        if derived["derive"] not in _DERIVATIONS:
+        if derived["derive"] not in US_DERIVATIONS:
             raise ValueError(
                 f"US cross-grain derived control {derived['bridge_id']!r} names "
                 f"unknown derivation {derived['derive']!r}; expected one of "
-                f"{_DERIVATIONS}."
+                f"{US_DERIVATIONS}."
             )
         pass_ids.append(derived["bridge_id"])
     for same in payload["same_measurement"]:
@@ -136,8 +171,17 @@ def _validate(payload: Mapping[str, Any]) -> None:
                 f"two targets, one of {_RELATION_KINDS}, a part and a whole for "
                 "a subset, and a reason."
             )
-        for target in targets:
-            _relation_target(target, grains)
+        levels = {
+            target: grains.index(_relation_target(target, grains)[2])
+            for target in targets
+        }
+        if relation["relation"] == "subset" and (
+            levels[str(relation["part"])] <= levels[str(relation["whole"])]
+        ):
+            raise ValueError(
+                f"US cross-grain relation over {targets} is malformed: the part "
+                "of a subset is at a lower level than its whole."
+            )
     for target, route in payload["local_routes"].items():
         _route_target(target, grains)
         if (
@@ -156,8 +200,10 @@ def _validate(payload: Mapping[str, Any]) -> None:
             or not entry.get("family")
             or not levels
             or any(level not in grains for level in levels)
+            or entry.get("higher_level") not in grains
             or not str(entry.get("reason", "")).strip()
             or not entry.get("issues")
+            or ("roles" in entry and not entry["roles"])
         ):
             raise ValueError(
                 f"US cross-grain entry {entry.get('id')!r} must name a family, "
@@ -253,6 +299,15 @@ def us_pass_grains(pass_id: str) -> tuple[str, str]:
         if entry["id"] == pass_id:
             return str(entry["higher_grain"]), str(entry["lower_grain"])
     raise ValueError(f"Unknown US cross-grain pass {pass_id!r}.")
+
+
+def us_derivation(pass_id: str) -> str:
+    """The declared derivation of the control of a derived-control pass."""
+
+    for entry in load_us_cross_grain_declarations()["derived_controls"]:
+        if entry["bridge_id"] == pass_id:
+            return str(entry["derive"])
+    raise ValueError(f"Unknown US cross-grain derived control {pass_id!r}.")
 
 
 def us_allocator_name(pass_id: str) -> str | None:
@@ -381,12 +436,24 @@ def us_cross_grain_coverage_violations(
 
     * ``family_level_without_route``: a family has rows at a lower level
       that nothing covers;
+    * ``role_at_two_levels_without_relation``: rows of one family and one
+      role (``role_key``) are at the top level and at a lower level, and no
+      relation names that role, nor a compile rule or a known gap that lists
+      it under ``roles``. A family is covered as a whole, so without this a
+      new role in a covered family would pass unseen;
     * ``stale_declaration``: a relation, a local route, a compile rule or a
       known gap names rows that the specs do not hold;
     * ``compile_rule_marker_absent``: a compile rule's marker is on no row of
       one of its levels;
     * ``subset_exceeded``: the parts of a ``subset`` relation sum to more
-      than their whole, beyond the declared ``max_excess``.
+      than their whole, beyond the declared ``max_excess``;
+    * ``subset_whole_not_one_positive_row``: the whole of a ``subset``
+      relation is more than one row, or is not positive, so the sum of its
+      parts cannot be compared with it.
+
+    What the check does not read: a row with no ``level_key`` in its
+    metadata. The rows that a pass makes (the ladder population, the county
+    households) are such rows, and their pass declares them.
 
     Returns the violations. The caller decides what one means: this function
     refuses nothing.
@@ -419,10 +486,12 @@ def us_cross_grain_coverage_violations(
             }
         )
 
+    related: set[tuple[str, str]] = set()
     for relation in declared["relations"]:
         sides = {}
         for target in relation["targets"]:
             family, role, level = _relation_target(str(target), grains)
+            related.add((family, role))
             held = [
                 spec
                 for spec in rows.get((family, level), ())
@@ -435,23 +504,42 @@ def us_cross_grain_coverage_violations(
                 stale(family, level, str(target))
         if relation["relation"] == "subset":
             part, whole = sides[str(relation["part"])], sides[str(relation["whole"])]
-            if part and len(whole) == 1 and whole[0].value:
-                ratio = math.fsum(spec.value for spec in part) / whole[0].value
-                if ratio > 1.0 + float(relation.get("max_excess", 0.0)):
-                    violations.append(
-                        {
-                            "kind": "subset_exceeded",
-                            "family": str(part[0].family),
-                            "level": str(part[0].metadata.get(level_key)),
-                            "where": f"{relation['part']} is {ratio!r} of its whole",
-                        }
-                    )
+            if not part or not whole:
+                continue  # A side with no row is a stale declaration, above.
+            if len(whole) != 1 or not whole[0].value > 0:
+                violations.append(
+                    {
+                        "kind": "subset_whole_not_one_positive_row",
+                        "family": str(whole[0].family),
+                        "level": str(whole[0].metadata.get(level_key)),
+                        "where": f"{relation['whole']} holds {len(whole)} row(s)",
+                    }
+                )
+                continue
+            ratio = math.fsum(spec.value for spec in part) / whole[0].value
+            if ratio > 1.0 + float(relation.get("max_excess", 0.0)):
+                violations.append(
+                    {
+                        "kind": "subset_exceeded",
+                        "family": str(part[0].family),
+                        "level": str(part[0].metadata.get(level_key)),
+                        "where": f"{relation['part']} is {ratio!r} of its whole",
+                    }
+                )
     for target in declared["local_routes"]:
         family, level = _route_target(str(target), grains)
         covered.add((family, level))
         if (family, level) not in rows:
             stale(family, level, str(target))
     for entry in (*transitional["compile_rules"], *transitional["known_gaps"]):
+        for role in entry.get("roles", ()):
+            related.add((str(entry["family"]), str(role)))
+            if not any(
+                spec.metadata.get(role_key) == role
+                for level in entry["levels"]
+                for spec in rows.get((str(entry["family"]), str(level)), ())
+            ):
+                stale(str(entry["family"]), "/".join(entry["levels"]), str(role))
         for level in entry["levels"]:
             key = (str(entry["family"]), str(level))
             covered.add(key)
@@ -477,6 +565,26 @@ def us_cross_grain_coverage_violations(
         }
         for family, level in sorted(compiled - covered)
     )
+    # A family is covered as a whole. A role that two levels measure must be
+    # named: by a relation of its own, or by a compile rule or a known gap
+    # that lists it.
+    levels_of_role: dict[tuple[str, str], set[str]] = {}
+    for (family, level), held in rows.items():
+        for spec in held:
+            role = spec.metadata.get(role_key)
+            if role is not None:
+                levels_of_role.setdefault((family, str(role)), set()).add(level)
+    for (family, role), levels in sorted(levels_of_role.items()):
+        if top in levels and len(levels) > 1 and (family, role) not in related:
+            violations.extend(
+                {
+                    "kind": "role_at_two_levels_without_relation",
+                    "family": family,
+                    "level": level,
+                    "where": f"{family}.{role}",
+                }
+                for level in sorted(levels - {top})
+            )
     return violations
 
 

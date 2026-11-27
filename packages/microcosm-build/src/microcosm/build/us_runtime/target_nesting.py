@@ -44,6 +44,7 @@ from microcosm.build.cross_grain import (
     CrossGrainBridge,
     CrossGrainBridgeSelector,
     CrossGrainRule,
+    assert_leg_members,
     cross_grain_metadata,
     expand_bridge_selectors,
 )
@@ -57,6 +58,7 @@ from microcosm.build.us_runtime.cross_grain_declarations import (
     us_allocator_name,
     us_bridge_selector,
     us_county_soi_nesting,
+    us_derivation,
     us_district_soi_nesting,
     us_pass_grains,
 )
@@ -163,6 +165,45 @@ def bounded_selector(pass_id: str, factor_band: float) -> CrossGrainBridgeSelect
         max_factor_shift=factor_band - 1.0,
         min_factor_shift=1.0 / factor_band - 1.0,
     )
+
+
+def bound_limits(
+    bridge: CrossGrainBridge | CrossGrainBridgeSelector,
+) -> tuple[float, float]:
+    """The lowest and the highest ratio to its reference that a bound allows."""
+
+    if bridge.max_factor_shift is None:
+        return 0.0, math.inf
+    lowest = (
+        -bridge.max_factor_shift
+        if bridge.min_factor_shift is None
+        else bridge.min_factor_shift
+    )
+    return 1.0 + lowest, 1.0 + bridge.max_factor_shift
+
+
+def refuse_unpaired(
+    pass_id: str,
+    unpaired: Mapping[str, Sequence[str]],
+    *,
+    own_control: Iterable[str] = (),
+) -> None:
+    """Refuse a lower target that the declared selector gives no higher target.
+
+    ``own_control`` names the lower targets that a row of their own
+    measurement controls: they need no bridge.
+    """
+
+    left = sorted(set(unpaired.get(pass_id, ())) - set(own_control))
+    if left:
+        raise ValueError(
+            f"US cross-grain pass {pass_id!r} pairs no higher target with "
+            f"lower target(s) {left[:5]}; their rows would have no control."
+        )
+
+
+#: The derivations of a derived control, by their declared name.
+DERIVATIONS = {"sum_of_lower_rows": controls.sum_of_lower_rows}
 
 
 def bridge_receipt(
@@ -408,12 +449,13 @@ def district_soi_surface(
         else:
             kept_cd_by_key[(state, concept_identity(spec))].append(spec)
 
+    selector = bounded_selector(DISTRICT_SOI, factor_band)
     bridged, bridge_factors, bridge_verdicts = _bridged_state_parents(
         ht2_by_key,
         cd_file_state_by_key,
         kept_cd_by_key,
         level_bridges=level_bridges,
-        factor_band=factor_band,
+        limits=bound_limits(selector),
         defective=defective,
     )
 
@@ -440,6 +482,17 @@ def district_soi_surface(
                 f"differently: {sorted(map(repr, semantics))}."
             )
         (child_semantics,) = semantics
+        identity_text = "|".join(identity)
+        lower_id = f"{LOWER_FILE}|{identity_text}"
+        state_area = geography_id(state_level, state)
+        areas = [
+            geography_id(district_level, child.metadata["congressional_district_geoid"])
+            for child in children
+        ]
+        members = frozenset(
+            geography_id(district_level, district)
+            for district in target_districts.get(state, ())
+        )
         parent = ht2_by_key.get(key)
         basis, source = "historic_table_2", STATE_SURFACE
         if parent is None:
@@ -451,6 +504,9 @@ def district_soi_surface(
                     "state parent in either vintage."
                 )
             if own.name not in bridged:
+                # The block leaves the surface before the pass, so the pass
+                # cannot check it. It must hold its members all the same.
+                assert_leg_members(lower_id, state_area, areas, members)
                 for child in children:
                     drop(child, f"level_bridge_out_of_band:{identity[0]}")
                 continue
@@ -467,10 +523,7 @@ def district_soi_surface(
                 f"State parent {parent.name} materializes differently from "
                 f"its district rows ({identity}, state {state})."
             )
-        identity_text = "|".join(identity)
-        lower_id = f"{LOWER_FILE}|{identity_text}"
         higher_id = f"{source}|{identity_text}"
-        state_area = geography_id(state_level, state)
         targets[higher_id] = {
             "source": source,
             "grain": state_level,
@@ -488,19 +541,21 @@ def district_soi_surface(
         bound.append(higher_id)
         blocks.append((key, parent, basis, children, len(rows)))
         rows.append(SurfaceRow(state_level, state_area, higher_id, float(parent.value)))
-        for child in children:
-            area = geography_id(
-                district_level, child.metadata["congressional_district_geoid"]
-            )
+        for child, area in zip(children, areas, strict=True):
             legs[area] = state_area
             rows.append(SurfaceRow(district_level, area, lower_id, float(child.value)))
-        expected.setdefault(lower_id, {})[state_area] = frozenset(
-            geography_id(district_level, district)
-            for district in target_districts.get(state, ())
-        )
+        expected.setdefault(lower_id, {})[state_area] = members
 
-    selector = bounded_selector(DISTRICT_SOI, factor_band)
-    bridges, _unpaired = expand_bridge_selectors([selector], targets)
+    bridges, unpaired = expand_bridge_selectors([selector], targets)
+    refuse_unpaired(
+        DISTRICT_SOI,
+        unpaired,
+        # A concept that only the lower file has: its own state total, which
+        # has the measurement of its district rows, is the control.
+        own_control={
+            measured for target, measured in measurements.items() if target != measured
+        },
+    )
     outcomes, operator_receipt = run_pass(
         DISTRICT_SOI,
         rows,
@@ -648,7 +703,7 @@ def _bridged_state_parents(
     kept_cd_by_key: Mapping[tuple, Sequence],
     *,
     level_bridges: Mapping[str, str],
-    factor_band: float,
+    limits: tuple[float, float],
     defective: Mapping[str, str],
 ) -> tuple[dict[str, Any], dict[str, list[float]], list[dict]]:
     """The state parents of the concepts that only the district file has.
@@ -659,9 +714,10 @@ def _bridged_state_parents(
     basis by a sibling concept that both files carry: the row is multiplied by
     the sibling's Historic Table 2 level over its district-file level in the
     same state. The sibling is trusted only if that ratio, and the factor of
-    its own district block, sit within ``factor_band`` of their medians across
-    states. After the re-pin Historic Table 2 holds the six parents, and this
-    function and ``level_bridges`` go.
+    its own district block, sit within ``limits`` of their medians across
+    states: the lowest and the highest ratio to the median that the bound of
+    the district bridge allows. After the re-pin Historic Table 2 holds the
+    six parents, and this function and ``level_bridges`` go.
 
     Returns the lifted state rows by name, the factors by measure, and the
     verdicts that refused a sibling.
@@ -699,7 +755,7 @@ def _bridged_state_parents(
         sibling_key: tuple, ratio: float, median: float, measure: str, verdict: str
     ) -> bool:
         relative = ratio / median if math.isfinite(ratio) and median else math.nan
-        ok = math.isfinite(relative) and 1 / factor_band <= relative <= factor_band
+        ok = math.isfinite(relative) and limits[0] <= relative <= limits[1]
         if not ok:
             verdicts.append(
                 {
@@ -1221,7 +1277,8 @@ def county_soi_surface(
         )
 
     selector = bounded_selector(COUNTY_SOI, factor_band)
-    bridges, _unpaired = expand_bridge_selectors([selector], targets)
+    bridges, unpaired = expand_bridge_selectors([selector], targets)
+    refuse_unpaired(COUNTY_SOI, unpaired)
     outcomes, operator_receipt = run_pass(
         COUNTY_SOI,
         rows,
@@ -1386,10 +1443,11 @@ def county_acs_household_surface(
     rows: list[SurfaceRow] = []
     legs: dict[str, str] = {}
     checked = []
+    derive = DERIVATIONS[us_derivation(COUNTY_ACS_HOUSEHOLDS)]
     for state in sorted({int(code) // 1000 for code in county_populations}):
         codes = sorted(code for code in values if code // 1000 == state)
         public = [values[code][0] for code in codes]
-        total = controls.sum_of_lower_rows(public)
+        total = derive(public)
         if not codes or total <= 0:
             raise ValueError(
                 f"ACS county households for state {state:02d} have no positive "

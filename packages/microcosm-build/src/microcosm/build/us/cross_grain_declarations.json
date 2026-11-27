@@ -152,6 +152,26 @@
       "part": "hhs_acf_tanf.tanf_total@state",
       "whole": "hhs_acf_tanf.tanf_total@country",
       "reason": "Only 29 states bind a TANF row. Scaling them to the national row would give them the mass of the missing ones."
+    },
+    {
+      "targets": [
+        "irs_soi.aca_ptc_returns@state",
+        "irs_soi.aca_ptc_returns@country"
+      ],
+      "relation": "subset",
+      "part": "irs_soi.aca_ptc_returns@state",
+      "whole": "irs_soi.aca_ptc_returns@country",
+      "reason": "Cells of one publication: the state rows and the US row of Historic Table 2 for tax year 2022 (returns with a premium tax credit). The 51 state rows sum to 0.9996 of the US row, which also counts returns of other areas. No rule scales them."
+    },
+    {
+      "targets": [
+        "irs_soi.aca_spending@state",
+        "irs_soi.aca_spending@country"
+      ],
+      "relation": "subset",
+      "part": "irs_soi.aca_spending@state",
+      "whole": "irs_soi.aca_spending@country",
+      "reason": "Cells of one publication: the state rows and the US row of Historic Table 2 for tax year 2022 (premium tax credit amount). The 51 state rows sum to 0.9997 of the US row, which also counts returns of other areas. No rule scales them."
     }
   ],
   "local_routes": {
@@ -172,7 +192,6 @@
     "congressional_district": {
       "source": "congressional_district_vintage_crosswalk",
       "reviewed_crosswalk_sha256": "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233",
-      "single_member_legs": "not bound",
       "description": "The 117th->119th congressional-district crosswalk the compiler used names each state's source-plan and current-plan districts. A district block must cover exactly the current plan's districts of its state. A state with one source-plan district is at-large there: the district file has no sub-state rows for it, so its district rows are dropped (at_large_on_source_plan). reviewed_crosswalk_sha256 is the packaged crosswalk the registers below were reviewed against; a test pins it, so regenerating the crosswalk forces a second look at them."
     },
     "county": {
@@ -313,6 +332,9 @@
           "state"
         ],
         "higher_level": "country",
+        "roles": [
+          "soi_fiscal_distribution"
+        ],
         "reason": "Several SOI families bind a Historic Table 2 US row beside a newer Table 1.x row, and no rule ties their state rows to either. Rows 1 and 2 are the treatment that the issue asks for the others. It waits for Stage A.",
         "issues": [
           "microcosm#1243"
@@ -325,6 +347,9 @@
           "state"
         ],
         "higher_level": "country",
+        "roles": [
+          "population_age"
+        ],
         "reason": "The national build fits Census age bands for each state. The local build fits state totals from the 2020 ladder and no age row. No rule ties the age rows of a state to its total, or to the national age rows.",
         "issues": [
           "microcosm#1528",
