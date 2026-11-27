@@ -954,6 +954,9 @@ def test_the_command_refuses_pointer_files_in_a_repository_without_releases_json
     assert "remove the file(s)" in error
     assert "has not switched" not in error
     assert "loader" not in error
+    assert "python -m" not in error
+    assert "microcosm.build." not in error
+    assert "--write" not in error
     assert repository == {}
 
 
