@@ -26,12 +26,12 @@ milestone the plan assigns it to, and the
 [enforcement timeline](#enforcement-timeline) records how far each milestone
 had got by that date.
 
-The ruling set 2026-11-06 for publishing to start refusing. On 2026-11-12 both
-publication commands, `microcosm-publish-release-build` and the tagged
-publisher `microcosm-publish-release`, refuse a build that fails today's C1
-(`validate_release_dir`, or its evidence sibling) or that recorded staging it
-never delivered (today's C3, `publication_refusal`). Max decides when the
-version-1 refusals of C1 to C4 start.
+The ruling set 2026-11-06 for publishing to start refusing. The publication
+command, `microcosm-publish-release-build`, refuses a build that fails today's
+C1 (`validate_release_dir`, or its evidence sibling) or that recorded staging
+it never delivered (today's C3, `publication_refusal`). On 2026-11-12 the
+tagged publisher `microcosm-publish-release`, since removed, refused them too.
+Max decides when the version-1 refusals of C1 to C4 start.
 
 This document replaces `docs/us-uk-release-path.md`, a planning snapshot that
 never reached main. The snapshot's last version (363a9033b, 2026-09-15) lives
@@ -126,7 +126,7 @@ repository.
 | --- | --- | --- | --- | --- |
 | C1 | Release manifest and certification | The release directory's files, both manifests, and a certification that the certifier composes from gate-battery reports | `validate_release_dir` (`microcosm/data/contract.py`), which `prepare_build_folder_release` runs before every build-folder publication; a build of `microcosm-us-2024-evidence` answers to `validate_evidence_release_dir` instead | `v1/c1/` |
 | C2 | Loader compatibility | One rule admitting a model and Core version against a release | `microcosm.data.loader` and policyengine.py, separately | none |
-| C3 | Staging telemetry and run outcome | How a build records and delivers its end | `publication_refusal` (`microcosm/data/publish_cli.py`), through `_staging_undelivered`, in both publication commands | the staging fixtures |
+| C3 | Staging telemetry and run outcome | How a build records and delivers its end | `publication_refusal` (`microcosm/data/release.py`), through `_staging_undelivered`, in `microcosm-publish-release-build` | the staging fixtures |
 | C4 | Logbook | One durable row per terminal build attempt | nothing at publication | none |
 | C5 | Publish and registry | The build-folder layout, `releases.json`, release names and the registry | `microcosm-publish-release-build` (`publish_release_build` and `promote_release_build` in `microcosm.build.release_publication`), `prepare_build_folder_release`, `publishes_to_build_folder`, the emitter's release writer, `parse_releases_record` and `microcosm.data.registry` | `v1/c5/` |
 
@@ -140,8 +140,7 @@ command that publishes a build runs it, or its evidence-tier sibling
 `microcosm-publish-release-build` runs it through
 `prepare_build_folder_release` for every build it publishes except a build of
 `microcosm-us-2024-evidence`, which answers to the evidence contract instead.
-Before it validates anything, the tagged publisher's `prepare_release` refuses
-any release that publishes into build folders. Promotion
+No other command publishes a build. Promotion
 (`microcosm-publish-release-build --promote`, through `promote_release_build`)
 uploads no file and runs no contract: it reads the release and the build that
 the local release manifest names.
@@ -362,8 +361,8 @@ both:
   any other name, for publication and promotion alike: its `main` checks
   `publishes_to_build_folder` before anything else, and `build_folder_identity`
   refuses the same names inside `publish_release_build` and
-  `promote_release_build`. So only the tagged publisher accepts a new country's
-  release. `line_for_release_id` still knows only
+  `promote_release_build`. So no command publishes a new country's release
+  until it joins `publishes_to_build_folder`. `line_for_release_id` still knows only
   `microcosm-uk-2024-25-national` and `microcosm-uk-2024-25-local-k<N>`. Its
   remaining callers serve pointer files: `latest_line_release`, which the
   loader's pointer reader calls, and `line_pointer_payload`, which no publisher
@@ -683,19 +682,24 @@ unchanged.
   block. When a US tool rewrites its directory for a build folder,
   `build_folder_build_manifest` keeps the block.
 - **The documents.** Staging version 3 adds a `blocked` lifecycle status beside
-  `running`, `completed` and `failed`. The UK producers write version 3 through
-  `StagingRunBundleWriterV2`. The US fiscal-refresh tool still writes version 1
-  through `microcosm.build.staging.StagingRunBundleWriter`; no other tool
-  imports version 1, and `microcosm.build` re-exports it. The ACS-local tool
-  writes no staging documents. Since microcosm#1410 (merged 2026-11-02), both
-  writers hand the run's files to the build's emitter, which commits them to
+  `running`, `completed` and `failed`. Every producer writes version 3 through
+  `StagingRunBundleWriterV2`: the UK producers and, since microcosm#1135, the
+  US fiscal-refresh tool for its builds (exact-count builds among them) and
+  their certifications. A US build whose release checks fail once its record
+  is written closes its run `blocked`, and its manifest's `staging` block is
+  the run's version 2 delivery summary. The US tool names the result files it
+  reviewed for the content rules, and those reviewed to hold rows of
+  aggregates (`StagingContentPolicy.aggregate_tables`). Microcosm has no
+  version 1 writer. The ACS-local tool writes no staging documents. The
+  writer hands the run's files to the build's emitter, which commits them to
   the staging repository with the build's own Hugging Face credential.
 - **The run outcome.** `microcosm.build.run_outcome` (microcosm#1147) decides
   once how a build ended (`completed`, `blocked`, `failed`, `interrupted`,
   `terminated`, `aborted`) and derives the staging status and the Logbook
   disposition from that decision. The UK full build, spine build and row-wise
-  staging use it. On the US side only `program_telemetry` calls it, and only to
-  label a termination; no US tool takes a staging status or a Logbook
+  staging use it. On the US side `program_telemetry` calls it to label a
+  termination, and the fiscal-refresh tool classifies a failure with it for
+  its hosted telemetry and its staging run; no US tool takes a Logbook
   disposition from it.
 - **The emitter.** microcosm#1153 moved the local emitter out of this repository
   into the external `microcosm-emitter` package on 2026-10-13, and Max accepted
@@ -729,21 +733,20 @@ unchanged.
   (`start_bundle_emitter`): `tools/stage_uk_rowwise_candidate.py`,
   `tools/run_uk_cut.py` and `microcosm-publish-release-build`, which hands a
   release build to it.
-- **The publish gate.** `publish_cli.publication_refusal` holds the checks
-  every publication shares: non-release smoke output, a reform validation that
-  skipped its out-of-sample reforms, and undelivered staging
-  (`_staging_undelivered`). Both publication commands run it before they check
-  the build's release contract: `microcosm-publish-release-build`, once it has
-  confirmed that the release publishes into build folders, and
-  `microcosm-publish-release`, the tagged publisher. `_staging_undelivered`
+- **The publication checks.** `publication_refusal` (`microcosm.data.release`)
+  holds the checks that run before a build's release contract: non-release
+  smoke output, a reform validation that skipped its out-of-sample reforms,
+  and undelivered staging (`_staging_undelivered`).
+  `microcosm-publish-release-build` runs it once it has confirmed that the
+  release publishes into build folders. `_staging_undelivered`
   refuses a build whose manifest records staging the build intended but never
   delivered: an empty block, a version-2 record in `local_only` mode or with a
   failed read-back, or an enabled run with no successful upload. It passes a
   disabled record with a non-empty reason as an opt-out. It also passes a
   manifest with no `staging` key, and a US ACS-local build publishes that way.
-  `--allow-missing-staging` overrides the gate on both commands. Neither
+  `--allow-missing-staging` overrides the staging check. Neither
   `prepare_build_folder_release` nor the function `publish_release_build` runs
-  the gate, and promotion (`--promote`) runs none. The Route A candidate in the
+  these checks, and promotion (`--promote`) runs none. The Route A candidate in the
   2026-10-15 table carried the version-1 opt-out.
 
 #### Version 1 (planned)
@@ -808,8 +811,9 @@ unchanged.
   folder publishes only its two manifests, its checksum ledger and the
   artifacts the release manifest declares. The publisher accepts the build only
   if the receipt's read-back passed and its digest matches the shipped
-  `progress.json`. M3 also moves the delivery gate from the two commands into
-  `prepare_build_folder_release`, so every publication runs it.
+  `progress.json`. M3 also moves the staging delivery check from
+  `microcosm-publish-release-build` into `prepare_build_folder_release`, so
+  every publication runs it.
 - The build folder ships the build's staging version-3 terminal document (its
   `progress.json`) as an artifact that `release_manifest.json` names, and
   `build_manifest.json` binds it by digest. The build manifest records the
@@ -819,12 +823,12 @@ unchanged.
   and the publisher never reads it from the build host.
 - The publisher never requires telemetry delivery, so a collector outage cannot
   block a release.
-- The plan deletes staging version 1, its re-export from `microcosm.build` and
-  the version-1 branch of `_staging_undelivered` at M2, once the US writes
-  version 3 (microcosm#933). On 2026-11-12 the fiscal-refresh tool still writes
-  version 1, and `microcosm-publish-release-build` gates its builds through
-  that branch. Under the plan the staging dashboard keeps a version-1 reader
-  for history; this document has not read the dashboard's code.
+- microcosm#1135 deleted staging version 1 and its re-export from
+  `microcosm.build` once the US wrote version 3. The version-1 branch of
+  `_staging_undelivered` stays, so a US build certified before that change
+  can still be published. Under the plan the staging dashboard keeps a
+  version-1 reader for history; this document has not read the dashboard's
+  code.
 
 ### C4: the Logbook
 
@@ -907,7 +911,8 @@ repository that has no `releases.json`.
   source coverage (`_check_be_release_artifacts`). The function reads the
   registry on each call. `validate_release_dir` and
   `validate_evidence_release_dir` refuse every layout of a local-area name
-  that no entry names, and neither publisher takes one (microcosm#1586).
+  that no entry names, and `microcosm-publish-release-build` takes none
+  (microcosm#1586).
   `microcosm-us-2024-national` holds every national build:
   calibrated builds, SPM source enrichments, compatibility recertifications
   and exact-k builds. `microcosm-us-2024-local` holds the ACS local-area
@@ -994,24 +999,17 @@ repository that has no `releases.json`.
   one that still has a `latest*.json` pointer file, and a build folder the
   record does not list. Each tagged build stays readable at its tag, and each
   deleted file stays in `main`'s history.
-- **The tagged publisher and the pointer files.** `microcosm-publish-release`
-  (`publish_cli`, which `tools/publish_release.sh` wraps) still publishes a
-  release that keeps tags. It runs `publication_refusal`, then
-  `publish_release`. That function runs `prepare_release` (the release contract
-  and the pointer and tag guards), then `require_parent_publication` for a
-  recertification, then uploads the release files, creates the immutable tag
-  and writes `latest.json` or `latest-evidence.json` last. Each pointer is a
-  schema-1 JSON document at the repository root; `latest.json` holds
-  `schema_version`, `release_id`, `updated_at`, and `paths` to the contract
-  files (`latest_pointer_payload`). Only a `national_default` release whose tag
-  is its own id may move `latest.json`, and never a reported-receipt source
-  enrichment or a recertification. The tagged publisher refuses by release name
-  and by repository state: `prepare_release` refuses every release that
-  `publishes_to_build_folder` names, and `publish_release` refuses every
-  repository that has `releases.json` (`_refuse_releases_record`; only the
-  Hub's answer that the file is absent lets it go on). Nothing writes
-  `latest-<line>.json`: `publish_release` takes no line, although
-  `line_pointer_payload` remains. Three readers of pointer files remain. The
+- **The pointer files.** Nothing writes a pointer file. The tagged publisher,
+  `microcosm-publish-release`, which uploaded a tagged build's files, created
+  its immutable tag and wrote `latest.json` or `latest-evidence.json` last, has
+  been removed, with `tools/publish_release.sh`. Each pointer is a schema-1
+  JSON document at the repository root; `latest.json` holds `schema_version`,
+  `release_id`, `updated_at`, and `paths` to the contract files. The payload
+  builders remain: the readers (through `_read_pointer`) and
+  `_current_evidence_build` call `latest_pointer_payload` to name the files a
+  pointer or an evidence build holds, and only tests call
+  `line_pointer_payload` and `latest_evidence_pointer_payload`. Three readers
+  of pointer files remain. The
   loader follows `latest.json` (`latest_release`) or `latest-<line>.json`
   (`latest_line_release`) only for an entry whose repository has no
   `releases.json`. `latest_evidence_release` returns the evidence release's
@@ -1101,12 +1099,13 @@ work.
   and an annual or local-annual build takes `<base build>-annual-<stamp>-<hex8>`.
 - **Every country and line publishes into build folders.** A new country's
   release joins `publishes_to_build_folder` and the registry in the pull
-  request that authorizes its first publication. The gaps on 2026-11-12:
-  - *A new country's tagged publish.* Nothing refuses it: the tagged
-    publisher accepts any release outside `publishes_to_build_folder`, except
-    a UK local-area name that the registry does not name, into a repository
-    without `releases.json`. M3's refusal of unknown countries closes the gap,
-    under M3's owners.
+  request that authorizes its first publication. The gaps on 2026-11-12, with
+  what has changed since:
+  - *A new country's tagged publish.* On 2026-11-12 nothing refused it: the
+    tagged publisher accepted any release outside `publishes_to_build_folder`
+    into a repository without `releases.json` (from 2026-11-14, microcosm#1586,
+    except a UK local-area name that the registry does not name). Since #1796
+    removed the tagged publisher, no command publishes such a release.
   - *The NZ and AM declarations.* Each country's `release_contract.json`
     (under `packages/microcosm-build/src/microcosm/build/`) names
     `latest.json` in its boundary. Each country's owner changes its file
@@ -1161,26 +1160,23 @@ work.
     and `load` raises because `releases.json` does not list the release.
     `line_for_release_id` keeps its pattern, because the pointer reader still
     calls it.
-  - *The tagged publisher.* `microcosm-publish-release` and
-    `tools/publish_release.sh` stay installed and sit on the
-    [retire list](#retire-list-as-of-2026-10-15). Their removal waits on the
-    refusal of a new country's tagged publish. Loading a tagged build that
-    never moved into a folder stays.
+  - *The tagged publisher.* On 2026-11-12 `microcosm-publish-release` and
+    `tools/publish_release.sh` stayed installed and sat on the
+    [retire list](#retire-list-as-of-2026-10-15); #1796 removed them. Loading a
+    tagged build that never moved into a folder stays.
   - *Pointer readers.* The loader's fallback (`DatasetSpec.pointer_path`,
     `latest_release`, `latest_line_release`) and the `latest-evidence.json`
     fallback in `latest_evidence_release` still resolve through `latest*.json`.
     `microcosm.data` still exports `latest_release`, which reads `latest.json`
-    without looking for `releases.json`, and `publish_release`, which writes
-    it. They leave once no registered repository lacks `releases.json`. The
+    without looking for `releases.json`; until #1796 it also exported
+    `publish_release`, which wrote it. They leave once no registered repository lacks `releases.json`. The
     plan names no owner or milestone for them yet.
-  - *The policyengine.py certification tool.*
-    `tools/certify_uk_cut_in_policyengine_py.py` still reads a national
-    build's manifests at its tag (`--national-tag`), so it cannot certify a
-    build published into its own folder, such as one `tools/run_uk_cut.py`
-    publishes through `microcosm-publish-release-build`.
   - *policyengine.py's pins.* Its bundle, read on 2026-11-11 at 5b6d7901c,
     pins builds by tag; version 1 pins each by release and build in its
-    folder.
+    folder. Its UK national and local-area builds have been pinned that way
+    since policyengine.py#759 (merged 2026-11-16), and
+    `tools/certify_uk_cut_in_policyengine_py.py` certifies a UK build only
+    from its folder (#1762).
   - *The default.* The loader takes each country's default release from the
     registry. `releases.json` also names a `default`: in this repository only
     the switch tool sets it, and no loader reads it. The gap: no check at
@@ -1509,7 +1505,7 @@ release and the tagged publisher joined the table on 2026-11-11.
 | `format_uk_release_id`, `apply_uk_release_identity` | This milestone deletes them, with `UKReleaseIdentity`, which builds on `format_uk_release_id`: none had a caller outside its own tests and the `uk_runtime` re-export. The tier vocabulary and the line ids stay | On main none has a caller outside its own tests and the `uk_runtime` re-export |
 | Stale text, microcosm.institute `/calibration`, the evidence tier | A separate task owns them (task_d2b70813) | Not read again. For the evidence tier, see the next row |
 | The US evidence release, `microcosm-us-2024-evidence` | On this list since 2026-10-15, as the evidence tier | A named exception: version 1 neither admits it to the contract nor retires it. microcosm#1571 made it a standing release in `US_RELEASES`, with the `national` role. `tools/certify_us_national_build.py --evidence-release` places its builds there: a build has no tier, and certification chooses it (microcosm#1585 item 11). `prepare_build_folder_release` checks them with `validate_evidence_release_dir`; they carry schema `1-evidence` and fail C1's certified contract by design. The registry names no entry for it, so `microcosm.data.load` never serves it. No module under `packages/*/src` or `tools/` calls `latest_evidence_release`. Whoever retires the release must first find, from code, the readers of the evidence release and of `latest_evidence_release` |
-| The tagged publisher: `microcosm-publish-release` and `tools/publish_release.sh` | Not on the report's list | On the list from 2026-11-11. It refuses every release that `publishes_to_build_folder` names and every repository that has `releases.json`. Its removal waits on the refusal of a new country's tagged publish (C5 version 1, M3). Loading a tagged build that never moved into a folder stays |
+| The tagged publisher: `microcosm-publish-release` and `tools/publish_release.sh` | Not on the report's list | On the list from 2026-11-11. Since then removed (#1796), once the US, UK and BE repositories all recorded their builds in `releases.json`: the command, the wrapper, `publish_release`, `prepare_release` and the Slack alert only `publish_release` sent. No command publishes a release that `publishes_to_build_folder` does not name. Loading a tagged build that never moved into a folder stays |
 | microcosm-benchmarks, the calibration-diagnostics evaluation harness, policyengine-data's calibrate module | Each lives in another repository; proposed as a separate task (task_18c2af98) | Not read again |
 | cos d816 | Ruled 2026-10-09 (per-country Core pins, microcosm#1143) | The same |
 | cos d928 | Parked; its 2026-10-10 note records it resolved on main (the plan-2 exclusions renewed to 2026-11-03). Nothing to rule | Still parked. On main the plan-2 exclusions read approved on 2026-10-23 and expire on 2027-01-23 |

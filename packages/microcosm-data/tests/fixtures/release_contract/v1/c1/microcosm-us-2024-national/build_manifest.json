@@ -4,10 +4,16 @@
   "build_sha": "a8fe1b9",
   "created_at": "2026-01-01T00:00:00+00:00",
   "staging": {
+    "contract_version": 2,
     "enabled": true,
+    "mode": "local_and_remote",
     "run_id": "us-national-release-contract-fixture",
-    "repo_id": "policyengine/populace-us-staging",
-    "uploads_succeeded": true
+    "configured_repository": "policyengine/populace-us-staging",
+    "upload_attempts": 6,
+    "upload_successes": 6,
+    "read_back": "not_requested",
+    "last_error_code": null,
+    "opt_out_reason": null
   },
   "code": {
     "repository": "PolicyEngine/microcosm",

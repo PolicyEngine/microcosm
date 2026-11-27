@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
+import hashlib
 import json
+import re
+import shlex
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 from hypothesis import given, settings
@@ -12,16 +17,76 @@ from hypothesis import strategies as st
 
 from tools import certify_uk_cut_in_policyengine_py as handoff
 
-NATIONAL = "microcosm-uk-2024-25-national-20261021T195620Z-a858c100"
-DENSE = "microcosm-uk-2024-25-dense-20261019T000432Z-ee5c2dbe"
-NEW_DENSE = "microcosm-uk-2024-25-dense-20261026T010203Z-0badc0de"
+NATIONAL = "uk-frs-calibration-attempt-20261021T195620Z-a858c100"
+DENSE = "uk-local-candidate-f100-s42-20261019T000432Z-ee5c2dbe"
+NEW_DENSE = "uk-local-candidate-f100-s42-20261026T010203Z-0badc0de"
+NATIONAL_COMMIT = "4a3b77ac" * 5
+DENSE_COMMIT = "9da09946" * 5
+NEW_DENSE_COMMIT = "0badc0de" * 5
+#: A national build as it was named while UK builds were tagged.
+NATIONAL_TAG = "microcosm-uk-2024-25-national-20261021T195620Z-a858c100"
 
 
-def test_only_cut_tags_are_certified():
-    assert handoff.check_tag(NATIONAL, "national") == NATIONAL
-    for bad in ("main", NATIONAL + "x", DENSE, "microcosm-uk-2024-25-national"):
-        with pytest.raises(handoff.CertifyError, match="never @main"):
-            handoff.check_tag(bad, "national")
+def _build(release, build, commit, model="2.134.4", claims=None):
+    return handoff.PublishedBuild(
+        release=release,
+        build=build,
+        commit=commit,
+        model=model,
+        core="3.33.3",
+        claims=(f"=={model}",) if claims is None else claims,
+    )
+
+
+def test_a_build_is_named_by_its_name_and_optionally_its_commit():
+    args = handoff.parse(
+        ["--national-build", NATIONAL, "--drop-regional-release", "--pepy-repo", "p"]
+    )
+    assert (args.national_build, args.national_data_commit) == (NATIONAL, None)
+    args = handoff.parse(
+        ["--national-build", NATIONAL, "--national-data-commit", NATIONAL_COMMIT,
+         "--dense-build", DENSE, "--dense-data-commit", DENSE_COMMIT,
+         "--pepy-repo", "p"]
+    )  # fmt: skip
+    assert (args.national_data_commit, args.dense_build, args.dense_data_commit) == (
+        NATIONAL_COMMIT,
+        DENSE,
+        DENSE_COMMIT,
+    )
+
+
+@pytest.mark.parametrize(
+    ("national", "message"),
+    [
+        # policyengine.py refuses every tagged manifest from a repository
+        # with releases.json, so a tag no longer names a build.
+        (["--national-tag", NATIONAL_TAG], "required: --national-build"),
+        (["--national-build", "../" + NATIONAL], "is not a build name"),
+        (["--national-build", "releases/x"], "is not a build name"),
+        # A branch or a short commit moves or is ambiguous; a pin is a commit.
+        (
+            ["--national-build", NATIONAL, "--national-data-commit", "main"],
+            "--national-data-commit must be a full 40-character commit",
+        ),
+        (
+            [
+                "--national-build",
+                NATIONAL,
+                "--national-data-commit",
+                NATIONAL_COMMIT[:9],
+            ],
+            "--national-data-commit must be a full 40-character commit",
+        ),  # fmt: skip
+        (
+            ["--national-build", NATIONAL, "--dense-data-commit", DENSE_COMMIT],
+            "--dense-data-commit goes with --dense-build",
+        ),
+    ],
+)
+def test_only_a_safe_build_name_and_a_full_commit_are_taken(national, message, capsys):
+    with pytest.raises(SystemExit):
+        handoff.parse([*national, "--drop-regional-release", "--pepy-repo", "p"])
+    assert message in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -33,13 +98,13 @@ def test_only_cut_tags_are_certified():
     ],
 )
 def test_coverage_is_built_with_or_an_exact_claim(model, claims, version, covered):
-    cut = handoff.CutVersions(tag=DENSE, model=model, core="3.33.3", claims=claims)
-    assert handoff.covers(cut, version) is covered
+    build = _build(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT, model, claims)
+    assert handoff.covers(build, version) is covered
 
 
 def _args(**kwargs):
     base = dict(
-        dense_tag=None,
+        dense_build=None,
         keep_regional_release=False,
         area_coded_national_uri=None,
         drop_regional_release=False,
@@ -47,32 +112,74 @@ def _args(**kwargs):
     return argparse.Namespace(**{**base, **kwargs})
 
 
+def test_a_build_is_certified_from_its_folder_at_its_commit():
+    assert handoff.manifest_uri(
+        handoff.NATIONAL_RELEASE, NATIONAL, NATIONAL_COMMIT
+    ) == (
+        f"hf://dataset/policyengine/populace-uk-private@{NATIONAL_COMMIT}"
+        f"/releases/microcosm-uk-2024-25-national/{NATIONAL}/release_manifest.json"
+    )
+    build = _build(handoff.NATIONAL_RELEASE, NATIONAL, NATIONAL_COMMIT)
+    assert build.manifest_uri == handoff.manifest_uri(
+        handoff.NATIONAL_RELEASE, NATIONAL, NATIONAL_COMMIT
+    )
+    assert build.pin == handoff.BuildPin(
+        handoff.NATIONAL_RELEASE, NATIONAL, NATIONAL_COMMIT
+    )
+
+
 def test_each_route_produces_its_certify_data_flags():
-    record = {"regional_source_manifest_uri": handoff.manifest_uri(DENSE, "x")}
-    dense = handoff.regional_flags(_args(dense_tag=NEW_DENSE), record)
-    assert dense[0] == "--regional-manifest-uri" and f"@{NEW_DENSE}/" in dense[1]
-    assert handoff.regional_tag(dense) == NEW_DENSE
-    kept = handoff.regional_flags(_args(keep_regional_release=True), record)
+    record = {
+        "regional_source_manifest_uri": handoff.manifest_uri(
+            handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT
+        )
+    }
+    new = _build(handoff.DENSE_RELEASE, NEW_DENSE, NEW_DENSE_COMMIT)
+    dense = handoff.regional_flags(_args(dense_build=NEW_DENSE), record, new)
+    assert dense == ["--regional-manifest-uri", new.manifest_uri]
+    kept = handoff.regional_flags(_args(keep_regional_release=True), record, None)
     assert kept == ["--regional-manifest-uri", record["regional_source_manifest_uri"]]
-    area = handoff.regional_flags(_args(area_coded_national_uri="hf://model/x@1/r"), {})
+    area = handoff.regional_flags(
+        _args(area_coded_national_uri="hf://model/x@1/r"), {}, None
+    )
     assert area[-2:] == ["--regional-release-kind", "area_coded_national"]
-    assert handoff.regional_tag(area) is None
-    dropped = handoff.regional_flags(_args(drop_regional_release=True), record)
+    dropped = handoff.regional_flags(_args(drop_regional_release=True), record, None)
     assert dropped == ["--drop-regional-release"]
     with pytest.raises(handoff.CertifyError, match="no regional release"):
-        handoff.regional_flags(_args(keep_regional_release=True), {})
+        handoff.regional_flags(_args(keep_regional_release=True), {}, None)
+
+
+def test_only_a_folder_manifest_in_the_build_repository_names_a_build():
+    uri = handoff.manifest_uri(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT)
+    assert handoff.folder_reference(uri) == handoff.BuildPin(
+        handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT
+    )
+    tagged = (
+        "hf://dataset/policyengine/populace-uk-private@microcosm-uk-2024-25-dense-"
+        "20261019T000432Z-ee5c2dbe/releases/microcosm-uk-2024-25-dense/"
+        "release_manifest.json"
+    )
+    for other in (
+        tagged,
+        uri.replace("populace-uk-private", "another-repository"),
+        uri.replace("release_manifest.json", "build_manifest.json"),
+        "hf://model/x@1/r",
+        "",
+        None,
+    ):
+        assert handoff.folder_reference(other) is None
 
 
 def test_routes_are_mutually_exclusive_and_required():
     repo = ["--pepy-repo", "pepy"]
     with pytest.raises(SystemExit):
-        handoff.parse(["--national-tag", NATIONAL, *repo])
+        handoff.parse(["--national-build", NATIONAL, *repo])
     with pytest.raises(SystemExit):
         handoff.parse(
             [
-                "--national-tag",
+                "--national-build",
                 NATIONAL,
-                "--dense-tag",
+                "--dense-build",
                 DENSE,
                 "--drop-regional-release",
                 *repo,
@@ -80,28 +187,41 @@ def test_routes_are_mutually_exclusive_and_required():
         )
     with pytest.raises(SystemExit):
         handoff.parse(
-            ["--national-tag", NATIONAL, "--drop-regional-release", "--open-pr", *repo]
+            [
+                "--national-build",
+                NATIONAL,
+                "--drop-regional-release",
+                "--open-pr",
+                *repo,
+            ]
         )
     # The policyengine.py clone is the operator's to name; no machine's layout.
     with pytest.raises(SystemExit):
-        handoff.parse(["--national-tag", NATIONAL, "--drop-regional-release"])
+        handoff.parse(["--national-build", NATIONAL, "--drop-regional-release"])
 
 
-def test_the_regional_tag_is_rewritten_only_as_a_literal(tmp_path):
+def test_the_regional_build_and_commit_are_rewritten_only_as_literals(tmp_path):
     for relative in handoff.CONSTANT_FILES:
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            f'A = "{DENSE}"\nB = "hf://x@{DENSE}/releases/r.json"\n'
-            f"# {DENSE} in a comment stays\nC = 'x{DENSE}'\n"
+            f'A = "{DENSE}"\nB = "releases/r/{DENSE}/x.h5"\n'
+            f'R = "{DENSE_COMMIT}"\nU = "x.h5@{DENSE_COMMIT}"\n'
+            f"# {DENSE} at {DENSE_COMMIT} in a comment stays\nC = 'x{DENSE}'\n"
         )
-    changed = handoff.rewrite_regional_constants(tmp_path, DENSE, NEW_DENSE)
+    old = handoff.BuildPin(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT)
+    new = handoff.BuildPin(handoff.DENSE_RELEASE, NEW_DENSE, NEW_DENSE_COMMIT)
+    changed = handoff.rewrite_regional_constants(tmp_path, old, new)
     assert sorted(changed) == sorted(handoff.CONSTANT_FILES)
     text = (tmp_path / handoff.CONSTANT_FILES[0]).read_text()
     assert f'A = "{NEW_DENSE}"' in text
-    assert f"@{NEW_DENSE}/releases" in text
-    assert f"# {DENSE} in a comment stays" in text
-    assert handoff.rewrite_regional_constants(tmp_path, DENSE, DENSE) == []
+    assert f'"releases/r/{NEW_DENSE}/x.h5"' in text
+    assert f'R = "{NEW_DENSE_COMMIT}"' in text
+    assert f'U = "x.h5@{NEW_DENSE_COMMIT}"' in text
+    assert f"# {DENSE} at {DENSE_COMMIT} in a comment stays" in text
+    assert handoff.rewrite_regional_constants(tmp_path, new, new) == []
+    assert handoff.rewrite_regional_constants(tmp_path, None, new) == []
+    assert handoff.rewrite_regional_constants(tmp_path, new, None) == []
 
 
 @given(
@@ -120,8 +240,11 @@ def test_the_rewrite_is_a_bijection_on_literals(tmp_path_factory, old, new):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(original)
-    handoff.rewrite_regional_constants(root, old, new)
-    handoff.rewrite_regional_constants(root, new, old)
+    commit = "c" * 40
+    before = handoff.BuildPin(handoff.DENSE_RELEASE, old, commit)
+    after = handoff.BuildPin(handoff.DENSE_RELEASE, new, commit)
+    handoff.rewrite_regional_constants(root, before, after)
+    handoff.rewrite_regional_constants(root, after, before)
     for relative in handoff.CONSTANT_FILES:
         assert (root / relative).read_text() == original
 
@@ -136,7 +259,8 @@ def test_dropped_overlays_are_reported():
 def test_the_pr_body_leaves_every_judgment_to_a_person():
     body = handoff.pr_body(
         {
-            "national_tag": NATIONAL,
+            "national_build": NATIONAL,
+            "national_commit": NATIONAL_COMMIT,
             "model": "2.134.4",
             "core": "3.33.3",
             "regional_summary": "`--drop-regional-release`",
@@ -150,6 +274,8 @@ def test_the_pr_body_leaves_every_judgment_to_a_person():
         }
     )
     for needed in (
+        f"Microcosm UK national build `{NATIONAL}`",
+        f"`{NATIONAL_COMMIT}`",
         "UC floor acceptance",
         "enhanced_frs_2024_25",
         "Certification warnings",
@@ -158,6 +284,26 @@ def test_the_pr_body_leaves_every_judgment_to_a_person():
         "- [ ]",
     ):
         assert needed in body
+    assert NATIONAL_TAG not in body and "cut" not in body.split("\n", 1)[0]
+
+
+def test_the_pr_body_asks_for_a_check_when_old_builds_shared_a_commit():
+    """policyengine.py's rewrite moves every quoted copy of the old national
+    commit, so a local-area constant that shared it moves too."""
+
+    context = {
+        "national_build": NATIONAL,
+        "national_commit": NATIONAL_COMMIT,
+        "model": "2.134.4",
+        "core": "3.33.3",
+        "regional_summary": "`--keep-regional-release`",
+        "microcosm_commit": "a" * 40,
+        "commands": [],
+    }
+    assert "shared commit" not in handoff.pr_body(context)
+    body = handoff.pr_body({**context, "shared_old_commit": DENSE_COMMIT})
+    assert f"shared commit `{DENSE_COMMIT}`" in body
+    assert "- [ ] **Local-area revision constants.**" in body
 
 
 MISMATCH = [
@@ -170,32 +316,45 @@ MISMATCH = [
 ]
 
 
-def _dense_route(monkeypatch, tmp_path, *, audit_support=None):
-    """A national cut on 2.134.4 and a regional cut on 2.132.6, offline."""
+def _dense_route(
+    monkeypatch, tmp_path, *, audit_support=None, regional_uri=None, printed=None
+):
+    """A national build on 2.134.4 and a local-area build on 2.132.6, offline.
 
-    cuts = {
-        NATIONAL: handoff.CutVersions(NATIONAL, "2.134.4", "3.33.3", ("==2.134.4",)),
-        DENSE: handoff.CutVersions(DENSE, "2.132.6", "3.33.3", ("==2.132.6",)),
+    Returns the builds read (release, build, commit) and the local-area
+    builds whose microdata was downloaded.
+    """
+
+    builds = {
+        NATIONAL: _build(handoff.NATIONAL_RELEASE, NATIONAL, NATIONAL_COMMIT),
+        DENSE: _build(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT, "2.132.6"),
     }
-    monkeypatch.setattr(handoff, "read_cut", lambda tag, release: cuts[tag])
-    monkeypatch.setattr(handoff, "writer_check", lambda tag, repo: [])
+    reads, downloads = [], []
+
+    def read(release, build, *, commit=None, **kwargs):
+        reads.append((release, build, commit))
+        found = builds[build]
+        return found if commit is None else _replace(found, commit=commit)
+
+    monkeypatch.setattr(handoff, "read_published_build", read)
+    monkeypatch.setattr(handoff, "writer_check", lambda build, repo: [])
     monkeypatch.setattr(
         handoff, "regional_audit_support", lambda repo, base: audit_support
     )
-    downloads = []
     monkeypatch.setattr(
         handoff,
         "fetch_regional_microdata",
-        lambda tag, release, **kw: downloads.append(tag) or {},
+        lambda build, **kw: downloads.append(build.build) or {},
     )
     monkeypatch.setattr(
         handoff.subprocess,
         "run",
         lambda *a, **k: handoff.subprocess.CompletedProcess(a, 0, "", ""),
     )
-    bundle = (
-        '{"data_releases": {"uk": {"regional_source_manifest_uri": '
-        f'"{handoff.manifest_uri(DENSE, handoff.DENSE_RELEASE)}"}}}}}}'
+    if regional_uri is None:
+        regional_uri = handoff.manifest_uri(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT)
+    bundle = json.dumps(
+        {"data_releases": {"uk": {"regional_source_manifest_uri": regional_uri}}}
     )
 
     def check_output(argv, **kwargs):
@@ -206,12 +365,18 @@ def _dense_route(monkeypatch, tmp_path, *, audit_support=None):
         return "b" * 40
 
     monkeypatch.setattr(handoff.subprocess, "check_output", check_output)
-    return downloads
+    return reads, downloads
 
 
-def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tmp_path):
-    downloads = _dense_route(monkeypatch, tmp_path)
-    base = ["--national-tag", NATIONAL, "--keep-regional-release", "--dry-run",
+def _replace(build, **changes):
+    return dataclasses.replace(build, **changes)
+
+
+def test_a_dry_run_refuses_an_uncovered_dense_build_before_writing(
+    monkeypatch, tmp_path
+):
+    reads, downloads = _dense_route(monkeypatch, tmp_path)
+    base = ["--national-build", NATIONAL, "--keep-regional-release", "--dry-run",
             "--pepy-repo", str(tmp_path)]  # fmt: skip
     with pytest.raises(
         handoff.CertifyError, match="built with policyengine-uk 2.132.6"
@@ -221,20 +386,88 @@ def test_a_dry_run_refuses_an_uncovered_dense_cut_before_writing(monkeypatch, tm
     assert handoff.certify(handoff.parse([*base, *MISMATCH])) == 0
     assert downloads == []
     another = handoff.parse(
-        ["--national-tag", NATIONAL, "--dense-tag", DENSE, "--dry-run",
+        ["--national-build", NATIONAL, "--dense-build", DENSE, "--dry-run",
          "--pepy-repo", str(tmp_path)]
     )  # fmt: skip
-    monkeypatch.setattr(handoff, "writer_check", lambda tag, repo: ["#700 open"])
+    monkeypatch.setattr(handoff, "writer_check", lambda build, repo: ["#700 open"])
     with pytest.raises(handoff.CertifyError, match="already being certified"):
         handoff.certify(another)
 
 
+def test_a_kept_local_area_build_is_read_at_the_bundles_commit(
+    monkeypatch, tmp_path, capsys
+):
+    """The bundle pins its local-area build by folder and commit; the route
+    reads that build there, so its model check and audit still run."""
+
+    reads, _ = _dense_route(monkeypatch, tmp_path)
+    args = handoff.parse(
+        ["--national-build", NATIONAL, "--keep-regional-release", "--dry-run",
+         "--pepy-repo", str(tmp_path), *MISMATCH]
+    )  # fmt: skip
+    assert handoff.certify(args) == 0
+    assert reads == [
+        (handoff.NATIONAL_RELEASE, NATIONAL, None),
+        (handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT),
+    ]
+    output = capsys.readouterr().out
+    plan = json.loads(output[output.find("{") :])
+    assert plan["regional"].endswith("(regional built on 2.132.6; mismatch accepted)")
+
+
+def test_a_named_build_and_its_commit_reach_certify_data(monkeypatch, tmp_path, capsys):
+    reads, _ = _dense_route(monkeypatch, tmp_path)
+    args = handoff.parse(
+        ["--national-build", NATIONAL, "--national-data-commit", "1" * 40,
+         "--dense-build", DENSE, "--dense-data-commit", "2" * 40,
+         "--accept-regional-model-mismatch", "recorded", "--audited-by", "A",
+         "--regional-limitation", "L", "--dry-run", "--pepy-repo", str(tmp_path)]
+    )  # fmt: skip
+    assert handoff.certify(args) == 0
+    assert reads == [
+        (handoff.NATIONAL_RELEASE, NATIONAL, "1" * 40),
+        (handoff.DENSE_RELEASE, DENSE, "2" * 40),
+    ]
+    output = capsys.readouterr().out
+    plan = json.loads(output[output.find("{") :])
+    assert plan["national_build"] == NATIONAL
+    assert plan["national_manifest_uri"] == handoff.manifest_uri(
+        handoff.NATIONAL_RELEASE, NATIONAL, "1" * 40
+    )
+    assert (
+        handoff.manifest_uri(handoff.DENSE_RELEASE, DENSE, "2" * 40)
+        in (plan["regional"])
+    )
+    assert plan["branch"] == "certify-uk-a858c100"
+
+
+def test_a_kept_tagged_regional_release_is_refused_before_it_is_read(
+    monkeypatch, tmp_path
+):
+    """policyengine.py refuses a tagged manifest from a repository with
+    releases.json, so keeping one could never certify."""
+
+    tagged = (
+        "hf://dataset/policyengine/populace-uk-private@microcosm-uk-2024-25-dense-"
+        "20261019T000432Z-ee5c2dbe/releases/microcosm-uk-2024-25-dense/"
+        "release_manifest.json"
+    )
+    reads, _ = _dense_route(monkeypatch, tmp_path, regional_uri=tagged)
+    args = handoff.parse(
+        ["--national-build", NATIONAL, "--keep-regional-release", "--dry-run",
+         "--pepy-repo", str(tmp_path)]
+    )  # fmt: skip
+    with pytest.raises(handoff.CertifyError, match="not a build in its own folder"):
+        handoff.certify(args)
+    assert [read[1] for read in reads] == [NATIONAL]
+
+
 def test_a_base_without_the_audit_refuses_before_any_download(monkeypatch, tmp_path):
-    downloads = _dense_route(
+    _, downloads = _dense_route(
         monkeypatch, tmp_path, audit_support=f"it has no {handoff.AUDIT_SCRIPT}"
     )
     args = handoff.parse(
-        ["--national-tag", NATIONAL, "--keep-regional-release",
+        ["--national-build", NATIONAL, "--keep-regional-release",
          "--pepy-repo", str(tmp_path), "--skip-tests", *MISMATCH]
     )  # fmt: skip
     with pytest.raises(handoff.CertifyError, match="policyengine.py#699"):
@@ -255,12 +488,12 @@ def test_an_accepted_mismatch_needs_an_auditor_and_a_limitation(drop):
     del flags[index : index + 2]
     with pytest.raises(SystemExit):
         handoff.parse(
-            ["--national-tag", NATIONAL, "--keep-regional-release",
+            ["--national-build", NATIONAL, "--keep-regional-release",
              "--pepy-repo", "p", *flags]
         )  # fmt: skip
     with pytest.raises(SystemExit):
         handoff.parse(
-            ["--national-tag", NATIONAL, "--keep-regional-release",
+            ["--national-build", NATIONAL, "--keep-regional-release",
              "--pepy-repo", "p", *drop]
         )  # fmt: skip
 
@@ -274,10 +507,51 @@ def test_a_mismatch_needs_readable_text_in_every_field(flag, text):
     flags[flags.index(flag) + 1] = text
     with pytest.raises(SystemExit):
         handoff.parse(
-            ["--national-tag", NATIONAL, "--keep-regional-release",
+            ["--national-build", NATIONAL, "--keep-regional-release",
              "--pepy-repo", "p", *flags]
         )  # fmt: skip
     assert handoff.readable("ok") and not handoff.readable(text)
+
+
+def test_the_build_folder_support_check_reads_the_base(monkeypatch, tmp_path):
+    answers, seen = {"grep": 0}, []
+
+    def run(argv, **kwargs):
+        assert kwargs["cwd"] == tmp_path
+        seen.append(argv)
+        return handoff.subprocess.CompletedProcess(argv, answers["grep"], b"", b"")
+
+    monkeypatch.setattr(handoff.subprocess, "run", run)
+    assert handoff.build_folder_support(tmp_path, "c" * 40) is None
+    assert seen == [
+        ["git", "grep", "-q", "-e", "def read_build_folder", "c" * 40, "--",
+         "src/policyengine/provenance/manifest.py"]
+    ]  # fmt: skip
+    answers["grep"] = 1
+    assert "read_build_folder" in handoff.build_folder_support(tmp_path, "c" * 40)
+
+
+def test_a_base_that_cannot_read_build_folders_refuses_before_any_read(
+    monkeypatch, tmp_path
+):
+    """A .py base without #683 certifies only tags, which the build repository
+    no longer has, and an accepted mismatch would download every regional
+    file and set up a worktree before refusing."""
+
+    reads, downloads = _dense_route(monkeypatch, tmp_path)
+
+    def run(argv, **kwargs):
+        code = 1 if "def read_build_folder" in argv else 0
+        return subprocess.CompletedProcess(argv, code, "", "")
+
+    monkeypatch.setattr(handoff.subprocess, "run", run)
+    args = handoff.parse(
+        ["--national-build", NATIONAL, "--dense-build", DENSE, "--dry-run",
+         "--pepy-repo", str(tmp_path), *MISMATCH]
+    )  # fmt: skip
+    with pytest.raises(handoff.CertifyError, match="policyengine.py#683"):
+        handoff.certify(args)
+    assert (reads, downloads) == ([], [])
 
 
 def test_the_audit_support_check_reads_the_base(monkeypatch, tmp_path):
@@ -297,53 +571,421 @@ def test_the_audit_support_check_reads_the_base(monkeypatch, tmp_path):
     assert handoff.AUDIT_SCRIPT in handoff.regional_audit_support(tmp_path, "c" * 40)
 
 
-def test_every_regional_microdata_file_is_fetched_and_checked(monkeypatch, tmp_path):
-    import hashlib
-    import sys
-    import types
+class FakeHub:
+    """The Hub calls the tool makes, answered from ``files``.
 
-    files = {"dense.h5": b"dense", "other.H5": b"other", "notes.csv": b"csv"}
-    for name, data in files.items():
-        (tmp_path / name).write_bytes(data)
-    manifest = {
-        "artifacts": {
-            "microcosm_uk_2024_25_dense": {
-                "kind": "microdata", "path": "dense.h5", "revision": "r1",
-                "sha256": hashlib.sha256(b"dense").hexdigest(),
+    ``files`` maps ``(repo_id, path, revision)`` to bytes, ``last_commits``
+    maps a path to its last commit on ``main``, and ``history`` lists the
+    commits in ``main``'s history. ``failures`` maps a file name, or
+    ``"paths-info"``, to the exception the Hub raises for it.
+    """
+
+    def __init__(self, root, files, last_commits=None, history=()):
+        self.root, self.files = root, files
+        self.last_commits = last_commits or {}
+        self.history = list(history)
+        self.failures = {}
+        self.downloads, self.listings = [], []
+
+    def hf_hub_download(self, repo_id, filename, *, repo_type=None, revision=None,
+                        **options):  # fmt: skip
+        assert repo_type == "dataset"
+        self.downloads.append((repo_id, filename, revision, options))
+        if filename in self.failures:
+            raise self.failures[filename]
+        key = (repo_id, filename, revision)
+        if key not in self.files:
+            raise FileNotFoundError(f"{repo_id} has no {filename} at {revision}")
+        path = self.root / hashlib.sha256(repr(key).encode()).hexdigest()
+        path.write_bytes(self.files[key])
+        return str(path)
+
+    def get_paths_info(self, repo_id, paths, *, expand=False, revision=None,
+                       repo_type=None):  # fmt: skip
+        self.listings.append((repo_id, list(paths), expand, revision, repo_type))
+        if "paths-info" in self.failures:
+            raise self.failures["paths-info"]
+        return [
+            SimpleNamespace(path=path, last_commit=SimpleNamespace(oid=commit))
+            for path, commit in self.last_commits.items()
+            if path in paths
+        ]
+
+    def list_repo_commits(self, repo_id, *, repo_type=None, revision=None):
+        assert (repo_id, repo_type, revision) == (REPO, "dataset", "main")
+        if "commits" in self.failures:
+            raise self.failures["commits"]
+        return [SimpleNamespace(commit_id=commit) for commit in self.history]
+
+
+REPO = "policyengine/populace-uk-private"
+
+
+def _folder(release, build):
+    return f"releases/{release}/{build}"
+
+
+def _releases_record(withdrawn=()):
+    def release(role, build):
+        return {
+            "role": role,
+            "current": None,
+            "builds": {
+                build: {
+                    "published_at": "2026-11-09T15:41:23+00:00",
+                    "withdrawn": build in withdrawn,
+                }
             },
-            "second": {
-                "kind": "microdata", "path": "other.H5", "revision": "r2",
-                "sha256": hashlib.sha256(b"other").hexdigest(),
-            },
-            "table": {"kind": "microdata", "path": "notes.csv", "revision": "r3",
-                      "sha256": "0" * 64},
-            "receipt": {"kind": "evidence", "path": "dense.h5", "revision": "r4",
-                        "sha256": "0" * 64},
         }
-    }  # fmt: skip
-    (tmp_path / "release_manifest.json").write_text(json.dumps(manifest))
 
-    def download(repo, path, **kwargs):
-        name = path.rsplit("/", 1)[-1]
-        return str(
-            tmp_path / ("release_manifest.json" if name.endswith(".json") else name)
-        )
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "default": handoff.NATIONAL_RELEASE,
+            "releases": {
+                handoff.NATIONAL_RELEASE: release("national", NATIONAL),
+                handoff.DENSE_RELEASE: release("local_area", DENSE),
+            },
+        }
+    ).encode()
 
-    monkeypatch.setitem(
-        sys.modules, "huggingface_hub", types.SimpleNamespace(hf_hub_download=download)
-    )
-    found = handoff.fetch_regional_microdata(
-        DENSE, handoff.DENSE_RELEASE, timings=tmp_path / "t.jsonl"
-    )
-    assert found == {
-        "microcosm_uk_2024_25_dense": tmp_path / "dense.h5",
-        "second": tmp_path / "other.H5",
+
+def _folder_manifest(release, build, **changes):
+    manifest = {
+        "release": release,
+        "build": build,
+        "built_at": "2026-11-09T15:00:00+00:00",
+        "built_with_model_package": {"name": "policyengine-uk", "version": "2.179.2"},
+        "built_with_core_package": {"name": "policyengine-core", "version": "3.34.10"},
+        "compatible_model_packages": [
+            {"name": "policyengine-uk", "specifier": "==2.179.2"}
+        ],
+        "artifacts": {},
     }
-    (tmp_path / "other.H5").write_bytes(b"changed")
-    with pytest.raises(handoff.CertifyError, match="not the manifest's"):
-        handoff.fetch_regional_microdata(
-            DENSE, handoff.DENSE_RELEASE, timings=tmp_path / "t.jsonl"
+    return json.dumps({**manifest, **changes}).encode()
+
+
+def _national_hub(
+    tmp_path, *, withdrawn=(), manifest=None, at=NATIONAL_COMMIT, history=None
+):
+    folder = _folder(handoff.NATIONAL_RELEASE, NATIONAL)
+    files = {
+        (REPO, "releases.json", "main"): _releases_record(withdrawn),
+        (REPO, f"{folder}/release_manifest.json", at): manifest
+        or _folder_manifest(handoff.NATIONAL_RELEASE, NATIONAL),
+    }
+    return FakeHub(
+        tmp_path,
+        files,
+        {f"{folder}/release_manifest.json": NATIONAL_COMMIT},
+        history=[NATIONAL_COMMIT, at] if history is None else history,
+    )
+
+
+def test_a_listed_build_is_read_at_the_commit_that_published_its_folder(tmp_path):
+    hub = _national_hub(tmp_path)
+    build = handoff.read_published_build(handoff.NATIONAL_RELEASE, NATIONAL, api=hub)
+    assert build == handoff.PublishedBuild(
+        release=handoff.NATIONAL_RELEASE,
+        build=NATIONAL,
+        commit=NATIONAL_COMMIT,
+        model="2.179.2",
+        core="3.34.10",
+        claims=("==2.179.2",),
+    )
+    folder = _folder(handoff.NATIONAL_RELEASE, NATIONAL)
+    assert hub.listings == [
+        (REPO, [f"{folder}/release_manifest.json"], True, "main", "dataset")
+    ]
+    record, manifest = hub.downloads
+    # A record cached before a withdrawal must not offer the build.
+    assert record[:3] == (REPO, "releases.json", "main")
+    assert record[3].get("force_download") is True
+    assert manifest[:3] == (REPO, f"{folder}/release_manifest.json", NATIONAL_COMMIT)
+
+
+def test_an_operators_commit_replaces_the_publishing_commit(tmp_path):
+    other = "5" * 40
+    hub = _national_hub(tmp_path, at=other)
+    build = handoff.read_published_build(
+        handoff.NATIONAL_RELEASE, NATIONAL, commit=other, api=hub
+    )
+    assert build.commit == other
+    assert hub.listings == []
+
+
+def test_an_operators_commit_must_be_in_mains_history(tmp_path):
+    """A commit on another ref, such as a Hub pull request's, may hold an
+    edited copy of the folder that main never held."""
+
+    other = "5" * 40
+    hub = _national_hub(tmp_path, at=other, history=[NATIONAL_COMMIT])
+    with pytest.raises(handoff.CertifyError, match="is not in main's history"):
+        handoff.read_published_build(
+            handoff.NATIONAL_RELEASE, NATIONAL, commit=other, api=hub
         )
+    assert [download[1] for download in hub.downloads] == ["releases.json"]
+
+
+@pytest.mark.parametrize(
+    ("failing", "message"),
+    [
+        ("releases.json", "could not read releases.json"),
+        ("paths-info", "could not ask the Hub which commit published"),
+    ],
+)
+def test_a_hub_failure_is_a_refusal(tmp_path, failing, message):
+    hub = _national_hub(tmp_path)
+    hub.failures[failing] = RuntimeError("503 Service Unavailable")
+    with pytest.raises(handoff.CertifyError, match=message) as refusal:
+        handoff.read_published_build(handoff.NATIONAL_RELEASE, NATIONAL, api=hub)
+    assert "503 Service Unavailable" in str(refusal.value)
+
+
+def test_a_failing_history_listing_is_a_refusal(tmp_path):
+    other = "5" * 40
+    hub = _national_hub(tmp_path, at=other)
+    hub.failures["commits"] = RuntimeError("503 Service Unavailable")
+    with pytest.raises(handoff.CertifyError, match="could not list main's history"):
+        handoff.read_published_build(
+            handoff.NATIONAL_RELEASE, NATIONAL, commit=other, api=hub
+        )
+
+
+def test_an_unreadable_releases_record_is_named_in_the_refusal(tmp_path):
+    hub = _national_hub(tmp_path)
+    hub.files[(REPO, "releases.json", "main")] = b"not json"
+    with pytest.raises(
+        handoff.CertifyError,
+        match="releases.json at main in policyengine/populace-uk-private: it is "
+        "not a readable JSON document",
+    ):
+        handoff.read_published_build(handoff.NATIONAL_RELEASE, NATIONAL, api=hub)
+
+
+def _bundle_at(worktree, revision, regional_uri):
+    path = worktree / "src/policyengine/data/bundle/manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "data_package": {"release_manifest_revision": revision},
+        "regional_source_manifest_uri": regional_uri,
+    }
+    path.write_text(json.dumps({"data_releases": {"uk": record}}))
+    return "src/policyengine/data/bundle/manifest.json"
+
+
+def test_a_resumed_worktree_must_certify_the_same_commits(tmp_path):
+    """A resume at another commit, or with another regional route, would keep
+    the first attempt's constants while certify-data writes this run's pins
+    into the bundle."""
+
+    national = _build(handoff.NATIONAL_RELEASE, NATIONAL, NATIONAL_COMMIT)
+    dense = _build(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT)
+    relative = _bundle_at(tmp_path, NATIONAL_COMMIT, dense.manifest_uri)
+    handoff.check_resumed_pins(tmp_path, [relative], national, dense.manifest_uri)
+    # A worktree whose bundle is not yet modified holds nothing to compare.
+    moved = _replace(national, commit="5" * 40)
+    handoff.check_resumed_pins(tmp_path, [], moved, dense.manifest_uri)
+    with pytest.raises(handoff.CertifyError, match="national build at"):
+        handoff.check_resumed_pins(tmp_path, [relative], moved, dense.manifest_uri)
+    other = _replace(dense, commit="6" * 40)
+    # Another local-area build, an area-coded release, or no routing at all.
+    for regional in (
+        other.manifest_uri,
+        "hf://dataset/policyengine/another@1/releases/r/release_manifest.json",
+        None,
+    ):
+        with pytest.raises(handoff.CertifyError, match="routes regions to"):
+            handoff.check_resumed_pins(tmp_path, [relative], national, regional)
+    relative = _bundle_at(tmp_path, NATIONAL_COMMIT, None)
+    handoff.check_resumed_pins(tmp_path, [relative], national, None)
+    with pytest.raises(handoff.CertifyError, match="routes regions to None"):
+        handoff.check_resumed_pins(tmp_path, [relative], national, dense.manifest_uri)
+
+
+@pytest.mark.parametrize(
+    ("hub_changes", "build", "message"),
+    [
+        ({"withdrawn": (NATIONAL,)}, NATIONAL, "has been withdrawn"),
+        ({}, NATIONAL + "-x", "does not list build"),
+        (
+            {"manifest": _folder_manifest(handoff.NATIONAL_RELEASE, DENSE)},
+            NATIONAL,
+            f"names release 'microcosm-uk-2024-25-national' and build '{DENSE}'",
+        ),
+        (
+            {
+                "manifest": _folder_manifest(
+                    handoff.NATIONAL_RELEASE, NATIONAL, built_with_core_package={}
+                )
+            },
+            NATIONAL,
+            "no built_with_core_package version",
+        ),
+        (
+            {"manifest": json.dumps({"build": {"cut_tag": NATIONAL_TAG}}).encode()},
+            NATIONAL,
+            "names release None",
+        ),
+    ],
+)
+def test_a_build_policyengine_py_would_refuse_is_refused_first(
+    tmp_path, hub_changes, build, message
+):
+    hub = _national_hub(tmp_path, **hub_changes)
+    with pytest.raises(handoff.CertifyError, match=re.escape(message)):
+        handoff.read_published_build(handoff.NATIONAL_RELEASE, build, api=hub)
+
+
+def test_a_build_with_no_folder_on_main_is_refused(tmp_path):
+    hub = _national_hub(tmp_path)
+    hub.last_commits = {}
+    with pytest.raises(handoff.CertifyError, match="has no releases/"):
+        handoff.read_published_build(handoff.NATIONAL_RELEASE, NATIONAL, api=hub)
+    hub = _national_hub(tmp_path, at="6" * 40, history=["7" * 40])
+    with pytest.raises(handoff.CertifyError, match="could not read"):
+        handoff.read_published_build(
+            handoff.NATIONAL_RELEASE, NATIONAL, commit="7" * 40, api=hub
+        )
+
+
+def _dense_hub(tmp_path, artifacts, data):
+    folder = _folder(handoff.DENSE_RELEASE, DENSE)
+    manifest = _folder_manifest(handoff.DENSE_RELEASE, DENSE, artifacts=artifacts)
+    return FakeHub(
+        tmp_path,
+        {(REPO, f"{folder}/release_manifest.json", DENSE_COMMIT): manifest, **data},
+    )
+
+
+def test_every_regional_microdata_file_is_fetched_and_checked(tmp_path):
+    folder = _folder(handoff.DENSE_RELEASE, DENSE)
+    digest = {name: hashlib.sha256(name.encode()).hexdigest()
+              for name in ("dense", "other", "far")}  # fmt: skip
+    artifacts = {
+        # The build's own files are bare names, alone or after the folder,
+        # with no revision: they are read in the folder at the build's commit.
+        "microcosm_uk_2024_25_dense": {
+            "kind": "microdata", "path": "dense.h5", "repo_id": REPO,
+            "role": "dataset", "sha256": digest["dense"],
+        },
+        "second": {
+            "kind": "microdata", "path": f"{folder}/other.H5", "repo_id": REPO,
+            "sha256": digest["other"],
+        },
+        # A file in another repository keeps its own path and revision.
+        "elsewhere": {
+            "kind": "microdata", "path": "x/far.h5",
+            "repo_id": "policyengine/another", "revision": "r9",
+            "sha256": digest["far"],
+        },
+        "table": {"kind": "microdata", "path": "notes.csv", "repo_id": REPO,
+                  "sha256": "0" * 64},
+        "receipt": {"kind": "evidence", "path": "dense.h5", "repo_id": REPO,
+                    "sha256": "0" * 64},
+    }  # fmt: skip
+    data = {
+        (REPO, f"{folder}/dense.h5", DENSE_COMMIT): b"dense",
+        (REPO, f"{folder}/other.H5", DENSE_COMMIT): b"other",
+        ("policyengine/another", "x/far.h5", "r9"): b"far",
+    }
+    hub = _dense_hub(tmp_path, artifacts, data)
+    dense = _build(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT)
+    found = handoff.fetch_regional_microdata(
+        dense, timings=tmp_path / "t.jsonl", api=hub
+    )
+    assert sorted(found) == ["elsewhere", "microcosm_uk_2024_25_dense", "second"]
+    assert {key: found[key].read_bytes() for key in found} == {
+        "microcosm_uk_2024_25_dense": b"dense",
+        "second": b"other",
+        "elsewhere": b"far",
+    }
+    assert [download[:3] for download in hub.downloads] == [
+        (REPO, f"{folder}/release_manifest.json", DENSE_COMMIT),
+        ("policyengine/another", "x/far.h5", "r9"),
+        (REPO, f"{folder}/dense.h5", DENSE_COMMIT),
+        (REPO, f"{folder}/other.H5", DENSE_COMMIT),
+    ]
+    hub.files[(REPO, f"{folder}/other.H5", DENSE_COMMIT)] = b"changed"
+    with pytest.raises(handoff.CertifyError, match="not the manifest's"):
+        handoff.fetch_regional_microdata(dense, timings=tmp_path / "t.jsonl", api=hub)
+
+
+def test_a_failing_regional_download_is_a_refusal(tmp_path):
+    folder = _folder(handoff.DENSE_RELEASE, DENSE)
+    entry = {"kind": "microdata", "path": "dense.h5", "repo_id": REPO,
+             "sha256": "0" * 64}  # fmt: skip
+    hub = _dense_hub(tmp_path, {"microcosm_uk_2024_25_dense": entry}, {})
+    hub.failures[f"{folder}/dense.h5"] = RuntimeError("503 Service Unavailable")
+    dense = _build(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT)
+    with pytest.raises(handoff.CertifyError, match="could not download") as refusal:
+        handoff.fetch_regional_microdata(dense, timings=tmp_path / "t.jsonl", api=hub)
+    assert f"{folder}/dense.h5 at {DENSE_COMMIT}" in str(refusal.value)
+    hub = _dense_hub(tmp_path, {}, {})
+    hub.failures[f"{folder}/release_manifest.json"] = RuntimeError("timed out")
+    with pytest.raises(handoff.CertifyError, match="could not download"):
+        handoff.fetch_regional_microdata(dense, timings=tmp_path / "t.jsonl", api=hub)
+
+
+@pytest.mark.parametrize(
+    ("artifact", "message"),
+    [
+        ({"path": "sub/dense.h5", "repo_id": REPO}, "not a file directly inside"),
+        (
+            {
+                "path": f"releases/microcosm-uk-2024-25-dense/{DENSE}/../x/dense.h5",
+                "repo_id": REPO,
+            },
+            "not a file directly inside",
+        ),  # fmt: skip
+        ({"path": "far.h5", "repo_id": "policyengine/another"}, "names no revision"),
+        ({"path": "dense.h5", "repo_id": REPO, "sha256": None}, "no sha256"),
+    ],
+)
+def test_a_regional_file_outside_its_pin_is_refused(tmp_path, artifact, message):
+    entry = {"kind": "microdata", "sha256": "0" * 64, **artifact}
+    hub = _dense_hub(tmp_path, {"microcosm_uk_2024_25_dense": entry}, {})
+    dense = _build(handoff.DENSE_RELEASE, DENSE, DENSE_COMMIT)
+    with pytest.raises(handoff.CertifyError, match=message):
+        handoff.fetch_regional_microdata(dense, timings=tmp_path / "t.jsonl", api=hub)
+    assert len(hub.downloads) == 1
+
+
+def test_a_command_is_shown_without_local_paths_or_records(tmp_path):
+    worktree = tmp_path / "_worktrees" / "pepy-certify-uk-a858c100"
+    record = json.dumps({"data_releases": {"uk": {}}})
+    argv = [
+        str(worktree / ".venv/bin/python"), "-c", "print(1)", record,
+        "--output", f"{worktree.parent}/{worktree.name}.uc_floor.json",
+        "--artifact", f"dense={tmp_path}/.cache/huggingface/x.h5", "-q",
+    ]  # fmt: skip
+    assert handoff.public_command(argv, worktree, home=tmp_path) == shlex.join(
+        [
+            ".venv/bin/python", "-c", "print(1)",
+            f"<JSON, {len(record)} characters>",
+            "--output", "../pepy-certify-uk-a858c100.uc_floor.json",
+            "--artifact", "dense=~/.cache/huggingface/x.h5", "-q",
+        ]
+    )  # fmt: skip
+
+
+def test_the_pr_body_shows_each_command_without_local_paths_or_records(tmp_path):
+    """--open-pr posts the body as it is: no operator paths, and not the old
+    and new bundle records the constant rewrite is passed."""
+
+    worktree = tmp_path / "_worktrees" / "pepy-certify-uk-a858c100"
+    shell = handoff.Shell(worktree, worktree.parent / "run.log", dry_run=True)
+    record = json.dumps({"data_releases": {"uk": {"default_dataset": "x"}}})
+    shell([str(worktree / ".venv/bin/python"), "-c", "code", record, record])
+    shell(["uv", "lock"])
+    assert shell.public_commands(home=tmp_path) == [
+        shlex.join(
+            [".venv/bin/python", "-c", "code",
+             f"<JSON, {len(record)} characters>",
+             f"<JSON, {len(record)} characters>"]
+        ),
+        "uv lock",
+    ]  # fmt: skip
 
 
 def test_the_audit_argv_passes_every_file_and_limitation(tmp_path):
@@ -408,7 +1050,8 @@ def test_build_relative_evidence_is_read(tmp_path):
 def test_the_pr_body_lists_the_audited_area_input_surface():
     body = handoff.pr_body(
         {
-            "national_tag": NATIONAL,
+            "national_build": NATIONAL,
+            "national_commit": NATIONAL_COMMIT,
             "model": "2.147.2",
             "core": "3.33.3",
             "regional_summary": "`--keep-regional-release`",
@@ -435,7 +1078,7 @@ def test_the_resource_limits_are_the_operators_to_set(monkeypatch, tmp_path):
 
     monkeypatch.setattr(handoff.os, "getloadavg", lambda: (12.0, 0.0, 0.0))
     args = handoff.parse(
-        ["--national-tag", NATIONAL, "--drop-regional-release", "--pepy-repo", "p"]
+        ["--national-build", NATIONAL, "--drop-regional-release", "--pepy-repo", "p"]
     )
     assert args.max_load1 is None
     assert handoff.resource_guard(tmp_path, min_free_bytes=0)["load1"] == 12.0
@@ -599,7 +1242,7 @@ def test_any_json_receipt_summarizes_or_fails_operationally(receipt):
 
 
 def test_the_certification_commit_credits_only_named_co_authors():
-    assert handoff.commit_message(NATIONAL) == f"Certify Microcosm UK cut {NATIONAL}"
+    assert handoff.commit_message(NATIONAL) == f"Certify Microcosm UK build {NATIONAL}"
     message = handoff.commit_message(
         NATIONAL, co_authors=["A Person <a@example.org>", "B <b@example.org>"]
     )
@@ -616,7 +1259,7 @@ def test_a_co_author_must_be_one_name_and_email(author):
     with pytest.raises(SystemExit):
         handoff.parse(
             [
-                "--national-tag",
+                "--national-build",
                 NATIONAL,
                 "--drop-regional-release",
                 "--pepy-repo",
@@ -629,7 +1272,8 @@ def test_a_co_author_must_be_one_name_and_email(author):
 
 def test_the_pr_body_footer_is_the_operators_choice():
     context = {
-        "national_tag": NATIONAL,
+        "national_build": NATIONAL,
+        "national_commit": NATIONAL_COMMIT,
         "model": "2.162.3",
         "core": "3.33.3",
         "regional_summary": "`--drop-regional-release`",

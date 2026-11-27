@@ -378,9 +378,9 @@ staging run and the build's inside it, so the publisher's staging check reads
 the run that scored what it publishes.
 
 Telemetry is written locally under
-`<release-out>/staging/runs/<run-id>/` and uploaded under `runs/<run-id>/`,
-with `run_manifest.json`, `latest_staging.json` and `runs.json` allowing
-discovery. The base, donor prefetch, offline preflights
+`<release-out>/staging/runs/<run-id>/` and uploaded under `runs/<run-id>/` as
+version 2 staging run files (microcosm#1135); the run's folder and its
+`run_manifest.json` are how it is found. The base, donor prefetch, offline preflights
 and supervisor resource series do not emit these staging records. If uploads
 fail, dashboard visibility is not guaranteed. A staging upload does not publish
 the build or change `releases.json` in `policyengine/populace-us`.

@@ -1,0 +1,109 @@
+"""No tagged publisher is left: releases publish only into build folders.
+
+``microcosm-publish-release`` (``microcosm.data.publish_cli``) committed a
+release's files to Hugging Face directly, tagged them and wrote a
+``latest*.json`` pointer file. Once the US, UK and BE release repositories all
+recorded their builds in ``releases.json``, it refused every one of them, and
+``microcosm-publish-release-build`` publishes each build through the emitter
+instead. These tests check that the tagged publisher is gone and that the
+checks both commands shared stay with the build-folder publication.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import re
+import tomllib
+
+import microcosm.data
+from microcosm.data import release as release_module
+from microcosm.data import source_enrichment
+from test_support.paths import REPOSITORY_ROOT
+
+#: The tagged publisher's public names, none of which is left.
+TAGGED_PUBLISHER_NAMES = ("publish_release", "prepare_release", "PreparedRelease")
+
+#: How code ran the tagged publisher: its module, by any import, its command
+#: (but not ``microcosm-publish-release-build``), its shell wrapper, the
+#: functions only it had, or its Slack alert. (The emitter interface's own
+#: ``publish_release`` call stays, so that name is not searched for.)
+TAGGED_PUBLISHER_REFERENCE = re.compile(
+    r"\bpublish_cli\b|microcosm-publish-release(?!-build)|publish_release\.sh"
+    r"|\bprepare_release\b|\bPreparedRelease\b|\bnotify_release\b"
+    r"|microcosm\.data\.slack"
+)
+#: The files searched: code, shell scripts, configuration, workflows and the
+#: tools' own READMEs. The packages' JSON data is left out for its size.
+SEARCHED_SUFFIXES = {".py", ".sh", ".example", ".toml", ".md", ".yml", ".yaml"}
+
+
+def test_no_package_installs_the_tagged_publish_command() -> None:
+    scripts = {
+        name: target
+        for pyproject in sorted((REPOSITORY_ROOT / "packages").glob("*/pyproject.toml"))
+        for name, target in tomllib.loads(pyproject.read_text())["project"]
+        .get("scripts", {})
+        .items()
+    }
+
+    assert "microcosm-publish-release" not in scripts
+    assert not [
+        name
+        for name, target in scripts.items()
+        if target.startswith("microcosm.data.publish_cli")
+    ]
+
+
+def test_the_tagged_publisher_and_its_slack_alert_are_gone() -> None:
+    assert importlib.util.find_spec("microcosm.data.publish_cli") is None
+    assert importlib.util.find_spec("microcosm.data.slack") is None
+
+
+def test_no_module_exports_the_tagged_publisher() -> None:
+    for name in TAGGED_PUBLISHER_NAMES:
+        assert not hasattr(microcosm.data, name), name
+        assert name not in microcosm.data.__all__, name
+        assert not hasattr(release_module, name), name
+        assert name not in release_module.__all__, name
+
+
+def test_the_tagged_publishers_receipt_enrichment_check_is_gone() -> None:
+    """``is_receipt_enrichment`` served only the tagged publisher's refusal to
+    move ``latest.json`` to a reported-receipt enrichment; a build folder's
+    release (``microcosm-us-2024-receipt-donor``) does that work now."""
+    assert not hasattr(source_enrichment, "is_receipt_enrichment")
+
+
+def test_the_shared_publication_checks_live_beside_build_folder_preparation(
+    tmp_path,
+) -> None:
+    publication_refusal = getattr(release_module, "publication_refusal", None)
+    assert callable(publication_refusal)
+    assert "publication_refusal" in release_module.__all__
+    (tmp_path / "build_manifest.json").write_text(json.dumps({"non_release": True}))
+
+    refusal = publication_refusal(tmp_path, allow_missing_staging=True)
+
+    assert refusal is not None
+    assert "non-release smoke output" in refusal
+
+
+def test_no_tool_or_package_runs_the_tagged_publisher() -> None:
+    assert not (REPOSITORY_ROOT / "tools/publish_release.sh").exists()
+    searched = [
+        *sorted((REPOSITORY_ROOT / "tools").rglob("*")),
+        *sorted((REPOSITORY_ROOT / "packages").glob("*/src/**/*")),
+        *sorted((REPOSITORY_ROOT / ".github/workflows").glob("*")),
+    ]
+    references = [
+        f"{source.relative_to(REPOSITORY_ROOT)}:{number}"
+        for source in searched
+        if source.is_file() and source.suffix in SEARCHED_SUFFIXES
+        for number, text in enumerate(
+            source.read_text(errors="replace").splitlines(), start=1
+        )
+        if TAGGED_PUBLISHER_REFERENCE.search(text)
+    ]
+
+    assert references == []

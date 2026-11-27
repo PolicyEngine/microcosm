@@ -195,7 +195,8 @@ register(
 # builds in releases.json. The pull request that authorizes a k's first
 # publication adds its registry entry (docs/release-contract.md, C5).
 # microcosm.data.contract.publishes_to_build_folder admits the release only
-# once an entry here names it, and both publishers refuse it before then.
+# once an entry here names it, and microcosm-publish-release-build refuses it
+# before then.
 
 register(
     DatasetSpec(

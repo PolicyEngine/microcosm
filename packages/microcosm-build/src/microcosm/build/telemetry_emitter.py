@@ -108,9 +108,10 @@ SETUP_WARNING = (
 STARTUP_TIMEOUT_SECONDS = 15.0
 #: The package data file that holds the oldest emitter release a build
 #: starts, ``MINIMUM_EMITTER_VERSION``. It is the one place the release is
-#: written: the Modal stage runner (``tools/modal_us_stage_plan.py``), which
-#: imports nothing from the workspace, reads the same file by its path in the
-#: checkout that launches it, and installs at least that release in its image.
+#: written: the US Modal stage runner (``tools/modal_us_stage_plan.py``) and
+#: the UK Modal launcher (``tools/modal_uk_cut.py``), which import nothing
+#: from the workspace, read the same file by its path in the checkout that
+#: launches them, and install at least that release in their images.
 MINIMUM_EMITTER_VERSION_RESOURCE = "minimum_emitter_version.json"
 _RELEASE_NUMBER = re.compile(r"(\d+)\.(\d+)\.(\d+)")
 

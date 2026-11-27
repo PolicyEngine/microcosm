@@ -2803,7 +2803,7 @@ def test_a_line_link_of_this_repository_is_refused_where_a_dot_segment_forms_its
     dockerfile = (
         "docs/evidence/us-release-reimputation-1191/scripts/platform/Dockerfile"
     )
-    sums = "packages/microcosm-build/tests/fixtures/staging/v1/SHA256SUMS"
+    sums = "packages/microcosm-build/tests/fixtures/staging/v2/SHA256SUMS"
     code_span = 'Use `prefix="` before the value.\n\n'
     # markdown-it-py 4.2 and parse5 7.3 render each of these, and bun 1.3's
     # ``URL`` resolves each, to a link to a line of a file here, and github.com
@@ -2892,7 +2892,7 @@ _OTHER_REPOSITORY_PATHS = (
 _FILES_NO_READING_CITES = (
     "LICENSE",
     "docs/evidence/us-release-reimputation-1191/scripts/platform/Dockerfile",
-    "packages/microcosm-build/tests/fixtures/staging/v1/SHA256SUMS",
+    "packages/microcosm-build/tests/fixtures/staging/v2/SHA256SUMS",
 )
 
 
@@ -2934,7 +2934,7 @@ _FILES_NO_READING_CITES = (
     other="PolicyEngine/x%2f..%2fmicrocosm",
     route="blame",
     ref="a1b2c3d",
-    path="packages/microcosm-build/tests/fixtures/staging/v1/SHA256SUMS",
+    path="packages/microcosm-build/tests/fixtures/staging/v2/SHA256SUMS",
     query="",
     fragment="#L{a}-L{b}",
     sha="a1b2c3d",

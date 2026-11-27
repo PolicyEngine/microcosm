@@ -148,7 +148,6 @@ def test_the_donor_is_a_build_of_its_own_release_never_the_national_default(
 ) -> None:
     _build(lineage)
     certified = _certify(lineage, monkeypatch, [])
-    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("use no Hub"))
     # The release contract replays the H5 comparison and the loader checks,
     # which take the parent H5 and the tested wheels.
     options = {"parent_h5": lineage.parent, "compatibility_wheels": _WHEELS}
@@ -170,11 +169,6 @@ def test_the_donor_is_a_build_of_its_own_release_never_the_national_default(
         contract.RECEIPT_DATASET_FILENAME: _artifacts(lineage)
         / contract.RECEIPT_DATASET_FILENAME
     }
-    # The tag publisher, which writes latest.json, refuses it.
-    with pytest.raises(ValueError, match="microcosm-publish-release-build"):
-        publisher.prepare_release(
-            certified, artifact_root=_artifacts(lineage), **options
-        )
     # The same build named as a build of the national release is refused: it
     # is not that release's lineage, and its file is not that release's
     # dataset file.

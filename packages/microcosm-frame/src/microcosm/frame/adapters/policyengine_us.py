@@ -952,14 +952,43 @@ class PolicyEngineUSEngine:
             ValueError: If a computed array's length does not match its
                 entity table (a structural mismatch the kernel refuses to
                 pass through).
+
+        A caller that has to inspect or release the engine afterwards calls
+        :meth:`build_microsimulation` and :meth:`calculate_variables` itself;
+        this method is those two calls.
+        """
+        simulation = self.build_microsimulation(bundle, period)
+        return self.calculate_variables(simulation, bundle, variables, period)
+
+    def build_microsimulation(self, bundle: Frame, period: int | str) -> Any:
+        """The ``Microsimulation`` :meth:`materialize` computes on.
+
+        The dataset holds the bundle's entity tables for ``period`` alone,
+        with the bundle's household weights as ``household_weight``, and the
+        engine receives this adapter's SPM selection. The caller owns the
+        engine: it can read what the engine computed and release it.
         """
         microsimulation_class = self._import_policyengine_us().Microsimulation
         tables = self._engine_tables(bundle)
         dataset = self._read_year_dataset(tables, period)
-        simulation = microsimulation_class(
+        return microsimulation_class(
             dataset=dataset,
             **({"spm": dict(self._spm)} if self._spm is not None else {}),
         )
+
+    def calculate_variables(
+        self,
+        simulation: Any,
+        bundle: Frame,
+        variables: Sequence[str],
+        period: int | str,
+    ) -> dict[str, np.ndarray]:
+        """Calculate ``variables`` for ``period`` on an engine built from ``bundle``.
+
+        Returns one array per variable, row-aligned to the variable's entity
+        table in the bundle, and raises ``ValueError`` when an array's length
+        differs from that table's, as :meth:`materialize` does.
+        """
         results: dict[str, np.ndarray] = {}
         for name in variables:
             entity = self._entity_of(name)

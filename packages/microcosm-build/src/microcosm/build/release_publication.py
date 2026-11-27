@@ -18,9 +18,9 @@ while one exists. So the command lists the repository's files first and
 refuses, before any emitter starts, while any pointer file is there: in a
 repository without ``releases.json`` it says the switch has not run, since
 the loader follows those files and the switch reads them, and in one with
-it, that the file appeared after the switch and should be removed. The
-tagged publisher refuses these releases, and any repository that has
-``releases.json``.
+it, that the file appeared after the switch and should be removed. No
+other command publishes a release: the tagged publisher, which committed,
+tagged and wrote pointer files on the Hub directly, is gone.
 
 ``microcosm-withdraw-release-build`` (:func:`withdraw_release_build`) names a
 published build by its repository, release and build and hands its
@@ -122,13 +122,13 @@ from microcosm.data.contract import (
     is_be_release,
     publishes_to_build_folder,
 )
-from microcosm.data.publish_cli import publication_refusal
 from microcosm.data.release import (
     TAGGED_RELEASE_ADVICE,
     BuildFolderRelease,
     build_folder_identity,
     not_a_build_folder_release_reason,
     prepare_build_folder_release,
+    publication_refusal,
 )
 from microcosm.data.releases_record import RELEASES_RECORD_PATH
 
@@ -636,8 +636,7 @@ def _refuse_recertification_as_current(release_dir: Path | str) -> None:
     """Refuse to make a compatibility recertification its release's current build.
 
     A recertification republishes its parent's data under a wider
-    compatibility claim. As with the tagged publisher, which never moved
-    ``latest.json`` to one, it is published without becoming current, and
+    compatibility claim, so it is published without becoming current, and
     consumers load it with ``build=``.
     """
     from microcosm.data import compatibility_recertification
@@ -674,8 +673,8 @@ def publish_release_build(
     emitter starts, when the repository still has ``latest*.json`` pointer
     files; it hands nothing over unless the emitter's write-access check
     passes. A recertification is handed over only once the Hub shows its
-    parent published with the manifest it carries, as the tagged publisher
-    required, and never with ``make_current``. Once the publication has
+    parent published with the manifest it carries, and never with
+    ``make_current``. Once the publication has
     landed, it waits at most ``collector_wait_seconds`` for the collector to
     accept the build's submissions.
     """
@@ -982,9 +981,9 @@ def _claim_records(release_dir: Path) -> dict[str, Any]:
 
 
 def _print_claim_records(records: Mapping[str, Any]) -> None:
-    """Say a build's compatibility records on stderr, as the tagged command
-    did, on the preflight and on publication, which needs no preflight
-    first; the preflight's verdict on stdout carries them too."""
+    """Say a build's compatibility records on stderr, on the preflight and
+    on publication, which needs no preflight first; the preflight's verdict
+    on stdout carries them too."""
     if "narrowed_claims" in records:
         print(
             "note: this build records a compatibility narrowing from an "

@@ -516,8 +516,8 @@ def test_batches_read_from_their_files_equal_the_written_h5s_batches(
     path = _write_engine_h5(builder, tmp_path, _GUARD_HOUSEHOLDS)
     written = builder._load_frame(path, expected_sha256=builder._sha256(path))
     expected = [
-        builder._select_households_by_position(written, positions)
-        for positions in builder._household_position_batches(written.n("household"), 3)
+        builder.select_households_by_position(written, positions)
+        for positions in builder.household_position_batches(written.n("household"), 3)
     ]
     scorer = builder._HouseholdBatchedPostExportScorer(
         path, maximum_microsim_batch_size=3

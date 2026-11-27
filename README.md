@@ -100,7 +100,8 @@ added `microcosm-emitter status`, which the US Modal stage runner runs after
 each stage to record how many telemetry events the stage's emitter left
 undelivered. The release is
 written once, in `packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`,
-which builds read as package data and the Modal image's install step reads
+which builds read as package data and the install steps of the Modal images
+(the US stage runner's and the UK launcher's, `tools/modal_uk_cut.py`) read
 from the launching checkout. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the
@@ -154,8 +155,10 @@ make their own attempt ID (see
 [the Modal stage runbook](docs/us-modal-stage-runbook.md#how-a-run-works),
 item 6).
 
-US fiscal refresh builds also write pre-release staging run files **by
-default**. The build hands its run files to the emitter, which commits them
+US fiscal refresh builds, exact-count builds among them, and their
+certifications also write pre-release staging run files **by default**, in the
+same version 2 format as UK builds (microcosm#1135). The build hands its run
+files to the emitter, which commits them
 to `policyengine/populace-us-staging` when the run starts, when each result
 file is produced and when the run ends; the build's hosted telemetry carries
 its progress in between. Before the build reports how it ended, the emitter
@@ -165,16 +168,29 @@ whose details name the check `staging_final_commit` (best-effort: no
 emitter, a missing token, a failed commit or a failed read-back never fails
 the build), so every candidate shows up on the staging dashboard before it is
 published. A SIGTERM during the build closes the staging run as failed and
-the build exits 143; one that arrives during that final check only ends the
-check. Disable these files with `--no-staging`, or point them
-elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An *empty*
-`POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and staging with
-no destination at all is an argparse error. `--no-staging` does not disable
-the local telemetry emitter service.
+the build exits 143; one that arrives while a failing build closes its run, or
+during that final check, only ends that step, and the build keeps its own exit
+status. A build whose release checks fail once its record is written (exit 3)
+closes its run as `blocked`. Disable these files with `--no-staging`, or point
+them elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An
+*empty* `POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and
+staging with no destination at all is an argparse error. `--staging-dir` is
+the local root (`<out>/staging` by default): the run's files go to
+`<dir>/runs/<run_id>/`, and without a repository the run is local-only.
+`--no-staging` does not disable the local telemetry emitter service, and a
+staging error only warns: it never stops the build or its hosted telemetry.
 
-The build manifest records what staging did: the run id, the destination, and
-how many files actually reached it, or an explicit `enabled: false` for a
-declared opt-out. `microcosm-publish-release-build` **refuses** a build that
+Each result file the build attaches is one the US build reviewed against
+version 2's content rules (`US_STAGING_RESULT_FILES`): it is staged at
+`runs/<run_id>/artifacts/<name>.json`, and those that hold rows of aggregates
+(per state, age band, program, reform or target) may, within their own size
+limit, up to the emitter's 32 MiB for `calibration_diagnostics`. A file the
+checks refuse stays in the build directory, with a warning.
+
+The build manifest records the run's version 2 delivery summary: the run id,
+the destination, how many files the emitter attempted and committed, and the
+last error, or a disabled summary with its reason for a declared opt-out.
+`microcosm-publish-release-build` **refuses** a build that
 meant to stage and delivered nothing (`--allow-missing-staging` overrides); a
 declared `--no-staging` build publishes without the flag:
 
@@ -184,8 +200,9 @@ python tools/build_us_fiscal_refresh_release.py \
   --out /tmp/microcosm-build
 ```
 
-This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
-final candidate diagnostics under `runs/<run_id>/` in the staging repository.
+This writes `run_manifest.json`, `progress.json`, `events.ndjson`,
+`calibration_progress.json` and the candidate's result files under
+`runs/<run_id>/` in the staging repository.
 The build stops once its H5 and its own gates' verdicts are written, at
 `<out>/build_record.json`, so it can be evaluated first; nothing it writes is
 publishable. To publish it, certify it with
@@ -705,17 +722,18 @@ only its tag, so existing builds' references keep working.
 read: at `main` from `releases/<release>/<build>/`, or at the tag from
 `releases/<id>/`.
 
-**No release publishes with tags.** `microcosm-publish-release` (and
-`tools/publish_release.sh`, a thin wrapper that passes every argument straight
-through) refuses every release that publishes into build folders and any
-repository that has `releases.json`, so it publishes no UK or US release.
-The UK repository's switch moved the June 2023 build, which `latest.json`
-named, into its own folder as the only and current build of release
-`populace-uk-2023`; `microcosm.data.load("uk", 2023)` reads it there, and no
-new builds publish to that release. `populace-uk-<year>-<tier>-k<N>` releases
-have no publication path in the UK repository since its switch: the emitter
-command takes only the releases above, and the tagged publisher refuses
-a repository that has `releases.json`. A US annual-projection build publishes
+**No release publishes with tags.** Every release that
+`publishes_to_build_folder` names publishes each build into its own folder
+with `microcosm-publish-release-build`, and no other release publishes. The
+tagged publisher,
+`microcosm-publish-release`, which committed, tagged and wrote `latest*.json`
+pointer files on the Hub directly, has been removed, with
+`tools/publish_release.sh`. The UK repository's switch moved the June 2023
+build, which `latest.json` named, into its own folder as the only and current
+build of release `populace-uk-2023`; `microcosm.data.load("uk", 2023)` reads it
+there, and no new builds publish to that release.
+`populace-uk-<year>-<tier>-k<N>` releases have no publication path: the
+emitter command takes only the releases above. A US annual-projection build publishes
 into `microcosm-us-2024-annual`, carrying its base national build's files
 ([the annual guide](docs/us-annual-static-aging.md)); its base is a
 calibrated national build, not yet a source enrichment. An annual projection
@@ -925,8 +943,9 @@ which writes the build's own files to `<out>/build/`, and records in
 directory certification places it in, `<out>/releases/microcosm-us-2024-national/`,
 the command that certifies it, `publish_command`, `promote_command` and
 `promotion`, a sentence saying that promoting makes the build the US default. The launcher runs
-neither command (`automatic_publish: false`, `makes_current: false`), and it
-forces `--no-staging`, so the build sends no staging run files.
+neither command (`automatic_publish: false`, `makes_current: false`). The
+build and its certification stage like any other US build, under the build's
+ID; the launcher's `--no-staging` passes the opt-out on.
 `publish_command` lists the build in the national release without making it
 current; until `promote_command` makes it current, it loads only by name,
 with `microcosm.data.load("us", build="<build>")`.
@@ -950,14 +969,10 @@ The US switch deleted every `latest*.json` file, so
 `microcosm.data.latest_evidence_release`, which still reads
 `latest-evidence.json`, finds no pointer in the US repository.
 
-The tagged publisher posts a Slack alert when it moves `latest.json`, and only
-when the channel's incoming-webhook URL is set (`SLACK_WEBHOOK_POPULACE_US`,
-`SLACK_WEBHOOK_POPULACE_UK`), which `tools/publish_release.sh` loads from
-`tools/release.env` and warns about when neither is set. It publishes no UK or
-US release since the two repositories' switches, so no publication reads
-either variable: the calibration diagnostics dashboard posts every UK and US
-release alert from changes to `releases.json`. `tools/release.env` still
-holds the UK release key below; create it once on the build machine:
+No release command posts a Slack alert: `microcosm-publish-release-build`
+sends none, and the calibration diagnostics dashboard posts release alerts
+from changes to `releases.json`. `tools/release.env` holds the UK release key
+below; create it once on the build machine:
 
 ```bash
 cp tools/release.env.example tools/release.env   # then fill in the values

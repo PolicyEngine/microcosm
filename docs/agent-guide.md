@@ -396,14 +396,12 @@ lists and prints both commands (microcosm#1800).
 need no calibration on the base before a build, and again with the finished
 build's `--release-manifest`. The emitter changes
 no current build while any `latest*.json` pointer file exists; the UK and US
-repositories' switches to `releases.json` deleted them. The tagged publisher
-(`tools/publish_release.sh` → `microcosm-publish-release`) refuses every one of
-these releases and any repository that has `releases.json`, so no UK or US
-release publishes with tags. The UK repository's switch moved the June 2023 UK
-build into release `populace-uk-2023`, which takes no new builds, and
-`populace-uk-<year>-<tier>-k<N>` releases have no publication path there. This
-holds for the US from its repository's switch commit; Microcosm's US change
-(microcosm#1570) merges straight after it. Tests hand release changes to the
+repositories' switches to `releases.json` deleted them. No release publishes
+with tags: the tagged publisher (`microcosm-publish-release`) has been
+removed, and `microcosm-publish-release-build` takes only the releases that
+`publishes_to_build_folder` names. The UK repository's switch moved the June
+2023 UK build into release `populace-uk-2023`, which takes no new builds, and
+`populace-uk-<year>-<tier>-k<N>` releases have no publication path. Tests hand release changes to the
 in-memory client (`client.release_requests`), which applies them to
 `hub_files` with the interface's shared `releases.json` checks. See README
 "Releasing & alerts". Before launching a US
@@ -637,12 +635,14 @@ and writes local annual H5 files without running the base graph or publishing.
 See [the annual candidate guide](us-annual-static-aging.md). Its completion
 manifest is build evidence, not release certification.
 Optional annual release metadata invokes additional artifact, identity, and
-acceptance checks alongside the normal release checks. Annual builds pin every file
-to one `<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag, and a build folder
-pins no revision, so an annual build has no publication path in the US
-repository since its switch to `releases.json`: the tagged publisher refuses
-that repository. Qualify source-enrichment bases before adding annual metadata,
-in the candidate guide's qualification order.
+acceptance checks alongside the normal release checks. An annual build of the
+tagged layout pins every file to one
+`<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag, so it has no publication
+path: a build folder pins no revision, and the tagged publisher, which took
+such builds, has been removed. A new annual build is a build of
+`microcosm-us-2024-annual` in its own folder, pins no revision and publishes
+with `microcosm-publish-release-build`. Qualify source-enrichment bases before
+adding annual metadata, in the candidate guide's qualification order.
 
 ## Concept schema and engine mappings
 

@@ -159,6 +159,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1686: the five SIPP donor modules import the shared read
         # of the SIPP person file.
         "microcosm.build.us_runtime.sipp_december_person_rows",
+        # microcosm#1776: us_runtime.other_health_insurance runs its premium
+        # batches through us_runtime.household_batches.
+        "microcosm.build.us_runtime.household_batches",
         # microcosm#1405: the gate battery refuses a signing key the committed
         # registry does not let sign, so it imports
         # microcosm.data.gate_signing_keys, and with it the microcosm.data
@@ -179,7 +182,6 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         "microcosm.data.registry",
         "microcosm.data.release",
         "microcosm.data.releases_record",
-        "microcosm.data.slack",
         "microcosm.data.source_enrichment",
         "microcosm.data.stored_inputs",
         "microcosm.data.us_critical_targets",
@@ -589,7 +591,10 @@ class TestImplementationHashes:
         # w4 adds the leaf and exactly the modules it imports that the
         # bindings did not already reach (the graph package among them).
         # microcosm#1073 adds us_runtime.scf_education_debt, which the
-        # us_runtime package imports, so the base now holds 198.
+        # us_runtime package imports, so the base held 198; microcosm#1135
+        # deletes microcosm.build.staging, which the microcosm.build package
+        # imported, and with it microcosm.build.staging_storage, which
+        # nothing else in the base imports, so the base now holds 196.
         # Modules the bindings later reach without the leaf are listed in
         # BINDING_MODULES_ADDED_AFTER_BASE.
         modules = set()
@@ -597,7 +602,7 @@ class TestImplementationHashes:
             _, digests = binding_identity.describe(binding, path=name)
             modules |= set(digests)
         assert len(modules) == (
-            198 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
+            196 + len(BINDING_MODULES_ADDED_AFTER_BASE) + len(LEAF_ADDED_MODULES)
         )
         assert BINDING_MODULES_ADDED_AFTER_BASE <= modules
         assert LEAF_ADDED_MODULES <= modules
