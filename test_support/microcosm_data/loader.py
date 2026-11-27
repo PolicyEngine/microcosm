@@ -18,124 +18,6 @@ from huggingface_hub.errors import GatedRepoError, RepositoryNotFoundError
 
 import microcosm.data.loader as loader
 from microcosm.data import DEFAULT_VARIANT, download, latest_year, load, resolve
-from microcosm.data.release import LATEST_POINTER_PATH, latest_pointer_payload
-
-#: Release id served by the hub fixture. Any well-formed id works: nothing in
-#: this suite may assert which release the live Hub currently points at,
-#: because re-certification moves ``latest.json`` without a commit here.
-RELEASE_ID = "populace-us-2024-buildi-sparse-rmloss100-6e8e929-20260709T034135Z"
-TAGGED_ARTIFACT = b"certified release artifact"
-MUTABLE_ROOT_ARTIFACT = b"uncertified in-flight root artifact"
-
-
-def _release_manifest(
-    *,
-    artifact_content: bytes = TAGGED_ARTIFACT,
-    release_id: str = RELEASE_ID,
-) -> dict:
-    return {
-        "schema_version": 1,
-        "data_package": {"name": "microcosm-data", "version": "0.1.0"},
-        "default_datasets": {"national": "populace_us_2024"},
-        "build": {
-            "build_id": release_id,
-            "built_with_core_package": {
-                "name": "policyengine-core",
-                "version": "3.26.11",
-            },
-            "built_with_model_package": {
-                "name": "policyengine-us",
-                "version": "1.764.6",
-            },
-        },
-        "compatible_core_packages": [
-            {"name": "policyengine-core", "specifier": "==3.26.11"}
-        ],
-        "compatible_model_packages": [
-            {"name": "policyengine-us", "specifier": "==1.764.6"}
-        ],
-        "artifacts": {
-            "populace_us_2024": {
-                "kind": "microdata",
-                "path": "populace_us_2024.h5",
-                "repo_id": "policyengine/populace-us",
-                "revision": release_id,
-                "sha256": hashlib.sha256(artifact_content).hexdigest(),
-            }
-        },
-    }
-
-
-class FakeHubDownload:
-    """Serve mutable and release-tagged files while recording every request."""
-
-    def __init__(self, tmp_path: Path, *, manifest: dict | None = None) -> None:
-        pointer = latest_pointer_payload(
-            RELEASE_ID, updated_at="2026-07-09T04:00:00+00:00"
-        )
-        manifest = manifest or _release_manifest()
-        self.tmp_path = tmp_path
-        self.calls: list[tuple[str, str, str | None]] = []
-        self.files: dict[tuple[str, str, str | None], Path] = {}
-        self._add(
-            tmp_path,
-            "policyengine/populace-us",
-            LATEST_POINTER_PATH,
-            None,
-            json.dumps(pointer).encode(),
-        )
-        self._add(
-            tmp_path,
-            "policyengine/populace-us",
-            pointer["paths"]["release_manifest"],
-            RELEASE_ID,
-            json.dumps(manifest).encode(),
-        )
-        self._add(
-            tmp_path,
-            "policyengine/populace-us",
-            "populace_us_2024.h5",
-            RELEASE_ID,
-            TAGGED_ARTIFACT,
-        )
-        self._add(
-            tmp_path,
-            "policyengine/populace-us",
-            "populace_us_2024.h5",
-            None,
-            MUTABLE_ROOT_ARTIFACT,
-        )
-
-    def _add(
-        self,
-        tmp_path: Path,
-        repo_id: str,
-        filename: str,
-        revision: str | None,
-        content: bytes,
-    ) -> None:
-        revision_dir = revision or "main"
-        local = tmp_path / "hub" / revision_dir / filename
-        local.parent.mkdir(parents=True, exist_ok=True)
-        local.write_bytes(content)
-        self.files[(repo_id, filename, revision)] = local
-
-    def __call__(
-        self,
-        *,
-        repo_id: str,
-        filename: str,
-        repo_type: str,
-        revision: str | None = None,
-    ) -> str:
-        assert repo_type == "dataset"
-        self.calls.append((repo_id, filename, revision))
-        try:
-            return str(self.files[(repo_id, filename, revision)])
-        except KeyError as exc:
-            raise FileNotFoundError(
-                f"{repo_id}/{filename} at revision {revision!r}"
-            ) from exc
 
 
 def _patch_engine(
@@ -177,7 +59,12 @@ def _hf_offline() -> bool:
 
 
 def _is_offline_error(exc: Exception) -> bool:
-    """Recognize transport/offline failures without hiding bad release metadata."""
+    """Recognize transport/offline failures without hiding bad release metadata.
+
+    The check applies to ``exc`` and to each exception in its ``__cause__``
+    chain, each once: offline, the loader refuses a ``releases.json`` never
+    cached with a ``ValueError`` whose cause is the Hub client's error.
+    """
     offline_names = {
         "ConnectError",
         "ConnectTimeout",
@@ -187,14 +74,21 @@ def _is_offline_error(exc: Exception) -> bool:
         "ProxyError",
         "ReadTimeout",
     }
-    closed_after_retry = isinstance(exc, RuntimeError) and str(exc) == (
-        "Cannot send a request, as the client has been closed."
-    )
-    return (
-        isinstance(exc, (ConnectionError, TimeoutError))
-        or closed_after_retry
-        or any(cls.__name__ in offline_names for cls in type(exc).__mro__)
-    )
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while isinstance(current, Exception) and id(current) not in seen:
+        seen.add(id(current))
+        closed_after_retry = isinstance(current, RuntimeError) and str(current) == (
+            "Cannot send a request, as the client has been closed."
+        )
+        if (
+            isinstance(current, (ConnectionError, TimeoutError))
+            or closed_after_retry
+            or any(cls.__name__ in offline_names for cls in type(current).__mro__)
+        ):
+            return True
+        current = current.__cause__
+    return False
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

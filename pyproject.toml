@@ -49,13 +49,12 @@ ignore = ["E501"]
 # TID251, huggingface_hub outside the emitter. Datasets and the release
 # metadata that selects and verifies them: the loader, the publisher's
 # listing of the repository (its parent and annual base checks, and its
-# refusal of BE-era latest*.json pointer files, which 5b removes), a UK
+# refusal of any latest*.json pointer file in the repository), a UK
 # national build's reference build and releases.json (run_uk_cut.py also
 # fetches its build inputs), the policyengine.py certification, the US
 # recertification and the quick-start notebook. release.py's Hub error checks
 # (missing_on_hub, never_cached_offline), which the loader's releases.json
-# read uses, also import it, as do its readers of latest*.json pointer files,
-# which substage 5b removes.
+# read uses, also import it.
 "packages/microcosm-data/src/microcosm/data/loader.py" = ["TID251"]
 "packages/microcosm-data/src/microcosm/data/release.py" = ["TID251"]
 "packages/microcosm-build/src/microcosm/build/release_publication.py" = ["TID251"]

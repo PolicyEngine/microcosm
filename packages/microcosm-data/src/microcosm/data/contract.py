@@ -120,7 +120,6 @@ __all__ = [
     "compatibility_claim_declarer_error",
     "is_be_release",
     "is_us_release",
-    "line_for_release_id",
     "publishes_to_build_folder",
     "release_artifact_role",
     "release_dataset_role",
@@ -189,7 +188,7 @@ REQUIRED_RELEASE_FILES = (
 
 # Dataset-role classes (microcosm#398). The national default keeps the full
 # historical contract; a non-default local-area artifact gets its own
-# contract and can never move the latest.json pointer.
+# contract and never takes the national default's place.
 NATIONAL_DEFAULT_DATASET_ROLE = "national_default"
 NON_DEFAULT_LOCAL_AREA_DATASET_ROLE = "non_default_local_area"
 
@@ -1024,40 +1023,6 @@ _UK_LOCAL_LINE_RELEASE_ID_RE = re.compile(
 )
 
 
-def line_for_release_id(release_id: str) -> str | None:
-    """Return the ``<line>`` name of the ``latest-<line>.json`` pointer file.
-
-    Each such pointer file named the current build of one UK release before
-    those releases published into build folders: ``national`` for the national
-    release and ``local-k<N>`` for a local-area one. Only the pointer reader
-    still needs it.
-    """
-    if release_id == _UK_NATIONAL_RELEASE_ID:
-        return "national"
-    match = _UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(release_id)
-    if match is not None:
-        return f"local-k{match.group('n')}"
-    return None
-
-
-def dataset_role_for_line(line: str) -> str:
-    """The one dataset role a publication line may carry.
-
-    The national line carries national-default releases; every local-area
-    line carries non-default local-area releases. The loader refuses a
-    manifest that reached a ``latest-<line>.json`` pointer with the wrong
-    role, so a local-area release can never ride the national pointer (or
-    the reverse) on the strength of its release id alone. Nothing writes
-    those pointers any more; the loader still follows them in a repository
-    that has no ``releases.json``.
-    """
-    if line == "national":
-        return NATIONAL_DEFAULT_DATASET_ROLE
-    if re.fullmatch(r"local-k[1-9][0-9]*", line):
-        return NON_DEFAULT_LOCAL_AREA_DATASET_ROLE
-    raise ValueError(f"{line!r} is not a publication line.")
-
-
 # The dense joint national + local release (microcosm#762 A18, ruling
 # 2026-09-03): the same constant-id approach, published as a non-default
 # local-area release, each build into its own folder. Mirrored from
@@ -1138,23 +1103,6 @@ _UK_DENSE_SIGNED_EXCLUSION_GATES = (
     "uk_local_target_fit",
     "uk_input_mass_parity",
 )
-# The per-build tag shape UK national and local-area builds were tagged with
-# before the switch: the release, then the calibration attempt's time and
-# digest. The pointer-file reader and writer in microcosm.data.release check a
-# latest-<line>.json revision against it, so a hand-edited or stale pointer
-# cannot name a tag outside the release's builds.
-_UK_NATIONAL_REVISION_SUFFIX_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
-
-
-def _uk_line_cut_tag_re(release_id: str) -> re.Pattern[str] | None:
-    """Return the immutable cut-tag grammar for a promotable UK line."""
-    if line_for_release_id(release_id) is None:
-        return None
-    return re.compile(
-        re.escape(release_id) + "-" + _UK_NATIONAL_REVISION_SUFFIX_RE.pattern
-    )
-
-
 # The canonical release-dir filenames of the evidence the certification signs
 # (tools/assemble_uk_release_dir.py copies each byte-for-byte). Validation
 # binds every local file to its signed digest: a certification whose evidence
@@ -7672,8 +7620,7 @@ def release_dataset_role(release_dir: Path | str) -> str:
 
     Read from ``release_manifest.json``'s ``dataset_role``. An absent field
     or unreadable manifest is the national default — the pre-role-class
-    shape — so every historical release keeps its meaning; the publish path
-    separately refuses pointer updates for any non-default role.
+    shape — so every historical release keeps its meaning.
     """
 
     manifest_path = Path(release_dir) / "release_manifest.json"

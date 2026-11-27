@@ -106,8 +106,8 @@ changed what the registry names and how the loader reaches it:
 - For every entry, the loader (`_resolve_certified_release`) reads the
   repository's `releases.json` and loads the release's current build, or a
   listed build that `build=` pins, from `releases/<release>/<build>/`. It
-  follows the entry's pointer file (`latest.json` or `latest-national.json`)
-  only where the repository has no `releases.json`.
+  refuses a repository without `releases.json` and reads no pointer file
+  (microcosm#1794).
 - The registry names no entry for the other four US releases or for any UK
   local-area release, so `microcosm.data.load` reaches none of them.
 - The US tools now write builds of standing releases. The fiscal-refresh tool
@@ -284,11 +284,12 @@ national line's tagged `build_id` held the release's name and `attempt_id` and
 its top level. Each artifact carries its role. No artifact pins a revision,
 because `releases.json` and the folder locate a build's files. Both layouts
 carry `schema_version` 1, and `publishes_to_build_folder` tells them apart. A
-build that the switch tool (`microcosm.build.build_folder_switch`) moved from
-its tag also carries `migrated_from`, which names the tag, its commit and the
-SHA-256 of the manifest the tool rewrote. A build it moved from an untagged
-folder on `main` (`--include-untagged`, for BE's builds) carries instead the
-old folder, the commit that last changed it and that SHA-256. Its `artifacts`
+build that the one-time switch tool moved from its tag also carries
+`migrated_from`, which names the tag, its commit and the SHA-256 of the
+manifest the tool rewrote. The tool was removed once the US, UK and BE
+repositories had moved; its last version is in Git history at `d3b7f4b4a`. A
+build it moved from an untagged folder on `main` (BE's builds) carries
+instead the old folder, the commit that last changed it and that SHA-256. Its `artifacts`
 lists the files its folder holds, each with its `path`, `repo_id`, `role` and
 `sha256` but no `kind`, and `unpublished_artifacts` keeps, unchanged, the map
 the old manifest had, which declares files of the builder's output directory
@@ -307,7 +308,7 @@ tagged-shape manifests in a directory named after the release and then call
 both manifests in place. The US annual assembler copies its base build's two
 manifests, changes `release` and `build` in both, drops `migrated_from`, and in
 the release manifest adds the annual metadata and an artifact for each file the
-projection adds. The switch tool rewrites the manifests of the builds it moves.
+projection adds. The switch tool rewrote the manifests of the builds it moved.
 
 The **certification** is UK-only. The validator requires
 `release_certification.json` of `microcosm-uk-2024-25-national`. Whatever its
@@ -362,11 +363,7 @@ both:
   `publishes_to_build_folder` before anything else, and `build_folder_identity`
   refuses the same names inside `publish_release_build` and
   `promote_release_build`. So no command publishes a new country's release
-  until it joins `publishes_to_build_folder`. `line_for_release_id` still knows only
-  `microcosm-uk-2024-25-national` and `microcosm-uk-2024-25-local-k<N>`. Its
-  remaining callers serve pointer files: `latest_line_release`, which the
-  loader's pointer reader calls, and `line_pointer_payload`, which no publisher
-  calls.
+  until it joins `publishes_to_build_folder`.
 
 The registry also disagrees with the name about the year. The registry files
 the UK national release under `("uk", 2025, "compact")`, the UK 2025 default
@@ -379,7 +376,9 @@ release's name cannot match; microcosm#1144 reported the failure from a live
 run. On 2026-11-12 the test requires a release that the loader reads through
 `releases.json` to carry the registry entry's release name exactly, and
 requires a release that the loader reaches through a line pointer only to start
-with `microcosm-<country>-`.
+with `microcosm-<country>-`. Since microcosm#1794 the loader reaches no
+release through a pointer file, so the test requires the entry's release name
+for every entry.
 
 #### Version 1, planned for M3: dispatch on the declared country
 
@@ -434,7 +433,7 @@ C1 version 1 dispatches on what the manifest declares instead of on its name:
    comparisons in `contract.py` and 13 in `release.py`. `loader.py` holds
    none, and `compatibility_recertification.py`, `source_enrichment.py`,
    `annual_projections.py` and `build_folder_manifests.py` hold more.
-   `line_for_release_id` leaves with the pointer reader instead. A schema-2 US
+   `line_for_release_id` left with the pointer reader (microcosm#1794). A schema-2 US
    build then cannot skip the US checks by choosing another name.
 3. **Unknown countries fail closed.** The validator refuses them instead of
    falling back to the base set. The plan registers NZ before the switch to
@@ -508,11 +507,11 @@ that `microcosm-publish-release-build` accepts.
 
 **microcosm.data's loader.** `_package_certification` reads
 `compatible_model_packages` and `compatible_core_packages` from the release
-manifest, in either layout. It keeps each entry that names the package and
+manifest of a build in its own folder. It keeps each entry that names the package and
 refuses a specifier that PEP 440 cannot parse. It then refuses the release
 unless an entry remains and the built version satisfies one of them. It reads
-the built version from a build-folder manifest's top level and from a tagged
-manifest's `build` object. At load, `_enforce_package_compatibility` refuses
+the built version from the manifest's top level; since microcosm#1794 the
+loader reads no tagged manifest. At load, `_enforce_package_compatibility` refuses
 unless the installed model package and the installed `policyengine-core` each
 satisfy one of their specifiers. Only `load` runs that check: `download`,
 `resolve_certified` and `download_certified` read and verify the same manifest
@@ -888,9 +887,9 @@ either. No publication command reads a Logbook row.
 The UK national, dense and local-area releases and the six US releases
 publish each build into its own folder, `releases/<release>/<build>/`. The
 repository's `releases.json` records each release's builds and names the
-current one. For those releases the `latest*.json` pointer files survive as
-read-only legacy: nothing writes one for them, and code reads one only for a
-repository that has no `releases.json`.
+current one. No repository holds a `latest*.json` pointer file: each
+repository's switch to `releases.json` deleted them, and Microcosm neither
+reads nor writes one (microcosm#1794).
 
 - **The releases.** `publishes_to_build_folder` names the releases that
   publish into build folders: the UK national release
@@ -985,47 +984,43 @@ repository that has no `releases.json`.
   listed release or `null`) and `releases`; for each release its `role`, its
   `current` build or `null`, and each build's `published_at` and `withdrawn`;
   a current build that the record lists and has not withdrawn; at most 4 MiB.
-  The record carries no country, vintage or line. The one-time `switch` step
-  of `microcosm.build.build_folder_switch` writes a repository's first record
-  itself and deletes the repository's `latest*.json` files in the same
-  commit; after that only the emitter's release writer changes the record.
-  The switch's `copy` step moves each tagged build into a folder and rewrites
-  its manifests, as C1 describes. Its `delete-old-layout` step then deletes,
-  in one commit, the files the tagged layout leaves on `main`: every file
+  The record carries no country, vintage or line. The one-time switch tool's
+  `switch` step wrote the first record of each of the US, UK and BE
+  repositories itself and deleted the repository's `latest*.json` files in
+  the same commit; after that only the emitter's release writer changes the
+  record. Before it, the tool's `copy` step moved each build into a folder and
+  rewrote its manifests, as C1 describes. Its `delete-old-layout` step then
+  deleted, in one commit, the files the old layout left on `main`: every file
   under `releases/` outside a build folder, and every dataset file (`.h5`,
-  `.hdf5`, `.npz`) at the repository's root. It keeps `releases.json`, every
+  `.hdf5`, `.npz`) at the repository's root. It kept `releases.json`, every
   build folder the record lists, the other root files and every directory
-  outside `releases/`, and it refuses a repository without `releases.json`,
-  one that still has a `latest*.json` pointer file, and a build folder the
-  record does not list. Each tagged build stays readable at its tag, and each
-  deleted file stays in `main`'s history.
-- **The pointer files.** Nothing writes a pointer file. The tagged publisher,
-  `microcosm-publish-release`, which uploaded a tagged build's files, created
-  its immutable tag and wrote `latest.json` or `latest-evidence.json` last, has
-  been removed, with `tools/publish_release.sh`. Each pointer is a schema-1
-  JSON document at the repository root; `latest.json` holds `schema_version`,
-  `release_id`, `updated_at`, and `paths` to the contract files. The payload
-  builders remain: the readers (through `_read_pointer`) and
-  `_current_evidence_build` call `latest_pointer_payload` to name the files a
-  pointer or an evidence build holds, and only tests call
-  `line_pointer_payload` and `latest_evidence_pointer_payload`. Three readers
-  of pointer files remain. The
-  loader follows `latest.json` (`latest_release`) or `latest-<line>.json`
-  (`latest_line_release`) only for an entry whose repository has no
-  `releases.json`. `latest_evidence_release` returns the evidence release's
-  current build from `releases.json` where the file exists, and reads
-  `latest-evidence.json` otherwise. The switch reads the pointer files once, to
-  set each release's current build and the record's `default`.
+  outside `releases/`, and it refused a repository without `releases.json`,
+  one that still had a `latest*.json` pointer file, and a build folder the
+  record did not list. Each tagged build stays readable at its tag, and each
+  deleted file stays in `main`'s history. The tool was removed once BE had
+  moved.
+- **The pointer files.** Nothing reads or writes a pointer file. The tagged
+  publisher, `microcosm-publish-release`, which uploaded a tagged build's
+  files, created its immutable tag and wrote `latest.json` or
+  `latest-evidence.json` last, has been removed, with
+  `tools/publish_release.sh`. Each pointer was a schema-1 JSON document at
+  the repository root; `latest.json` held `schema_version`, `release_id`,
+  `updated_at`, and `paths` to the contract files. microcosm#1794 removed the
+  loader's fallback to them, the readers `latest_release`,
+  `latest_line_release` and `latest_evidence_release`, and the payload
+  builders `latest_pointer_payload`, `line_pointer_payload` and
+  `latest_evidence_pointer_payload`. The switch tool read each repository's
+  pointer files once, to set each release's current build and the record's
+  `default`.
 - **The registry.** `microcosm.data.registry.REGISTRY` maps `(country, year,
   variant)` to a `DatasetSpec`. Each names the Hub repository, the dataset
-  file, the engine class, the `release` the loader reads through
-  `releases.json`, and the pointer file the loader follows where the
-  repository has no `releases.json`. The registry holds four entries:
+  file, the engine class, and the `release` the loader reads through
+  `releases.json`, which every entry must name. The registry holds four
+  entries:
   - `("uk", 2023, "compact")`: the June 2023 build, release
     `populace-uk-2023`;
   - `("uk", 2025, "compact")`: release `microcosm-uk-2024-25-national`, the
-    UK 2025 default load since microcosm#1432 (2026-11-02), with
-    `latest-national.json` as its pointer file;
+    UK 2025 default load since microcosm#1432 (2026-11-02);
   - `("uk", 2025, "dense")`: release `microcosm-uk-2024-25-dense`;
   - `("us", 2024, "compact")`: release `microcosm-us-2024-national`, whose
     builds declare `microcosm_us_2024.h5` (`build_folder_filename`) or
@@ -1039,11 +1034,12 @@ repository that has no `releases.json`.
   release or build, declares a role other than the release's role in
   `releases.json`, pins a revision on any artifact, or declares a dataset whose
   role differs from `dataset`, whose repository differs from the registry's, or
-  whose file name the entry does not list. The loader goes to the entry's
-  pointer file only when the Hub answers that `releases.json` is absent or,
-  offline, when the cache never held the record. The loader ignores the
-  record's `default`: the registry chooses the release.
-  `load(unverified_root=True)` refuses a repository that has `releases.json`.
+  whose file name the entry does not list. When the Hub answers that
+  `releases.json` is absent, or offline when the cache never held the
+  record, the loader refuses the entry, naming the file; any other failure to
+  read it propagates. The loader ignores the record's `default`: the registry
+  chooses the release. `load` has no option to read a root dataset file,
+  which no repository holds.
 - **The gaps.** The registry has no entry for the US local-area release
   `microcosm-us-2024-local`, whose builds carry the US state and district
   file, or for any UK `local-k<N>` release. policyengine.py's bundle, read on
@@ -1108,10 +1104,12 @@ work.
     removed the tagged publisher, no command publishes such a release.
   - *The NZ and AM declarations.* Each country's `release_contract.json`
     (under `packages/microcosm-build/src/microcosm/build/`) names
-    `latest.json` in its boundary. Each country's owner changes its file
-    before that country's first publication. BE's names `releases.json` and
-    the `releases/<release>/<build>/` folders instead since microcosm#1741,
-    and its required files are the ones `BE_REQUIRED_RELEASE_FILES` lists,
+    `releases.json` in its boundary and the `releases/<release>/<build>/`
+    folders in its policy since microcosm#1794, as BE's has since
+    microcosm#1741. Neither country has a release name in
+    `publishes_to_build_folder` or a registry entry yet, so neither
+    publishes; each country's owner adds them before its first publication.
+    BE's required files are the ones `BE_REQUIRED_RELEASE_FILES` lists,
     which a build-shard test holds equal.
   - *BE's registry entry and staging* (microcosm#1741). BE's releases joined
     `publishes_to_build_folder` without a registry entry: there is no
@@ -1129,19 +1127,11 @@ work.
     first build validates. Until that build publishes, the registry names a
     release with no published build: `available_variants()` lists the entry,
     and `load` raises because `releases.json` does not list the release.
-    `line_for_release_id` keeps its pattern, because the pointer reader still
-    calls it.
   - *The tagged publisher.* On 2026-11-12 `microcosm-publish-release` and
     `tools/publish_release.sh` stayed installed and sat on the
-    [retire list](#retire-list-as-of-2026-10-15); #1796 removed them. Loading a
-    tagged build that never moved into a folder stays.
-  - *Pointer readers.* The loader's fallback (`DatasetSpec.pointer_path`,
-    `latest_release`, `latest_line_release`) and the `latest-evidence.json`
-    fallback in `latest_evidence_release` still resolve through `latest*.json`.
-    `microcosm.data` still exports `latest_release`, which reads `latest.json`
-    without looking for `releases.json`; until #1796 it also exported
-    `publish_release`, which wrote it. They leave once no registered repository lacks `releases.json`. The
-    plan names no owner or milestone for them yet.
+    [retire list](#retire-list-as-of-2026-10-15); #1796 removed them. A
+    tagged build that never moved into a folder stays readable by its path
+    at its tag; the loader reads no tagged build (microcosm#1794).
   - *policyengine.py's pins.* Its bundle, read on 2026-11-11 at 5b6d7901c,
     pins builds by tag; version 1 pins each by release and build in its
     folder. Its UK national and local-area builds have been pinned that way
@@ -1149,9 +1139,11 @@ work.
     `tools/certify_uk_cut_in_policyengine_py.py` certifies a UK build only
     from its folder (#1762).
   - *The default.* The loader takes each country's default release from the
-    registry. `releases.json` also names a `default`: in this repository only
-    the switch tool sets it, and no loader reads it. The gap: no check at
-    publication confirms that the record's `default` agrees with the registry.
+    registry. `releases.json` also names a `default`: the one-time switch
+    tool set it once in each of the US, UK and BE repositories, nothing in
+    this repository sets it now, and no loader reads it. The gap: no check at
+    publication confirms that the record's `default` agrees with the registry,
+    and nothing here sets it for a new repository, such as AM's or NZ's.
   - *The evidence release.* Its builds answer to
     `validate_evidence_release_dir` and fail C1 by design. The
     [retire list](#retire-list-as-of-2026-10-15) names it as an exception:
@@ -1214,7 +1206,7 @@ version 1 takes that shape.
 | Milestone | Planned | Contract change | Owner | On main, 2026-11-12 |
 | --- | --- | --- | --- | --- |
 | M0 | 2026-10-16 | This document and the golden fixtures; nothing refuses | Max's session | microcosm#1285, which adds this document |
-| M1 | 2026-10-23 | A UK national cut on policyengine-uk ≥ 2.122.2 with staging version 3, a Logbook row and a certification; the registry's UK default flips to it | juaristi22 | The registry flip, in microcosm#1432 (merged 2026-11-02). Since microcosm#1505 the entry also names release `microcosm-uk-2024-25-national`, and the loader reads that release's current build from `releases.json` where the repository has one. microcosm#1574 (merged 2026-11-11) moved the national certification to schema 2, which adds `reference` and `since_baseline`, and renamed the score receipt to `score_vs_reference.json`. This document does not check the current build's staging, Logbook row or certification on the Hub |
+| M1 | 2026-10-23 | A UK national cut on policyengine-uk ≥ 2.122.2 with staging version 3, a Logbook row and a certification; the registry's UK default flips to it | juaristi22 | The registry flip, in microcosm#1432 (merged 2026-11-02). Since microcosm#1505 the entry also names release `microcosm-uk-2024-25-national`, and the loader reads that release's current build from `releases.json`. microcosm#1574 (merged 2026-11-11) moved the national certification to schema 2, which adds `reference` and `since_baseline`, and renamed the score receipt to `score_vs_reference.json`. This document does not check the current build's staging, Logbook row or certification on the Hub |
 | M2 | 2026-10-30 | `us/gates.json` and the US adapter (C1); the US writes staging version 3 and a Logbook row and records `producer` (C3, C4); staging version 1 goes; the registry gains an entry for the US local-area release, which carries the state and district file (C5); one compatibility rule in both loaders and, at publication, for every role (C2) | Max's session, PavelMakarchuk, anth-volk | Only `us/gates.json`, which the US tools evaluate in shadow without the adapter (microcosm#1585 item 11); the fiscal-refresh tool composes no certification, still writes staging version 1 through `StagingRunBundleWriter` and records no Logbook row; no release manifest records a `producer`; the registry has no entry for `microcosm-us-2024-local`; `_check_local_area_release_manifest` checks no compatibility list; and microcosm.data's loader keeps today's containment rule. policyengine.py, at 5b6d7901c on 2026-11-11, keeps its three bases and the `legacy_compatible_model_package` label |
 | M3 | 2026-11-06 | Release manifest schema 2 and declared-country dispatch; the validator refuses unknown countries, which also closes a new country's tagged publish; `microcosm-publish-release-build` refuses non-conforming builds, derived builds included; the staging re-delivery command; policyengine.py's registry check | Max's session, juaristi22, anth-volk | None of it: `RELEASE_MANIFEST_SCHEMA_VERSION` is 1; `required_release_files`, `_expected_model_package` and `publishes_to_build_folder` still key on the release name, and an unknown name still gets the base file set; `microcosm-publish-release-build` runs the nine checks that C5 lists under "Order" and adds none of M3's: no check it runs asks for a `run_outcome`, a Logbook row or a manifest's declared `country`, and `required_release_files` names `release_certification.json` for `microcosm-uk-2024-25-national` alone; C1's other certification rule keys on the gate files a directory carries, not on a declared country. `test_release_contract_keying.py`, which arrives with this document, pins today's keying. This document has not looked for policyengine.py's registry check |
 
@@ -1320,7 +1312,7 @@ with the interface's own functions, in the order a repository lives it.
 `add_build(make_current=False)` lists the build, as a publication does.
 `make_current` makes it current, as a promotion does.
 `dataclasses.replace(default=...)` then names the national release as the
-record's `default`, as the switch tool's `_switch_record` does; interface
+record's `default`, as the one-time switch tool did; interface
 0.14.0 has no function that sets `default`. `ReleasesRecord.serialize` writes
 the bytes. Each release takes the role `national`: the UK's from
 `RELEASE_ROLES` and the national line's dataset role, the US's from
@@ -1475,8 +1467,8 @@ release and the tagged publisher joined the table on 2026-11-11.
 | `tools/build_uk_rowwise_dataset.py` | Kept. The report's reason, that the graph driver already takes `--candidate-clone-counts`, does not settle it: both drivers accept the flag only for a dry run. `docs/uk-full-build-graph.md` keeps the row-wise driver as a separate driver, and Max had not ruled on UK-3 (dense or local-k) by 2026-10-15 | Both drivers still accept the flag only for a dry run |
 | `format_uk_release_id`, `apply_uk_release_identity` | This milestone deletes them, with `UKReleaseIdentity`, which builds on `format_uk_release_id`: none had a caller outside its own tests and the `uk_runtime` re-export. The tier vocabulary and the line ids stay | On main none has a caller outside its own tests and the `uk_runtime` re-export |
 | Stale text, microcosm.institute `/calibration`, the evidence tier | A separate task owns them (task_d2b70813) | Not read again. For the evidence tier, see the next row |
-| The US evidence release, `microcosm-us-2024-evidence` | On this list since 2026-10-15, as the evidence tier | A named exception: version 1 neither admits it to the contract nor retires it. microcosm#1571 made it a standing release in `US_RELEASES`, with the `national` role. `tools/certify_us_national_build.py --evidence-release` places its builds there: a build has no tier, and certification chooses it (microcosm#1585 item 11). `prepare_build_folder_release` checks them with `validate_evidence_release_dir`; they carry schema `1-evidence` and fail C1's certified contract by design. The registry names no entry for it, so `microcosm.data.load` never serves it. No module under `packages/*/src` or `tools/` calls `latest_evidence_release`. Whoever retires the release must first find, from code, the readers of the evidence release and of `latest_evidence_release` |
-| The tagged publisher: `microcosm-publish-release` and `tools/publish_release.sh` | Not on the report's list | On the list from 2026-11-11. Since then removed (#1796), once the US, UK and BE repositories all recorded their builds in `releases.json`: the command, the wrapper, `publish_release`, `prepare_release` and the Slack alert only `publish_release` sent. No command publishes a release that `publishes_to_build_folder` does not name. Loading a tagged build that never moved into a folder stays |
+| The US evidence release, `microcosm-us-2024-evidence` | On this list since 2026-10-15, as the evidence tier | A named exception: version 1 neither admits it to the contract nor retires it. microcosm#1571 made it a standing release in `US_RELEASES`, with the `national` role. `tools/certify_us_national_build.py --evidence-release` places its builds there: a build has no tier, and certification chooses it (microcosm#1585 item 11). `prepare_build_folder_release` checks them with `validate_evidence_release_dir`; they carry schema `1-evidence` and fail C1's certified contract by design. The registry names no entry for it, so `microcosm.data.load` never serves it. `latest_evidence_release`, which no module called, left with the pointer readers (microcosm#1794). Whoever retires the release must first find, from code, the readers of the evidence release |
+| The tagged publisher: `microcosm-publish-release` and `tools/publish_release.sh` | Not on the report's list | On the list from 2026-11-11. Since then removed (#1796), once the US, UK and BE repositories all recorded their builds in `releases.json`: the command, the wrapper, `publish_release`, `prepare_release` and the Slack alert only `publish_release` sent. No command publishes a release that `publishes_to_build_folder` does not name. A tagged build that never moved into a folder stays readable by its path at its tag; the loader reads no tagged build (microcosm#1794) |
 | microcosm-benchmarks, the calibration-diagnostics evaluation harness, policyengine-data's calibrate module | Each lives in another repository; proposed as a separate task (task_18c2af98) | Not read again |
 | cos d816 | Ruled 2026-10-09 (per-country Core pins, microcosm#1143) | The same |
 | cos d928 | Parked; its 2026-10-10 note records it resolved on main (the plan-2 exclusions renewed to 2026-11-03). Nothing to rule | Still parked. On main the plan-2 exclusions read approved on 2026-10-23 and expire on 2027-01-23 |

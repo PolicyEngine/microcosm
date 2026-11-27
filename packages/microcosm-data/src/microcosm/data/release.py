@@ -1,4 +1,4 @@
-"""Check a release build before it publishes, and read release pointer files.
+"""Check a release build before it publishes.
 
 A release publishes each build into its own folder,
 ``releases/<release>/<build>/``, when
@@ -23,36 +23,22 @@ publication.
 Before each repository switched to ``releases.json``, its builds were
 published under ``releases/<build_id>/`` with a tag each, and a
 ``latest.json`` pointer file at its root named the current release and the
-path of each of its contract files. The tagged publisher that wrote those
-pointer files is gone; the readers here still follow them.
-:func:`latest_release` reads ``latest.json`` and returns the typed pointer,
-and :func:`latest_line_release` reads the schema-1 ``latest-<line>.json``
-pointers that made the UK national and local-area releases current. Those
-add the fields ``line`` and ``revision``, so each could name an immutable
-per-build tag without changing the repository-global ``latest.json``.
-
-The EVIDENCE tier (microcosm#506) moved ``latest-evidence.json``, never
-``latest.json``, and :func:`latest_evidence_release` reads it. Since the US
-switch, an evidence-tier build is a build of
-:data:`~microcosm.data.contract.US_EVIDENCE_RELEASE_ID` instead, whose
-current build in ``releases.json`` takes the place of
-``latest-evidence.json``. The switch deleted every ``latest*.json`` file, and
-:func:`latest_evidence_release` reads that current build instead.
-
-The Hub client is injected (``api=``) everywhere it is used, so the tests
-read pointers from a fake Hub, with no network.
+path of each of its contract files. Each repository's switch deleted its
+``latest.json``, the UK releases' ``latest-<line>.json`` files and the US
+repository's ``latest-evidence.json``, and Microcosm neither reads nor
+writes pointer files: ``releases.json`` names each release's current build.
+Since the US switch, an evidence-tier build (microcosm#506) is a build of
+:data:`~microcosm.data.contract.US_EVIDENCE_RELEASE_ID`, whose current
+build in ``releases.json`` took the place of ``latest-evidence.json``.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import posixpath
-import re
 import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 
 from microcosm.data.contract import (
@@ -60,230 +46,29 @@ from microcosm.data.contract import (
     BUILD_MANIFEST_FILE_ROLE,
     CHECKSUMS_FILE,
     CHECKSUMS_FILE_ROLE,
-    EVIDENCE_RELEASE_ID_SEGMENT,
     NATIONAL_DEFAULT_DATASET_ROLE,
     RELEASE_MANIFEST_FILE_ROLE,
     RELEASE_ROLES,
     US_EVIDENCE_RELEASE_ID,
     US_RELEASES,
-    _uk_line_cut_tag_re,
-    line_for_release_id,
     publishes_to_build_folder,
-    required_release_files,
     unregistered_uk_local_release,
     validate_evidence_release_dir,
     validate_release_dir,
-)
-from microcosm.data.releases_record import (
-    RELEASES_RECORD_PATH,
-    build_folder,
-    parse_releases_record,
 )
 
 __all__ = [
     "BUILD_FOLDER_PUBLICATION_COMMAND",
     "BuildFolderFile",
     "BuildFolderRelease",
-    "LATEST_EVIDENCE_POINTER_PATH",
-    "LATEST_POINTER_PATH",
-    "LATEST_POINTER_SCHEMA_VERSION",
-    "LINE_POINTER_PATH_TEMPLATE",
-    "RELEASE_TIER_CERTIFIED",
-    "RELEASE_TIER_EVIDENCE",
     "TAGGED_RELEASE_ADVICE",
     "UNREGISTERED_UK_LOCAL_RELEASE_ADVICE",
-    "LatestPointer",
     "build_folder_identity",
     "prepare_build_folder_release",
-    "latest_evidence_pointer_payload",
-    "latest_line_release",
-    "latest_pointer_payload",
-    "line_pointer_path",
     "missing_on_hub",
     "not_a_build_folder_release_reason",
-    "line_pointer_payload",
     "publication_refusal",
-    "latest_release",
-    "latest_evidence_release",
 ]
-
-#: Where the pointer lives in the dataset repo. The root, not a release
-#: directory: the pointer is repo state, not release state.
-LATEST_POINTER_PATH = "latest.json"
-
-#: Per-line pointers coexist with the frozen repository-global pointer.
-LINE_POINTER_PATH_TEMPLATE = "latest-{line}.json"
-
-_LINE_RE = re.compile(r"^[a-z]+(-k[1-9][0-9]*)?$")
-#: The evidence-tier pointer (microcosm#506): which evidence release is the
-#: best *current* one. A separate file at the repo root, so certified
-#: consumers reading ``latest.json`` (and the pe.py certification path built
-#: on it) can never pick up an evidence artifact by accident.
-LATEST_EVIDENCE_POINTER_PATH = "latest-evidence.json"
-
-#: Version of the pointer payload itself, so the pointer can evolve without
-#: consumers guessing (the same discipline the release manifest learned).
-LATEST_POINTER_SCHEMA_VERSION = 1
-
-#: Publication tiers (microcosm#506). Certified is the default everywhere;
-#: the evidence tier is opted into explicitly and carries its tier in the
-#: pointer payload, the release id, and the release manifest.
-RELEASE_TIER_CERTIFIED = "certified"
-RELEASE_TIER_EVIDENCE = "evidence"
-
-
-@dataclass(frozen=True)
-class LatestPointer:
-    """A parsed release pointer: which release is current, and where.
-
-    Attributes:
-        release_id: The current build id (the ``releases/`` directory name).
-        updated_at: ISO-8601 UTC timestamp of when the pointer was written.
-        paths: Repo-relative path of each contract file, keyed by its stem
-            (``"build_manifest"``, ``"release_manifest"``,
-            ``"calibration_diagnostics"``, plus country-specific contract
-            files such as US source coverage).
-        tier: The publication tier the pointer names —
-            :data:`RELEASE_TIER_CERTIFIED` for ``latest.json`` (whose payload
-            predates tiers and carries no field), or
-            :data:`RELEASE_TIER_EVIDENCE` for ``latest-evidence.json``.
-        revision: Revision to fetch. Repository-global and evidence
-            pointers default to ``release_id``, an immutable tag; a line
-            pointer may name another tag; an evidence build in a build folder
-            is read at ``main``, at which its folder never changes.
-        line: Publication line for ``latest-<line>.json``; otherwise ``None``.
-    """
-
-    release_id: str
-    updated_at: str
-    paths: dict[str, str]
-    tier: str = RELEASE_TIER_CERTIFIED
-    revision: str | None = None
-    line: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.revision is None:
-            object.__setattr__(self, "revision", self.release_id)
-
-
-def latest_pointer_payload(
-    release_id: str,
-    *,
-    updated_at: str | None = None,
-    calibration_diagnostics_available: bool = True,
-) -> dict:
-    """The ``latest.json`` payload for ``release_id``.
-
-    Paths are derived from the release contract — the pointer names exactly
-    the files :func:`~microcosm.data.contract.required_release_files`
-    guarantees exist for this release id.
-
-    Args:
-        release_id: The build id being made current.
-        updated_at: ISO-8601 UTC timestamp; defaults to now.
-    """
-    if updated_at is None:
-        updated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
-    return {
-        "schema_version": LATEST_POINTER_SCHEMA_VERSION,
-        "release_id": release_id,
-        "updated_at": updated_at,
-        "paths": {
-            filename.removesuffix(".json"): f"releases/{release_id}/{filename}"
-            for filename in required_release_files(release_id)
-            if calibration_diagnostics_available
-            or filename != "calibration_diagnostics.json"
-        },
-    }
-
-
-def line_pointer_path(line: str) -> str:
-    """Return the reserved root pointer path for a publication line."""
-    if _LINE_RE.fullmatch(line) is None:
-        raise ValueError(
-            f"invalid release line {line!r}; expected ^[a-z]+(-k[1-9][0-9]*)?$"
-        )
-    if line == "evidence":
-        # The grammar would render latest-evidence.json, the evidence-tier
-        # pointer: refused at the grammar, not only downstream.
-        raise ValueError(
-            "release line 'evidence' collides with the evidence-tier pointer "
-            f"{LATEST_EVIDENCE_POINTER_PATH}; it is not a publication line."
-        )
-    return LINE_POINTER_PATH_TEMPLATE.format(line=line)
-
-
-def line_pointer_payload(
-    release_id: str,
-    *,
-    line: str,
-    revision: str,
-    updated_at: str | None = None,
-    calibration_diagnostics_available: bool = True,
-) -> dict:
-    """Build a schema-1 per-line pointer naming an immutable revision."""
-    line_pointer_path(line)
-    expected_line = line_for_release_id(release_id)
-    if line != expected_line:
-        raise ValueError(
-            f"release {release_id!r} belongs to line {expected_line!r}, not {line!r}."
-        )
-    cut_tag_re = _uk_line_cut_tag_re(release_id)
-    if (
-        not isinstance(revision, str)
-        or not revision
-        or not (
-            revision == release_id
-            or (cut_tag_re is not None and cut_tag_re.fullmatch(revision) is not None)
-        )
-    ):
-        raise ValueError(
-            f"revision {revision!r} is not the release id {release_id!r} or "
-            "a per-cut tag in that release's line family."
-        )
-    return {
-        **latest_pointer_payload(
-            release_id,
-            updated_at=updated_at,
-            calibration_diagnostics_available=calibration_diagnostics_available,
-        ),
-        "line": line,
-        "revision": revision,
-    }
-
-
-def latest_evidence_pointer_payload(
-    release_id: str,
-    *,
-    updated_at: str | None = None,
-    calibration_diagnostics_available: bool = True,
-) -> dict:
-    """The ``latest-evidence.json`` payload for ``release_id``.
-
-    Mirrors :func:`latest_pointer_payload` exactly, plus a ``tier`` field —
-    so evidence consumers reuse certified pointer tooling, while a reader
-    that lands on the wrong file sees the tier immediately.
-    """
-    return {
-        **latest_pointer_payload(
-            release_id,
-            updated_at=updated_at,
-            calibration_diagnostics_available=calibration_diagnostics_available,
-        ),
-        "tier": RELEASE_TIER_EVIDENCE,
-    }
-
-
-def _hf_api():
-    try:
-        from huggingface_hub import HfApi
-    except ImportError as exc:  # pragma: no cover - declared dependency
-        raise ImportError(
-            "microcosm-data needs huggingface_hub to read release pointers; "
-            "reinstall microcosm-data with its dependencies."
-        ) from exc
-    return HfApi()
-
 
 #: Where a build-folder release publishes from: the workspace command that
 #: hands each build to the emitter (``microcosm.build.release_publication``).
@@ -788,135 +573,11 @@ def _is_absent_entry_error(exc: BaseException) -> bool:
     return bool(names & _ABSENT_ENTRY_ERRORS) and "LocalEntryNotFoundError" not in names
 
 
-def _read_pointer(repo_id: str, api, *, pointer_path: str) -> dict:
-    """Download and structurally validate a release pointer file."""
-    if api is None:
-        api = _hf_api()
-    local = api.hf_hub_download(
-        repo_id=repo_id, filename=pointer_path, repo_type="dataset"
-    )
-    payload = json.loads(Path(local).read_text())
-    schema_version = payload.get("schema_version")
-    if schema_version != LATEST_POINTER_SCHEMA_VERSION:
-        raise ValueError(
-            f"{pointer_path} in {repo_id} has schema_version "
-            f"{schema_version!r}; this microcosm-data reads version "
-            f"{LATEST_POINTER_SCHEMA_VERSION}. Upgrade microcosm-data."
-        )
-    release_id = payload.get("release_id")
-    if not release_id:
-        raise ValueError(f"{pointer_path} in {repo_id} has no 'release_id'.")
-    paths = payload.get("paths")
-    if not isinstance(paths, dict):
-        raise ValueError(f"{pointer_path} in {repo_id} has no 'paths' object.")
-    expected_paths = latest_pointer_payload(str(release_id), updated_at="")["paths"]
-    observed_paths = {str(key): value for key, value in paths.items()}
-    missing_paths = sorted(set(expected_paths) - set(observed_paths))
-    if missing_paths == ["calibration_diagnostics"]:
-        missing_paths = []
-    unexpected_paths = sorted(set(observed_paths) - set(expected_paths))
-    malformed_paths = sorted(
-        key
-        for key in set(expected_paths) & set(observed_paths)
-        if observed_paths[key] != expected_paths[key]
-    )
-    if missing_paths or unexpected_paths or malformed_paths:
-        raise ValueError(
-            f"{pointer_path} in {repo_id} has incomplete paths: "
-            f"missing={missing_paths}, unexpected={unexpected_paths}, "
-            f"malformed={malformed_paths}."
-        )
-    return payload
-
-
-def latest_release(repo_id: str, *, api=None) -> LatestPointer:
-    """Read ``latest.json`` from a dataset repo: which release is current.
-
-    Args:
-        repo_id: Hub dataset repo, e.g. ``"policyengine/populace-us"``.
-        api: A ``huggingface_hub.HfApi``-shaped object (anything with
-            ``hf_hub_download(repo_id=, filename=, repo_type=)``);
-            constructed lazily when omitted.
-
-    Raises:
-        ValueError: If the pointer is malformed, its schema version is newer
-            than this library understands, or it carries a ``tier``, ``line``,
-            or ``revision`` field. Those fields belong to other pointer
-            families and must never be consumed as the certified default.
-    """
-    payload = _read_pointer(repo_id, api, pointer_path=LATEST_POINTER_PATH)
-    if "tier" in payload:
-        raise ValueError(
-            f"{LATEST_POINTER_PATH} in {repo_id} carries a 'tier' field "
-            f"({payload.get('tier')!r}); the certified pointer never does — "
-            f"evidence releases live at {LATEST_EVIDENCE_POINTER_PATH}."
-        )
-    for field in ("line", "revision"):
-        if field in payload:
-            raise ValueError(
-                f"{LATEST_POINTER_PATH} in {repo_id} carries a {field!r} field; "
-                "the repository-global certified pointer never does."
-            )
-    return LatestPointer(
-        release_id=str(payload["release_id"]),
-        updated_at=str(payload.get("updated_at", "")),
-        paths={str(k): str(v) for k, v in payload["paths"].items()},
-        tier=RELEASE_TIER_CERTIFIED,
-        revision=str(payload["release_id"]),
-    )
-
-
-def latest_line_release(repo_id: str, *, line: str, api=None) -> LatestPointer:
-    """Read and validate the schema-1 pointer for ``line``."""
-    pointer_path = line_pointer_path(line)
-    payload = _read_pointer(repo_id, api, pointer_path=pointer_path)
-    if "tier" in payload:
-        raise ValueError(
-            f"{pointer_path} in {repo_id} carries a 'tier' field; line pointers "
-            "are certified pointers, not evidence pointers."
-        )
-    pointer_line = payload.get("line")
-    if pointer_line != line:
-        raise ValueError(
-            f"{pointer_path} in {repo_id} declares line {pointer_line!r}, "
-            f"expected {line!r}."
-        )
-    release_id = str(payload["release_id"])
-    revision = payload.get("revision")
-    expected_line = line_for_release_id(release_id)
-    if line != expected_line:
-        raise ValueError(
-            f"{pointer_path} in {repo_id} names release {release_id!r}, which "
-            f"belongs to line {expected_line!r}, not {line!r}."
-        )
-    cut_tag_re = _uk_line_cut_tag_re(release_id)
-    if (
-        not isinstance(revision, str)
-        or not revision
-        or not (
-            revision == release_id
-            or (cut_tag_re is not None and cut_tag_re.fullmatch(revision) is not None)
-        )
-    ):
-        raise ValueError(
-            f"{pointer_path} in {repo_id} has revision {revision!r}, which is "
-            f"outside release {release_id!r}'s line family."
-        )
-    return LatestPointer(
-        release_id=release_id,
-        updated_at=str(payload.get("updated_at", "")),
-        paths={str(k): str(v) for k, v in payload["paths"].items()},
-        tier=RELEASE_TIER_CERTIFIED,
-        revision=revision,
-        line=line,
-    )
-
-
 def never_cached_offline(error: BaseException) -> bool:
     """Whether huggingface_hub is offline and the file was never cached.
 
-    Offline, the cache is all a reader has, so a ``releases.json`` that was
-    never cached reads as absent, as the pointer files then do.
+    Offline, the cache is all a reader has, so the loader refuses a
+    ``releases.json`` that was never cached, saying so.
     """
     try:
         from huggingface_hub import constants
@@ -924,109 +585,3 @@ def never_cached_offline(error: BaseException) -> bool:
     except ImportError:  # pragma: no cover - declared dependency
         return False
     return bool(constants.HF_HUB_OFFLINE) and isinstance(error, LocalEntryNotFoundError)
-
-
-def _releases_record_bytes(api: object, *, repo_id: str) -> bytes | None:
-    """The repository's ``releases.json``, or ``None`` when the Hub says it
-    has none, or, offline, when it was never cached
-    (:func:`never_cached_offline`); any other failure to read it propagates."""
-    try:
-        local = api.hf_hub_download(
-            repo_id=repo_id, filename=RELEASES_RECORD_PATH, repo_type="dataset"
-        )
-    except Exception as exc:
-        if missing_on_hub(exc) or never_cached_offline(exc):
-            return None
-        raise
-    return Path(local).read_bytes()
-
-
-def _current_evidence_build(repo_id: str, record_bytes: bytes) -> LatestPointer:
-    """The evidence release's current build in ``releases.json``, as a pointer."""
-    try:
-        record = parse_releases_record(record_bytes)
-    except ValueError as exc:
-        raise ValueError(
-            f"{RELEASES_RECORD_PATH} in {repo_id} is not a valid release record: {exc}."
-        ) from exc
-    release = US_EVIDENCE_RELEASE_ID
-    entry = record.releases.get(release)
-    if entry is None:
-        raise ValueError(
-            f"{RELEASES_RECORD_PATH} in {repo_id} does not list the evidence "
-            f"release {release!r}."
-        )
-    build = entry.current
-    if build is None:
-        raise ValueError(
-            f"The evidence release {release!r} in {repo_id} has no current build."
-        )
-    folder = build_folder(release, build)
-    paths = {
-        stem: f"{folder}/{posixpath.basename(path)}"
-        for stem, path in latest_pointer_payload(build, updated_at="")["paths"].items()
-    }
-    return LatestPointer(
-        release_id=build,
-        updated_at=entry.builds[build].published_at,
-        paths=paths,
-        tier=RELEASE_TIER_EVIDENCE,
-        revision="main",
-    )
-
-
-def latest_evidence_release(repo_id: str, *, api=None) -> LatestPointer:
-    """Read ``latest-evidence.json``: the best *current* evidence release.
-
-    The evidence-tier sibling of :func:`latest_release` (microcosm#506) — how
-    consumers discover the best available artifact when no certified release
-    carries it yet. Each evidence publish supersedes the last, so this
-    pointer always names the current one.
-
-    A repository that records its builds in ``releases.json`` (the US
-    repository since its switch, microcosm#1570) has no
-    ``latest-evidence.json``: its evidence tier is
-    :data:`~microcosm.data.contract.US_EVIDENCE_RELEASE_ID`, and this returns
-    that release's current build. ``release_id`` is then the build,
-    ``paths`` are in its folder ``releases/<release>/<build>/``,
-    ``revision`` is ``main``, at which a build folder never changes, and
-    ``updated_at`` is when the build was published.
-
-    Args:
-        repo_id: Hub dataset repo, e.g. ``"policyengine/populace-us"``.
-        api: A ``huggingface_hub.HfApi``-shaped object (anything with
-            ``hf_hub_download(repo_id=, filename=, repo_type=)``);
-            constructed lazily when omitted.
-
-    Raises:
-        ValueError: If the pointer is malformed, does not declare the
-            evidence tier, or names a release id without the
-            ``-evidence-`` segment; or, with ``releases.json``, if the
-            evidence release is not listed or has no current build.
-    """
-    if api is None:
-        api = _hf_api()
-    record_bytes = _releases_record_bytes(api, repo_id=repo_id)
-    if record_bytes is not None:
-        return _current_evidence_build(repo_id, record_bytes)
-    payload = _read_pointer(repo_id, api, pointer_path=LATEST_EVIDENCE_POINTER_PATH)
-    tier = payload.get("tier")
-    if tier != RELEASE_TIER_EVIDENCE:
-        raise ValueError(
-            f"{LATEST_EVIDENCE_POINTER_PATH} in {repo_id} declares tier "
-            f"{tier!r}; the evidence pointer must declare "
-            f"{RELEASE_TIER_EVIDENCE!r}."
-        )
-    release_id = str(payload["release_id"])
-    if EVIDENCE_RELEASE_ID_SEGMENT not in release_id:
-        raise ValueError(
-            f"{LATEST_EVIDENCE_POINTER_PATH} in {repo_id} names release "
-            f"{release_id!r}, which does not carry the "
-            f"{EVIDENCE_RELEASE_ID_SEGMENT!r} segment."
-        )
-    return LatestPointer(
-        release_id=release_id,
-        updated_at=str(payload.get("updated_at", "")),
-        paths={str(k): str(v) for k, v in payload["paths"].items()},
-        tier=RELEASE_TIER_EVIDENCE,
-    )

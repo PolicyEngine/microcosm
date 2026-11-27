@@ -23,7 +23,6 @@ from microcosm.data import release as release_module
 from microcosm.data.contract import (
     REQUIRED_RELEASE_FILES,
     ReleaseContractError,
-    line_for_release_id,
     publishes_to_build_folder,
     required_release_files,
     validate_release_dir,
@@ -159,8 +158,6 @@ def test_a_uk_local_area_release_publishes_only_once_the_registry_names_it(drawn
             k not in registered
         )
         reason = release_module.not_a_build_folder_release_reason(release_id)
-        assert line_for_release_id(release_id) == f"local-k{k}"
-    assert line_for_release_id(release_id) == f"local-k{k}"
     if k in registered:
         assert release_module.TAGGED_RELEASE_ADVICE in reason
     else:
@@ -186,18 +183,17 @@ def test_a_registered_k_admits_its_own_name_and_no_other():
 @pytest.mark.parametrize(
     "changes",
     (
-        {"release": None},
         {"release": contract._UK_DENSE_RELEASE_ID},
         {"release": "microcosm-uk-2024-25-local-k70"},
         {"country": "us"},
     ),
-    ids=("no-release", "another-release", "a-longer-k", "a-us-entry"),
+    ids=("another-release", "a-longer-k", "a-us-entry"),
 )
 def test_only_a_uk_entrys_release_admits_a_k(changes):
     """A ``k`` is registered by a UK entry's ``release`` and by nothing else.
     An entry whose variant and file name carry ``local-k7`` admits nothing
-    when its release is missing or names another release, and a US entry
-    that names the UK release admits nothing either."""
+    when its release names another release, and a US entry that names the UK
+    release admits nothing either."""
 
     release_id = _uk_local_release_id(7)
     spec = dataclasses.replace(uk_local_release_spec(release_id), **changes)
@@ -236,23 +232,6 @@ def test_registering_a_name_outside_the_local_area_grammar_admits_nothing(releas
     with mock.patch.dict(REGISTRY, {spec.key: spec}):
         assert not publishes_to_build_folder(release_id)
         assert not contract.unregistered_uk_local_release(release_id)
-
-
-@pytest.mark.parametrize(
-    "release_id", (*UNLISTED_IDS, TAGGED_US_ID, *contract.US_RELEASES)
-)
-def test_only_uk_names_have_a_pointer_line(release_id):
-    """``line_for_release_id`` gives the ``<line>`` of a ``latest-<line>.json``
-    pointer file, which only the pointer reader still needs. No US release and
-    no unlisted name has one."""
-
-    assert line_for_release_id(release_id) is None
-
-
-def test_the_uk_national_and_local_lines_are_the_only_lines():
-    assert line_for_release_id(contract._UK_NATIONAL_RELEASE_ID) == "national"
-    assert line_for_release_id("microcosm-uk-2024-25-local-k55000") == "local-k55000"
-    assert line_for_release_id(contract._UK_DENSE_RELEASE_ID) is None
 
 
 def test_the_registry_year_is_not_the_uk_national_releases_vintage():

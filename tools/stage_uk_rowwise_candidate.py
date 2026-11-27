@@ -77,7 +77,7 @@ lands, and the command waits up to ten minutes for the collector to accept
 them before it closes the emitter. A hand-over the command resumes keeps what
 the build named, and its collector receipt is followed the same way.
 
-Staging is not publication: ``releases/`` and ``latest.json`` are untouched.
+Staging is not publication: ``releases/`` and ``releases.json`` are untouched.
 """
 
 from __future__ import annotations

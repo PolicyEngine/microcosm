@@ -926,7 +926,7 @@ def test_the_command_refuses_a_repository_with_pointer_files_before_an_emitter(
 
 
 @pytest.mark.parametrize("promote", [False, True], ids=["publish", "promote"])
-def test_the_command_refuses_a_repository_that_has_not_switched_without_advising_removal(
+def test_the_command_refuses_pointer_files_in_a_repository_without_releases_json(
     national: Path,
     artifact_root: Path,  # noqa: F811
     monkeypatch,
@@ -934,10 +934,9 @@ def test_the_command_refuses_a_repository_that_has_not_switched_without_advising
     hub_listing: HubListing,
     promote: bool,
 ) -> None:
-    """Before its switch a repository has no releases.json, the loader
-    follows its pointer files and the switch reads them to choose each
-    release's current build, so the refusal says the repository has not
-    switched and does not advise removing them."""
+    """Nothing reads or writes pointer files, whether or not the repository
+    has releases.json yet, so the refusal is the same: remove them. It no
+    longer tells the operator to keep them for a switch."""
     started, repository = _start_emitters(monkeypatch)
     hub_listing.files.extend(["README.md", "latest.json", "latest-national.json"])
     argv = (
@@ -951,10 +950,13 @@ def test_the_command_refuses_a_repository_that_has_not_switched_without_advising
     assert code == 1
     assert started == []
     assert output is None
-    assert "has not switched to releases.json" in error
-    assert "latest-national.json" in error
-    assert "microcosm.build.build_folder_switch" in error
-    assert "remove" not in error
+    assert "latest.json" in error and "latest-national.json" in error
+    assert "remove the file(s)" in error
+    assert "has not switched" not in error
+    assert "loader" not in error
+    assert "python -m" not in error
+    assert "microcosm.build." not in error
+    assert "--write" not in error
     assert repository == {}
 
 

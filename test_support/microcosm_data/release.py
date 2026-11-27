@@ -1,7 +1,7 @@
 """Release fixtures: release directories, build folders and a fake Hub.
 
-The fake Hub client records every request, so the tests check what the
-pointer readers and build-folder publication read and refuse.
+The fake Hub client records every request, so the tests check what
+build-folder publication reads and refuses.
 """
 
 # ruff: noqa: F401
@@ -25,18 +25,6 @@ from microcosm.data.contract import (
     US_STORED_INPUTS_EVIDENCE_SCHEMA_VERSION,
     required_release_files,
     stored_input_evidence_manifest_block,
-)
-from microcosm.data.release import (
-    LATEST_EVIDENCE_POINTER_PATH,
-    LATEST_POINTER_PATH,
-    LATEST_POINTER_SCHEMA_VERSION,
-    latest_evidence_pointer_payload,
-    latest_evidence_release,
-    latest_line_release,
-    latest_pointer_payload,
-    latest_release,
-    line_pointer_path,
-    line_pointer_payload,
 )
 from microcosm.data.stored_inputs import register_sha256
 from test_support.microcosm_data.build_folders import (
@@ -948,13 +936,8 @@ def _as_us_national_build_folder_release(release_dir: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Evidence-tier publishing (microcosm#506)
+# Evidence-tier release directories (microcosm#506)
 # ---------------------------------------------------------------------------
-#
-# Evidence releases publish exactly like certified ones — contract-gated,
-# immutable tag first — except the pointer: they move latest-evidence.json,
-# and are structurally incapable of touching latest.json (the certified
-# pointer pe.py certification reads).
 
 EVIDENCE_RELEASE_ID = "populace-us-2024-evidence-9f1260b-20260611"
 

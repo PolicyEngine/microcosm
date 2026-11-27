@@ -1222,7 +1222,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--base-h5",
         type=Path,
-        help="Existing Microcosm US H5 to recalibrate. Defaults to HF latest.",
+        help=(
+            "Existing Microcosm US H5 to recalibrate. Defaults to the current "
+            "build of microcosm-us-2024-national in releases.json."
+        ),
     )
     parser.add_argument(
         "--pool-manifest",
@@ -3681,9 +3684,8 @@ def _download_base_h5() -> Path:
     """The base a run without ``--base-h5`` starts from: the US national
     release's current build, SHA-verified by the loader (microcosm#1570).
 
-    It is read from ``releases.json`` once the repository has one and from
-    ``latest.json`` until then. The repository's root file stops changing at
-    the switch, since builds published into folders write no root files.
+    It is read from ``releases.json``. The repository's root file stopped
+    changing at the US switch, which deleted it with ``latest.json``.
     """
     from microcosm.data import download
 

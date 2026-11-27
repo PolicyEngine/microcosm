@@ -3,8 +3,9 @@
 The distribution end of the stack. Where the operator shards
 (:mod:`microcosm.frame`, :mod:`microcosm.fit`, :mod:`microcosm.calibrate`) *build*
 populations, this shard *serves* the ones microcosm has published: a registry of
-``(country, year, variant)`` pointers to artifacts on the Hugging Face Hub, and
-a loader that returns each as the country engine's dataset object.
+``(country, year, variant)`` entries, each naming a release on the Hugging Face
+Hub, and a loader that returns a release's build as the country engine's
+dataset object.
 
     >>> from policyengine_us import Microsimulation
     >>> from microcosm.data import load
@@ -43,18 +44,6 @@ from microcosm.data.loader import (
     resolve,
 )
 from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY, DatasetSpec, register
-from microcosm.data.release import (
-    LATEST_EVIDENCE_POINTER_PATH,
-    LATEST_POINTER_PATH,
-    LATEST_POINTER_SCHEMA_VERSION,
-    RELEASE_TIER_CERTIFIED,
-    RELEASE_TIER_EVIDENCE,
-    LatestPointer,
-    latest_evidence_pointer_payload,
-    latest_evidence_release,
-    latest_pointer_payload,
-    latest_release,
-)
 
 __all__ = [
     "load",
@@ -77,16 +66,6 @@ __all__ = [
     "required_release_files",
     "validate_evidence_release_dir",
     "validate_release_dir",
-    "LATEST_EVIDENCE_POINTER_PATH",
-    "LATEST_POINTER_PATH",
-    "LATEST_POINTER_SCHEMA_VERSION",
-    "RELEASE_TIER_CERTIFIED",
-    "RELEASE_TIER_EVIDENCE",
-    "LatestPointer",
-    "latest_evidence_pointer_payload",
-    "latest_evidence_release",
-    "latest_pointer_payload",
-    "latest_release",
 ]
 
 __version__ = "0.1.0"

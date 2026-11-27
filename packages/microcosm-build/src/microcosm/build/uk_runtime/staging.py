@@ -4,7 +4,7 @@ Two destinations, one run id. Telemetry (reviewed aggregate JSON) goes to the
 staging repository under ``runs/<run_id>/``; the finished dataset bundle a
 build's manifest vouches for goes to the private artifact repository under
 ``staged/<run_id>/`` (:mod:`microcosm.build.staging_dataset`), where it is
-inspectable without being published: ``releases/`` and ``latest.json`` are
+inspectable without being published: ``releases/`` and ``releases.json`` are
 never touched by staging.
 """
 

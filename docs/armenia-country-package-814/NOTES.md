@@ -108,8 +108,9 @@ candidate release.
 The public release must carry the country-neutral `source_coverage.json`
 contract tracked by `microcosm#265`, plus calibration diagnostics, validation
 bands, build/release manifests, and an explicit donor-provenance banner.
-`latest.json` is an atomic pointer uploaded last; nothing in this spec-only
-package publishes an artifact.
+Each build is to publish into its own folder, `releases/<release>/<build>/`,
+which `releases.json` lists, as the release contract says; no pointer file
+names a build. Nothing in this spec-only package publishes an artifact.
 
 ## Amount and currency boundary
 

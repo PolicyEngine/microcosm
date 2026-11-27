@@ -261,7 +261,7 @@ emitter submits them to the collector (see
 `staged_manifest` and `checksums`. The
 emitter writes the bundle in one commit with the build's own credential, and
 its receipt becomes the bundle's `staged_dataset` record, with the commit as
-its revision. `releases/` and `latest.json` are never touched, no tag is
+its revision. `releases/` and `releases.json` are never touched, no tag is
 created, and the release contract is not consulted: a staged bundle is not a
 release and cannot be loaded as one.
 

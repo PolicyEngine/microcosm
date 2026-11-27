@@ -3,9 +3,9 @@
 The distribution end of the [microcosm](https://github.com/PolicyEngine/microcosm)
 stack. The operator shards (`microcosm-frame`, `microcosm-fit`,
 `microcosm-calibrate`) *build* populations; `microcosm-data` *serves* the ones
-microcosm has published — a registry of `(country, year, variant)` pointers to
-artifacts on the Hugging Face Hub, and a loader that returns each as its
-PolicyEngine engine dataset.
+microcosm has published — a registry of `(country, year, variant)` entries,
+each naming a release on the Hugging Face Hub, and a loader that returns a
+release's build as its PolicyEngine engine dataset.
 
 ```bash
 pip install 'microcosm-data[us]'
@@ -36,22 +36,19 @@ switch moved into folders; the loader accepts either name for a listed build
 `load("uk")` (the 2025 national release) and the 2025 dense variant read the
 UK repository's record the same way. `load("uk", 2023)` reads release
 `populace-uk-2023`: the UK repository's switch moved the June 2023 build into
-it as its only and current build. An entry whose repository has no
-`releases.json` follows its pointer file (`latest.json` or
-`latest-<name>.json`) and reads the manifest at the build's tag; no
-registered entry's repository is still in that state. `available()` lists
+it as its only and current build. Every registry entry names its release,
+and the loader refuses a repository without `releases.json`; it reads no
+`latest*.json` pointer file, which each repository's switch deleted. A build
+published before its repository switched stays readable by its path at its
+tag, outside the loader. `available()` lists
 the default-variant `(country, year)` pairs (the ones a bare ``load(country, year)``
 resolves); `available_variants()` lists every registered
 `(country, year, variant)`, non-default lines included.
 
-The old mutable-root behavior is an unsafe escape hatch,
-`load("us", 2024, unverified_root=True)`, which emits a runtime warning because
-it bypasses the release pointer, manifest, digest, and engine compatibility
-checks. The loader refuses it for an entry whose repository records its builds
-in `releases.json`, which every registered entry's repository does since the
-UK and US switches. Builds published into folders write no root file, so the
-US repository's root `populace_us_2024.h5` stopped changing at its switch,
-and the switch tool's `delete-old-layout` step deletes it.
+No repository has a mutable root dataset file to load: builds published
+into folders write no root file, so the US repository's root
+`populace_us_2024.h5` stopped changing at its switch,
+and the switch tool's `delete-old-layout` step later deleted it.
 
 ## Why a shard, not a repo per country
 

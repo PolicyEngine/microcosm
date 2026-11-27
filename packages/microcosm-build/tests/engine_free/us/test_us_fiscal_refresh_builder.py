@@ -15623,9 +15623,7 @@ def test_a_run_without_base_h5_reads_the_national_release_s_current_build(
     monkeypatch, tmp_path
 ) -> None:
     """Without --base-h5 a run starts from the US national release's current
-    build, SHA-verified by the loader: from releases.json once the repository
-    has one, from latest.json until then. The root file stops changing at the
-    switch, since builds in folders write no root files (microcosm#1570)."""
+    build in releases.json, SHA-verified by the loader (microcosm#1570)."""
     import microcosm.data
 
     builder = _load_builder_module()

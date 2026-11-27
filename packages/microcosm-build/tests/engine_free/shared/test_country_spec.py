@@ -509,6 +509,24 @@ class TestArmenianPackage:
         assert load_country_spec("am").fingerprint == spec.fingerprint
 
 
+@pytest.mark.parametrize("country", ["am", "nz"])
+def test_an_unpublished_country_contract_names_build_folders_and_releases_json(
+    country: str,
+) -> None:
+    """Armenia and New Zealand have no release repository yet. Their builds
+    will publish into ``releases/<release>/<build>/`` folders that
+    ``releases.json`` lists, as BE's do, so their contracts name no pointer
+    file and no Hugging Face revision as a build's identity."""
+    contract = load_country_spec(country).release_contract
+    assert "latest.json" not in contract.public_artifacts
+    assert "releases.json" in contract.public_artifacts
+    assert "releases/<release>/<build>/" in contract.policy
+    assert "releases.json" in contract.policy
+    assert "Hugging Face revision" not in contract.policy
+    assert "latest.json" not in contract.notes
+    assert "no pointer file names a build" in contract.notes
+
+
 class TestBelgianPackage:
     @pytest.fixture(scope="class")
     def spec(self):

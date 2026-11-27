@@ -30,7 +30,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--h5",
         type=Path,
-        help="Microcosm US H5 to score. Defaults to HF latest.",
+        help=(
+            "Microcosm US H5 to score. Defaults to the current build of "
+            "microcosm-us-2024-national in releases.json."
+        ),
     )
     parser.add_argument(
         "--age-targets",
