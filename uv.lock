@@ -823,7 +823,7 @@ requires-dist = [
     { name = "microcosm-data", marker = "extra == 'uk'", editable = "packages/microcosm-data" },
     { name = "microcosm-data", marker = "extra == 'us'", editable = "packages/microcosm-data" },
     { name = "microcosm-diagnostics", editable = "packages/microcosm-diagnostics" },
-    { name = "microcosm-emitter-interface", specifier = ">=0.16.0,<1" },
+    { name = "microcosm-emitter-interface", specifier = ">=0.18.0,<1" },
     { name = "microcosm-fit", editable = "packages/microcosm-fit" },
     { name = "microcosm-frame", editable = "packages/microcosm-frame" },
     { name = "microcosm-graph", editable = "packages/microcosm-graph" },
@@ -945,11 +945,11 @@ dev = [
 
 [[package]]
 name = "microcosm-emitter-interface"
-version = "0.16.0"
+version = "0.18.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/cc/ca/6f49fcf6a5f45dd229259a383db124b599e589bf280131aa10b0d925ff12/microcosm_emitter_interface-0.16.0.tar.gz", hash = "sha256:bee086a4cbf79652123829ebdb5904cd9d56504464c616a7836c9072f771fc88", size = 45455, upload-time = "2026-11-13T19:20:55.166Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/73/f0/f5ede1ef0654a96ccfbd7f73f68ad12c2bdc6553e441818089cbdd239c2f/microcosm_emitter_interface-0.18.0.tar.gz", hash = "sha256:7a14a21c23505683117caf757d0c3479166d89ffb9de905bfe91c889c85880c1", size = 53260, upload-time = "2026-11-26T17:54:40.936Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/21/c5302878edc48c1d81a8c6f299f77b4fd19bf2bd86d6b7d0efc419120ab1/microcosm_emitter_interface-0.16.0-py3-none-any.whl", hash = "sha256:3f187c72dd3f9412a7576040f1fed4029b404b34f750fbf0d4ec8e3292223b99", size = 72267, upload-time = "2026-11-13T19:20:53.867Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/aa/cd2b212c9d23a6cc614e4b80db398d75972a829345e46578388d9851776b/microcosm_emitter_interface-0.18.0-py3-none-any.whl", hash = "sha256:3bdccf340cbd6e72da3fc844fc97ac8586f571d32dc515bb0a9632c96eac4a91", size = 81824, upload-time = "2026-11-26T17:54:39.603Z" },
 ]
 
 [[package]]

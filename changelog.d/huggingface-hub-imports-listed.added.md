@@ -1,0 +1,1 @@
+Ruff's banned-import rule (`TID251`) refuses `huggingface_hub` outside the modules `pyproject.toml` lists with the exception that covers each (datasets and their release metadata, build inputs, operator tools, BE's publication tools, tests), so new code reaches Hugging Face through the emitter.
