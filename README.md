@@ -100,7 +100,8 @@ added `microcosm-emitter status`, which the US Modal stage runner runs after
 each stage to record how many telemetry events the stage's emitter left
 undelivered. The release is
 written once, in `packages/microcosm-build/src/microcosm/build/minimum_emitter_version.json`,
-which builds read as package data and the Modal image's install step reads
+which builds read as package data and the install steps of the Modal images
+(the US stage runner's and the UK launcher's, `tools/modal_uk_cut.py`) read
 from the launching checkout. Releases before 0.10.0 send telemetry to the
 collector's Cloud Run address, which changes when the collector moves to
 another Google Cloud project; from 0.10.0 on, releases send to the

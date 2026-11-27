@@ -131,6 +131,14 @@ the Mac is busy, short of disk or asleep. The container:
 
 - clones a pushed commit on main;
 - syncs that commit's own lock with the `uk` extra;
+- runs the `microcosm-emitter` its image installs, at or above the release
+  `minimum_emitter_version.json` names in the checkout you launch from, as
+  the US Modal image does. The build checks the minimum of the commit it
+  clones, so the plan refuses a commit whose minimum is higher: launch from
+  a checkout at or after that commit. Like the US image, the image first
+  drops the compromised eMudhra certificate authorities (an upgraded CA
+  store, a hash-pinned pip, uv 0.13.4 and a certifi floor) before it
+  downloads anything;
 - keeps the work directory, with its inputs and every step's outputs, on the
   `microcosm-uk-cuts` volume, so a rerun resumes.
 
