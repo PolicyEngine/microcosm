@@ -72,6 +72,10 @@ _TAG_FLOAT64 = 6
 _TAG_STRING = 7
 _TAG_BYTES = 8
 
+_STRING_TAG_BYTE = bytes([_TAG_STRING])
+# The value types whose bytes the per-value codec takes from ``str.encode``.
+_PLAIN_STRING_TYPES = frozenset({str, np.str_})
+
 _SUPPORTED_OBJECT_INFERRED_DTYPES = frozenset(
     {
         "boolean",
@@ -771,26 +775,52 @@ def _encode_object_scalar(value: object) -> bytes:
 
 
 def _encode_string_values(series: pd.Series) -> tuple[np.ndarray, np.ndarray] | None:
-    """The per-value codec's offsets and payload, built from Arrow buffers.
+    """The per-value codec's offsets and payload, without a loop over values.
 
     The per-value codec stores each value as the string tag byte followed by
-    its UTF-8 bytes, and ``offsets[i + 1]`` is where value ``i`` ends. An
-    Arrow string array holds the same UTF-8 bytes back to back with its own
-    end offsets, so in the payload value ``i`` ends ``i + 1`` tag bytes later.
-    Returns ``None`` when a value is missing or is not a string; the
-    per-value codec writes those columns.
+    its UTF-8 bytes, and ``offsets[i + 1]`` is where value ``i`` ends.
+    Returns ``None`` when a value is missing or is not a string, or when a
+    value cannot be converted; the per-value codec writes those columns and
+    raises its own errors.
     """
 
-    strings = _string_values_as_arrow(series)
-    if strings is None:
+    dtype = series.dtype
+    if isinstance(dtype, pd.StringDtype) and dtype.storage == "pyarrow":
+        return _encode_arrow_strings(series)
+    return _encode_python_strings(series.to_numpy(dtype=object, copy=False))
+
+
+def _encode_arrow_strings(series: pd.Series) -> tuple[np.ndarray, np.ndarray] | None:
+    """Offsets and payload from a pyarrow-backed column's Arrow buffers.
+
+    The Arrow array holds the values' UTF-8 bytes back to back with its own
+    end offsets, so in the payload value ``i`` ends ``i + 1`` tag bytes later.
+    """
+
+    try:
+        stored = pa.array(series.array)
+        if stored.null_count:
+            return None
+        # Widen each chunk to 64-bit offsets before joining the chunks, so
+        # text past 2**31 bytes never passes through 32-bit offsets.
+        strings = stored.cast(pa.large_string())
+        if isinstance(strings, pa.ChunkedArray):
+            strings = strings.combine_chunks()
+        strings.validate(full=True)  # UTF-8, as the per-value encode requires
+    except (pa.ArrowInvalid, pa.ArrowTypeError):
         return None
     value_count = len(strings)
     if value_count == 0:
         return np.zeros(1, dtype=np.int64), np.empty(0, dtype=np.uint8)
     _validity, offsets_buffer, data_buffer = strings.buffers()
-    string_offsets = np.frombuffer(offsets_buffer, dtype=np.int64)[
-        strings.offset : strings.offset + value_count + 1
-    ]
+    # Arrow allows spare bytes after the offsets, so read exactly the
+    # array's own offsets rather than the whole buffer.
+    string_offsets = np.frombuffer(
+        offsets_buffer,
+        dtype=np.int64,
+        count=value_count + 1,
+        offset=strings.offset * np.dtype(np.int64).itemsize,
+    )
     first, last = int(string_offsets[0]), int(string_offsets[-1])
     offsets = string_offsets - first + np.arange(value_count + 1, dtype=np.int64)
     payload = np.empty(int(offsets[-1]), dtype=np.uint8)
@@ -799,37 +829,37 @@ def _encode_string_values(series: pd.Series) -> tuple[np.ndarray, np.ndarray] | 
     if last > first:
         is_value_byte = np.ones(len(payload), dtype=np.bool_)
         is_value_byte[tag_positions] = False
-        payload[is_value_byte] = np.frombuffer(data_buffer, dtype=np.uint8)[first:last]
+        payload[is_value_byte] = np.frombuffer(
+            data_buffer, dtype=np.uint8, count=last - first, offset=first
+        )
     return offsets, payload
 
 
-def _string_values_as_arrow(series: pd.Series) -> pa.LargeStringArray | None:
-    """The values as one Arrow large-string array, or ``None``.
+def _encode_python_strings(values: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    """Offsets and payload for an object array of ``str`` values.
 
-    ``None`` when a value is missing or is not a ``str``, or when Arrow
-    refuses a value (a lone surrogate, or stored bytes that are not UTF-8),
-    so the per-value codec handles the column and raises its own error.
+    Only exact ``str`` and ``np.str_`` values qualify. The per-value codec
+    calls each value's own ``encode``, which a subclass can override; these
+    two types use ``str.encode`` and take no instance attributes. The values
+    are encoded with ``str.encode`` through ``map`` and joined with
+    ``bytes.join``, not converted by Arrow: Arrow reads a ``str`` with
+    CPython's ``PyUnicode_AsUTF8AndSize``, which keeps a UTF-8 copy inside
+    every non-ASCII string for the rest of that string's life.
     """
 
-    dtype = series.dtype
-    try:
-        if isinstance(dtype, pd.StringDtype) and dtype.storage == "pyarrow":
-            stored = pa.array(series.array)
-            if stored.null_count:
-                return None
-            # Widen each chunk to 64-bit offsets before joining the chunks,
-            # so text past 2**31 bytes never passes through 32-bit offsets.
-            strings = stored.cast(pa.large_string())
-            if isinstance(strings, pa.ChunkedArray):
-                strings = strings.combine_chunks()
-            strings.validate(full=True)
-            return strings
-        values = series.to_numpy(dtype=object, copy=False)
-        if pd.api.types.infer_dtype(values, skipna=False) not in ("string", "empty"):
-            return None
-        return pa.array(values, type=pa.large_string())
-    except (pa.ArrowInvalid, pa.ArrowTypeError, UnicodeEncodeError):
+    if not set(map(type, values)) <= _PLAIN_STRING_TYPES:
         return None
+    try:
+        encoded = list(map(str.encode, values))
+    except UnicodeEncodeError:
+        return None
+    lengths = np.fromiter(map(len, encoded), dtype=np.int64, count=len(encoded))
+    offsets = np.zeros(len(encoded) + 1, dtype=np.int64)
+    np.cumsum(lengths + 1, out=offsets[1:])
+    # Joining after a leading empty value puts the tag byte before each value.
+    encoded.insert(0, b"")
+    payload = _STRING_TAG_BYTE.join(encoded)
+    return offsets, np.frombuffer(payload, dtype=np.uint8)
 
 
 def _decode_string_values(
@@ -847,16 +877,21 @@ def _decode_string_values(
     is_object = isinstance(restore_dtype, str) and restore_dtype == "object"
     if not (is_object or isinstance(restore_dtype, pd.StringDtype)):
         return None
+    # The boundary check compares differences, which wrap around when
+    # offsets far outside the payload overflow int64; the per-value codec
+    # reads such offsets and raises its own error.
+    if offsets.min() < 0 or offsets.max() > len(payload):
+        return None
     tag_positions = offsets[:-1]
     if not (payload[tag_positions] == _TAG_STRING).all():
         return None
     is_value_byte = np.ones(len(payload), dtype=np.bool_)
     is_value_byte[tag_positions] = False
+    string_bytes = payload[is_value_byte]
+    del is_value_byte
     string_offsets = offsets - np.arange(len(offsets), dtype=np.int64)
     strings = pa.LargeStringArray.from_buffers(
-        len(tag_positions),
-        pa.py_buffer(string_offsets),
-        pa.py_buffer(payload[is_value_byte]),
+        len(tag_positions), pa.py_buffer(string_offsets), pa.py_buffer(string_bytes)
     )
     try:
         strings.validate(full=True)  # UTF-8, as the per-value decode checks

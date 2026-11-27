@@ -659,15 +659,12 @@ def test_wrapping_offsets_raise_the_per_value_loop_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, dtype_name: str
 ) -> None:
     payload = _WRAPPING_PAYLOADS[case]
+    path = tmp_path / "column.h5"  # error messages name the file
     with monkeypatch.context() as patch:
         _use_only_per_value_loop(patch)
-        expected = _read_error(
-            tmp_path / "loop.h5", dtype_name, _WRAPPING_OFFSETS, payload
-        )
+        expected = _read_error(path, dtype_name, _WRAPPING_OFFSETS, payload)
 
-    actual = _read_error(
-        tmp_path / "converted.h5", dtype_name, _WRAPPING_OFFSETS, payload
-    )
+    actual = _read_error(path, dtype_name, _WRAPPING_OFFSETS, payload)
 
     assert actual == expected
 
