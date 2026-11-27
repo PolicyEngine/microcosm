@@ -148,7 +148,6 @@ def test_the_donor_is_a_build_of_its_own_release_never_the_national_default(
 ) -> None:
     _build(lineage)
     certified = _certify(lineage, monkeypatch, [])
-    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("use no Hub"))
     # The release contract replays the H5 comparison and the loader checks,
     # which take the parent H5 and the tested wheels.
     options = {"parent_h5": lineage.parent, "compatibility_wheels": _WHEELS}

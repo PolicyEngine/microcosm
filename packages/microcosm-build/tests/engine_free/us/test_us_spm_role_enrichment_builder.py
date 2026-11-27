@@ -450,7 +450,6 @@ def test_real_builder_manifest_certifies_and_prepares_its_build_folder(
     monkeypatch.setattr(
         contract, "_check_producer_source_identity", check_synthetic_producer
     )
-    monkeypatch.setattr(publisher, "_hf_api", lambda: pytest.fail("must not use Hub"))
     certified = contract.certify_source_enrichment(
         candidate_release,
         tmp_path / "certified" / US_NATIONAL_RELEASE_ID,

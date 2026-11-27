@@ -806,8 +806,9 @@ unchanged.
   folder publishes only its two manifests, its checksum ledger and the
   artifacts the release manifest declares. The publisher accepts the build only
   if the receipt's read-back passed and its digest matches the shipped
-  `progress.json`. M3 also moves the delivery gate from the two commands into
-  `prepare_build_folder_release`, so every publication runs it.
+  `progress.json`. M3 also moves the staging delivery check from
+  `microcosm-publish-release-build` into `prepare_build_folder_release`, so
+  every publication runs it.
 - The build folder ships the build's staging version-3 terminal document (its
   `progress.json`) as an artifact that `release_manifest.json` names, and
   `build_manifest.json` binds it by digest. The build manifest records the
@@ -905,7 +906,8 @@ repository that has no `releases.json`.
   source coverage (`_check_be_release_artifacts`). The function reads the
   registry on each call. `validate_release_dir` and
   `validate_evidence_release_dir` refuse every layout of a local-area name
-  that no entry names, and neither publisher takes one (microcosm#1586).
+  that no entry names, and `microcosm-publish-release-build` takes none
+  (microcosm#1586).
   `microcosm-us-2024-national` holds every national build:
   calibrated builds, SPM source enrichments, compatibility recertifications
   and exact-k builds. `microcosm-us-2024-local` holds the ACS local-area

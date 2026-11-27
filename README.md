@@ -705,8 +705,10 @@ only its tag, so existing builds' references keep working.
 read: at `main` from `releases/<release>/<build>/`, or at the tag from
 `releases/<id>/`.
 
-**No release publishes with tags.** Every release publishes each build into
-its own folder with `microcosm-publish-release-build`. The tagged publisher,
+**No release publishes with tags.** Every release that
+`publishes_to_build_folder` names publishes each build into its own folder
+with `microcosm-publish-release-build`, and no other release publishes. The
+tagged publisher,
 `microcosm-publish-release`, which committed, tagged and wrote `latest*.json`
 pointer files on the Hub directly, has been removed, with
 `tools/publish_release.sh`. The UK repository's switch moved the June 2023

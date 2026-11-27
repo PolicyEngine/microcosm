@@ -533,19 +533,6 @@ class FakeHub:
         return str(local)
 
 
-class NonAtomicHub:
-    """Expose only the legacy upload/tag surface of a backing fake Hub."""
-
-    def __init__(self, backing: FakeHub) -> None:
-        self.backing = backing
-
-    def upload_file(self, **kwargs):
-        return self.backing.upload_file(**kwargs)
-
-    def create_tag(self, **kwargs):
-        return self.backing.create_tag(**kwargs)
-
-
 @pytest.fixture
 def hub(tmp_path: Path) -> FakeHub:
     fake = FakeHub()
@@ -961,25 +948,6 @@ def _as_us_national_build_folder_release(release_dir: Path) -> Path:
     return to_build_folder_layout(national, build=RELEASE_ID)
 
 
-@pytest.fixture
-def annual_release(release_dir, artifact_root):
-    from .annual_projections import _h5, add_annual_extension
-
-    dataset = artifact_root / "populace_us_2024.h5"
-    _h5(dataset, 2024)
-    sha = _sha256(dataset)
-    path = release_dir / "build_manifest.json"
-    build = json.loads(path.read_text())
-    build["dataset"]["sha256"] = sha
-    path.write_text(json.dumps(build))
-    path = release_dir / "release_manifest.json"
-    manifest = json.loads(path.read_text())
-    manifest["artifacts"]["populace_us_2024"]["sha256"] = sha
-    path.write_text(json.dumps(manifest))
-    _bind_stored_input_evidence(release_dir)
-    return add_annual_extension(release_dir, artifact_root)
-
-
 # ---------------------------------------------------------------------------
 # Evidence-tier publishing (microcosm#506)
 # ---------------------------------------------------------------------------
@@ -1041,29 +1009,6 @@ def evidence_release_dir(release_dir: Path) -> Path:
         artifact["revision"] = EVIDENCE_RELEASE_ID
     (directory / "release_manifest.json").write_text(json.dumps(manifest))
     return directory
-
-
-def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
-    manifest_path = release_dir / "release_manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    manifest["artifacts"][key] = {
-        "kind": "diagnostics",
-        "path": path,
-        "repo_id": "policyengine/populace-us",
-        "revision": release_dir.name,
-        "sha256": "1" * 64,
-    }
-    manifest_path.write_text(json.dumps(manifest))
-
-
-def _uk_hub(tmp_path: Path) -> FakeHub:
-    hub = FakeHub("policyengine/populace-uk-private")
-    hub._download_dir = tmp_path / "uk-hub-cache"
-    june_pointer = latest_pointer_payload(
-        JUNE_UK_RELEASE_ID, updated_at="2026-06-19T02:38:00+00:00"
-    )
-    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(june_pointer, indent=1).encode())
-    return hub
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

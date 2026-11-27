@@ -96,34 +96,6 @@ def test_line_pointer_payload_refuses_a_line_id_mismatch() -> None:
         )
 
 
-def _write_uk_build_folder_release(
-    release_id: str, release_dir: Path, tmp_path: Path
-) -> Path:
-    """One build-folder release of each kind: national, dense or local-area."""
-    if release_id == UK_NATIONAL_RELEASE_ID:
-        return _as_uk_national_build_folder_release(release_dir)
-    from .test_local_area_contract import _write_local_bundle
-
-    if release_id == UK_LOCAL_RELEASE_ID:
-        return _write_local_bundle(tmp_path / "local", release_id=release_id)
-    from test_support.microcosm_data.build_folders import UK_DENSE_BUILD
-
-    dense = _write_local_bundle(tmp_path / "dense", release_id=UK_LOCAL_RELEASE_ID)
-    dense = dense.rename(dense.with_name(release_id))
-    for name in ("build_manifest.json", "release_manifest.json"):
-        manifest = json.loads((dense / name).read_text())
-        manifest.update(release=release_id, build=UK_DENSE_BUILD)
-        (dense / name).write_text(json.dumps(manifest))
-    return dense
-
-
-#: A releases.json that the switch to build folders writes; its contents do
-#: not matter to the tagged publisher, which refuses once it exists.
-_RELEASES_RECORD = json.dumps(
-    {"schema_version": 1, "default": None, "releases": {}}
-).encode()
-
-
 def test_prepare_build_folder_release_lists_each_file_with_its_role(
     release_dir: Path, artifact_root: Path, monkeypatch
 ) -> None:
@@ -590,18 +562,6 @@ _CONTRACT_WARNINGS = [
 ]
 
 
-class _TagMessageHub(FakeHub):
-    """The fake Hub, keeping each tag's message as the Hub's annotated tags do."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.tag_messages: dict[str, str | None] = {}
-
-    def create_tag(self, *, tag_message=None, **kwargs) -> None:
-        super().create_tag(**kwargs)
-        self.tag_messages[kwargs["tag"]] = tag_message
-
-
 def test_line_pointer_path_refuses_the_evidence_line() -> None:
     with pytest.raises(ValueError, match="collides with the evidence-tier pointer"):
         line_pointer_path("evidence")
@@ -739,7 +699,7 @@ def test_prepare_build_folder_release_lists_an_annual_build(
     } <= set(files)
 
 
-def test_the_tagged_publisher_s_advice_names_every_us_release() -> None:
+def test_the_build_folder_refusal_advice_names_every_us_release() -> None:
     from microcosm.data.contract import US_RELEASES
 
     for release in US_RELEASES:
