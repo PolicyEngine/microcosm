@@ -91,7 +91,6 @@ BUILD_DIAGNOSTICS_FILE = "calibration-diagnostics.json"
 #: The release directory's name for the calibration diagnostics.
 RELEASE_DIAGNOSTICS_FILE = "calibration_diagnostics.json"
 _GIT_COMMIT = re.compile(r"[0-9a-f]{40}")
-_CERTIFYING_OUTCOMES = frozenset({"pass", "not_applicable"})
 #: Versions a runtime record may carry that name no installed version.
 _UNRESOLVED_VERSIONS = frozenset({"", "unavailable", "not-installed", "unknown"})
 #: The engine a transport build's populations run through.
@@ -218,6 +217,37 @@ def _runtime_record(status: Mapping) -> dict[str, str]:
     return record
 
 
+def _require_build_spec(
+    status: Mapping, *, country: str, resource_hashes: Mapping[str, str], commit: str
+) -> None:
+    """The spec this step loaded is the one the build ran on.
+
+    The release files, the build's name and the source coverage check read
+    the spec the assembler loads, so a checkout that moved since the build (a
+    Chronicle re-pin, say) would pair the build with references it did not
+    compile. Every resource's digest must equal the one the build recorded.
+    """
+    spec = status.get("spec")
+    recorded = spec.get("resource_hashes") if isinstance(spec, Mapping) else None
+    if not isinstance(recorded, Mapping) or spec.get("country") != country:
+        raise SpecReleaseAssemblyError(
+            f"{BUILD_STATUS_FILE} records no digests of the {country!r} spec "
+            "the build ran on ('spec'); a transport build made before it "
+            "recorded them cannot be assembled."
+        )
+    differing = sorted(
+        name
+        for name in {*recorded, *resource_hashes}
+        if recorded.get(name) != resource_hashes.get(name)
+    )
+    if differing:
+        raise SpecReleaseAssemblyError(
+            f"The build ran on another {country!r} spec: {differing} differ from "
+            "this checkout's. Assemble from a checkout at the build's commit "
+            f"{commit}."
+        )
+
+
 def _require_produced(produced: Mapping, name: str, path: Path) -> None:
     """The file is the one the build recorded that it wrote."""
     entry = produced.get(name)
@@ -245,7 +275,12 @@ def _role(node: NodeReceipt) -> KernelRole:
 
 
 def _run_record(path: Path, country: str) -> tuple[RunManifest, dict[str, str]]:
-    """The run manifest and its gate outcomes; every gate must have passed."""
+    """The run manifest and its gate outcomes; every gate must have passed.
+
+    ``known_failures`` lists each gate node whose outcome is neither ``pass``
+    nor ``not_applicable`` and each rejected node, so refusing on it refuses
+    every gate that did not pass.
+    """
     try:
         run = RunManifest.from_json(path.read_bytes())
     except FileNotFoundError:
@@ -279,15 +314,6 @@ def _run_record(path: Path, country: str) -> tuple[RunManifest, dict[str, str]]:
         for node_id, node in sorted(run.nodes.items())
         if _role(node) is KernelRole.GATE
     }
-    not_passed = sorted(
-        node_id
-        for node_id, outcome in outcomes.items()
-        if outcome not in _CERTIFYING_OUTCOMES
-    )
-    if not_passed:
-        raise SpecReleaseAssemblyError(
-            f"The run's gate nodes {not_passed} did not pass."
-        )
     return run, outcomes
 
 
@@ -548,6 +574,12 @@ def assemble_spec_release(
         )
     code = _code_record(status)
     runtime = _runtime_record(status)
+    _require_build_spec(
+        status,
+        country=country,
+        resource_hashes=resource_hashes,
+        commit=str(code["git_commit"]),
+    )
     produced = _mapping(status.get("produced"), f"{BUILD_STATUS_FILE} 'produced'")
     dataset_source = build_dir / EXPORT_FILENAME
     diagnostics_source = build_dir / BUILD_DIAGNOSTICS_FILE

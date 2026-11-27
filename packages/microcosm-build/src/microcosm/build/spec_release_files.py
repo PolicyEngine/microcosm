@@ -19,8 +19,9 @@ release directory.
   build did not calibrate an executable reference, or calibrated a held-out
   one.
 - ``demographics.json`` has the US file's fields
-  (:mod:`microcosm.build.us_runtime.demographics`) for the spec's executable
-  demography references: each one's calibrated population and its benchmark,
+  (:mod:`microcosm.build.us_runtime.demographics`), except each age band's
+  ``min_age`` and ``max_age``, which the spec's age-band values do not give,
+  for the spec's executable demography references: each one's calibrated population and its benchmark,
   from the build's calibration rows, and their sums by age band. A country
   that calibrates its demography, as BE does, publishes in-sample fit here,
   where the US publishes an uncalibrated age distribution.

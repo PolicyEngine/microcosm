@@ -28,7 +28,6 @@ import argparse
 import json
 import os
 import platform
-import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -66,6 +65,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json, sha256_domain
 from microcosm.graph.keys import source_content_key
+from microcosm.graph.reconstruction import code_revision
 
 from .codecs import RULESPEC_SOURCE_CODEC
 from .compose import (
@@ -134,43 +134,26 @@ TRANSPORT_RUNTIME_DISTRIBUTIONS: tuple[str, ...] = (
 _MICROCOSM_REPOSITORY = "PolicyEngine/microcosm"
 
 
-def _git_output(checkout: Path, *arguments: str) -> str | None:
-    """Git's output in ``checkout``, or None when git cannot answer."""
-    try:
-        result = subprocess.run(
-            ["git", *arguments],
-            cwd=checkout,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except OSError:
-        return None
-    return result.stdout.strip() if result.returncode == 0 else None
-
-
 def transport_build_provenance(
-    *, checkout: str | Path | None = None
+    *, code_file: str | Path | None = None
 ) -> dict[str, dict[str, object]]:
     """The code and runtime a transport build runs on, for its build status.
 
-    ``code`` is the Microcosm commit of ``checkout`` (by default the checkout
-    this module runs from) and whether a tracked file differs from it,
-    measured as the UK full build measures them; both are None when git
-    cannot answer, as from an installed wheel, so a release assembler records
-    the commit as unmeasured rather than clean. ``runtime`` is the Python
-    version and each of :data:`TRANSPORT_RUNTIME_DISTRIBUTIONS`' versions.
-    The spec release assembler (:mod:`microcosm.build.spec_release_assembly`)
-    reads both from ``build-status.json``, as the UK national assembler reads
-    its build's from the build's diagnostics.
+    ``code`` is the Microcosm commit of the checkout that tracks ``code_file``
+    (by default this module's own file) and whether a tracked file differs
+    from it, from :func:`microcosm.graph.reconstruction.code_revision`: git
+    runs in that file's directory, without the caller's repository-selecting
+    variables (``GIT_DIR``, ``GIT_WORK_TREE`` and the rest), and the file must
+    be tracked there. Both are None when no checkout tracks the file, as for
+    an installed wheel or a copy inside some other repository, so a release
+    assembler records the commit as unmeasured rather than clean.
+    ``runtime`` is the Python version and each of
+    :data:`TRANSPORT_RUNTIME_DISTRIBUTIONS`' versions. The spec release
+    assembler (:mod:`microcosm.build.spec_release_assembly`) reads both from
+    ``build-status.json``, as the UK national assembler reads its build's from
+    the build's diagnostics.
     """
-    root = Path(checkout) if checkout is not None else Path(__file__).resolve().parent
-    commit = _git_output(root, "rev-parse", "HEAD")
-    changes = (
-        _git_output(root, "status", "--porcelain", "--untracked-files=no")
-        if commit
-        else None
-    )
+    revision = code_revision(Path(__file__) if code_file is None else code_file)
     runtime: dict[str, object] = {"python": platform.python_version()}
     for distribution in TRANSPORT_RUNTIME_DISTRIBUTIONS:
         try:
@@ -180,8 +163,8 @@ def transport_build_provenance(
     return {
         "code": {
             "repository": _MICROCOSM_REPOSITORY,
-            "git_commit": commit or None,
-            "git_dirty": None if changes is None else bool(changes),
+            "git_commit": revision["git_commit"],
+            "git_dirty": revision["git_dirty"],
         },
         "runtime": runtime,
     }
@@ -609,8 +592,15 @@ def execute_transport_graph(
     endpoints: Mapping[str, object],
     pending_outputs: Sequence[str] = (),
     resume: ResumePolicy = "auto",
+    spec_resource_hashes: Mapping[str, str] | None = None,
 ) -> RunManifest:
     """Run the graph's checkpoints in order and write the local outputs.
+
+    ``spec_resource_hashes``, the SHA-256 of each country spec resource the
+    graph was composed from (:func:`load_transport_spec`'s
+    ``resource_hashes``), is recorded in ``build-status.json`` under
+    ``spec`` when given, so a release assembler can refuse a spec other than
+    the build's.
 
     ``require`` refuses a cold store before anything is created, and every
     checkpoint then runs with ``require``, so a partly warm store is refused
@@ -747,6 +737,16 @@ def execute_transport_graph(
                 "produced": produced,
                 "not_yet_produced": list(pending_outputs),
                 **provenance,
+                **(
+                    {}
+                    if spec_resource_hashes is None
+                    else {
+                        "spec": {
+                            "country": graph.country,
+                            "resource_hashes": dict(spec_resource_hashes),
+                        }
+                    }
+                ),
             }
         ),
         _destination(output, "build-status.json"),
@@ -857,6 +857,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             endpoints=prepared.endpoints,
             pending_outputs=prepared.pending_outputs,
             resume=args.resume,
+            spec_resource_hashes=spec["resource_hashes"],
         )
     except Exception as error:
         print(f"transport build refused: {error}", file=sys.stderr)
