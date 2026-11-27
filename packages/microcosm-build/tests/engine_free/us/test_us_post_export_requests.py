@@ -678,10 +678,14 @@ def test_the_reform_alias_names_the_three_descriptions() -> None:
 #: them too. Re-pin only when such an input or the fixture changed on purpose,
 #: in the same pull request, by copying the digests this test's failure
 #: prints. The manifests' ``post_export_scoring`` block, which holds the
-#: method label and the batching, is not pinned here.
+#: method label and the batching, is not pinned here. The plan's record holds
+#: the method label too: it was re-pinned when tracker task 1.4 · 7 raised
+#: the label to ``household_batched_written_h5_v2`` (decision 1.1 · 1), and
+#: with the earlier label it still hashes to the earlier pin
+#: (``_PLAN_SHA256_WITH_THE_FIRST_LABEL``).
 _RECORDED_OUTPUT_SHA256 = {
     "calibration_diagnostics.build.post_export_scoring": (
-        "7ed2a0dd088cf2d5a65e27e00368819cdf357160a5bdc2e42f079233d1f2f7b1"
+        "95ac7870f660e5090bbe2f4237eb010ff3746c68dd53dc984df624a59378e045"
     ),
     "reform_coverage_smoke": (
         "c2e6cbf63b02fc5dbbc1ddd5507edd5e9cfb21a41143469cc737c69279da9842"
@@ -725,6 +729,13 @@ def _json_ready(value):
     if isinstance(value, np.generic):
         return value.item()
     return value
+
+
+#: The plan record's digest at origin/main fcabe4e65, with the first method
+#: label, ``household_batched_written_h5``.
+_PLAN_SHA256_WITH_THE_FIRST_LABEL = (
+    "7ed2a0dd088cf2d5a65e27e00368819cdf357160a5bdc2e42f079233d1f2f7b1"
+)
 
 
 def _sha256_of(value) -> str:
@@ -786,3 +797,8 @@ def test_the_release_s_recorded_post_export_outputs_are_unchanged(
     assert {
         name: _sha256_of(output) for name, output in outputs.items()
     } == _RECORDED_OUTPUT_SHA256
+    # The raised method label is the plan record's only change.
+    plan = dict(outputs["calibration_diagnostics.build.post_export_scoring"])
+    assert plan["method"] == "household_batched_written_h5_v2"
+    plan["method"] = "household_batched_written_h5"
+    assert _sha256_of(plan) == _PLAN_SHA256_WITH_THE_FIRST_LABEL
