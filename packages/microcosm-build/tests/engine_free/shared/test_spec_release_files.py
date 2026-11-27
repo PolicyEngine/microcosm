@@ -227,12 +227,14 @@ def test_the_added_files_are_the_ones_the_be_contract_declares() -> None:
 
 
 def test_reform_validation_carries_no_reforms_yet() -> None:
-    # No scored BE reform exists until microcosm#264; nothing was simulated.
+    # No scored BE reform exists until microcosm#264. As the US writer
+    # records when there is no out-of-sample reform, none was left
+    # unsimulated, so the flag is true; publication refuses a false one.
     assert reform_validation_payload(country="be", period=2026) == {
         "schema_version": 1,
         "country": "be",
         "baseline_period": 2026,
         "scoring_window": None,
-        "out_of_sample_simulated": False,
+        "out_of_sample_simulated": True,
         "reforms": [],
     }

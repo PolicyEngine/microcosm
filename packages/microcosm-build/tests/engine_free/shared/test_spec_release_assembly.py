@@ -31,6 +31,7 @@ from microcosm.data.contract import (
     ReleaseContractError,
     validate_release_dir,
 )
+from microcosm.data.publish_cli import publication_refusal
 from test_support.microcosm_build.emitter import FakeEmitterClient
 from test_support.microcosm_build.spec_release import (
     BUILD_COMMIT,
@@ -202,6 +203,20 @@ def test_an_assembled_be_build_publishes_through_the_emitter(
     assert roles["populace_be_2026.h5"] == "dataset"
     assert roles["populace_be_2026_calibration.npz"] == "calibration_weights"
     assert outcome.published and outcome.succeeded
+
+
+def test_the_printed_publish_command_passes_the_publishers_own_checks(
+    tmp_path: Path,
+) -> None:
+    # microcosm-publish-release-build runs these checks before anything else,
+    # with only the flags the printed command passes (none of them).
+    build = write_transport_build_folder(tmp_path / "out")
+    assembled = assemble_spec_release(
+        build.path, country="be", out_dir=tmp_path / "releases", created_at=CREATED_AT
+    )
+
+    assert "--allow" not in assembled.publish_command
+    assert publication_refusal(assembled.release_dir) is None
 
 
 @pytest.mark.parametrize(
