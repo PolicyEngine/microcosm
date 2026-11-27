@@ -33,12 +33,7 @@ from microcosm.data.release import (
     LATEST_POINTER_PATH,
     LATEST_POINTER_SCHEMA_VERSION,
     latest_evidence_pointer_payload,
-    latest_evidence_release,
-    latest_line_release,
     latest_pointer_payload,
-    latest_release,
-    line_pointer_path,
-    line_pointer_payload,
     publish_release,
 )
 from microcosm.data.stored_inputs import register_sha256

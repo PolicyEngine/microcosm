@@ -100,73 +100,6 @@ def test_pointer_payload_names_every_contract_file() -> None:
     )
 
 
-@pytest.mark.parametrize(
-    ("release_id", "line", "revision"),
-    [
-        (UK_NATIONAL_RELEASE_ID, "national", UK_NATIONAL_CUT_TAG),
-        (UK_LOCAL_RELEASE_ID, "local-k55000", UK_LOCAL_RELEASE_ID),
-    ],
-)
-def test_line_pointer_payload_round_trips_for_each_line_path(
-    hub: FakeHub, release_id: str, line: str, revision: str
-) -> None:
-    payload = line_pointer_payload(
-        release_id,
-        line=line,
-        revision=revision,
-        updated_at="2026-09-20T12:00:00+00:00",
-    )
-    pointer_path = line_pointer_path(line)
-    hub.seed_main_file(pointer_path, json.dumps(payload).encode())
-
-    pointer = latest_line_release("policyengine/populace-us", line=line, api=hub)
-
-    assert pointer.release_id == release_id
-    assert pointer.revision == revision
-    assert pointer.line == line
-    assert pointer.updated_at == "2026-09-20T12:00:00+00:00"
-    assert payload["schema_version"] == LATEST_POINTER_SCHEMA_VERSION
-    assert pointer_path == f"latest-{line}.json"
-
-
-@pytest.mark.parametrize(
-    "line",
-    ["", "National", "local-k0", "local-k01", "national/other"],
-)
-def test_line_pointer_path_refuses_invalid_lines(line: str) -> None:
-    with pytest.raises(ValueError, match="invalid release line"):
-        line_pointer_path(line)
-
-
-@pytest.mark.parametrize(
-    "revision",
-    [
-        "",
-        UK_NATIONAL_RELEASE_ID + "-hotfix",
-        UK_NATIONAL_RELEASE_ID + "-20260920t120000Z-deadbeef",
-        UK_NATIONAL_RELEASE_ID + "-20260920T120000Z-DEADBEEF",
-    ],
-)
-def test_line_pointer_payload_refuses_revisions_outside_the_cut_family(
-    revision: str,
-) -> None:
-    with pytest.raises(ValueError, match="per-cut tag"):
-        line_pointer_payload(
-            UK_NATIONAL_RELEASE_ID,
-            line="national",
-            revision=revision,
-        )
-
-
-def test_line_pointer_payload_refuses_a_line_id_mismatch() -> None:
-    with pytest.raises(ValueError, match="belongs to line 'national'"):
-        line_pointer_payload(
-            UK_NATIONAL_RELEASE_ID,
-            line="local-k55000",
-            revision=UK_NATIONAL_CUT_TAG,
-        )
-
-
 def _write_uk_build_folder_release(
     release_id: str, release_dir: Path, tmp_path: Path
 ) -> Path:
@@ -706,56 +639,6 @@ def test_exact_k_tag_only_publish_never_mutates_main(
             filename="populace_us_2024.h5",
             repo_type="dataset",
         )
-
-
-@pytest.mark.parametrize("tag_only", [True, False], ids=["tag-only", "no-latest"])
-def test_us_default_flip_after_a_non_default_publish_reuses_the_release_tag(
-    hub: FakeHub, release_dir: Path, artifact_root: Path, tag_only: bool, monkeypatch
-) -> None:
-    """microcosm#450: publish immutable now, make it the default later.
-
-    The first call cuts the release-id tag without touching ``latest.json``
-    (``--tag-only`` or ``--no-latest``). The flip is the plain default
-    publish of the same release directory: it recognises the tag that
-    already describes this release, writes no second immutable revision
-    and no second tag, and lands only the main commit carrying the pointer.
-    Before #966 the flip died on ``create_tag`` with a 409.
-    """
-    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
-    publish_release(
-        release_dir,
-        "policyengine/populace-us",
-        api=hub,
-        artifact_root=artifact_root,
-        updated_at="2026-06-11T13:53:15+00:00",
-        update_latest=False,
-        tag_only=tag_only,
-    )
-    tags_after_cut = list(hub.tags)
-    assert [tag["tag"] for tag in tags_after_cut] == [RELEASE_ID]
-    tagged_revision = hub._refs[RELEASE_ID]
-    assert LATEST_POINTER_PATH not in hub._commits[hub._refs["main"]]
-    main_before_flip = hub._refs["main"]
-    events_after_cut = len(hub.events)
-
-    publish_release(
-        release_dir,
-        "policyengine/populace-us",
-        api=hub,
-        artifact_root=artifact_root,
-        updated_at="2026-06-12T09:00:00+00:00",
-    )
-
-    flip_events = hub.events[events_after_cut:]
-    assert [event for event, _ in flip_events] == ["create_commit"]
-    flip = flip_events[0][1]
-    assert flip["revision"] == "main"
-    assert flip["parent_commit"] == main_before_flip
-    assert LATEST_POINTER_PATH in flip["paths"]
-    assert hub.tags == tags_after_cut
-    assert hub._refs[RELEASE_ID] == tagged_revision
-    pointer = latest_release("policyengine/populace-us", api=hub)
-    assert pointer.release_id == RELEASE_ID
 
 
 def test_us_default_flip_refuses_a_release_tag_that_describes_another_cut(
@@ -1305,114 +1188,6 @@ def test_missing_extra_file_fails_loudly(hub: FakeHub, release_dir: Path) -> Non
     assert hub.uploads == []
 
 
-def test_publish_then_resolve_round_trips(
-    hub: FakeHub, release_dir: Path, artifact_root: Path
-) -> None:
-    published = publish_release(
-        release_dir,
-        "policyengine/populace-us",
-        api=hub,
-        artifact_root=artifact_root,
-        updated_at="2026-06-11T13:53:15+00:00",
-    )
-    pointer = latest_release("policyengine/populace-us", api=hub)
-    assert pointer.release_id == RELEASE_ID
-    assert pointer.revision == RELEASE_ID
-    assert pointer.line is None
-    assert pointer.updated_at == "2026-06-11T13:53:15+00:00"
-    assert pointer.paths == published["paths"]
-
-
-@pytest.mark.parametrize("field", ["line", "revision"])
-def test_latest_release_refuses_line_pointer_fields(hub: FakeHub, field: str) -> None:
-    payload = latest_pointer_payload(RELEASE_ID)
-    payload[field] = None
-    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
-
-    with pytest.raises(ValueError, match=field):
-        latest_release("policyengine/populace-us", api=hub)
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "message"),
-    [
-        ("line", "local-k55000", "declares line"),
-        ("revision", None, "revision"),
-        ("revision", "", "revision"),
-        ("revision", UK_NATIONAL_RELEASE_ID + "-hotfix", "revision"),
-        ("tier", "certified", "tier"),
-    ],
-)
-def test_latest_line_release_refuses_foreign_pointer_fields(
-    hub: FakeHub, field: str, value: object, message: str
-) -> None:
-    payload = line_pointer_payload(
-        UK_NATIONAL_RELEASE_ID,
-        line="national",
-        revision=UK_NATIONAL_CUT_TAG,
-    )
-    payload[field] = value
-    hub.seed_main_file(line_pointer_path("national"), json.dumps(payload).encode())
-
-    with pytest.raises(ValueError, match=message):
-        latest_line_release("policyengine/populace-us", line="national", api=hub)
-
-
-def test_latest_line_release_refuses_a_release_from_another_line(
-    hub: FakeHub,
-) -> None:
-    payload = latest_pointer_payload(UK_LOCAL_RELEASE_ID)
-    payload.update(line="national", revision=UK_LOCAL_RELEASE_ID)
-    hub.seed_main_file(line_pointer_path("national"), json.dumps(payload).encode())
-
-    with pytest.raises(ValueError, match="belongs to line 'local-k55000'"):
-        latest_line_release("policyengine/populace-us", line="national", api=hub)
-
-
-def test_future_pointer_schema_is_refused(hub: FakeHub) -> None:
-    hub.seed_main_file(
-        LATEST_POINTER_PATH,
-        json.dumps({"schema_version": LATEST_POINTER_SCHEMA_VERSION + 1}).encode(),
-    )
-    with pytest.raises(ValueError, match="Upgrade microcosm-data"):
-        latest_release("policyengine/populace-us", api=hub)
-
-
-def test_pointer_without_release_id_is_refused(hub: FakeHub) -> None:
-    hub.seed_main_file(
-        LATEST_POINTER_PATH,
-        json.dumps({"schema_version": LATEST_POINTER_SCHEMA_VERSION}).encode(),
-    )
-    with pytest.raises(ValueError, match="release_id"):
-        latest_release("policyengine/populace-us", api=hub)
-
-
-def test_pointer_without_contract_paths_is_refused(hub: FakeHub) -> None:
-    hub.seed_main_file(
-        LATEST_POINTER_PATH,
-        json.dumps(
-            {
-                "schema_version": LATEST_POINTER_SCHEMA_VERSION,
-                "release_id": RELEASE_ID,
-                "paths": {"build_manifest": "releases/x/build_manifest.json"},
-            }
-        ).encode(),
-    )
-    with pytest.raises(ValueError, match="paths"):
-        latest_release("policyengine/populace-us", api=hub)
-
-
-def test_pointer_with_swapped_contract_path_is_refused(hub: FakeHub) -> None:
-    payload = latest_pointer_payload(RELEASE_ID)
-    payload["paths"]["build_manifest"] = (
-        f"releases/{RELEASE_ID}/calibration_diagnostics.json"
-    )
-    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
-
-    with pytest.raises(ValueError, match="malformed=\\['build_manifest'\\]"):
-        latest_release("policyengine/populace-us", api=hub)
-
-
 def test_evidence_pointer_payload_mirrors_the_certified_payload() -> None:
     updated_at = "2026-07-22T13:53:15+00:00"
     certified_shape = latest_pointer_payload(EVIDENCE_RELEASE_ID, updated_at=updated_at)
@@ -1526,114 +1301,8 @@ def test_publish_evidence_release_announces_the_tier(
     ]
 
 
-def test_publish_then_latest_evidence_release_round_trips(
-    hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
-) -> None:
-    publish_release(
-        evidence_release_dir,
-        "policyengine/populace-us",
-        api=hub,
-        artifact_root=artifact_root,
-        updated_at="2026-07-22T13:53:15+00:00",
-        evidence=True,
-    )
-    pointer = latest_evidence_release("policyengine/populace-us", api=hub)
-    assert pointer.release_id == EVIDENCE_RELEASE_ID
-    assert pointer.revision == EVIDENCE_RELEASE_ID
-    assert pointer.line is None
-    assert pointer.tier == "evidence"
-    assert pointer.updated_at == "2026-07-22T13:53:15+00:00"
-    assert (
-        pointer.paths["build_manifest"]
-        == f"releases/{EVIDENCE_RELEASE_ID}/build_manifest.json"
-    )
-
-
-def test_latest_release_refuses_an_evidence_tier_pointer(hub: FakeHub) -> None:
-    """Tier defense on the certified consumer: if an evidence payload ever
-    lands in latest.json, readers refuse it rather than certify it."""
-    payload = latest_evidence_pointer_payload(EVIDENCE_RELEASE_ID)
-    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
-
-    with pytest.raises(ValueError, match="tier"):
-        latest_release("policyengine/populace-us", api=hub)
-
-
-def test_latest_evidence_release_requires_the_evidence_tier(hub: FakeHub) -> None:
-    payload = latest_pointer_payload(EVIDENCE_RELEASE_ID)
-    hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
-
-    with pytest.raises(ValueError, match="tier"):
-        latest_evidence_release("policyengine/populace-us", api=hub)
-
-
-def test_latest_evidence_release_requires_the_id_segment(hub: FakeHub) -> None:
-    payload = latest_evidence_pointer_payload(RELEASE_ID)
-    hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
-
-    with pytest.raises(ValueError, match="-evidence-"):
-        latest_evidence_release("policyengine/populace-us", api=hub)
-
-
 #: An evidence-tier build of the US evidence release (microcosm#1570).
 US_EVIDENCE_BUILD = "populace-us-2024-0fb05b6-evidence-20261201T000000Z"
-
-
-def _seed_us_releases_record(hub: FakeHub, *, evidence_current: str | None) -> None:
-    """The US repository's releases.json after its switch, with the evidence
-    release's current build ``evidence_current``."""
-    from microcosm.data.contract import US_EVIDENCE_RELEASE_ID, US_NATIONAL_RELEASE_ID
-
-    record = {
-        "schema_version": 1,
-        "default": US_NATIONAL_RELEASE_ID,
-        "releases": {
-            US_NATIONAL_RELEASE_ID: {"role": "national", "current": None, "builds": {}},
-            US_EVIDENCE_RELEASE_ID: {
-                "role": "national",
-                "current": evidence_current,
-                "builds": {
-                    US_EVIDENCE_BUILD: {
-                        "published_at": "2026-12-01T00:00:00+00:00",
-                        "withdrawn": False,
-                    }
-                },
-            },
-        },
-    }
-    hub.seed_main_file("releases.json", json.dumps(record).encode())
-
-
-def test_latest_evidence_release_reads_the_evidence_releases_current_build(
-    hub: FakeHub,
-) -> None:
-    """Once the US repository records its builds in releases.json, the
-    evidence tier is the evidence release, and its current build takes the
-    place of latest-evidence.json (microcosm#1570)."""
-    from microcosm.data.contract import US_EVIDENCE_RELEASE_ID
-
-    _seed_us_releases_record(hub, evidence_current=US_EVIDENCE_BUILD)
-
-    pointer = latest_evidence_release("policyengine/populace-us", api=hub)
-
-    folder = f"releases/{US_EVIDENCE_RELEASE_ID}/{US_EVIDENCE_BUILD}"
-    assert pointer.release_id == US_EVIDENCE_BUILD
-    # A build folder never changes, so its files are read at main.
-    assert pointer.revision == "main"
-    assert pointer.tier == "evidence"
-    assert pointer.line is None
-    assert pointer.updated_at == "2026-12-01T00:00:00+00:00"
-    assert pointer.paths["release_manifest"] == f"{folder}/release_manifest.json"
-    assert pointer.paths["build_manifest"] == f"{folder}/build_manifest.json"
-
-
-def test_latest_evidence_release_refuses_an_evidence_release_without_a_current_build(
-    hub: FakeHub,
-) -> None:
-    _seed_us_releases_record(hub, evidence_current=None)
-
-    with pytest.raises(ValueError, match="no current build"):
-        latest_evidence_release("policyengine/populace-us", api=hub)
 
 
 @pytest.mark.parametrize("status_code", [None, 403, 503])
@@ -1653,63 +1322,6 @@ def test_a_hub_that_could_not_be_asked_is_not_an_absent_file(
     )
 
 
-def _evidence_pointer_without_releases_record(hub: FakeHub, monkeypatch) -> None:
-    """A repository before its switch, with latest-evidence.json, whose
-    releases.json the Hub cannot be asked for."""
-    from test_support.microcosm_data import hub_errors
-
-    payload = latest_evidence_pointer_payload(EVIDENCE_RELEASE_ID)
-    hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
-    download = hub.hf_hub_download
-
-    def no_releases_record(*, repo_id, filename, repo_type, revision=None):
-        if filename == "releases.json":
-            raise hub_errors.hub_unreachable(repo_id, filename, revision)
-        return download(
-            repo_id=repo_id, filename=filename, repo_type=repo_type, revision=revision
-        )
-
-    monkeypatch.setattr(hub, "hf_hub_download", no_releases_record)
-
-
-def test_latest_evidence_release_offline_reads_a_cached_pointer_before_the_switch(
-    hub: FakeHub, monkeypatch
-) -> None:
-    """Offline, a releases.json that was never cached reads as absent, as in
-    the loader, so the cached latest-evidence.json still answers (review of
-    #1571)."""
-    from huggingface_hub import constants
-
-    _evidence_pointer_without_releases_record(hub, monkeypatch)
-    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", True)
-
-    pointer = latest_evidence_release("policyengine/populace-us", api=hub)
-
-    assert pointer.release_id == EVIDENCE_RELEASE_ID
-
-
-def test_latest_evidence_release_online_refuses_when_the_hub_cannot_be_asked(
-    hub: FakeHub, monkeypatch
-) -> None:
-    from huggingface_hub import constants
-
-    _evidence_pointer_without_releases_record(hub, monkeypatch)
-    monkeypatch.setattr(constants, "HF_HUB_OFFLINE", False)
-
-    with pytest.raises(LocalEntryNotFoundError):
-        latest_evidence_release("policyengine/populace-us", api=hub)
-
-
-def test_certified_latest_pointer_keeps_its_certified_shape(hub: FakeHub) -> None:
-    """The certified pointer payload gains no tier field — its bytes are the
-    pre-#506 shape, so existing consumers see no drift."""
-    payload = latest_pointer_payload(RELEASE_ID, updated_at="2026-06-11T00:00:00+00:00")
-    assert "tier" not in payload
-    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
-    pointer = latest_release("policyengine/populace-us", api=hub)
-    assert pointer.tier == "certified"
-
-
 def test_certified_publish_never_touches_the_evidence_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1724,17 +1336,6 @@ def test_certified_publish_never_touches_the_evidence_pointer(
     )
     assert any(path == LATEST_POINTER_PATH for path, _ in hub.uploads)
     assert all(path != LATEST_EVIDENCE_POINTER_PATH for path, _ in hub.uploads)
-
-
-def test_latest_release_refuses_any_tier_field(hub: FakeHub) -> None:
-    """No certified producer writes a tier field; even 'certified' or null is
-    foreign and refused rather than consumed as the default."""
-    for tier_value in ("certified", None):
-        payload = latest_pointer_payload(RELEASE_ID)
-        payload["tier"] = tier_value
-        hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
-        with pytest.raises(ValueError, match="tier"):
-            latest_release("policyengine/populace-us", api=hub)
 
 
 def test_publish_refuses_root_artifacts_at_pointer_paths(
@@ -2142,41 +1743,6 @@ def test_non_enrichment_publisher_refuses_enrichment_only_arguments(
     assert hub.uploads == []
 
 
-def test_publish_then_promote_reuses_the_immutable_tag(
-    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
-) -> None:
-    """Publishing without the pointer, then with it: the second call
-    recognises the existing tag that describes this release, writes no second
-    immutable revision and only the main commit carrying the pointer."""
-    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
-
-    publish_release(
-        release_dir,
-        "policyengine/populace-us",
-        api=hub,
-        artifact_root=artifact_root,
-        update_latest=False,
-    )
-    assert LATEST_POINTER_PATH not in hub._commits[hub._refs["main"]]
-    events_after_inspect = len(hub.events)
-
-    promoted = publish_release(
-        release_dir,
-        "policyengine/populace-us",
-        api=hub,
-        artifact_root=artifact_root,
-        updated_at="2026-09-23T12:00:00+00:00",
-    )
-
-    kinds = [event for event, _ in hub.events[events_after_inspect:]]
-    assert kinds == ["create_commit"], kinds
-    assert hub.tags == [{"tag": RELEASE_ID, "revision": "commit-1"}]
-    assert promoted["release_id"] == RELEASE_ID
-    assert latest_release("policyengine/populace-us", api=hub).release_id == (
-        RELEASE_ID
-    )
-
-
 def test_retry_after_a_failed_pointer_commit_reuses_the_tag(
     hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
 ) -> None:
@@ -2230,11 +1796,6 @@ def test_publication_refuses_a_tag_that_describes_another_release(
             artifact_root=artifact_root,
         )
     assert LATEST_POINTER_PATH not in hub._commits[hub._refs["main"]]
-
-
-def test_line_pointer_path_refuses_the_evidence_line() -> None:
-    with pytest.raises(ValueError, match="collides with the evidence-tier pointer"):
-        line_pointer_path("evidence")
 
 
 def test_transient_errors_while_checking_an_existing_tag_propagate(

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "am",
-  "policy": "Armenia releases are public because the v1 donor artifact and target sources are public. Every per-record artifact must retain an explicit US-donor/support-stratum banner and must never be described as Armenian microdata. Releases use data_build_id plus Hugging Face revision, never ordinal versions.",
+  "policy": "Armenia releases are public because the v1 donor artifact and target sources are public. Every per-record artifact must retain an explicit US-donor/support-stratum banner and must never be described as Armenian microdata. Builds are named by data_build_id, never ordinals, and each publishes into its own folder, releases/<release>/<build>/, which releases.json lists.",
   "builder": "populace-am",
   "hf": {
     "artifact_repo": "policyengine/populace-am",
@@ -30,7 +30,7 @@
       "source_coverage.json",
       "demographics.json",
       "validation_bands.json",
-      "latest.json"
+      "releases.json"
     ]
   },
   "licence": {
@@ -38,5 +38,5 @@
     "restricted": false,
     "notes": "ArmStat makes ILCS household and member microdata available for free/open download. Chronicle must capture the exact licence text before a native-ILCS release; v1 itself republishes no ILCS unit record. The populace-US donor artifact's own public licence and exact certified revision must also be pinned before execution."
   },
-  "notes": "The target dataset year is 2024. source_coverage.json follows the country-neutral populace#265 contract. validation_bands.json reports ArmStat national-accounts comparisons plus harvested CEQ/World Bank oracle bands; the latter are never gates unless promoted through Ledger. latest.json uploads last as the atomic pointer. No release or publication machinery exists in this spec-only package."
+  "notes": "The target dataset year is 2024. source_coverage.json follows the country-neutral populace#265 contract. validation_bands.json reports ArmStat national-accounts comparisons plus harvested CEQ/World Bank oracle bands; the latter are never gates unless promoted through Ledger. releases.json names each release's current build and the repository's default release; only the emitter's release writer changes it, and no pointer file names a build. No release or publication machinery exists in this spec-only package."
 }

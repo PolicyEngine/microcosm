@@ -14,7 +14,6 @@
         2023,
         "compact"
       ],
-      "pointer_path": "latest.json",
       "release": "populace-uk-2023",
       "variant": "compact",
       "year": 2023
@@ -32,7 +31,6 @@
         2025,
         "compact"
       ],
-      "pointer_path": "latest-national.json",
       "release": "microcosm-uk-2024-25-national",
       "variant": "compact",
       "year": 2025
@@ -50,7 +48,6 @@
         2025,
         "dense"
       ],
-      "pointer_path": "latest.json",
       "release": "microcosm-uk-2024-25-dense",
       "variant": "dense",
       "year": 2025
@@ -68,7 +65,6 @@
         2024,
         "compact"
       ],
-      "pointer_path": "latest.json",
       "release": "microcosm-us-2024-national",
       "variant": "compact",
       "year": 2024

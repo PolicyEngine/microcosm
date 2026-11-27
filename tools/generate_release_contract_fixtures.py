@@ -151,7 +151,6 @@ UK_BUILD = "uk-frs-calibration-attempt-20260101T000000Z-00000000"
 #: The US national build's name: a build ID with the ``populace-us-`` prefix
 #: the US builder requires (``_assert_us_release_id``).
 US_BUILD = "populace-us-2024-0000000-20260101"
-UK_LINE = "national"
 #: Synthetic runtime versions. Each is a resolved PEP 440 version, which is all the
 #: contract asks of a runtime pin.
 UK_RUNTIME = {
@@ -308,12 +307,11 @@ def _c1_uk_national(root: Path, assembler: ModuleType) -> None:
 def _c1_inventory(root: Path, assembler: ModuleType) -> None:
     """Write what the live contract requires of the UK national release."""
 
-    dataset_role = contract.dataset_role_for_line(UK_LINE)
+    dataset_role = contract.NATIONAL_DEFAULT_DATASET_ROLE
     inventory = {
         "schema_name": "microcosm.release-contract.c1-inventory",
         "schema_version": 1,
         "release_id": UK_RELEASE,
-        "line": contract.line_for_release_id(UK_RELEASE),
         "dataset_role": dataset_role,
         "release_role": contract.RELEASE_ROLES[dataset_role],
         "publishes_to_build_folder": contract.publishes_to_build_folder(UK_RELEASE),
@@ -461,7 +459,7 @@ def _c5_releases(root: Path) -> None:
         "uk": _one_current_build(
             release=UK_RELEASE,
             build=UK_BUILD,
-            role=contract.RELEASE_ROLES[contract.dataset_role_for_line(UK_LINE)],
+            role=contract.RELEASE_ROLES[contract.NATIONAL_DEFAULT_DATASET_ROLE],
         ),
         "us": _one_current_build(
             release=US_RELEASE,

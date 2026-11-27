@@ -204,7 +204,7 @@ version 2 staging run files to `policyengine/populace-uk-staging` under the
 same switch. The build command also **stages the finished dataset bundle** it built,
 national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
-it without publishing it (the build's emitter uploads it): `releases/` and `latest.json` are untouched, the
+it without publishing it (the build's emitter uploads it): `releases/` and `releases.json` are untouched, the
 release contract is not consulted, and a `releasable: false` size run stages
 like any other. Fetch a bundle with `tools/fetch_uk_staged_dataset.py`;
 re-stage a finished run directory with `tools/stage_uk_rowwise_candidate.py`.
@@ -868,10 +868,8 @@ with the evidence contract, which refuses a build in the certified shape; the
 certified contract refuses the evidence shape, so an evidence build can't be
 published into the national release. The evidence release is never the
 repository's default, so `microcosm.data.load("us")` never loads its builds.
-Its current build in `releases.json` takes the place of `latest-evidence.json`.
-The US switch deleted every `latest*.json` file, so
-`microcosm.data.latest_evidence_release`, which still reads
-`latest-evidence.json`, finds no pointer in the US repository.
+Its current build in `releases.json` took the place of `latest-evidence.json`,
+which the US switch deleted with every other `latest*.json` file.
 
 The tagged publisher posts a Slack alert when it moves `latest.json`, and only
 when the channel's incoming-webhook URL is set (`SLACK_WEBHOOK_POPULACE_US`,

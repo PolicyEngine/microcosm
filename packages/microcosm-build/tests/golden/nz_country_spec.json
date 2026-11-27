@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "d959b1042eae960bec85665b6e1db3b5e54523a463fc960d276ef5ac9fff4a34",
+  "fingerprint": "ec42d6b38abd2915b476675d80e02425b27a9c5757618280045e6035a1d8a72c",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -80,7 +80,7 @@
     "reference_inventory.json": "f0078d9dd42dcc3088459c3e4e1278a8da5fe1506ba903f119cfe5be157c13b8",
     "reference_profiles.json": "dc3d81e6fdeae12b93176872de690e21424695209390b253a3490e65cfd5740c",
     "reference_selection.json": "fdd01757db3ade78db2c8a3ab5d2a90dd7dfdf43038fb259778cfd340ce5f443",
-    "release_contract.json": "6cd5e3a4a2bf30e4025e04e964c393b24040937d13db7e6a07b3966a55f3b114",
+    "release_contract.json": "0c2cf38da9ce619070f12a819556a9954ce92dcae9afde3006ee170d30e37ac4",
     "rent_bands.json": "1feccbe80fe662bf14a11ab1a3a4047dd8cf62d0f813112aa2aa248799e620ed",
     "reporting_classifiers.json": "60f0936a9cab3776affda81e2612174dbc2192947630e9cc037b9b11277ca4d2",
     "scenarios.json": "86e102bb3f301ee78238f020fef0839dbbad54b367b7b1e9ce7824956f2d1135",

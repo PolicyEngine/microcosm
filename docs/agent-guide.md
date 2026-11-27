@@ -391,8 +391,9 @@ package stage prints both commands itself.
 `tools/preflight_us_release_gates.py` runs the US national release checks that
 need no calibration on the base before a build, and again with the finished
 build's `--release-manifest`. The emitter changes
-no current build while any `latest*.json` pointer file exists; the UK and US
-repositories' switches to `releases.json` deleted them. The tagged publisher
+no current build while any `latest*.json` pointer file exists; each
+repository's switch to `releases.json` deleted them, and Microcosm neither
+reads nor writes them. The tagged publisher
 (`tools/publish_release.sh` → `microcosm-publish-release`) refuses every one of
 these releases and any repository that has `releases.json`, so no UK or US
 release publishes with tags. The UK repository's switch moved the June 2023 UK
@@ -415,8 +416,8 @@ by pin, a signing key registered in `microcosm.data.gate_signing_keys`, and
 an inspection-only `--publish`. Never publish or promote artifacts as a side
 effect of another task. A UK rowwise run's **staged** bundle
 (`staged/<run_id>/` in the private repository, written by the build itself)
-is inspection evidence, not a release: it never moves `releases/` or
-`latest.json` and is not loadable through the certified loader. The build's
+is inspection evidence, not a release: it never changes `releases/` or
+`releases.json` and is not loadable through the certified loader. The build's
 default is to upload that bundle (hundreds of megabytes of licensed microdata)
 to the private repository; when you run `microcosm-build-uk`
 (`tools/build_uk_full.py`, or its stub `tools/build_uk_rowwise_candidate.py`)

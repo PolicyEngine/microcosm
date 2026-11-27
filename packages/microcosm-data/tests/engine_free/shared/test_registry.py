@@ -14,7 +14,6 @@ from microcosm.data import (
     available_variants,
     register,
 )
-from microcosm.data.release import LATEST_POINTER_PATH
 
 
 def test_us_2024_is_registered_with_a_complete_spec() -> None:
@@ -47,12 +46,6 @@ def test_uk_2023_compact_is_registered_with_a_complete_spec() -> None:
     assert spec.engine_package == "policyengine-uk"
 
 
-def test_dataset_spec_default_pointer_path_matches_release_default() -> None:
-    assert (
-        DatasetSpec.__dataclass_fields__["pointer_path"].default == LATEST_POINTER_PATH
-    )
-
-
 def test_available_lists_default_variant_keys_only_sorted(monkeypatch) -> None:
     dense_only = DatasetSpec(
         country="zz",
@@ -63,6 +56,7 @@ def test_available_lists_default_variant_keys_only_sorted(monkeypatch) -> None:
         engine_module="policyengine_zz.data",
         engine_class="ZZSingleYearDataset",
         engine_package="policyengine-zz",
+        release="microcosm-zz-2099-dense",
     )
     monkeypatch.setattr(
         loader_module,
@@ -112,6 +106,7 @@ def test_register_allows_distinct_variants_for_same_country_year(monkeypatch) ->
         engine_module="policyengine_zz.data",
         engine_class="ZZSingleYearDataset",
         engine_package="policyengine-zz",
+        release="microcosm-zz-2099-national",
     )
     local = DatasetSpec(
         country="zz",
@@ -122,6 +117,7 @@ def test_register_allows_distinct_variants_for_same_country_year(monkeypatch) ->
         engine_module="policyengine_zz.data",
         engine_class="ZZSingleYearDataset",
         engine_package="policyengine-zz",
+        release="microcosm-zz-2099-local",
     )
 
     assert register(compact) is compact
@@ -140,6 +136,7 @@ def test_register_refuses_to_shadow_a_key_with_a_different_spec() -> None:
         engine_module="policyengine_us.data",
         engine_class="USSingleYearDataset",
         engine_package="policyengine-us",
+        release="microcosm-us-2024-national",
     )
     with pytest.raises(ValueError, match="already registered for"):
         register(conflicting)
@@ -157,40 +154,23 @@ def test_uk_2025_dense_is_registered_off_the_default_variant() -> None:
     assert ("uk", 2025, DEFAULT_VARIANT) in REGISTRY
 
 
-def test_uk_2025_national_line_is_the_default_variant_after_promotion():
-    """microcosm#823: the line's first certified cut was promoted on
-    2026-10-26, so the line moved to the default variant (Max's #823
-    ruling) and its own variant key retired; the June 2023 line stays
-    addressable at its year. Until its repository switches to
-    releases.json, the loader follows latest-national.json."""
-    spec = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
-    assert spec.pointer_path == "latest-national.json"
-    assert spec.filename == "microcosm_uk_2024_25.h5"
-    assert ("uk", 2025, "national") not in REGISTRY
-    assert REGISTRY[("uk", 2023, DEFAULT_VARIANT)].filename == "populace_uk_2023.h5"
-
-
 def test_uk_2025_national_release_is_the_default_variant():
     """The national release is the default UK 2025 load: its current build in
-    releases.json, not a pointer file; the June 2023 release stays
-    addressable at its year, as release populace-uk-2023 once the UK switch
-    has moved its build, and through latest.json until then."""
+    releases.json. The June 2023 release stays addressable at its year, as
+    release populace-uk-2023, whose one build the UK switch moved."""
     spec = REGISTRY[("uk", 2025, DEFAULT_VARIANT)]
     assert spec.release == "microcosm-uk-2024-25-national"
     assert spec.filename == "microcosm_uk_2024_25.h5"
     assert ("uk", 2025, "national") not in REGISTRY
     june = REGISTRY[("uk", 2023, DEFAULT_VARIANT)]
     assert june.filename == "populace_uk_2023.h5"
-    assert (june.release, june.pointer_path) == (
-        "populace-uk-2023",
-        LATEST_POINTER_PATH,
-    )
+    assert june.release == "populace-uk-2023"
 
 
-def test_the_registry_entries_that_name_a_release():
-    """Each entry that names a release reads it through releases.json once
-    its repository has one, and follows its pointer file until then."""
-    assert {spec.key: spec.release for spec in REGISTRY.values() if spec.release} == {
+def test_each_registry_entry_names_its_release():
+    """The loader reads each entry's release through its repository's
+    releases.json."""
+    assert {spec.key: spec.release for spec in REGISTRY.values()} == {
         ("us", 2024, DEFAULT_VARIANT): "microcosm-us-2024-national",
         ("uk", 2023, DEFAULT_VARIANT): "populace-uk-2023",
         ("uk", 2025, DEFAULT_VARIANT): "microcosm-uk-2024-25-national",

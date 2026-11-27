@@ -12,13 +12,12 @@ contract; the emitter's release writer puts the files in
 rules in ``microcosm_emitter_interface.releases``. Nothing here commits,
 tags or writes a pointer file.
 
-A repository's switch to ``releases.json`` deletes its ``latest*.json``
-pointer files in the same commit, and the emitter changes no current build
-while one exists. So the command lists the repository's files first and
-refuses, before any emitter starts, while any pointer file is there: in a
-repository without ``releases.json`` it says the switch has not run, since
-the loader follows those files, and in one with it, that the file appeared
-after the switch and should be removed. The
+Each repository's switch to ``releases.json`` deleted its ``latest*.json``
+pointer files, and Microcosm neither reads nor writes them; the emitter
+writes none and changes no current build while one exists. So the command
+lists the repository's files first and refuses, before any emitter starts,
+while any pointer file is there, whether or not the repository has
+``releases.json`` yet, and says to remove it. The
 tagged publisher refuses these releases, and any repository that has
 ``releases.json``.
 
@@ -130,7 +129,6 @@ from microcosm.data.release import (
     not_a_build_folder_release_reason,
     prepare_build_folder_release,
 )
-from microcosm.data.releases_record import RELEASES_RECORD_PATH
 
 if TYPE_CHECKING:
     from microcosm_emitter_interface import EmitterStartupError, RequestFailure
@@ -568,13 +566,13 @@ def _refuse_pointer_files(repository: str) -> None:
     """Refuse a repository that has any ``latest*.json`` pointer file.
 
     The interface's ``is_pointer_file`` rule says which files those are, and
-    the emitter applies it too. A repository's switch to ``releases.json``
-    deletes them, and nothing writes them after it. Without ``releases.json``
-    the repository has not switched: the loader follows its pointer files,
-    so the refusal says so and keeps them. With it, a pointer file appeared
-    after the switch, and the
-    refusal says to remove it. A repository whose files cannot be listed is
-    refused too.
+    the emitter applies it too. Each repository's switch to ``releases.json``
+    deleted them, and Microcosm neither reads nor writes them, so a pointer
+    file in any repository, with ``releases.json`` or without it, appeared
+    later, and the refusal says to remove it. The emitter refuses only a
+    change of a release's current build while one exists, so this is the one
+    refusal of a publication without ``--make-current``. A repository whose
+    files cannot be listed is refused too.
     """
     try:
         paths = _repository_files(repository)
@@ -586,19 +584,11 @@ def _refuse_pointer_files(repository: str) -> None:
             "and run the command again"
         ) from error
     pointer_files = sorted(path for path in paths if is_pointer_file(path))
-    if pointer_files and RELEASES_RECORD_PATH not in paths:
-        raise ValueError(
-            f"{repository} has not switched to releases.json: it has no "
-            f"releases.json and has the pointer file(s) {', '.join(pointer_files)}, "
-            "which the loader follows. Its builds publish here only after the "
-            "switch; keep the files in place and run the command again once "
-            "the switch has run"
-        )
     if pointer_files:
         raise ValueError(
             f"{repository} has the pointer file(s) {', '.join(pointer_files)}. "
-            "Its builds publish here only once its switch to releases.json has "
-            "deleted them, and nothing writes them after it, so remove the "
+            "Microcosm neither reads nor writes latest*.json pointer files, and "
+            "builds publish only into a repository without them, so remove the "
             "file(s) that appeared, then run the command again"
         )
 

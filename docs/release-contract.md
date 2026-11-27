@@ -106,8 +106,8 @@ changed what the registry names and how the loader reaches it:
 - For every entry, the loader (`_resolve_certified_release`) reads the
   repository's `releases.json` and loads the release's current build, or a
   listed build that `build=` pins, from `releases/<release>/<build>/`. It
-  follows the entry's pointer file (`latest.json` or `latest-national.json`)
-  only where the repository has no `releases.json`.
+  refuses a repository without `releases.json` and reads no pointer file
+  (microcosm#1794).
 - The registry names no entry for the other four US releases or for any UK
   local-area release, so `microcosm.data.load` reaches none of them.
 - The US tools now write builds of standing releases. The fiscal-refresh tool
@@ -364,11 +364,7 @@ both:
   `publishes_to_build_folder` before anything else, and `build_folder_identity`
   refuses the same names inside `publish_release_build` and
   `promote_release_build`. So only the tagged publisher accepts a new country's
-  release. `line_for_release_id` still knows only
-  `microcosm-uk-2024-25-national` and `microcosm-uk-2024-25-local-k<N>`. Its
-  remaining callers serve pointer files: `latest_line_release`, which the
-  loader's pointer reader calls, and `line_pointer_payload`, which no publisher
-  calls.
+  release.
 
 The registry also disagrees with the name about the year. The registry files
 the UK national release under `("uk", 2025, "compact")`, the UK 2025 default
@@ -381,7 +377,9 @@ release's name cannot match; microcosm#1144 reported the failure from a live
 run. On 2026-11-12 the test requires a release that the loader reads through
 `releases.json` to carry the registry entry's release name exactly, and
 requires a release that the loader reaches through a line pointer only to start
-with `microcosm-<country>-`.
+with `microcosm-<country>-`. Since microcosm#1794 the loader reaches no
+release through a pointer file, so the test requires the entry's release name
+for every entry.
 
 #### Version 1, planned for M3: dispatch on the declared country
 
@@ -436,7 +434,7 @@ C1 version 1 dispatches on what the manifest declares instead of on its name:
    comparisons in `contract.py` and 13 in `release.py`. `loader.py` holds
    none, and `compatibility_recertification.py`, `source_enrichment.py`,
    `annual_projections.py` and `build_folder_manifests.py` hold more.
-   `line_for_release_id` leaves with the pointer reader instead. A schema-2 US
+   `line_for_release_id` left with the pointer reader (microcosm#1794). A schema-2 US
    build then cannot skip the US checks by choosing another name.
 3. **Unknown countries fail closed.** The validator refuses them instead of
    falling back to the base set. The plan registers NZ before the switch to
@@ -885,9 +883,9 @@ either. No publication command reads a Logbook row.
 The UK national, dense and local-area releases and the six US releases
 publish each build into its own folder, `releases/<release>/<build>/`. The
 repository's `releases.json` records each release's builds and names the
-current one. For those releases the `latest*.json` pointer files survive as
-read-only legacy: nothing writes one for them, and code reads one only for a
-repository that has no `releases.json`.
+current one. No repository holds a `latest*.json` pointer file: each
+repository's switch to `releases.json` deleted them, and Microcosm neither
+reads nor writes one (microcosm#1794).
 
 - **The releases.** `publishes_to_build_folder` names the releases that
   publish into build folders: the UK national release
@@ -1010,25 +1008,20 @@ repository that has no `releases.json`.
   `publishes_to_build_folder` names, and `publish_release` refuses every
   repository that has `releases.json` (`_refuse_releases_record`; only the
   Hub's answer that the file is absent lets it go on). Nothing writes
-  `latest-<line>.json`: `publish_release` takes no line, although
-  `line_pointer_payload` remains. Three readers of pointer files remain. The
-  loader follows `latest.json` (`latest_release`) or `latest-<line>.json`
-  (`latest_line_release`) only for an entry whose repository has no
-  `releases.json`. `latest_evidence_release` returns the evidence release's
-  current build from `releases.json` where the file exists, and reads
-  `latest-evidence.json` otherwise. The switch tool read each repository's
-  pointer files once, to set each release's current build and the record's
-  `default`.
+  `latest-<line>.json`, and nothing reads any pointer file: microcosm#1794
+  removed the loader's fallback to them, `latest_release`,
+  `latest_line_release`, `latest_evidence_release` and `line_pointer_payload`.
+  The switch tool read each repository's pointer files once, to set each
+  release's current build and the record's `default`.
 - **The registry.** `microcosm.data.registry.REGISTRY` maps `(country, year,
   variant)` to a `DatasetSpec`. Each names the Hub repository, the dataset
-  file, the engine class, the `release` the loader reads through
-  `releases.json`, and the pointer file the loader follows where the
-  repository has no `releases.json`. The registry holds four entries:
+  file, the engine class, and the `release` the loader reads through
+  `releases.json`, which every entry must name. The registry holds four
+  entries:
   - `("uk", 2023, "compact")`: the June 2023 build, release
     `populace-uk-2023`;
   - `("uk", 2025, "compact")`: release `microcosm-uk-2024-25-national`, the
-    UK 2025 default load since microcosm#1432 (2026-11-02), with
-    `latest-national.json` as its pointer file;
+    UK 2025 default load since microcosm#1432 (2026-11-02);
   - `("uk", 2025, "dense")`: release `microcosm-uk-2024-25-dense`;
   - `("us", 2024, "compact")`: release `microcosm-us-2024-national`, whose
     builds declare `microcosm_us_2024.h5` (`build_folder_filename`) or
@@ -1042,11 +1035,12 @@ repository that has no `releases.json`.
   release or build, declares a role other than the release's role in
   `releases.json`, pins a revision on any artifact, or declares a dataset whose
   role differs from `dataset`, whose repository differs from the registry's, or
-  whose file name the entry does not list. The loader goes to the entry's
-  pointer file only when the Hub answers that `releases.json` is absent or,
-  offline, when the cache never held the record. The loader ignores the
-  record's `default`: the registry chooses the release.
-  `load(unverified_root=True)` refuses a repository that has `releases.json`.
+  whose file name the entry does not list. When the Hub answers that
+  `releases.json` is absent, or offline when the cache never held the
+  record, the loader refuses the entry, naming the file; any other failure to
+  read it propagates. The loader ignores the record's `default`: the registry
+  chooses the release. `load` has no option to read a root dataset file,
+  which no repository holds.
 - **The gaps.** The registry has no entry for the US local-area release
   `microcosm-us-2024-local`, whose builds carry the US state and district
   file, or for any UK `local-k<N>` release. policyengine.py's bundle, read on
@@ -1110,10 +1104,12 @@ work.
     under M3's owners.
   - *The NZ and AM declarations.* Each country's `release_contract.json`
     (under `packages/microcosm-build/src/microcosm/build/`) names
-    `latest.json` in its boundary. Each country's owner changes its file
-    before that country's first publication. BE's names `releases.json` and
-    the `releases/<release>/<build>/` folders instead since microcosm#1741,
-    and its required files are the ones `BE_REQUIRED_RELEASE_FILES` lists,
+    `releases.json` in its boundary and the `releases/<release>/<build>/`
+    folders in its policy since microcosm#1794, as BE's has since
+    microcosm#1741. Neither country has a release name in
+    `publishes_to_build_folder` or a registry entry yet, so neither
+    publishes; each country's owner adds them before its first publication.
+    BE's required files are the ones `BE_REQUIRED_RELEASE_FILES` lists,
     which a build-shard test holds equal.
   - *BE's registry entry and staging* (microcosm#1741). BE's releases joined
     `publishes_to_build_folder` without a registry entry: there is no
@@ -1131,20 +1127,11 @@ work.
     first build validates. Until that build publishes, the registry names a
     release with no published build: `available_variants()` lists the entry,
     and `load` raises because `releases.json` does not list the release.
-    `line_for_release_id` keeps its pattern, because the pointer reader still
-    calls it.
   - *The tagged publisher.* `microcosm-publish-release` and
     `tools/publish_release.sh` stay installed and sit on the
     [retire list](#retire-list-as-of-2026-10-15). Their removal waits on the
     refusal of a new country's tagged publish. Loading a tagged build that
     never moved into a folder stays.
-  - *Pointer readers.* The loader's fallback (`DatasetSpec.pointer_path`,
-    `latest_release`, `latest_line_release`) and the `latest-evidence.json`
-    fallback in `latest_evidence_release` still resolve through `latest*.json`.
-    `microcosm.data` still exports `latest_release`, which reads `latest.json`
-    without looking for `releases.json`, and `publish_release`, which writes
-    it. They leave once no registered repository lacks `releases.json`. The
-    plan names no owner or milestone for them yet.
   - *The UK cut runner.* `tools/run_uk_cut.py` still builds the tagged
     publisher's arguments for the UK national release, and
     `docs/uk-cut-anyone.md` still describes them; `prepare_release` refuses
@@ -1482,7 +1469,7 @@ release and the tagged publisher joined the table on 2026-11-11.
 | `tools/build_uk_rowwise_dataset.py` | Kept. The report's reason, that the graph driver already takes `--candidate-clone-counts`, does not settle it: both drivers accept the flag only for a dry run. `docs/uk-full-build-graph.md` keeps the row-wise driver as a separate driver, and Max had not ruled on UK-3 (dense or local-k) by 2026-10-15 | Both drivers still accept the flag only for a dry run |
 | `format_uk_release_id`, `apply_uk_release_identity` | This milestone deletes them, with `UKReleaseIdentity`, which builds on `format_uk_release_id`: none had a caller outside its own tests and the `uk_runtime` re-export. The tier vocabulary and the line ids stay | On main none has a caller outside its own tests and the `uk_runtime` re-export |
 | Stale text, microcosm.institute `/calibration`, the evidence tier | A separate task owns them (task_d2b70813) | Not read again. For the evidence tier, see the next row |
-| The US evidence release, `microcosm-us-2024-evidence` | On this list since 2026-10-15, as the evidence tier | A named exception: version 1 neither admits it to the contract nor retires it. microcosm#1571 made it a standing release in `US_RELEASES`, with the `national` role. `tools/certify_us_national_build.py --evidence-release` places its builds there: a build has no tier, and certification chooses it (microcosm#1585 item 11). `prepare_build_folder_release` checks them with `validate_evidence_release_dir`; they carry schema `1-evidence` and fail C1's certified contract by design. The registry names no entry for it, so `microcosm.data.load` never serves it. No module under `packages/*/src` or `tools/` calls `latest_evidence_release`. Whoever retires the release must first find, from code, the readers of the evidence release and of `latest_evidence_release` |
+| The US evidence release, `microcosm-us-2024-evidence` | On this list since 2026-10-15, as the evidence tier | A named exception: version 1 neither admits it to the contract nor retires it. microcosm#1571 made it a standing release in `US_RELEASES`, with the `national` role. `tools/certify_us_national_build.py --evidence-release` places its builds there: a build has no tier, and certification chooses it (microcosm#1585 item 11). `prepare_build_folder_release` checks them with `validate_evidence_release_dir`; they carry schema `1-evidence` and fail C1's certified contract by design. The registry names no entry for it, so `microcosm.data.load` never serves it. `latest_evidence_release`, which no module called, left with the pointer readers (microcosm#1794). Whoever retires the release must first find, from code, the readers of the evidence release |
 | The tagged publisher: `microcosm-publish-release` and `tools/publish_release.sh` | Not on the report's list | On the list from 2026-11-11. It refuses every release that `publishes_to_build_folder` names and every repository that has `releases.json`. Its removal waits on the refusal of a new country's tagged publish (C5 version 1, M3). Loading a tagged build that never moved into a folder stays |
 | microcosm-benchmarks, the calibration-diagnostics evaluation harness, policyengine-data's calibrate module | Each lives in another repository; proposed as a separate task (task_18c2af98) | Not read again |
 | cos d816 | Ruled 2026-10-09 (per-country Core pins, microcosm#1143) | The same |

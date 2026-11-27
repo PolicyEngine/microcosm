@@ -36,7 +36,6 @@
     "signing_key_env": "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
   },
   "dataset_role": "national_default",
-  "line": "national",
   "publishes_to_build_folder": true,
   "release_directory_files": [
     "build_manifest.json",
