@@ -508,6 +508,164 @@ def test_verification_catches_a_writer_that_drops_a_column(sampler, tmp_path) ->
         )
 
 
+def _sample_written_export(sampler, source: Path, out_dir: Path, **options) -> dict:
+    """Sample a written synthetic export at half, engine-free; return the receipt."""
+    return sampler.sample_export(
+        source,
+        out_dir,
+        fraction=0.5,
+        seed=0,
+        probes=fixture_sampler_probes(),
+        write_dataset=write_table_h5,
+        refuse_denied=False,
+        size_certainty_multiplier=0.0,
+        **options,
+    )
+
+
+def test_a_dropped_column_is_left_out_of_the_verified_subsample(
+    sampler, tmp_path
+) -> None:
+    """A published export can store a column a later export contract refuses
+    (``has_marketplace_health_coverage``, now formula-owned). ``drop_columns``
+    leaves it out of the subsample, the post-write check expects exactly that
+    column to be absent, and the receipt records it."""
+    frame = synthetic_export_frame(30, seed=5)
+    source = tmp_path / "src" / "populace_us_2024.h5"
+    source.parent.mkdir()
+    write_table_h5(frame, source)
+    receipt = _sample_written_export(
+        sampler, source, tmp_path / "out", drop_columns=("age",)
+    )
+    written = load_table_h5(Path(receipt["output"]["path"]))
+    assert "age" not in written.table("person").columns
+    assert set(written.table("person").columns) == set(
+        frame.table("person").columns
+    ) - {"age"}
+    for entity in ("household", "tax_unit", "spm_unit", "family", "marital_unit"):
+        assert set(written.table(entity).columns) == set(frame.table(entity).columns)
+    assert receipt["output"]["dropped_columns"] == {"person": ["age"]}
+    assert receipt["verification"]["passed"]
+
+
+def test_a_subsample_with_no_dropped_columns_records_none(sampler, tmp_path) -> None:
+    frame = synthetic_export_frame(12, seed=5)
+    source = tmp_path / "src" / "populace_us_2024.h5"
+    source.parent.mkdir()
+    write_table_h5(frame, source)
+    receipt = _sample_written_export(sampler, source, tmp_path / "out")
+    assert receipt["output"]["dropped_columns"] == {}
+
+
+def test_verification_catches_a_writer_that_keeps_a_dropped_column(
+    sampler, tmp_path
+) -> None:
+    frame = synthetic_export_frame(20, seed=2)
+    source = tmp_path / "src" / "populace_us_2024.h5"
+    source.parent.mkdir()
+    write_table_h5(frame, source)
+    source_ages = frame.table("person").set_index("person_id")["age"]
+
+    def writer_keeping_age(sample, path, period):
+        write_table_h5(sample, path, period)
+        with pd.HDFStore(str(path)) as store:
+            person = store["person"]
+            person["age"] = source_ages.reindex(person["person_id"]).to_numpy()
+            store.put("person", person, format="table", data_columns=True)
+
+    with pytest.raises(AssertionError, match="stored columns differ"):
+        _sample_written_export(
+            sampler,
+            source,
+            tmp_path / "out",
+            drop_columns=("age",),
+            write_dataset=writer_keeping_age,
+        )
+
+
+@pytest.mark.parametrize(
+    ("column", "message"),
+    [
+        ("not_a_stored_column", "no table of .* stores"),
+        ("household_weight", "the household weight"),
+        ("household_id", "an id or membership column"),
+        ("tax_unit_id", "an id or membership column"),
+        ("person_id", "an id or membership column"),
+        ("person_spm_unit_id", "an id or membership column"),
+    ],
+)
+def test_dropping_an_unstored_weight_or_id_column_is_refused(
+    sampler, tmp_path, column, message
+) -> None:
+    frame = synthetic_export_frame(10, seed=1)
+    source = tmp_path / "src" / "populace_us_2024.h5"
+    source.parent.mkdir()
+    write_table_h5(frame, source)
+    out_dir = tmp_path / "out"
+    with pytest.raises(ValueError, match=message):
+        _sample_written_export(sampler, source, out_dir, drop_columns=(column,))
+    assert not (out_dir / "populace_us_2024.h5").exists()
+
+
+def _linked_export(tmp_path: Path, frame) -> Path:
+    """A synthetic export laid out as the Hugging Face cache stores one: a
+    snapshot's ``populace_us_2024.h5`` linked to a blob named by its hash."""
+    blob = tmp_path / "blobs" / "5f0c2a9e71d4"
+    blob.parent.mkdir()
+    write_table_h5(frame, blob)
+    link = tmp_path / "snapshot" / "populace_us_2024.h5"
+    link.parent.mkdir()
+    link.symlink_to(blob)
+    return link
+
+
+def test_the_subsample_takes_the_name_its_export_was_given(sampler, tmp_path) -> None:
+    link = _linked_export(tmp_path, synthetic_export_frame(12, seed=6))
+    receipt = _sample_written_export(sampler, link, tmp_path / "out")
+    assert Path(receipt["output"]["path"]) == (
+        (tmp_path / "out").resolve() / "populace_us_2024.h5"
+    )
+
+
+def test_a_subsample_written_over_its_exports_link_is_refused(
+    sampler, tmp_path
+) -> None:
+    link = _linked_export(tmp_path, synthetic_export_frame(12, seed=6))
+    with pytest.raises(ValueError, match="overwrite its source"):
+        _sample_written_export(sampler, link, link.parent)
+    assert link.is_symlink()
+
+
+class _SampleExportCalledError(Exception):
+    pass
+
+
+def test_the_cli_passes_every_dropped_column(sampler, tmp_path, monkeypatch) -> None:
+    passed: dict = {}
+
+    def record_options(*arguments, **options):
+        passed.update(options)
+        raise _SampleExportCalledError
+
+    monkeypatch.setattr(sampler, "sample_export", record_options)
+    with pytest.raises(_SampleExportCalledError):
+        sampler.main(
+            [
+                "--export",
+                str(tmp_path / "populace_us_2024.h5"),
+                "--out",
+                str(tmp_path / "out"),
+                "--fraction",
+                "0.05",
+                "--drop-column",
+                "has_marketplace_health_coverage",
+                "--drop-column",
+                "age",
+            ]
+        )
+    assert passed["drop_columns"] == ("has_marketplace_health_coverage", "age")
+
+
 # ---------------------------------------------------------------------------
 # Regression: the lost lane's "hung" dev check (2026-09-28)
 # ---------------------------------------------------------------------------
