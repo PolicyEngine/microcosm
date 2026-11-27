@@ -17,8 +17,8 @@ pointer files in the same commit, and the emitter changes no current build
 while one exists. So the command lists the repository's files first and
 refuses, before any emitter starts, while any pointer file is there: in a
 repository without ``releases.json`` it says the switch has not run, since
-the loader follows those files and the switch reads them, and in one with
-it, that the file appeared after the switch and should be removed. The
+the loader follows those files, and in one with it, that the file appeared
+after the switch and should be removed. The
 tagged publisher refuses these releases, and any repository that has
 ``releases.json``.
 
@@ -570,9 +570,9 @@ def _refuse_pointer_files(repository: str) -> None:
     The interface's ``is_pointer_file`` rule says which files those are, and
     the emitter applies it too. A repository's switch to ``releases.json``
     deletes them, and nothing writes them after it. Without ``releases.json``
-    the repository has not switched: the loader follows its pointer files
-    and the switch reads them, so the refusal says to run the switch and
-    keeps them. With it, a pointer file appeared after the switch, and the
+    the repository has not switched: the loader follows its pointer files,
+    so the refusal says so and keeps them. With it, a pointer file appeared
+    after the switch, and the
     refusal says to remove it. A repository whose files cannot be listed is
     refused too.
     """
@@ -590,10 +590,8 @@ def _refuse_pointer_files(repository: str) -> None:
         raise ValueError(
             f"{repository} has not switched to releases.json: it has no "
             f"releases.json and has the pointer file(s) {', '.join(pointer_files)}, "
-            "which the loader follows and the switch reads. Its builds publish "
-            "here only after the switch, which the `copy` and then `switch` "
-            "steps of `python -m microcosm.build.build_folder_switch` make with "
-            "--write; keep the files in place and run the command again once "
+            "which the loader follows. Its builds publish here only after the "
+            "switch; keep the files in place and run the command again once "
             "the switch has run"
         )
     if pointer_files:

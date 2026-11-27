@@ -285,11 +285,12 @@ national line's tagged `build_id` held the release's name and `attempt_id` and
 its top level. Each artifact carries its role. No artifact pins a revision,
 because `releases.json` and the folder locate a build's files. Both layouts
 carry `schema_version` 1, and `publishes_to_build_folder` tells them apart. A
-build that the switch tool (`microcosm.build.build_folder_switch`) moved from
-its tag also carries `migrated_from`, which names the tag, its commit and the
-SHA-256 of the manifest the tool rewrote. A build it moved from an untagged
-folder on `main` (`--include-untagged`, for BE's builds) carries instead the
-old folder, the commit that last changed it and that SHA-256. Its `artifacts`
+build that the one-time switch tool moved from its tag also carries
+`migrated_from`, which names the tag, its commit and the SHA-256 of the
+manifest the tool rewrote. The tool was removed once the US, UK and BE
+repositories had moved; its last version is in Git history at `d3b7f4b4a`. A
+build it moved from an untagged folder on `main` (BE's builds) carries
+instead the old folder, the commit that last changed it and that SHA-256. Its `artifacts`
 lists the files its folder holds, each with its `path`, `repo_id`, `role` and
 `sha256` but no `kind`, and `unpublished_artifacts` keeps, unchanged, the map
 the old manifest had, which declares files of the builder's output directory
@@ -308,7 +309,7 @@ tagged-shape manifests in a directory named after the release and then call
 both manifests in place. The US annual assembler copies its base build's two
 manifests, changes `release` and `build` in both, drops `migrated_from`, and in
 the release manifest adds the annual metadata and an artifact for each file the
-projection adds. The switch tool rewrites the manifests of the builds it moves.
+projection adds. The switch tool rewrote the manifests of the builds it moved.
 
 The **certification** is UK-only. The validator requires
 `release_certification.json` of `microcosm-uk-2024-25-national`. Whatever its
@@ -980,20 +981,19 @@ repository that has no `releases.json`.
   listed release or `null`) and `releases`; for each release its `role`, its
   `current` build or `null`, and each build's `published_at` and `withdrawn`;
   a current build that the record lists and has not withdrawn; at most 4 MiB.
-  The record carries no country, vintage or line. The one-time `switch` step
-  of `microcosm.build.build_folder_switch` writes a repository's first record
-  itself and deletes the repository's `latest*.json` files in the same
-  commit; after that only the emitter's release writer changes the record.
-  The switch's `copy` step moves each tagged build into a folder and rewrites
-  its manifests, as C1 describes. Its `delete-old-layout` step then deletes,
-  in one commit, the files the tagged layout leaves on `main`: every file
+  The record carries no country, vintage or line. The one-time switch tool's
+  `switch` step wrote the first record of each of the US, UK and BE
+  repositories itself and deleted the repository's `latest*.json` files in
+  the same commit; after that only the emitter's release writer changes the
+  record. Before it, the tool's `copy` step moved each build into a folder and
+  rewrote its manifests, as C1 describes. Its `delete-old-layout` step then
+  deleted, in one commit, the files the old layout left on `main`: every file
   under `releases/` outside a build folder, and every dataset file (`.h5`,
-  `.hdf5`, `.npz`) at the repository's root. It keeps `releases.json`, every
+  `.hdf5`, `.npz`) at the repository's root. It kept `releases.json`, every
   build folder the record lists, the other root files and every directory
-  outside `releases/`, and it refuses a repository without `releases.json`,
-  one that still has a `latest*.json` pointer file, and a build folder the
-  record does not list. Each tagged build stays readable at its tag, and each
-  deleted file stays in `main`'s history.
+  outside `releases/`. Each tagged build stays readable at its tag, and each
+  deleted file stays in `main`'s history. The tool was removed once BE had
+  moved.
 - **The tagged publisher and the pointer files.** `microcosm-publish-release`
   (`publish_cli`, which `tools/publish_release.sh` wraps) still publishes a
   release that keeps tags. It runs `publication_refusal`, then
@@ -1016,8 +1016,9 @@ repository that has no `releases.json`.
   (`latest_line_release`) only for an entry whose repository has no
   `releases.json`. `latest_evidence_release` returns the evidence release's
   current build from `releases.json` where the file exists, and reads
-  `latest-evidence.json` otherwise. The switch reads the pointer files once, to
-  set each release's current build and the record's `default`.
+  `latest-evidence.json` otherwise. The switch tool read each repository's
+  pointer files once, to set each release's current build and the record's
+  `default`.
 - **The registry.** `microcosm.data.registry.REGISTRY` maps `(country, year,
   variant)` to a `DatasetSpec`. Each names the Hub repository, the dataset
   file, the engine class, the `release` the loader reads through
@@ -1153,9 +1154,11 @@ work.
     pins builds by tag; version 1 pins each by release and build in its
     folder.
   - *The default.* The loader takes each country's default release from the
-    registry. `releases.json` also names a `default`: in this repository only
-    the switch tool sets it, and no loader reads it. The gap: no check at
-    publication confirms that the record's `default` agrees with the registry.
+    registry. `releases.json` also names a `default`: the one-time switch
+    tool set it once in each of the US, UK and BE repositories, nothing in
+    this repository sets it now, and no loader reads it. The gap: no check at
+    publication confirms that the record's `default` agrees with the registry,
+    and nothing here sets it for a new repository, such as AM's or NZ's.
   - *The evidence release.* Its builds answer to
     `validate_evidence_release_dir` and fail C1 by design. The
     [retire list](#retire-list-as-of-2026-10-15) names it as an exception:
@@ -1324,7 +1327,7 @@ with the interface's own functions, in the order a repository lives it.
 `add_build(make_current=False)` lists the build, as a publication does.
 `make_current` makes it current, as a promotion does.
 `dataclasses.replace(default=...)` then names the national release as the
-record's `default`, as the switch tool's `_switch_record` does; interface
+record's `default`, as the one-time switch tool did; interface
 0.14.0 has no function that sets `default`. `ReleasesRecord.serialize` writes
 the bytes. Each release takes the role `national`: the UK's from
 `RELEASE_ROLES` and the national line's dataset role, the US's from
