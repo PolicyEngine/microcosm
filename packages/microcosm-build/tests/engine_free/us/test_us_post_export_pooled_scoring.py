@@ -704,6 +704,8 @@ def test_the_pool_starts_no_more_workers_than_reform_units(
     assert execution["units"] == {"reform": 2}
     assert (execution["requested_workers"], execution["workers"]) == (8, 2)
     assert execution["report"]["max_live_workers"] <= 2
+    # What this process held when the workers started, after its baselines.
+    assert execution["certifying_process_footprint_bytes_at_pool_start"] > 0
 
 
 def test_a_consumer_without_reforms_starts_no_pool(
@@ -727,6 +729,7 @@ def test_a_consumer_without_reforms_starts_no_pool(
         0,
         None,
     )
+    assert execution["certifying_process_footprint_bytes_at_pool_start"] is None
 
 
 def test_workers_get_the_lock_check_record_and_the_set_environment(
@@ -1434,3 +1437,86 @@ def test_a_stage_whose_own_baseline_failed_raises_that_error_when_it_opens(
     serial.pop("second notes")
     assert pooled == serial
     assert kept == [None]
+
+
+# ---------------------------------------------------------------------------
+# Baseline passes in the certifying process: review round 1
+# ---------------------------------------------------------------------------
+
+
+def _fallback_plan(builder):
+    """Two consumers whose merged plan (three keys) runs out of memory under
+    ``MEMORY_KEYS=2`` while each one's own plan (two keys) fits."""
+    consumers = {
+        "first": _baseline_consumer("age", "snap"),
+        "second": _baseline_consumer("age", "income_tax"),
+    }
+    plan = builder._post_export_scoring_plan(
+        n_households=N_HOUSEHOLDS,
+        maximum_microsim_batch_size=BATCH_SIZE,
+        consumers=consumers,
+    )
+    return consumers, plan
+
+
+def test_closing_drops_the_baselines_of_stages_that_never_opened(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """After a failed merged pass every stage's own baseline is scored when
+    the first stage opens; a stage that never opens (the probe's held-out
+    reports, or every stage after one that stopped certification) must not
+    keep its values alive once the scorer closes."""
+    monkeypatch.setenv(MEMORY_KEYS, "2")
+    consumers, plan = _fallback_plan(builder)
+    scorer = _pooled_scorer(builder, plan, tmp_path, 1)
+    try:
+        scoring = scorer.open_consumer("first", plan.baseline_plan("first"))
+        consumers["first"](scoring.simulate)
+        assert set(scorer._own_baselines) == {"second"}
+    finally:
+        scorer.close()
+    assert scorer._own_baselines == {}
+
+
+def test_a_kept_baseline_error_leaves_the_callers_exception_alone(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A stage's own baseline error is kept until that stage opens. It is cut
+    from the exceptions it was raised from or while handling, whose text stays
+    in its note, so it holds none of them and changes none of them: here the
+    first stage opens while its caller handles an exception of its own."""
+    monkeypatch.setenv(FAIL_ON_HOUSEHOLDS, json.dumps({"snap": [1]}))
+    consumers = {
+        "first": _baseline_consumer("age"),
+        "second": _baseline_consumer("age", "snap"),
+    }
+    plan = builder._post_export_scoring_plan(
+        n_households=N_HOUSEHOLDS,
+        maximum_microsim_batch_size=BATCH_SIZE,
+        consumers=consumers,
+    )
+    scorer = _pooled_scorer(builder, plan, tmp_path, 1)
+    try:
+        try:
+            raise LookupError("the caller's own exception")
+        except LookupError as handled:
+            scorer.open_consumer("first", plan.baseline_plan("first"))
+            assert handled.__traceback__ is not None
+        kept = scorer._own_baselines["second"]
+        assert (kept.__traceback__, kept.__context__, kept.__cause__) == (
+            None,
+            None,
+            None,
+        )
+        (note,) = kept.__notes__
+        assert "Traceback" in note and "fixture engine refuses snap" in note
+        with pytest.raises(RuntimeError, match="fixture engine refuses snap"):
+            scorer.open_consumer("second", plan.baseline_plan("second"))
+    finally:
+        scorer.close()

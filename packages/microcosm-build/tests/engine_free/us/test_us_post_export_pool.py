@@ -70,21 +70,21 @@ def test_a_unit_names_its_batches_and_its_reform(pool_module) -> None:
         "post-export reform_validation reformed simulation 2 (1 pass(es), first "
         "'reform_validation reform x'), all 4 batch(es)"
     )
-    baseline = _unit(
-        pool_module,
-        consumer=None,
-        reformed_simulation=None,
-        reform=None,
-        passes=(pool_module.PostExportPass("merged baseline plan", (KEY,)),),
-        batch_start=1,
-        batch_stop=3,
-    )
-    assert baseline.describe() == "post-export merged baseline plan, batches 2-3 of 4"
+    part = _unit(pool_module, batch_start=1, batch_stop=3)
+    assert part.describe().endswith(", batches 2-3 of 4")
     for start, stop in ((0, 0), (3, 2), (-1, 2), (0, 5)):
         with pytest.raises(ValueError, match="non-empty range"):
             _unit(pool_module, batch_start=start, batch_stop=stop)
-    with pytest.raises(ValueError, match="names no reformed simulation"):
-        _unit(pool_module, reform=None)
+    # Baseline passes run in the certifying process, never in a worker.
+    for consumer in (None, "reform_validation"):
+        with pytest.raises(ValueError, match="baseline passes run in the certifying"):
+            _unit(
+                pool_module,
+                consumer=consumer,
+                reformed_simulation=None,
+                reform=None,
+                passes=(pool_module.PostExportPass("merged baseline plan", (KEY,)),),
+            )
     with pytest.raises(ValueError, match="names the consumer"):
         _unit(pool_module, consumer=None)
     with pytest.raises(TypeError, match="reformed simulation's number"):
