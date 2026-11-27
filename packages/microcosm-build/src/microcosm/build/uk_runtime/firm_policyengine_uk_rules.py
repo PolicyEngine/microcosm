@@ -25,12 +25,13 @@ policyengine-uk firm inputs (keys of
 columns such as ``vat_registered`` are dropped and policyengine-uk applies its
 own registration test; any other ``firm_*`` column that is not a known input
 is dropped with a warning (an output, or an input newer than the committed
-policyengine-uk snapshot). Inputs the export does not set (profit, rateable
-value, capital expenditure, R&D, the bank flag; paybill unless the build is
-given ``--paybill-dir``) take policyengine-uk's zero defaults, so corporation
-tax, the bank surcharge and business rates are zero, and employer NIC, the
-levy and auto-enrolment are zero without paybill. ``weighted_uk_firm_tax_totals`` sums each output by
-``firm_weight``.
+policyengine-uk snapshot). Inputs the export does not set (rateable value,
+capital expenditure, the bank flag; paybill, profit and R&D unless the build
+is given ``--paybill-dir``, ``--profit-dir`` and ``--rd-tax-credits-dir``)
+take policyengine-uk's zero defaults, so the bank surcharge and business
+rates are zero, corporation tax is zero without profit, and employer NIC,
+the levy and auto-enrolment are zero without paybill.
+``weighted_uk_firm_tax_totals`` sums each output by ``firm_weight``.
 
 policyengine-uk is imported only inside the default simulation factory, so
 importing this module needs no engine. The firm entity and its VAT variables

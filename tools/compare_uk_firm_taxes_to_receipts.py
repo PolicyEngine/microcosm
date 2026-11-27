@@ -134,6 +134,12 @@ MODEL_CAVEATS: Mapping[str, str] = {
         "VAT/PAYE frame."
     ),
     "corporation_tax": (
+        "In-sample when firm_taxable_trading_profit comes from the opt-in "
+        "firm_profit.py imputation (--profit-dir): it allots HMRC Corporation "
+        "Tax statistics liability bands for 2024-25 to companies, so the model "
+        "total reproduces HMRC's CT liabilities by construction and agreement "
+        "here does not validate the model. Public corporations (ONS legal "
+        "status 4) are companies but get no imputed profit, so they pay no CT. "
         "Model: onshore CT after the R&D expenditure credit, accrued, excluding "
         "the bank surcharge; official: onshore cash receipts gross of provisional "
         "tax credits (offshore ring-fence CT removed, Bank Surcharge and Bank Levy "

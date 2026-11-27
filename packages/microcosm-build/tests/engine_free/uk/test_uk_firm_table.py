@@ -514,6 +514,9 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
     } == {
         # employment less assumed working proprietors (labour link group).
         "firm_employees",
+        # HMRC R&D tax credit statistics (rd_tax_credits group).
+        "firm_qualifying_rd_expenditure",
+        "firm_is_sme",
         "firm_input_vat",
         "firm_legal_form",
         "firm_is_public_body",
@@ -522,6 +525,7 @@ def test_input_status_covers_every_exported_policyengine_uk_column() -> None:
         "firm_paybill",
         "firm_claims_employment_allowance",
         "firm_is_single_director_company",
+        "firm_taxable_trading_profit",
         "firm_employees_below_secondary_threshold",
         "firm_paybill_below_secondary_threshold",
     }
@@ -543,19 +547,28 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
         "paybill",
         "employment_allowance",
         "pay_distribution",
+        "profit",
         "sic_division",
         "labour_link",
         "employment_allowance_takeup",
+        "rd_tax_credits",
     ]
     (
         attributes,
         paybill,
         allowance,
         pay_distribution,
+        profit,
         sic_division,
         labour_link,
         takeup,
+        rd,
     ) = UK_FIRM_EXPORT_GROUPS
+    assert rd.policyengine_uk_columns == (
+        "firm_qualifying_rd_expenditure",
+        "firm_is_sme",
+    )
+    assert rd.requires == ("attributes",)
     assert labour_link.source_columns == ("employees",)
     assert labour_link.policyengine_uk_columns == ()
     assert sic_division.microcosm_columns == ("firm_sic_division",)
@@ -587,6 +600,11 @@ def test_export_groups_register_the_attribute_and_paybill_inputs() -> None:
     assert allowance.policyengine_uk_columns == UK_FIRM_EMPLOYMENT_ALLOWANCE_COLUMNS
     assert allowance.microcosm_columns == ()
     assert allowance.requires == ("attributes",)
+    for group, column in ((profit, "firm_taxable_trading_profit"),):
+        assert group.source_columns == (column,)
+        assert group.policyengine_uk_columns == (column,)
+        assert group.microcosm_columns == ()
+        assert group.requires == ("attributes",)
     # Each group comes after the groups it extends, and no column repeats.
     for index, group in enumerate(UK_FIRM_EXPORT_GROUPS):
         assert set(group.requires) <= set(names[:index])
@@ -601,9 +619,11 @@ def test_layouts_are_the_base_and_each_closed_set_of_groups() -> None:
         "paybill",
         "employment_allowance",
         "pay_distribution",
+        "profit",
         "sic_division",
         "labour_link",
         "employment_allowance_takeup",
+        "rd_tax_credits",
     ]
     expected = {(): UK_FIRM_TABLE_COLUMNS}
     for size in range(len(extending) + 1):

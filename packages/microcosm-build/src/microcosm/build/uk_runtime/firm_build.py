@@ -96,11 +96,24 @@ from microcosm.build.uk_runtime.firm_paybill import (
     read_uk_firm_paybill_source,
     uk_firm_paybill_fallback_counts,
 )
+from microcosm.build.uk_runtime.firm_profit import (
+    UK_FIRM_PROFIT_METHOD,
+    UK_FIRM_PROFIT_STATUS,
+    assign_uk_firm_taxable_profit,
+    read_uk_firm_profit_source,
+    uk_firm_profit_diagnostics,
+)
 from microcosm.build.uk_runtime.firm_public_sector import (
     UK_FIRM_PUBLIC_SECTOR_STATUS,
     read_uk_firm_public_sector_source,
     scale_uk_firm_public_sector_employment,
     uk_firm_public_sector_diagnostics,
+)
+from microcosm.build.uk_runtime.firm_rd_tax_credits import (
+    UK_FIRM_RD_METHOD,
+    UK_FIRM_RD_STATUS,
+    draw_uk_firm_rd_tax_credits,
+    read_uk_firm_rd_source,
 )
 from microcosm.build.uk_runtime.firm_rules import (
     UK_FIRM_RULE_PERIOD_NOTE,
@@ -144,6 +157,10 @@ UK_FIRM_INPUT_DATA_YEARS: Mapping[str, str] = MappingProxyType(
         "dbt_bpe": "start of 2025",
         # HMRC Employment Allowance take-up statistics, tax year 2024-25.
         "hmrc_employment_allowance_takeup": "2024-25",
+        # HMRC Corporation Tax statistics 2026, Tables 9A/9B: FY 2024-25.
+        "hmrc_ct_statistics": "2024-25",
+        # HMRC R&D Tax Credits statistics, September 2026: 2024-25 provisional.
+        "hmrc_rd_statistics": "2024-25",
     }
 )
 
@@ -186,12 +203,14 @@ def build_uk_firm_dataset(
     paybill_dir: str | Path | None = None,
     employment_allowance: bool = False,
     public_sector_dir: str | Path | None = None,
+    profit_dir: str | Path | None = None,
     pay_distribution_dir: str | Path | None = None,
     bpe_dir: str | Path | None = None,
     employment_allowance_takeup_dir: str | Path | None = None,
     bpe_mid_headcount: bool = False,
     out_of_frame_no_employees: bool = False,
     bpe_large_headcount: bool = False,
+    rd_tax_credits_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Build the UK firm table and its receipt into ``output_dir``.
 
@@ -207,8 +226,9 @@ def build_uk_firm_dataset(
     (``firm_employment_allowance.py``); they read no random numbers.
     ``public_sector_dir`` (``tests/fixtures/uk/firm_public_sector_2025``)
     scales the headcount of central government and local authority rows to
-    ONS public sector employment before the paybill is set. Each is opt-in,
-    reads its own fixed-seed
+    ONS public sector employment before the paybill is set;
+    ``profit_dir`` (``tests/fixtures/uk/firm_ct_2024``) adds the assumed
+    ``firm_taxable_trading_profit``. Each is opt-in, reads its own fixed-seed
     generator if any, and leaves the table and receipt unchanged when
     omitted. ``pay_distribution_dir``
     (``tests/fixtures/uk/firm_pay_distribution_2024``), which needs a
@@ -230,7 +250,10 @@ def build_uk_firm_dataset(
     ``out_of_frame_no_employees`` (needs ``bpe_dir``) gives the rows outside
     the ONS frame no headcount, an assumption with no published pin.
     ``bpe_large_headcount`` (needs ``bpe_dir``) remaps 250+ headcounts to
-    BPE 2025 Table 1's large rows.
+    BPE 2025 Table 1's large rows. ``rd_tax_credits_dir``
+    (``tests/fixtures/uk/firm_rd_tax_credits_2024_25``) adds the assumed
+    ``firm_qualifying_rd_expenditure`` and ``firm_is_sme`` from HMRC R&D tax
+    credit statistics (``firm_rd_tax_credits.py``).
     Returns ``table`` (the
     validated policyengine-uk firm table), ``receipt`` (the dict written as
     JSON), ``result`` (the ``UKFirmGenerationResult``), ``table_path`` and
@@ -248,9 +271,11 @@ def build_uk_firm_dataset(
         )
     for name, directory in (
         ("public_sector_dir", public_sector_dir),
+        ("profit_dir", profit_dir),
         ("pay_distribution_dir", pay_distribution_dir),
         ("bpe_dir", bpe_dir),
         ("employment_allowance_takeup_dir", employment_allowance_takeup_dir),
+        ("rd_tax_credits_dir", rd_tax_credits_dir),
     ):
         if directory is not None and config.data_vintage != "2024-25":
             raise ValueError(
@@ -359,6 +384,23 @@ def build_uk_firm_dataset(
         )
     if employment_allowance:
         firms = assign_uk_firm_employment_allowance(firms)
+    profit_source = None
+    if profit_dir is not None:
+        profit_source = read_uk_firm_profit_source(profit_dir)
+        firms = firms.assign(
+            firm_taxable_trading_profit=assign_uk_firm_taxable_profit(
+                firms, profit_source
+            )
+        )
+    rd_source = None
+    rd_draw = None
+    if rd_tax_credits_dir is not None:
+        rd_source = read_uk_firm_rd_source(rd_tax_credits_dir)
+        rd_draw = draw_uk_firm_rd_tax_credits(firms, rd_source, seed=result.config.seed)
+        firms = firms.assign(
+            firm_qualifying_rd_expenditure=rd_draw.qualifying_rd_expenditure,
+            firm_is_sme=rd_draw.is_sme,
+        )
     if bpe_source is not None:
         firms = firms.assign(
             firm_sic_division=pd.to_numeric(firms["sic_code"])
@@ -431,6 +473,8 @@ def build_uk_firm_dataset(
                     "hmrc_employment_allowance_takeup": (
                         employment_allowance_takeup_dir is not None
                     ),
+                    "hmrc_ct_statistics": profit_dir is not None,
+                    "hmrc_rd_statistics": rd_tax_credits_dir is not None,
                 }
             ),
         },
@@ -526,6 +570,16 @@ def build_uk_firm_dataset(
                 (weight * table["firm_paybill_below_secondary_threshold"]).sum()
             ),
         }
+    if profit_source is not None:
+        receipt["inputs"]["profit"] = {profit_source.file: profit_source.sha256}
+        receipt["uk_firm_profit"] = {
+            "status": UK_FIRM_PROFIT_STATUS,
+            "method": UK_FIRM_PROFIT_METHOD,
+            "weighted_profit_gbp": float(
+                (weight * table["firm_taxable_trading_profit"]).sum()
+            ),
+            "bands": _records(uk_firm_profit_diagnostics(firms, profit_source)),
+        }
     if bpe_source is not None:
         receipt["inputs"]["bpe"] = dict(bpe_source.sha256)
         receipt["uk_firm_headcount"] = {
@@ -565,6 +619,16 @@ def build_uk_firm_dataset(
             "status": UK_FIRM_EA_TAKEUP_STATUS,
             "method": UK_FIRM_EA_TAKEUP_METHOD,
             **takeup,
+        }
+    if rd_source is not None:
+        receipt["inputs"]["rd_tax_credits"] = dict(rd_source.sha256)
+        receipt["uk_firm_rd_tax_credits"] = {
+            "status": UK_FIRM_RD_STATUS,
+            "method": UK_FIRM_RD_METHOD,
+            "weighted_expenditure_gbp": float(
+                (weight * table["firm_qualifying_rd_expenditure"]).sum()
+            ),
+            **dict(rd_draw.diagnostics),
         }
     receipt = _json_safe(receipt)
     receipt_path = output / UK_FIRM_RECEIPT_FILE

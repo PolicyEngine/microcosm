@@ -42,6 +42,9 @@ The groups today:
   ``firm_paybill_below_secondary_threshold`` (from
   ``firm_pay_distribution.assign_uk_firm_pay_below_secondary_threshold``).
   It extends ``attributes`` and ``paybill``.
+- ``profit``: the assumed ``firm_taxable_trading_profit`` (pounds, from
+  ``firm_profit.assign_uk_firm_taxable_profit``), zero for firms other than ONS status 1 companies.
+  It extends ``attributes``.
 - ``sic_division``: Microcosm-only ``firm_sic_division``, the generator's
   SIC 2007 division, a linkage key the labour groups
   extend. It extends ``attributes``.
@@ -64,6 +67,10 @@ The groups today:
   (``firm_employment_allowance_takeup.py``). It extends ``attributes``,
   ``paybill``, ``employment_allowance``, ``sic_division`` and
   ``labour_link``.
+- ``rd_tax_credits``: the assumed ``firm_qualifying_rd_expenditure``
+  (pounds, companies only, never above turnover) and ``firm_is_sme`` (from
+  ``firm_rd_tax_credits.draw_uk_firm_rd_tax_credits``). It extends
+  ``attributes``.
 
 ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS`` records, for every formula-less
 policyengine-uk firm input, whether the fullest table (every group) sets it.
@@ -308,7 +315,11 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         # working proprietors, stands in for employees. Only when the build
         # is given a paybill source.
         "firm_paybill": "assumed",
-        "firm_taxable_trading_profit": "not_set",
+        # Assumed (firm_profit.py): HMRC Corporation Tax statistics
+        # liability bands (2024-25) inverted through the rate schedule and
+        # allotted to companies by turnover rank. In-sample for CT. Only when
+        # the build is given a profit source.
+        "firm_taxable_trading_profit": "assumed",
         "firm_rateable_value": "not_set",
         # Not drawn: no source yet. Placeholders would flow into NIC, CT,
         # VAT and business rates revenue.
@@ -384,8 +395,13 @@ UK_FIRM_POLICYENGINE_UK_INPUT_STATUS: Mapping[str, str] = MappingProxyType(
         "firm_low_paid_hours": "not_set",
         "firm_low_paid_paybill": "not_set",
         # R&D.
-        "firm_is_sme": "not_set",
-        "firm_qualifying_rd_expenditure": "not_set",
+        # Assumed (firm_rd_tax_credits.py): HMRC R&D tax credit statistics
+        # 2024-25 claims by section and size stratum, expenditure raked to
+        # section and size totals and capped at turnover; firm_is_sme from
+        # the stratum, else ONS employment below 500. Only when the build is
+        # given an R&D source.
+        "firm_is_sme": "assumed",
+        "firm_qualifying_rd_expenditure": "assumed",
         # RDEC PAYE/NIC cap (policyengine-uk d856de5a7).
         "firm_rdec_paye_nic_cap_supplied": "not_set",
         "firm_rd_staff_paye_nic": "not_set",
@@ -586,6 +602,13 @@ def _validate_employment_allowance_takeup_columns(df: pd.DataFrame) -> None:
         )
 
 
+def _single_column(column: str) -> Callable[[pd.DataFrame], dict[str, np.ndarray]]:
+    def columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+        return {column: ordered[column].to_numpy(np.float64)}
+
+    return columns
+
+
 def _non_negative(df: pd.DataFrame, column: str) -> np.ndarray:
     values = df[column].to_numpy(np.float64)
     if not np.all(np.isfinite(values)) or np.any(values < 0):
@@ -633,6 +656,16 @@ def _validate_pay_distribution_columns(df: pd.DataFrame) -> None:
         raise ValueError(
             "UK firm firm_paybill_below_secondary_threshold must be zero "
             "without employees below the threshold."
+        )
+
+
+def _validate_profit_columns(df: pd.DataFrame) -> None:
+    profit = _non_negative(df, "firm_taxable_trading_profit")
+    not_company = df["ons_legal_status"].to_numpy(np.int64) != 1
+    if np.any(profit[not_company]):
+        raise ValueError(
+            "UK firm firm_taxable_trading_profit must be zero for firms that "
+            "are not ONS status 1 companies."
         )
 
 
@@ -727,6 +760,30 @@ def _validate_labour_link_columns(df: pd.DataFrame) -> None:
         raise ValueError("UK firm firm_is_public_sector must follow ons_legal_status.")
 
 
+def _rd_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    return {
+        "firm_qualifying_rd_expenditure": ordered[
+            "firm_qualifying_rd_expenditure"
+        ].to_numpy(np.float64),
+        "firm_is_sme": ordered["firm_is_sme"].to_numpy(bool),
+    }
+
+
+def _validate_rd_columns(df: pd.DataFrame) -> None:
+    spend = _non_negative(df, "firm_qualifying_rd_expenditure")
+    if np.any(spend[df["ons_legal_status"].to_numpy(np.int64) != 1]):
+        raise ValueError(
+            "UK firm firm_qualifying_rd_expenditure must be zero for firms that "
+            "are not ONS status 1 companies."
+        )
+    if np.any(spend > np.maximum(df["firm_turnover"].to_numpy(np.float64), 0.0)):
+        raise ValueError(
+            "UK firm firm_qualifying_rd_expenditure must not exceed firm_turnover."
+        )
+    if not pd.api.types.is_bool_dtype(df["firm_is_sme"]):
+        raise ValueError("UK firm firm_is_sme must be boolean.")
+
+
 def _validate_paybill_columns(df: pd.DataFrame) -> None:
     for column in UK_FIRM_PAYBILL_POLICYENGINE_UK_COLUMNS:
         values = df[column].to_numpy(np.float64)
@@ -800,6 +857,15 @@ UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
         validate=_validate_pay_distribution_columns,
     ),
     UKFirmExportGroup(
+        name="profit",
+        source_columns=("firm_taxable_trading_profit",),
+        policyengine_uk_columns=("firm_taxable_trading_profit",),
+        microcosm_columns=(),
+        requires=("attributes",),
+        columns=_single_column("firm_taxable_trading_profit"),
+        validate=_validate_profit_columns,
+    ),
+    UKFirmExportGroup(
         name="sic_division",
         source_columns=("firm_sic_division",),
         policyengine_uk_columns=(),
@@ -831,6 +897,15 @@ UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
         ),
         columns=_employment_allowance_takeup_group_columns,
         validate=_validate_employment_allowance_takeup_columns,
+    ),
+    UKFirmExportGroup(
+        name="rd_tax_credits",
+        source_columns=("firm_qualifying_rd_expenditure", "firm_is_sme"),
+        policyengine_uk_columns=("firm_qualifying_rd_expenditure", "firm_is_sme"),
+        microcosm_columns=(),
+        requires=("attributes",),
+        columns=_rd_group_columns,
+        validate=_validate_rd_columns,
     ),
 )
 

@@ -502,7 +502,8 @@ def test_employment_allowance_build_adds_only_the_assumed_flags(
 
 def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> None:
     """Every opt-in source at once: public sector headcounts change only
-    central government and local authority rows."""
+    central government and local authority rows, and profit adds one
+    column."""
 
     rules = _StandardRateDouble()
     built = build_uk_firm_dataset(
@@ -514,6 +515,7 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
         paybill_dir=PAYBILL,
         employment_allowance=True,
         public_sector_dir=FIXTURES / "firm_public_sector_2025",
+        profit_dir=FIXTURES / "firm_ct_2024",
         pay_distribution_dir=FIXTURES / "firm_pay_distribution_2024",
     )
     table = built["table"]
@@ -522,6 +524,7 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
         "ashe_paybill",
         "ons_public_sector_employment",
         "ashe_pay_distribution",
+        "hmrc_ct_statistics",
     ):
         assert receipt["data_years"][key] == UK_FIRM_INPUT_DATA_YEARS[key]
     base = builds[0]["table"]
@@ -531,6 +534,7 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
             "paybill",
             "employment_allowance",
             "pay_distribution",
+            "profit",
         ]
     )
     validate_uk_firm_table(pd.read_parquet(built["table_path"]))
@@ -553,12 +557,19 @@ def test_full_opt_in_build_adds_the_assumed_inputs(builds, tmp_path: Path) -> No
         assert float((weight * table["firm_employees"])[rows].sum()) == (
             pytest.approx(record["target_weighted_employment"], rel=1e-3)
         ), sector
+    profit = table["firm_taxable_trading_profit"].to_numpy(float)
+    assert profit.max() > 0
+    assert not profit[table["ons_legal_status"].to_numpy() != 1].any()
+    assert receipt["uk_firm_profit"]["status"] == "assumed"
+    assert receipt["uk_firm_profit"]["weighted_profit_gbp"] == pytest.approx(
+        float((weight * profit).sum())
+    )
     below = table["firm_employees_below_secondary_threshold"].to_numpy()
     assert 0 < below.sum() and (below <= table["firm_employees"].to_numpy()).all()
     assert receipt["uk_firm_pay_distribution"]["threshold_gbp"] == 9_100.0
-    for role in ("public_sector", "pay_distribution"):
+    for role in ("public_sector", "profit", "pay_distribution"):
         assert len(receipt["inputs"][role]) == 1
-    for key in ("uk_firm_public_sector",):
+    for key in ("uk_firm_public_sector", "uk_firm_profit"):
         assert key not in builds[0]["receipt"]
 
 
@@ -648,22 +659,30 @@ def test_mid_headcount_and_out_of_frame_switches(builds, tmp_path: Path) -> None
     assert record["out_of_frame_employment_removed"] > 0
 
 
-def test_large_headcount_build(builds, tmp_path: Path) -> None:
+def test_rd_tax_credits_and_large_headcount_build(builds, tmp_path: Path) -> None:
     built = _build(
-        tmp_path / "large",
+        tmp_path / "rd",
         paybill_dir=PAYBILL,
         bpe_dir=FIXTURES / "firm_bpe_2025",
         bpe_large_headcount=True,
+        rd_tax_credits_dir=FIXTURES / "firm_rd_tax_credits_2024_25",
     )
     table = built["table"]
     base = builds[0]["table"]
     validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    spend = table["firm_qualifying_rd_expenditure"].to_numpy()
+    assert spend.max() > 0
+    assert not spend[table["ons_legal_status"].to_numpy() != 1].any()
+    assert (spend <= table["firm_turnover"].to_numpy()).all()
     receipt = built["receipt"]
+    assert receipt["uk_firm_rd_tax_credits"]["status"] == "assumed"
+    assert receipt["data_years"]["hmrc_rd_statistics"] == "2024-25"
     large = receipt["uk_firm_headcount"]["large_band_remap"]
     assert large["weighted_employment_after"] > large["weighted_employment_before"]
     before = base["firm_employees"].to_numpy()
     after = table["ons_employment"].to_numpy()
     assert ((after >= 250) == (before >= 250)).all()
+    assert "uk_firm_rd_tax_credits" not in builds[0]["receipt"]
 
 
 def test_labour_link_sources_need_their_prerequisites(tmp_path: Path) -> None:
@@ -696,8 +715,10 @@ def test_labour_link_sources_need_their_prerequisites(tmp_path: Path) -> None:
     ("argument", "fixture"),
     [
         ("bpe_dir", "firm_bpe_2025"),
+        ("rd_tax_credits_dir", "firm_rd_tax_credits_2024_25"),
         ("employment_allowance_takeup_dir", "firm_employment_allowance_takeup_2024_25"),
         ("public_sector_dir", "firm_public_sector_2025"),
+        ("profit_dir", "firm_ct_2024"),
         ("pay_distribution_dir", "firm_pay_distribution_2024"),
     ],
 )

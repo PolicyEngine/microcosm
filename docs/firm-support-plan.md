@@ -82,9 +82,13 @@ enterprise location; ONS employment counts working proprietors. The opt-in
 Employment Allowance take-up draw (`--employment-allowance-takeup-dir`) uses
 HMRC's 2024-25 claimants by employee size band, which then become in-sample.
 
-The other policyengine-uk firm inputs (profit, rateable value, R&D, capital
-expenditure, the other pay-distribution inputs and several flags) wait for
-sources.
+Taxable profit (`--profit-dir`, HMRC Corporation Tax statistics, so CT is
+in-sample) and R&D expenditure (`--rd-tax-credits-dir`, HMRC R&D tax credit
+statistics) are opt-in assumed inputs. Both go to ONS status 1 companies
+only, so public corporations pay no corporation tax.
+
+The other policyengine-uk firm inputs (rateable value, capital expenditure,
+the other pay-distribution inputs and several flags) wait for sources.
 
 ## External Prerequisites
 

@@ -60,6 +60,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--profit-dir",
+        type=Path,
+        help=(
+            "directory holding the HMRC Corporation Tax liability bands; sets "
+            "the assumed firm_taxable_trading_profit"
+        ),
+    )
+    parser.add_argument(
         "--pay-distribution-dir",
         type=Path,
         help=(
@@ -90,6 +98,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--bpe-large-headcount",
         action="store_true",
         help="remap 250+ headcount to BPE 2025 Table 1 large rows (needs --bpe-dir)",
+    )
+    parser.add_argument(
+        "--rd-tax-credits-dir",
+        type=Path,
+        help=(
+            "directory holding HMRC R&D tax credit statistics 2024-25; sets the "
+            "assumed firm_qualifying_rd_expenditure and firm_is_sme"
+        ),
     )
     parser.add_argument(
         "--out-of-frame-no-employees",
@@ -168,12 +184,14 @@ def main(argv: list[str] | None = None) -> int:
         paybill_dir=args.paybill_dir,
         employment_allowance=args.employment_allowance_flags,
         public_sector_dir=args.public_sector_dir,
+        profit_dir=args.profit_dir,
         pay_distribution_dir=args.pay_distribution_dir,
         bpe_dir=args.bpe_dir,
         employment_allowance_takeup_dir=args.employment_allowance_takeup_dir,
         bpe_mid_headcount=args.bpe_mid_headcount,
         out_of_frame_no_employees=args.out_of_frame_no_employees,
         bpe_large_headcount=args.bpe_large_headcount,
+        rd_tax_credits_dir=args.rd_tax_credits_dir,
     )
     receipt = built["receipt"]
     print(
