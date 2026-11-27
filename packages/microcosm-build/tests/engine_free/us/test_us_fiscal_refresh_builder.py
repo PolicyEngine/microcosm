@@ -18673,9 +18673,19 @@ def test_qrf_tail_register_refusal_is_wired_into_the_evidence_certification() ->
         for node in ast.walk(main_fn)
         if isinstance(node, ast.Assign)
         and ast.unparse(node.targets[0]) == "build_refusal"
-        and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
+        and any(
+            refusal_text in (ast.get_source_segment(source, node) or "")
+            # The refusal writes its own "Release gates failed: " message
+            # from its failures (microcosm#1135).
+            for refusal_text in (
+                "Release gates failed: ",
+                "_BuildFailedReleaseGatesError(",
+            )
+        )
     ]
-    assert refusals and sidecar.lineno < min(node.lineno for node in refusals)
+    # Both assignments: the batched pre-export one and the final one.
+    assert len(refusals) == 2
+    assert sidecar.lineno < min(node.lineno for node in refusals)
 
     gate = _builder_function(builder, "_refuse_an_unowned_evidence_certification")
     [owner_check] = _calls_named(gate, "_evidence_known_failures")
