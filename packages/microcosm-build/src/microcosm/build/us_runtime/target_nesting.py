@@ -1,22 +1,24 @@
 """US target nesting on the shared cross-grain operator (microcosm#1760).
 
 A target for a small area must agree with the target of the area that
-contains it. This module makes the rows of a lower geography level from a
-control at a higher level, for each mechanism that
-``us/cross_grain_declarations.json`` declares. The arithmetic is not here:
+contains it. Each pass here makes the rows of a lower geography level from a
+control at a higher level. The arithmetic and the checks are not here:
 
-- :func:`microcosm.build.cross_grain.apply_cross_grain_reconciliation` groups
-  the rows of one quantity, finds the control of each lower leg, divides it
-  among the leg's rows with the mechanism's declared allocator, checks the sum
-  and writes its receipt;
-- :mod:`microcosm.build.cross_grain_controls` supplies the allocators, the
-  derived controls, the factor band, the completeness check and the
-  self-consistency check.
+- :func:`microcosm.build.cross_grain_controls.reconcile_rows` runs the shared
+  operator (:mod:`microcosm.build.cross_grain`) on the rows of a pass and
+  says what it did with each row. The operator divides each control among
+  its lower rows, bounds the factor of each bridge, refuses a leg that does
+  not hold its declared members, and writes the receipt.
+- ``us/cross_grain_declarations.json`` declares the passes, under the key
+  names of the UK file: the bridge between Historic Table 2 and the district
+  file, the bridge between the state rows and the county file, the derived
+  control of the county households, and the ladder population, which is one
+  source at two levels.
 
-What is here is the US side of each mechanism: which specs or facts are the
-control and the lower rows, the refusals with their US wording, and the
-metadata keys and receipts the local tools wrote before the operator made the
-rows. Stage A changes no value: every surface has the bytes it had.
+What is here is the US side of each pass: which specs or facts are the
+control and the lower rows, which rows a reviewed register keeps off the
+surface, and the validation of the county facts. A reconciled row keeps the
+``cross_grain_*`` metadata keys that the UK rows keep.
 
 The module reads specs and facts only. It reads no frame and no household.
 """
@@ -25,7 +27,6 @@ from __future__ import annotations
 
 import json
 import math
-import struct
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextvars import ContextVar
@@ -38,54 +39,42 @@ import pandas as pd
 
 from microcosm.build import cross_grain_controls as controls
 from microcosm.build.cross_grain import (
+    MEMBERS_KEY,
+    PARENT_KEY,
+    CrossGrainBridge,
     CrossGrainRule,
-    apply_cross_grain_reconciliation,
+    cross_grain_metadata,
+    expand_bridge_selectors,
 )
+from microcosm.build.cross_grain_controls import SurfaceRow
 from microcosm.build.us_runtime.cross_grain_declarations import (
     COUNTY_ACS_HOUSEHOLDS,
     COUNTY_POPULATION,
     COUNTY_SOI,
     DISTRICT_SOI,
     load_us_cross_grain_declarations,
+    us_allocator_name,
+    us_bridge_selector,
     us_county_soi_nesting,
-    us_cross_grain_mechanism,
     us_district_soi_nesting,
+    us_pass_grains,
 )
 
-#: The file a materialize stage writes the operator's own receipts to.
+#: The file a materialize stage writes the operator's receipts to.
 NESTING_RECEIPTS_FILENAME = "target_nesting.json"
 
 # ---------------------------------------------------------------------------
-# Blocks through the operator
+# One pass on the operator
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class NestingBlock:
-    """One control and the lower rows it is divided among.
+class NestedSurface:
+    """The specs of one nested surface, its receipt and the operator's."""
 
-    ``concept`` and ``filters`` are the measurement signature that ties the
-    control to its rows. ``lower_values`` are in the order the allocator must
-    see them: a residual rule gives its residual to the first of equal
-    largest rows.
-    """
-
-    concept: str
-    filters: tuple[tuple[str, str], ...]
-    control_geography_id: str
-    control_value: float
-    lower_geography_ids: tuple[str, ...]
-    lower_values: tuple[float, ...]
-
-
-@dataclass(frozen=True)
-class NestedRows:
-    """A block's rows as the operator left them, with its leg receipt."""
-
-    values: tuple[float, ...]
-    #: The factor and the lower-row total the allocator reported.
-    factor: float
-    lower_sum: float
+    specs: tuple
+    receipt: dict
+    operator_receipt: dict
 
 
 def geography_id(grain: str, code: str) -> str:
@@ -94,132 +83,69 @@ def geography_id(grain: str, code: str) -> str:
     return f"{grain}:{code}"
 
 
-def _signature_key(block: NestingBlock) -> str:
-    return "|".join(
-        [block.concept, *(f"{name}={value}" for name, value in block.filters)]
-    )
+def _own_measurement(target_id: str) -> dict[str, Any]:
+    """A measurement that only this target has.
+
+    A US target is one source's rows of one concept. Two sources have two
+    measurements, so only a declared bridge ties them. One target at two
+    levels is one measurement at both.
+    """
+
+    return {"measurement": {"concept": target_id, "filters": []}}
 
 
-def reconcile_blocks(
-    mechanism_id: str, blocks: Sequence[NestingBlock]
-) -> tuple[list[NestedRows], dict[str, Any]]:
-    """Divide each block's control among its rows on the shared operator.
+def run_pass(
+    pass_id: str,
+    rows: Sequence[SurfaceRow],
+    *,
+    bound_higher_targets: Iterable[str],
+    legs: Mapping[str, str],
+    bridges: Sequence[CrossGrainBridge] = (),
+    expected_members: Mapping[str, Mapping[str, frozenset[str]]] | None = None,
+    measurements: Mapping[str, str] | None = None,
+) -> tuple[list[controls.RowOutcome], dict[str, Any]]:
+    """Run one declared pass on the shared operator.
 
-    Builds one surface for the mechanism (a control row and the lower rows of
-    every block), runs :func:`apply_cross_grain_reconciliation` with the
-    mechanism's declared allocator, and returns each block's rows, in block
-    order, with the operator's receipt. A block is one leg: its control row
-    parents exactly its own lower rows.
-
-    Raises:
-        ValueError: If two blocks share a signature and a control geography,
-            if a lower row sits under two controls, if a block has no lower
-            row, or if the operator refuses a block (a vanishing or
-            non-finite total, a negative factor, or rows off their control).
+    ``legs`` maps each lower geography to the control geography it sits
+    under. ``measurements`` names the measurement of a target where it is
+    not the target's own. Returns the outcome of each row and the operator's
+    receipt.
     """
 
     declarations = load_us_cross_grain_declarations()
-    mechanism = us_cross_grain_mechanism(mechanism_id)
-    higher, lower = str(mechanism["higher_grain"]), str(mechanism["lower_grain"])
-    rows: list[tuple[str, str, str, float]] = []
-    signatures: dict[str, dict[str, Any]] = {}
-    bound: list[str] = []
-    area_legs: dict[str, str] = {}
-    spans: list[tuple[str, int, int]] = []
-    controls_seen: set[tuple[str, str]] = set()
-    for block in blocks:
-        key = _signature_key(block)
-        control_id = f"{mechanism_id}:{higher}:{key}"
-        lower_id = f"{mechanism_id}:{lower}:{key}"
-        if (control_id, block.control_geography_id) in controls_seen:
-            raise ValueError(
-                f"Nesting mechanism {mechanism_id!r} has two blocks for {key!r} "
-                f"at {block.control_geography_id!r}."
-            )
-        controls_seen.add((control_id, block.control_geography_id))
-        if not block.lower_geography_ids or len(block.lower_geography_ids) != len(
-            block.lower_values
-        ):
-            raise ValueError(
-                f"Nesting mechanism {mechanism_id!r} block {key!r} at "
-                f"{block.control_geography_id!r} needs one value for each of "
-                "its lower rows, and at least one row."
-            )
-        if control_id not in signatures:
-            measurement = {
-                "concept": block.concept,
-                "filters": [{name: value} for name, value in block.filters],
-            }
-            signatures[control_id] = {"measurement": measurement}
-            signatures[lower_id] = {"measurement": measurement}
-            bound.append(control_id)
-        rows.append(
-            (higher, block.control_geography_id, control_id, block.control_value)
-        )
-        start = len(rows)
-        for area, value in zip(
-            block.lower_geography_ids, block.lower_values, strict=True
-        ):
-            if area_legs.setdefault(area, block.control_geography_id) != (
-                block.control_geography_id
-            ):
-                raise ValueError(
-                    f"Nesting mechanism {mechanism_id!r}: lower geography "
-                    f"{area!r} sits under two controls."
-                )
-            rows.append((lower, area, lower_id, float(value)))
-        spans.append((control_id, start, len(rows)))
-    if not blocks:
-        receipt: dict[str, Any] = {
-            "absence": f"Mechanism {mechanism_id} had no block to reconcile."
-        }
-        _record(mechanism_id, 0, receipt)
-        return [], receipt
-    surface = pd.DataFrame(
-        rows, columns=["grain", "geography_id", "target_id", "value"]
-    )
+    control_grains = tuple(declarations["control_grains"])
+    allocator = us_allocator_name(pass_id)
     rule = CrossGrainRule(
         grain_precedence=tuple(declarations["grain_precedence"]),
         signature_fields=tuple(declarations["signature_fields"]),
-        bridges=(),
-        leg_of_area=area_legs.__getitem__,
+        bridges=tuple(bridges),
+        leg_of_area=legs.__getitem__,
         parent_geography_legs={
-            control_geography: (control_geography,)
-            for _control_id, control_geography in sorted(controls_seen)
+            row.geography_id: (row.geography_id,)
+            for row in rows
+            if row.grain in control_grains
         },
-        control_grains=tuple(declarations["control_grains"]),
-        allocator=controls.allocator_named(str(mechanism["allocator"])),
+        control_grains=control_grains,
+        allocator=None if allocator is None else controls.allocator_named(allocator),
     )
-    reconciled, receipt = apply_cross_grain_reconciliation(
-        surface, bound, signatures, rule
+    outcomes, receipt = controls.reconcile_rows(
+        rows,
+        tuple(dict.fromkeys(bound_higher_targets)),
+        {
+            row.target_id: _own_measurement(
+                (measurements or {}).get(row.target_id, row.target_id)
+            )
+            for row in rows
+        },
+        rule,
+        expected_members=expected_members,
     )
-    values = reconciled["value"].to_numpy(dtype=np.float64)
-    legs = {
-        (leg["higher_target_ids"][0], leg["parent_geography_id"]): leg
-        for group in receipt["groups"]
-        for leg in group["legs"]
-    }
-    nested: list[NestedRows] = []
-    for block, (control_id, start, stop) in zip(blocks, spans, strict=True):
-        leg = legs.get((control_id, block.control_geography_id))
-        if leg is None:
-            raise ValueError(
-                f"Nesting mechanism {mechanism_id!r}: the operator did not "
-                f"reconcile the block at {block.control_geography_id!r}."
-            )
-        nested.append(
-            NestedRows(
-                values=tuple(values[start:stop].tolist()),
-                factor=leg["declared_factor"],
-                lower_sum=leg["old_total"],
-            )
-        )
-    _record(mechanism_id, len(blocks), receipt)
-    return nested, receipt
+    _record(pass_id, receipt)
+    return outcomes, receipt
 
 
 # ---------------------------------------------------------------------------
-# The operator's own receipts
+# The operator's receipts
 # ---------------------------------------------------------------------------
 
 _RECEIPTS: ContextVar[list[dict[str, Any]] | None] = ContextVar(
@@ -230,9 +156,7 @@ _RECEIPTS: ContextVar[list[dict[str, Any]] | None] = ContextVar(
 def start_nesting_receipts() -> list[dict[str, Any]]:
     """Start a fresh record of the nesting passes that run from here on.
 
-    The four tool functions keep the signatures and the receipts they had, so
-    the operator's own receipt cannot travel in their results. A stage that
-    wants it calls this first and writes the list with
+    A stage calls this first and writes the list with
     :func:`write_nesting_receipts` when its targets are made. Without a call,
     nothing is recorded.
     """
@@ -248,16 +172,13 @@ def stop_nesting_receipts() -> None:
     _RECEIPTS.set(None)
 
 
-def _record(mechanism_id: str, blocks: int, receipt: Mapping[str, Any]) -> None:
+def _record(pass_id: str, receipt: Mapping[str, Any]) -> None:
     receipts = _RECEIPTS.get()
     if receipts is not None:
-        mechanism = us_cross_grain_mechanism(mechanism_id)
         receipts.append(
             {
-                "mechanism": mechanism_id,
-                "issue_row": mechanism["issue_row"],
-                "allocator": mechanism["allocator"],
-                "blocks": blocks,
+                "pass": pass_id,
+                "allocator": us_allocator_name(pass_id),
                 "operator_receipt": dict(receipt),
             }
         )
@@ -288,26 +209,14 @@ def write_nesting_receipts(
 
 
 # ---------------------------------------------------------------------------
-# State to congressional district: IRS SOI shares (issue row 5)
+# State to congressional district: IRS SOI (issue row 5)
 # ---------------------------------------------------------------------------
 
-#: The filters of a district SOI signature, in the order the caller's concept
-#: identity gives them after the measure id.
-DISTRICT_SOI_IDENTITY_FILTERS = (
-    "agi_lower_bound",
-    "agi_upper_bound",
-    "filing_status",
-    "eitc_child_count",
-)
-
-
-@dataclass(frozen=True)
-class NestedSurface:
-    """The specs of one nested surface, its receipt and the operator's."""
-
-    specs: tuple
-    receipt: dict
-    operator_receipt: dict
+#: The sources of a district SOI target, as the declared selector names them.
+STATE_SURFACE = "state_surface"
+LOWER_FILE = "lower_file"
+#: The lower file's own state total, where it is the parent of its districts.
+LOWER_FILE_STATE = "lower_file_state"
 
 
 def crosswalk_district_sets(crosswalk: pd.DataFrame):
@@ -352,13 +261,11 @@ def district_soi_surface(
 
     Historic Table 2 supplies a state concept's level wherever it has that
     concept. The district file then supplies only each district's share of
-    its state: the operator divides the Historic Table 2 state row among the
-    district rows (``proportional_fsum``). A concept only the district file
-    has keeps the district file's own state row as its control, lifted onto
-    the Historic Table 2 basis by a sibling concept's ratio
-    (``scaled_by_sibling_ratio``). A block whose ratio sits outside the
-    factor band of its concept's median across states is dropped and
-    recorded.
+    its state. The declared bridge ``historic_table_2_state_vs_district_file``
+    ties the two files, one bridge for each concept, and the operator divides
+    each state row among its district rows. A state whose factor is outside
+    the bridge's bound around the median across states is unbound: its
+    district rows leave the surface and the receipt names them.
 
     Args:
         soi_specs: Every compiled ``irs_soi`` spec (the ``full`` surface).
@@ -367,12 +274,13 @@ def district_soi_surface(
         crosswalk: The 117th->119th CD crosswalk the compiler used; it names
             each state's source-plan and current-plan districts.
         crosswalk_sha256: Recorded in the receipt.
-        level_bridges: District-file-only measure -> sibling measure.
-        factor_band: Largest allowed ratio between a block's ratio and its
-            concept's median across states (either direction).
+        level_bridges: District-file-only measure -> sibling measure (until
+            the feed re-pin; see :func:`_bridged_state_parents`).
+        factor_band: The bound as a ratio to the median factor: a state may
+            sit between ``1 / factor_band`` and ``factor_band`` of it.
+            Infinity turns the bound off.
         concept_identity: The published concept a spec measures, independent
-            of vintage: the measure id, then the filters of
-            ``DISTRICT_SOI_IDENTITY_FILTERS``.
+            of vintage.
         materializer_semantics: Everything the SOI slice reads from a spec
             except its geography.
         is_lower_file_spec: Whether a spec comes from the district file.
@@ -385,17 +293,16 @@ def district_soi_surface(
         file state rows, district rows), its receipt and the operator's.
 
     Raises:
-        ValueError: If a district concept is incomplete in a state, if its
+        ValueError: If a district concept is not complete in a state, if its
             district rows disagree on what they materialize, if a parent's
-            materialization differs from its children's, or if a parent
-            cannot absorb its children (zero sum under a nonzero parent, or
-            a sign conflict).
+            materialization differs from its children's, if a concept takes
+            its parent from two sources, or if the operator refuses a block
+            (rows that sum to zero under a control that is not zero, or a
+            sign conflict).
     """
 
     nesting = us_district_soi_nesting()
-    mechanism = us_cross_grain_mechanism(DISTRICT_SOI)
-    state_level = str(mechanism["higher_grain"])
-    district_level = str(mechanism["lower_grain"])
+    state_level, district_level = us_pass_grains(DISTRICT_SOI)
     defective = nesting.defective_lower_measures
     unparented = nesting.unparented_lower_measures
     excluded_states = nesting.excluded_legs
@@ -446,42 +353,7 @@ def district_soi_surface(
             )
         cd_file_state_by_key[key] = spec
 
-    # Each state concept both files carry: its Historic Table 2 / district-file
-    # ratio, judged against the measure's median ratio across states.
-    vintage_ratio = {
-        key: controls.level_ratio(
-            ht2_by_key[key].value, cd_file_state_by_key[key].value
-        )
-        for key in ht2_by_key.keys() & cd_file_state_by_key.keys()
-    }
-    median_ratio = controls.median_by_group(vintage_ratio, _identity_of_block)
-    out_of_band: list[dict] = []
-
-    def within_band(
-        key: tuple,
-        ratio: float,
-        median: float,
-        basis: str,
-        measure: str,
-        *,
-        verdict: str,
-    ) -> bool:
-        judged = controls.band_verdict(ratio, median, factor_band)
-        if not judged.ok:
-            out_of_band.append(
-                {
-                    "state_fips": key[0],
-                    "measure": measure,
-                    "concept": key[1][0],
-                    "basis": basis,
-                    "verdict": verdict,
-                    "ratio": ratio,
-                    "median_ratio": median,
-                    "relative": judged.relative,
-                }
-            )
-        return judged.ok
-
+    # Which district rows enter the surface: the reviewed registers.
     kept_cd_by_key: dict[tuple, list] = defaultdict(list)
     for spec in cd_rows:
         metadata = spec.metadata
@@ -498,114 +370,31 @@ def district_soi_surface(
         else:
             kept_cd_by_key[(state, concept_identity(spec))].append(spec)
 
-    # Each Historic-Table-2-parented block's rebase factor (parent over its
-    # district rows' sum), judged against its concept's median across states.
-    block_factor: dict[tuple, float] = {}
-    for key, block in kept_cd_by_key.items():
-        parent = ht2_by_key.get(key)
-        if parent is None:
-            continue
-        ratio, _child_sum = controls.control_ratio(
-            parent.value, (spec.value for spec in block)
-        )
-        if ratio is not None:
-            block_factor[key] = ratio
-    median_factor = controls.median_by_group(
-        block_factor, _identity_of_block, positive_only=True
+    bridged, bridge_factors, bridge_verdicts = _bridged_state_parents(
+        ht2_by_key,
+        cd_file_state_by_key,
+        kept_cd_by_key,
+        level_bridges=level_bridges,
+        factor_band=factor_band,
+        defective=defective,
     )
 
-    # One basis for every state level: a concept Historic Table 2 lacks keeps
-    # the district file's state row, scaled by a sibling's two levels.
-    bridged: dict[str, object] = {}
-    bridge_factors: dict[str, list[float]] = defaultdict(list)
-    for key, spec in sorted(cd_file_state_by_key.items()):
-        state, identity = key
-        measure = identity[0]
-        if key in ht2_by_key or measure in defective:
-            continue
-        sibling = level_bridges.get(measure)
-        if sibling is None:
-            raise ValueError(
-                f"District-file-only concept {measure!r} has no level bridge; "
-                "register a sibling measure in STATE_CD_LEVEL_BRIDGES before "
-                "binding it."
-            )
-        sibling_key = (state, (sibling, *identity[1:]))
-        ht2_sibling = ht2_by_key.get(sibling_key)
-        cd_sibling = cd_file_state_by_key.get(sibling_key)
-        if ht2_sibling is None or cd_sibling is None or float(cd_sibling.value) == 0:
-            raise ValueError(
-                f"Level bridge {measure} -> {sibling} in state {state} needs "
-                "the sibling's state total in both files."
-            )
-        value, factor = controls.scaled_by_sibling_ratio(
-            spec.value, ht2_sibling.value, cd_sibling.value
-        )
-        # A sign conflict is a data defect, not a level disagreement: refuse
-        # it before the band, which only judges finite positive ratios.
-        if not (math.isfinite(factor) and factor > 0.0):
-            raise ValueError(
-                f"Level bridge {measure} -> {sibling} in state {state} has "
-                f"factor {factor}."
-            )
-        # The sibling is trusted for bridging only if both of the band's
-        # verdicts on it pass: its two state levels, and (where it has district
-        # rows) the rebase of its own district block.
-        trusted = within_band(
-            sibling_key,
-            factor,
-            median_ratio.get(sibling_key[1], math.nan),
-            f"level_bridge:{measure}",
-            measure,
-            verdict="sibling_vintage_ratio",
-        )
-        if sibling_key in block_factor:
-            trusted = (
-                within_band(
-                    sibling_key,
-                    block_factor[sibling_key],
-                    median_factor.get(sibling_key[1], math.nan),
-                    f"level_bridge:{measure}",
-                    measure,
-                    verdict="sibling_rebase_factor",
-                )
-                and trusted
-            )
-        if not trusted:
-            continue
-        metadata = dict(spec.metadata)
-        metadata.update(
-            {
-                "state_cd_vintage_rule": nesting.vintage_rule,
-                "state_cd_cd_file_value": repr(float(spec.value)),
-                "state_cd_level_bridge_sibling": ht2_sibling.name,
-                "state_cd_level_bridge_cd_file_sibling": cd_sibling.name,
-                "state_cd_level_bridge_factor": repr(factor),
-            }
-        )
-        bridged[spec.name] = replace(
-            spec, value=value, signed=value < 0.0, metadata=metadata
-        )
-        bridge_factors[measure].append(factor)
-
-    # Every check a block must pass before the operator divides its control.
-    internal_gaps: list[float] = []
+    # The surface: for each block, its state row and its district rows.
+    rows: list[SurfaceRow] = []
+    blocks: list[tuple] = []
+    legs: dict[str, str] = {}
+    expected: dict[str, dict[str, frozenset[str]]] = {}
+    bound: list[str] = []
+    targets: dict[str, dict[str, str]] = {}
+    measurements: dict[str, str] = {}
+    parent_source: dict[tuple, str] = {}
     kept_cd_file_parents: set[str] = set()
-    kept_blocks: list[tuple] = []
     for key in sorted(kept_cd_by_key):
         state, identity = key
         children = sorted(
             kept_cd_by_key[key],
             key=lambda spec: spec.metadata["congressional_district_geoid"],
         )
-        districts = [spec.metadata["congressional_district_geoid"] for spec in children]
-        expected = sorted(target_districts.get(state, ()))
-        if not controls.leg_completeness(districts, expected).complete:
-            raise ValueError(
-                f"District concept {identity} in state {state} covers "
-                f"{districts}, expected the current plan's {expected}; "
-                "rebasing an incomplete set would misstate every district."
-            )
         semantics = {materializer_semantics(spec) for spec in children}
         if len(semantics) != 1:
             raise ValueError(
@@ -614,133 +403,123 @@ def district_soi_surface(
             )
         (child_semantics,) = semantics
         parent = ht2_by_key.get(key)
-        basis = "historic_table_2"
+        basis, source = "historic_table_2", STATE_SURFACE
         if parent is None:
-            parent = cd_file_state_by_key.get(key)
-            basis = "cd_file_state_total_bridged"
-            if parent is None:
+            own = cd_file_state_by_key.get(key)
+            basis, source = "cd_file_state_total_bridged", LOWER_FILE_STATE
+            if own is None:
                 raise ValueError(
                     f"District concept {identity} in state {state} has no "
                     "state parent in either vintage."
                 )
-            if parent.name not in bridged:
+            if own.name not in bridged:
                 for child in children:
                     drop(child, f"level_bridge_out_of_band:{identity[0]}")
                 continue
-            parent = bridged[parent.name]
+            parent = bridged[own.name]
             kept_cd_file_parents.add(parent.name)
+        if parent_source.setdefault(identity, source) != source:
+            raise ValueError(
+                f"District concept {identity} takes its state parent from "
+                "Historic Table 2 in some states and from the district file in "
+                "others; one concept has one parent source."
+            )
         if materializer_semantics(parent) != child_semantics:
             raise ValueError(
                 f"State parent {parent.name} materializes differently from "
                 f"its district rows ({identity}, state {state})."
             )
-        parent_value = float(parent.value)
-        ratio, child_sum = controls.control_ratio(
-            parent_value, (spec.value for spec in children)
-        )
-        if ratio is None:
-            if parent_value != 0.0:
-                raise ValueError(
-                    f"District rows of {identity} in state {state} sum to zero "
-                    f"under a nonzero parent {parent.name}={parent_value}."
-                )
-            factor = 1.0
-        else:
-            factor = ratio
-            if factor < 0.0:
-                raise ValueError(
-                    f"District rows of {identity} in state {state} sum to "
-                    f"{child_sum}, opposite in sign to parent {parent.name}="
-                    f"{parent_value}."
-                )
-        # The district file must agree with itself before its shares are used.
-        cd_state = cd_file_state_by_key.get(key)
-        if cd_state is not None:
-            cd_state_value = float(cd_state.value)
-            gap = controls.sum_gap(cd_state_value, child_sum)
-            internal_gaps.append(gap.relative)
-            if gap.exceeds(nesting.internal_rtol):
-                raise ValueError(
-                    f"District-file state row {cd_state.name}={cd_state_value} "
-                    f"differs from the sum of its district rows ({child_sum}) "
-                    f"for {identity} in state {state}: a column or crosswalk "
-                    "defect inside the district file."
-                )
-        # An all-zero block agrees with a zero parent whatever the median.
-        if (
-            basis == "historic_table_2"
-            and ratio is not None
-            and not within_band(
-                key,
-                factor,
-                median_factor.get(identity, math.nan),
-                "rebase",
-                identity[0],
-                verdict="rebase_factor",
+        identity_text = "|".join(identity)
+        lower_id = f"{LOWER_FILE}|{identity_text}"
+        higher_id = f"{source}|{identity_text}"
+        state_area = geography_id(state_level, state)
+        targets[higher_id] = {
+            "source": source,
+            "grain": state_level,
+            "identity": identity_text,
+        }
+        targets[lower_id] = {
+            "source": LOWER_FILE,
+            "grain": district_level,
+            "identity": identity_text,
+        }
+        # The lower file's own state total has the measurement of its
+        # district rows, so the operator ties them with no bridge.
+        measurements[higher_id] = lower_id if source == LOWER_FILE_STATE else higher_id
+        measurements[lower_id] = lower_id
+        bound.append(higher_id)
+        blocks.append((key, parent, basis, children, len(rows)))
+        rows.append(SurfaceRow(state_level, state_area, higher_id, float(parent.value)))
+        for child in children:
+            area = geography_id(
+                district_level, child.metadata["congressional_district_geoid"]
             )
-        ):
-            for child in children:
-                drop(child, f"rebase_out_of_band:{identity[0]}")
-            continue
-        kept_blocks.append(
-            (key, parent, basis, parent_value, children, child_sum, factor)
+            legs[area] = state_area
+            rows.append(SurfaceRow(district_level, area, lower_id, float(child.value)))
+        expected.setdefault(lower_id, {})[state_area] = frozenset(
+            geography_id(district_level, district)
+            for district in target_districts.get(state, ())
         )
 
-    # The operator divides each control among its district rows.
-    nested, operator_receipt = reconcile_blocks(
+    selector = us_bridge_selector(DISTRICT_SOI, bounded=not math.isinf(factor_band))
+    if not math.isinf(factor_band) and factor_band != nesting.factor_band:
+        selector = replace(
+            selector,
+            max_factor_shift=factor_band - 1.0,
+            min_factor_shift=1.0 / factor_band - 1.0,
+        )
+    bridges, _unpaired = expand_bridge_selectors([selector], targets)
+    outcomes, operator_receipt = run_pass(
         DISTRICT_SOI,
-        [
-            NestingBlock(
-                concept=f"{children[0].family}.{identity[0]}",
-                filters=tuple(
-                    zip(DISTRICT_SOI_IDENTITY_FILTERS, identity[1:], strict=True)
-                ),
-                control_geography_id=geography_id(state_level, state),
-                control_value=parent_value,
-                lower_geography_ids=tuple(
-                    geography_id(
-                        district_level, child.metadata["congressional_district_geoid"]
-                    )
-                    for child in children
-                ),
-                lower_values=tuple(float(child.value) for child in children),
-            )
-            for (state, identity), _p, _b, parent_value, children, _s, _f in kept_blocks
-        ],
+        rows,
+        bound_higher_targets=bound,
+        legs=legs,
+        bridges=bridges,
+        expected_members=expected,
+        measurements=measurements,
     )
+
     rebased: dict[str, object] = {}
     factors_by_measure: dict[str, list[float]] = defaultdict(list)
     parent_basis_counts: Counter = Counter()
-    for (key, parent, basis, parent_value, children, child_sum, factor), rows in zip(
-        kept_blocks, nested, strict=True
-    ):
-        _state, identity = key
-        if _bits(rows.lower_sum, rows.factor) != _bits(child_sum, factor):
-            raise ValueError(
-                f"The operator's factor for {identity} under {parent.name} "
-                f"({rows.factor!r} on {rows.lower_sum!r}) is not the factor the "
-                f"band judged ({factor!r} on {child_sum!r})."
-            )
-        factors_by_measure[identity[0]].append(rows.factor)
-        parent_basis_counts[basis] += len(children)
-        for child, value in zip(children, rows.values, strict=True):
-            metadata = dict(child.metadata)
-            metadata.update(
+    unbound: list[dict] = []
+    for key, parent, basis, children, start in blocks:
+        state, identity = key
+        block = outcomes[start + 1 : start + 1 + len(children)]
+        statuses = {outcome.status for outcome in block}
+        if statuses == {controls.UNBOUND}:
+            unbound.append(
                 {
-                    "state_cd_vintage_rule": nesting.vintage_rule,
-                    "state_cd_parent_target_name": parent.name,
-                    "state_cd_parent_basis": basis,
-                    "state_cd_parent_value": repr(parent_value),
-                    "state_cd_cd_file_value": repr(float(child.value)),
-                    "state_cd_cd_file_state_sum": repr(rows.lower_sum),
-                    "state_cd_rebase_factor": repr(rows.factor),
+                    "state_fips": state,
+                    "concept": identity[0],
+                    "parent": parent.name,
+                    "factor": block[0].factor,
                 }
             )
+            for child in children:
+                drop(child, f"rebase_out_of_band:{identity[0]}")
+            continue
+        if statuses != {controls.RECONCILED}:
+            raise ValueError(
+                f"The operator did not reconcile the district rows of "
+                f"{identity} under {parent.name}."
+            )
+        factors_by_measure[identity[0]].append(block[0].factor)
+        parent_basis_counts[basis] += len(children)
+        for child, outcome in zip(children, block, strict=True):
             rebased[child.name] = replace(
                 child,
-                value=value,
-                signed=value < 0.0,
-                metadata=metadata,
+                value=outcome.value,
+                signed=outcome.value < 0.0,
+                metadata={
+                    **child.metadata,
+                    **cross_grain_metadata(
+                        value_before=child.value,
+                        factor=outcome.factor,
+                        control=outcome.control,
+                        parent=parent.name,
+                    ),
+                },
             )
 
     kept_cd_file_state = []
@@ -777,11 +556,11 @@ def district_soi_surface(
         "vintage_rule_description": (
             "Historic Table 2 (TY2022) is the single vintage of every state "
             "concept it carries. District-file (22incd.csv) district rows "
-            "keep only their within-state shares and are rebased to sum to "
-            "that parent. Concepts only the district file carries keep its "
-            "own state row as their parent, lifted onto the Historic Table 2 "
-            "basis by a sibling concept's ratio of the two files' state "
-            "totals in the same state (STATE_CD_LEVEL_BRIDGES)."
+            "keep only their within-state shares and are divided from that "
+            "parent by the shared cross-grain operator. Concepts only the "
+            "district file carries keep its own state row as their parent, "
+            "lifted onto the Historic Table 2 basis by a sibling concept's "
+            "ratio of the two files' state totals in the same state."
         ),
         "counts": {
             "historic_table_2_state": len(ht2_state),
@@ -796,17 +575,14 @@ def district_soi_surface(
         "unparented_cd_measures": dict(unparented),
         "excluded_cd_states": dict(excluded_states),
         "at_large_on_source_plan": at_large_source_states,
-        "internal_consistency": {
-            "rtol": nesting.internal_rtol,
-            "blocks_checked": len(internal_gaps),
-            "max_relative_gap": max(internal_gaps, default=0.0),
-        },
-        "factor_band": {
-            "tolerance": factor_band,
-            "relative_to": "the measure's median Historic Table 2 / "
-            "district-file ratio across states",
-            "out_of_band": sorted(
-                out_of_band, key=lambda row: (row["concept"], row["state_fips"])
+        "bridge": {
+            "bridge_id": DISTRICT_SOI,
+            "max_factor_shift": selector.max_factor_shift,
+            "min_factor_shift": selector.min_factor_shift,
+            "shift_around": selector.shift_around,
+            "out_of_bound": selector.out_of_bound,
+            "unbound": sorted(
+                unbound, key=lambda row: (row["concept"], row["state_fips"])
             ),
         },
         "level_bridges": dict(level_bridges),
@@ -814,7 +590,10 @@ def district_soi_surface(
             measure: _factor_summary(values)
             for measure, values in sorted(bridge_factors.items())
         },
-        "rebase_factor_by_measure": {
+        "level_bridge_out_of_band": sorted(
+            bridge_verdicts, key=lambda row: (row["concept"], row["state_fips"])
+        ),
+        "factor_by_measure": {
             measure: _factor_summary(values)
             for measure, values in sorted(factors_by_measure.items())
         },
@@ -840,25 +619,169 @@ def district_soi_surface(
     )
 
 
+def _bridged_state_parents(
+    ht2_by_key: Mapping[tuple, Any],
+    cd_file_state_by_key: Mapping[tuple, Any],
+    kept_cd_by_key: Mapping[tuple, Sequence],
+    *,
+    level_bridges: Mapping[str, str],
+    factor_band: float,
+    defective: Mapping[str, str],
+) -> tuple[dict[str, Any], dict[str, list[float]], list[dict]]:
+    """The state parents of the concepts that only the district file has.
+
+    **Until the feed re-pin** (microcosm#1760). On the pinned feed, Historic
+    Table 2 lacks six concepts that the district file has. Their state parent
+    is the district file's own state row, lifted onto the Historic Table 2
+    basis by a sibling concept that both files carry: the row is multiplied by
+    the sibling's Historic Table 2 level over its district-file level in the
+    same state. The sibling is trusted only if that ratio, and the factor of
+    its own district block, sit within ``factor_band`` of their medians across
+    states. After the re-pin Historic Table 2 holds the six parents, and this
+    function and ``level_bridges`` go.
+
+    Returns the lifted state rows by name, the factors by measure, and the
+    verdicts that refused a sibling.
+    """
+
+    def by_identity(
+        ratios: Mapping[tuple, float], *, positive_only: bool
+    ) -> dict[tuple, float]:
+        grouped: dict[tuple, list[float]] = defaultdict(list)
+        for block_key, ratio in ratios.items():
+            if math.isfinite(ratio) and (ratio > 0 or not positive_only):
+                grouped[_identity_of_block(block_key)].append(ratio)
+        return {
+            identity: float(np.median(values)) for identity, values in grouped.items()
+        }
+
+    vintage_ratio: dict[tuple, float] = {}
+    for key in ht2_by_key.keys() & cd_file_state_by_key.keys():
+        higher = float(ht2_by_key[key].value)
+        lower = float(cd_file_state_by_key[key].value)
+        vintage_ratio[key] = (
+            higher / lower if lower != 0.0 and (higher > 0) == (lower > 0) else math.nan
+        )
+    median_ratio = by_identity(vintage_ratio, positive_only=False)
+    block_factor: dict[tuple, float] = {}
+    for key, block in kept_cd_by_key.items():
+        parent = ht2_by_key.get(key)
+        child_sum = controls.sum_of_lower_rows(spec.value for spec in block)
+        if parent is not None and child_sum != 0.0:
+            block_factor[key] = float(parent.value) / child_sum
+    median_factor = by_identity(block_factor, positive_only=True)
+    verdicts: list[dict] = []
+
+    def trusted(
+        sibling_key: tuple, ratio: float, median: float, measure: str, verdict: str
+    ) -> bool:
+        relative = ratio / median if math.isfinite(ratio) and median else math.nan
+        ok = math.isfinite(relative) and 1 / factor_band <= relative <= factor_band
+        if not ok:
+            verdicts.append(
+                {
+                    "state_fips": sibling_key[0],
+                    "measure": measure,
+                    "concept": _identity_of_block(sibling_key)[0],
+                    "verdict": verdict,
+                    "ratio": ratio,
+                    "median_ratio": median,
+                    "relative": relative,
+                }
+            )
+        return ok
+
+    bridged: dict[str, Any] = {}
+    factors: dict[str, list[float]] = defaultdict(list)
+    for key, spec in sorted(cd_file_state_by_key.items()):
+        state, identity = key
+        measure = identity[0]
+        if key in ht2_by_key or measure in defective:
+            continue
+        sibling = level_bridges.get(measure)
+        if sibling is None:
+            raise ValueError(
+                f"District-file-only concept {measure!r} has no level bridge; "
+                "register a sibling measure in the level bridges of "
+                "us/cross_grain_declarations.json before binding it."
+            )
+        sibling_key = (state, (sibling, *identity[1:]))
+        ht2_sibling = ht2_by_key.get(sibling_key)
+        cd_sibling = cd_file_state_by_key.get(sibling_key)
+        if ht2_sibling is None or cd_sibling is None or float(cd_sibling.value) == 0:
+            raise ValueError(
+                f"Level bridge {measure} -> {sibling} in state {state} needs "
+                "the sibling's state total in both files."
+            )
+        factor = float(ht2_sibling.value) / float(cd_sibling.value)
+        # A sign conflict is a data defect, not a level disagreement.
+        if not (math.isfinite(factor) and factor > 0.0):
+            raise ValueError(
+                f"Level bridge {measure} -> {sibling} in state {state} has "
+                f"factor {factor}."
+            )
+        ok = trusted(
+            sibling_key,
+            factor,
+            median_ratio.get(_identity_of_block(sibling_key), math.nan),
+            measure,
+            "sibling_vintage_ratio",
+        )
+        if sibling_key in block_factor:
+            ok = (
+                trusted(
+                    sibling_key,
+                    block_factor[sibling_key],
+                    median_factor.get(_identity_of_block(sibling_key), math.nan),
+                    measure,
+                    "sibling_factor",
+                )
+                and ok
+            )
+        if not ok:
+            continue
+        value = float(spec.value) * factor
+        bridged[spec.name] = replace(
+            spec,
+            value=value,
+            signed=value < 0.0,
+            metadata={
+                **spec.metadata,
+                **cross_grain_metadata(
+                    value_before=spec.value,
+                    factor=factor,
+                    control=f"level_bridge:{sibling}",
+                ),
+            },
+        )
+        factors[measure].append(factor)
+    return bridged, factors, verdicts
+
+
 def district_block_closure(specs: Sequence, *, rtol: float) -> list[dict]:
     """Every (state parent, district rows) block and whether it adds up.
 
-    A block is the district specs naming one ``state_cd_parent_target_name``.
-    Returns one entry per block with the parent value, the district sum and
-    ``ok`` (relative difference within ``rtol``).
+    A block is the district specs that name one parent
+    (``cross_grain_parent``). Returns one entry per block with the parent
+    value, the district sum and ``ok`` (relative difference within ``rtol``).
     """
 
+    _state_level, district_level = us_pass_grains(DISTRICT_SOI)
     by_name = {spec.name: spec for spec in specs}
     blocks: dict[str, list] = defaultdict(list)
     for spec in specs:
-        parent = spec.metadata.get("state_cd_parent_target_name")
-        if parent is not None:
+        parent = spec.metadata.get(PARENT_KEY)
+        if (
+            parent is not None
+            and spec.metadata.get("ledger_geography_level") == district_level
+        ):
             blocks[parent].append(spec)
     report = []
     for parent_name, children in sorted(blocks.items()):
         parent = by_name.get(parent_name)
         child_sum = controls.sum_of_lower_rows(spec.value for spec in children)
         parent_value = None if parent is None else float(parent.value)
+        scale = max(abs(parent_value or 0.0), 1.0)
         report.append(
             {
                 "parent": parent_name,
@@ -867,7 +790,7 @@ def district_block_closure(specs: Sequence, *, rtol: float) -> list[dict]:
                 "district_sum": child_sum,
                 "n_districts": len(children),
                 "ok": parent is not None
-                and controls.sum_gap(parent_value, child_sum).within(rtol),
+                and abs(child_sum - parent_value) <= rtol * scale,
             }
         )
     return report
@@ -879,12 +802,8 @@ def _identity_of_block(key: tuple) -> tuple:
     return key[1]
 
 
-def _bits(*values: float) -> bytes:
-    return b"".join(struct.pack("<d", float(value)) for value in values)
-
-
 # ---------------------------------------------------------------------------
-# County helpers the county mechanisms share
+# County helpers the county passes share
 # ---------------------------------------------------------------------------
 
 #: The GEOID prefix of a county-equivalent in the ledger feeds.
@@ -964,75 +883,12 @@ def county_hierarchy(name, code, *, parent=None):
     )
 
 
-def cell_members(metadata):
+def cell_members(metadata: Mapping[str, Any]) -> list[int]:
     """The county codes one county child row covers (one unless combined)."""
-    members = metadata.get("state_county_cell_members")
+    members = metadata.get(MEMBERS_KEY)
     if members:
         return [int(member) for member in str(members).split(",")]
     return [int(metadata["county_fips"])]
-
-
-# ---------------------------------------------------------------------------
-# State to county: resident population (issue row 8)
-# ---------------------------------------------------------------------------
-
-#: The quantity the county population mechanism reconciles.
-POPULATION_CONCEPT = "census_population.resident_population"
-
-
-def county_population_rows(
-    state_populations: Mapping, overlap_counties: np.ndarray, overlap_values: np.ndarray
-) -> dict[int, float]:
-    """County populations from ladder overlaps, reconciled to state levels.
-
-    Sums the ladder's overlap populations by county, then the operator
-    divides each state's total among its counties
-    (``scale_residual_to_largest``): the rounding residual goes to the largest
-    county, never a small one.
-
-    Raises:
-        ValueError: If a state has no county or no positive population, or
-            if a county has no state.
-    """
-
-    raw = {
-        int(code): controls.sum_of_lower_rows(overlap_values[overlap_counties == code])
-        for code in np.unique(overlap_counties)
-    }
-    mechanism = us_cross_grain_mechanism(COUNTY_POPULATION)
-    state_level, county_level = mechanism["higher_grain"], mechanism["lower_grain"]
-    blocks, block_codes = [], []
-    for state, target in sorted(state_populations.items()):
-        block = sorted(code for code in raw if code // 1000 == int(state))
-        total = controls.sum_of_lower_rows(raw[code] for code in block)
-        if not block or total <= 0 or not math.isfinite(target) or target <= 0:
-            raise ValueError(f"State {state} has no positive county/state population.")
-        blocks.append(
-            NestingBlock(
-                concept=POPULATION_CONCEPT,
-                filters=(),
-                control_geography_id=geography_id(state_level, f"{int(state):02d}"),
-                control_value=float(target),
-                lower_geography_ids=tuple(
-                    geography_id(county_level, f"{code:05d}") for code in block
-                ),
-                lower_values=tuple(raw[code] for code in block),
-            )
-        )
-        block_codes.append(block)
-    nested, _operator_receipt = reconcile_blocks(COUNTY_POPULATION, blocks)
-    counties: dict[int, float] = {}
-    for block, rows in zip(block_codes, nested, strict=True):
-        counties.update(zip(block, rows.values, strict=True))
-    unknown = sorted(set(raw) - set(counties))
-    if unknown:
-        raise ValueError(f"County populations have no state parent: {unknown}.")
-    return counties
-
-
-# ---------------------------------------------------------------------------
-# State to county: IRS SOI shares (issue row 6)
-# ---------------------------------------------------------------------------
 
 
 def is_broad_state_parent(spec) -> bool:
@@ -1073,6 +929,114 @@ def validated_combined_cells(combined_cells):
     return cells
 
 
+def _state_label(state):
+    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
+
+    label = US_STATE_FIPS_TO_NAME.get(f"{int(state):02d}")
+    if label is None:
+        raise ValueError(f"State {int(state):02d} has no Census state name.")
+    return label
+
+
+def _acs_hierarchy(name, source_name, *, state=None, county=None):
+    from microcosm.calibrate import (
+        CalibrationHierarchy,
+        HierarchyCategory,
+        HierarchyGeography,
+        HierarchyNode,
+    )
+    from microcosm.calibrate.provider_labels import calibration_provider_label
+
+    provider = HierarchyNode(source_name, calibration_provider_label("us", source_name))
+    if county is not None:
+        # The same label every county family gives this county
+        # (county_hierarchy).
+        geography = HierarchyGeography(
+            f"{COUNTY_PREFIX}{county}", f"County {county}", "county"
+        )
+        label = f"County {county} households (ACS)"
+    else:
+        state_label = _state_label(state)
+        geography = HierarchyGeography(
+            f"0400000US{int(state):02d}", state_label, "state"
+        )
+        label = f"{state_label} households (ACS)"
+    return CalibrationHierarchy(
+        provider=provider,
+        category=HierarchyCategory("census_acs.households", "Households", provider.id),
+        geography=geography,
+        dimensions=(),
+        target=HierarchyNode(name, label),
+    )
+
+
+def acs_households_parent_name(state):
+    return f"acs_households_state_{int(state):02d}"
+
+
+# ---------------------------------------------------------------------------
+# State to county: resident population (issue row 8)
+# ---------------------------------------------------------------------------
+
+#: The quantity of the ladder population. The ladder is one source at two
+#: levels, so its state row and its county rows have one measurement.
+POPULATION_TARGET = "census_population.resident_population"
+
+
+def county_population_rows(
+    state_populations: Mapping[int, float],
+    overlap_counties: np.ndarray,
+    overlap_values: np.ndarray,
+) -> dict[int, float]:
+    """County populations from ladder overlaps, reconciled to state levels.
+
+    Sums the ladder's overlap populations by county. The operator then
+    divides each state's total among its counties. A state with no county, a
+    county with no state, and a state whose counties sum to zero are refused
+    by the operator.
+    """
+
+    state_level, county_level = us_pass_grains(COUNTY_POPULATION)
+    raw = {
+        int(code): controls.sum_of_lower_rows(overlap_values[overlap_counties == code])
+        for code in np.unique(overlap_counties)
+    }
+    rows: list[SurfaceRow] = []
+    legs: dict[str, str] = {}
+    for state, target in sorted(state_populations.items()):
+        if not math.isfinite(target) or target <= 0:
+            raise ValueError(f"State {state} has no positive county/state population.")
+        rows.append(
+            SurfaceRow(
+                state_level,
+                geography_id(state_level, f"{int(state):02d}"),
+                POPULATION_TARGET,
+                float(target),
+            )
+        )
+    codes = sorted(raw)
+    for code in codes:
+        area = geography_id(county_level, f"{code:05d}")
+        legs[area] = geography_id(state_level, f"{code // 1000:02d}")
+        rows.append(SurfaceRow(county_level, area, POPULATION_TARGET, raw[code]))
+    outcomes, _receipt = run_pass(
+        COUNTY_POPULATION, rows, bound_higher_targets=[POPULATION_TARGET], legs=legs
+    )
+    counties: dict[int, float] = {}
+    for code, outcome in zip(codes, outcomes[len(rows) - len(codes) :], strict=True):
+        if outcome.status != controls.RECONCILED:
+            raise ValueError(f"County {code:05d} population has no state parent.")
+        counties[code] = outcome.value
+    return counties
+
+
+# ---------------------------------------------------------------------------
+# State to county: IRS SOI (issue row 6)
+# ---------------------------------------------------------------------------
+
+COUNTY_FILE = "county_file"
+
+
 def county_soi_surface(
     state_specs: Sequence,
     facts: Iterable[Mapping[str, Any]],
@@ -1081,20 +1045,19 @@ def county_soi_surface(
     combined_cells: Mapping[int, int],
     soi_mode: str,
 ) -> NestedSurface:
-    """Rebase complete county fact blocks onto existing broad state totals.
+    """Divide the broad state SOI rows among the counties of the county facts.
 
-    Every state must carry county return count and AGI with unsliced state
-    parents. Other measures require both county facts and a state parent.
-    A county absent from a block is refused unless ``combined_cells`` declares
-    it, with its host present: then one child row covers both counties, its
-    share is the host's published value over the state's published sum, and
-    ``state_county_cell_members`` lists the member counties. The operator
-    divides each state row among its cells (``share_residual_to_largest``).
+    Every state must carry county return count and AGI with broad state
+    parents. Other measures need both county facts and a state parent. The
+    declared bridge ``state_soi_vs_county_file`` ties each state row to the
+    county facts of its measure and period, and the operator divides it. A
+    county absent from a block is refused unless ``combined_cells`` declares
+    it with its host present: then the host's row stands for both counties,
+    and ``cross_grain_members`` lists them.
     """
 
     nesting = us_county_soi_nesting()
-    mechanism = us_cross_grain_mechanism(COUNTY_SOI)
-    state_level, county_level = mechanism["higher_grain"], mechanism["lower_grain"]
+    state_level, county_level = us_pass_grains(COUNTY_SOI)
     combined = validated_combined_cells(combined_cells)
     blocks = defaultdict(dict)
     for fact in facts:
@@ -1157,36 +1120,44 @@ def county_soi_surface(
                     f"Missing broad state SOI parent state={state:02d}, concept={measure}; "
                     "state_county requires return count and AGI in every state."
                 )
-    # Every check a block must pass before the operator divides its control.
+
+    # The surface: for each state row, the county facts of its measure.
+    rows: list[SurfaceRow] = []
+    legs: dict[str, str] = {}
+    expected: dict[str, dict[str, frozenset[str]]] = {}
+    bound: list[str] = []
+    targets: dict[str, dict[str, str]] = {}
     merges = defaultdict(list)
     checked = []
     for key, parent in sorted(parents.items()):
         state, measure, period = key
-        expected = {
+        counties = {
             int(code) for code in county_populations if int(code) // 1000 == state
         }
-        block = blocks.get(key, {})
-        completeness = controls.leg_completeness(
-            block, expected, combined_cells=combined
-        )
-        if not expected or not completeness.complete:
+        if not counties:
             raise ValueError(
-                f"Incomplete county SOI block state={state:02d}, concept={measure}, period={period}; "
-                f"missing={[f'{code:05d}' for code in completeness.missing]}, unexpected={[f'{code:05d}' for code in completeness.unexpected]}. "
-                "County facts, ladder and county column must use matching boundaries; "
-                "only a declared combined SOI cell may cover an absent county."
+                f"State {state:02d} has a broad SOI parent for {measure} and no "
+                "county in the ladder. County facts, ladder and county column "
+                "must use matching boundaries."
             )
+        block = blocks.get(key, {})
+        absent = counties - block.keys()
+        merged = {
+            code: combined[code]
+            for code in absent
+            if code in combined
+            and combined[code] in block
+            and combined[code] in counties
+        }
         members = {code: [code] for code in sorted(block)}
-        for code, host in sorted(completeness.merged.items()):
+        for code, host in sorted(merged.items()):
             members[host].append(code)
             merges[(host, code)].append(f"{measure}|{period}")
         codes = sorted(block)
-        raw_values = [block[code][0] for code in codes]
-        if controls.sum_of_lower_rows(raw_values) <= 0:
+        if codes and controls.sum_of_lower_rows(block[code][0] for code in codes) <= 0:
             raise ValueError(
                 f"County SOI block {key} has no positive share denominator."
             )
-        shares, _total, _largest = controls.residual_shares(raw_values)
         for code in codes:
             unit = block[code][1].get("observed_measure", {}).get("unit")
             if (
@@ -1196,35 +1167,52 @@ def county_soi_surface(
                 raise ValueError(
                     f"County SOI units differ from state parent {parent.name}: {unit!r}."
                 )
-        checked.append((key, parent, expected, block, members, codes, shares))
+        attributes = {"source_measure_id": str(measure), "source_period": period}
+        higher_id = f"{STATE_SURFACE}|{measure}|{period}"
+        lower_id = f"{COUNTY_FILE}|{measure}|{period}"
+        targets[higher_id] = {
+            "source": STATE_SURFACE,
+            "grain": state_level,
+            **attributes,
+        }
+        targets[lower_id] = {"source": COUNTY_FILE, "grain": county_level, **attributes}
+        state_area = geography_id(state_level, f"{state:02d}")
+        bound.append(higher_id)
+        checked.append((key, parent, counties, block, members, codes, len(rows)))
+        rows.append(SurfaceRow(state_level, state_area, higher_id, float(parent.value)))
+        for code in codes:
+            area = geography_id(county_level, f"{code:05d}")
+            legs[area] = state_area
+            rows.append(SurfaceRow(county_level, area, lower_id, block[code][0]))
+        expected.setdefault(lower_id, {})[state_area] = frozenset(
+            geography_id(county_level, f"{code:05d}")
+            for code in counties - merged.keys()
+        )
 
-    # The operator divides each state row among its county cells.
-    nested, operator_receipt = reconcile_blocks(
+    bridges, _unpaired = expand_bridge_selectors(
+        [us_bridge_selector(COUNTY_SOI)], targets
+    )
+    outcomes, operator_receipt = run_pass(
         COUNTY_SOI,
-        [
-            NestingBlock(
-                concept=f"{parent.family}.{measure}",
-                filters=(("source_period", period),),
-                control_geography_id=geography_id(state_level, f"{state:02d}"),
-                control_value=float(parent.value),
-                lower_geography_ids=tuple(
-                    geography_id(county_level, f"{code:05d}") for code in codes
-                ),
-                lower_values=tuple(block[code][0] for code in codes),
-            )
-            for (state, measure, period), parent, _e, block, _m, codes, _s in checked
-        ],
+        rows,
+        bound_higher_targets=bound,
+        legs=legs,
+        bridges=bridges,
+        expected_members=expected,
     )
     specs, receipts = [], []
-    for (key, parent, expected, block, members, codes, shares), rows in zip(
-        checked, nested, strict=True
-    ):
+    for key, parent, counties, block, members, codes, start in checked:
         state, measure, period = key
-        targets = list(rows.values)
+        block_outcomes = outcomes[start + 1 : start + 1 + len(codes)]
         state_population = controls.sum_of_lower_rows(
-            county_populations[code] for code in expected
+            county_populations[code] for code in counties
         )
-        for code, share, target in zip(codes, shares, targets, strict=True):
+        for code, outcome in zip(codes, block_outcomes, strict=True):
+            if outcome.status != controls.RECONCILED:
+                raise ValueError(
+                    f"The operator did not reconcile county {code:05d} under "
+                    f"{parent.name}."
+                )
             raw, fact = block[code]
             county = f"{code:05d}"
             cell = sorted(members[code])
@@ -1241,9 +1229,15 @@ def county_soi_surface(
                 ),
                 "county_fips": county,
                 "county_label": str(fact["geography"].get("name", county)),
-                "state_county_parent_target_name": parent.name,
-                "state_county_share": str(share),
-                "state_county_source_value": str(raw),
+                **cross_grain_metadata(
+                    value_before=raw,
+                    factor=outcome.factor,
+                    control=outcome.control,
+                    parent=parent.name,
+                    members=(
+                        [f"{member:05d}" for member in cell] if len(cell) > 1 else ()
+                    ),
+                ),
                 "county_population": str(
                     controls.sum_of_lower_rows(
                         county_populations[member] for member in cell
@@ -1251,17 +1245,12 @@ def county_soi_surface(
                 ),
                 "state_population": str(state_population),
             }
-            if len(cell) > 1:
-                metadata["state_county_cell_members"] = ",".join(
-                    f"{member:05d}" for member in cell
-                )
-                metadata["state_county_cell_basis"] = nesting.combined_cell_basis
             specs.append(
                 replace(
                     parent,
                     name=name,
                     measure=name,
-                    value=target,
+                    value=outcome.value,
                     se=None,
                     metadata=metadata,
                     hierarchy=county_hierarchy(name, county, parent=parent),
@@ -1273,10 +1262,11 @@ def county_soi_surface(
                 "state_fips": f"{state:02d}",
                 "concept": measure,
                 "parent": parent.name,
-                "counties": len(expected),
+                "counties": len(counties),
                 "cells": len(codes),
-                "share_sum": controls.sum_of_lower_rows(shares),
-                "target_sum": controls.sum_of_lower_rows(targets),
+                "target_sum": controls.sum_of_lower_rows(
+                    outcome.value for outcome in block_outcomes
+                ),
             }
         )
     # Counties without a state parent cannot silently disappear.
@@ -1288,6 +1278,7 @@ def county_soi_surface(
         "soi_mode": soi_mode,
         "county_targets": len(specs),
         "concepts": sorted({key[1] for key in parents}),
+        "bridge": COUNTY_SOI,
         "blocks": receipts,
         "combined_cells": [
             {
@@ -1315,51 +1306,6 @@ def county_soi_surface(
 # ---------------------------------------------------------------------------
 
 
-def _state_label(state):
-    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_NAME
-
-    label = US_STATE_FIPS_TO_NAME.get(f"{int(state):02d}")
-    if label is None:
-        raise ValueError(f"State {int(state):02d} has no Census state name.")
-    return label
-
-
-def _acs_hierarchy(name, source_name, *, state=None, county=None):
-    from microcosm.calibrate import (
-        CalibrationHierarchy,
-        HierarchyCategory,
-        HierarchyGeography,
-        HierarchyNode,
-    )
-    from microcosm.calibrate.provider_labels import calibration_provider_label
-
-    provider = HierarchyNode(source_name, calibration_provider_label("us", source_name))
-    if county is not None:
-        # The same label every county family gives this county
-        # (county_hierarchy).
-        geography = HierarchyGeography(
-            f"{COUNTY_PREFIX}{county}", f"County {county}", "county"
-        )
-        label = f"County {county} households (ACS)"
-    else:
-        state_label = _state_label(state)
-        geography = HierarchyGeography(
-            f"0400000US{int(state):02d}", state_label, "state"
-        )
-        label = f"{state_label} households (ACS)"
-    return CalibrationHierarchy(
-        provider=provider,
-        category=HierarchyCategory("census_acs.households", "Households", provider.id),
-        geography=geography,
-        dimensions=(),
-        target=HierarchyNode(name, label),
-    )
-
-
-def acs_households_parent_name(state):
-    return f"acs_households_state_{int(state):02d}"
-
-
 def county_acs_household_surface(
     values: Mapping[int, tuple[float, float | None, str]],
     county_populations: Mapping[int, float],
@@ -1373,20 +1319,22 @@ def county_acs_household_surface(
     """State households parents and their county children (trained, levels).
 
     ``values`` is ``{county: (estimate, margin of error or None, name)}`` for
-    the households measure. Each state parent is the sum of its counties'
-    estimates (``sum_of_lower_rows``), a new state target that moves state
-    household counts to ACS 5-year levels; the operator then divides it among
-    the counties by share (``share_residual_to_largest``), so they sum to it.
-    ACS margins of error ride in metadata.
+    the households measure. No source in the feed publishes the state level,
+    so the control of each state is derived: the sum of its counties'
+    estimates. It is a new state target. The operator then divides it among
+    the counties, so they sum to it. ACS margins of error ride in metadata.
     """
     from microcosm.calibrate import TargetSpec
 
-    mechanism = us_cross_grain_mechanism(COUNTY_ACS_HOUSEHOLDS)
-    state_level, county_level = mechanism["higher_grain"], mechanism["lower_grain"]
+    state_level, county_level = us_pass_grains(COUNTY_ACS_HOUSEHOLDS)
+    lower_id = f"{source_name}|{measure}"
+    higher_id = f"{lower_id}#sum"
     source = (
         f"US Census Bureau {tables} B11001_001E (households), county; "
         "state = sum of its counties"
     )
+    rows: list[SurfaceRow] = []
+    legs: dict[str, str] = {}
     checked = []
     for state in sorted({int(code) // 1000 for code in county_populations}):
         codes = sorted(code for code in values if code // 1000 == state)
@@ -1397,35 +1345,31 @@ def county_acs_household_surface(
                 f"ACS county households for state {state:02d} have no positive "
                 "share denominator."
             )
-        shares, _total, _largest = controls.residual_shares(public)
-        # Naming the state parent refuses a state with no Census name here,
-        # in state order, as it did when the parent was built in this loop.
         parent_name = acs_households_parent_name(state)
         parent_hierarchy = _acs_hierarchy(parent_name, source_name, state=state)
-        checked.append((state, codes, public, total, shares, parent_hierarchy))
-
-    # The operator divides each state's sum among its counties.
-    nested, operator_receipt = reconcile_blocks(
+        state_area = geography_id(state_level, f"{state:02d}")
+        checked.append((state, codes, total, parent_name, parent_hierarchy, len(rows)))
+        rows.append(SurfaceRow(state_level, state_area, higher_id, total))
+        for code, estimate in zip(codes, public, strict=True):
+            area = geography_id(county_level, f"{code:05d}")
+            legs[area] = state_area
+            rows.append(SurfaceRow(county_level, area, lower_id, estimate))
+    bridge = CrossGrainBridge(
+        bridge_id=COUNTY_ACS_HOUSEHOLDS,
+        concept=f"{source_name}.{measure}",
+        higher_target_ids=(higher_id,),
+        lower_side=lower_id,
+    )
+    outcomes, operator_receipt = run_pass(
         COUNTY_ACS_HOUSEHOLDS,
-        [
-            NestingBlock(
-                concept=f"{source_name}.{measure}",
-                filters=(),
-                control_geography_id=geography_id(state_level, f"{state:02d}"),
-                control_value=total,
-                lower_geography_ids=tuple(
-                    geography_id(county_level, f"{code:05d}") for code in codes
-                ),
-                lower_values=tuple(public),
-            )
-            for state, codes, public, total, _shares, _hierarchy in checked
-        ],
+        rows,
+        bound_higher_targets=[higher_id],
+        legs=legs,
+        bridges=[bridge],
     )
     specs, receipts = [], []
-    for (state, codes, _public, total, shares, parent_hierarchy), rows in zip(
-        checked, nested, strict=True
-    ):
-        parent_name = acs_households_parent_name(state)
+    for state, codes, total, parent_name, parent_hierarchy, start in checked:
+        block_outcomes = outcomes[start + 1 : start + 1 + len(codes)]
         state_population = controls.sum_of_lower_rows(
             county_populations[code] for code in codes
         )
@@ -1449,8 +1393,12 @@ def county_acs_household_surface(
                 hierarchy=parent_hierarchy,
             )
         )
-        targets = list(rows.values)
-        for code, share, target in zip(codes, shares, targets, strict=True):
+        for code, outcome in zip(codes, block_outcomes, strict=True):
+            if outcome.status != controls.RECONCILED:
+                raise ValueError(
+                    f"The operator did not reconcile county {code:05d} under "
+                    f"{parent_name}."
+                )
             county = f"{code:05d}"
             name = f"county_{county}__{parent_name}"
             estimate, moe, label = values[code]
@@ -1459,9 +1407,12 @@ def county_acs_household_surface(
                 "county_fips": county,
                 "state_fips": f"{state:02d}",
                 "source_measure_id": measure,
-                "state_county_parent_target_name": parent_name,
-                "state_county_share": str(share),
-                "state_county_source_value": str(estimate),
+                **cross_grain_metadata(
+                    value_before=estimate,
+                    factor=outcome.factor,
+                    control=outcome.control,
+                    parent=parent_name,
+                ),
                 "county_population": str(county_populations[code]),
                 "state_population": str(state_population),
                 "household_universe": "excludes ACS group quarters (TYPEHUGQ 2, 3)",
@@ -1475,7 +1426,7 @@ def county_acs_household_surface(
                     name=name,
                     entity="household",
                     measure=name,
-                    value=target,
+                    value=outcome.value,
                     period=period,
                     source=f"US Census Bureau {tables} B11001_001E "
                     "(households), county share of the state sum",
@@ -1490,8 +1441,9 @@ def county_acs_household_surface(
                 "state_target": parent_name,
                 "state_households": total,
                 "counties": len(codes),
-                "share_sum": controls.sum_of_lower_rows(shares),
-                "target_sum": controls.sum_of_lower_rows(targets),
+                "target_sum": controls.sum_of_lower_rows(
+                    outcome.value for outcome in block_outcomes
+                ),
                 "counties_with_moe": sum(values[code][1] is not None for code in codes),
             }
         )
@@ -1499,6 +1451,7 @@ def county_acs_household_surface(
         "family": family,
         "source_measure_id": measure,
         "source": f"{tables} county B11001",
+        "bridge": COUNTY_ACS_HOUSEHOLDS,
         "new_state_targets": len(receipts),
         "county_targets": len(specs) - len(receipts),
         "note": (

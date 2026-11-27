@@ -214,10 +214,14 @@ def _expected_admin_record(name, mode):
         record.update(
             {
                 "value": value * 2,
-                "state_cd_parent_target_name": parent,
-                "state_cd_parent_basis": "historic_table_2",
-                "state_cd_rebase_factor": "2.0",
-                "state_cd_cd_file_value": repr(value),
+                "cross_grain_parent": parent,
+                # The bridge that the selector makes for this measure.
+                "cross_grain_control": (
+                    "historic_table_2_state_vs_district_file:"
+                    f"lower_file|{measure}|-inf|inf|all|None"
+                ),
+                "cross_grain_factor": "2.0",
+                "cross_grain_value_before": repr(value),
                 "cd_population": 40.0 if district == "0601" else 60.0,
                 "state_population": 100.0,
                 "holdout_unit": "06|return"

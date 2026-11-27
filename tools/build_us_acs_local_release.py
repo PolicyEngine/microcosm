@@ -5147,7 +5147,7 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
             "id": "cd_soi_one_vintage_per_state_concept",
             "status": "reviewed_construction",
             "reason": surface.get("vintage_rule_description"),
-            "rebase_factor_by_measure": surface.get("rebase_factor_by_measure"),
+            "factor_by_measure": surface.get("factor_by_measure"),
             "level_bridges": surface.get("level_bridges"),
             "level_bridge_factor_by_measure": surface.get(
                 "level_bridge_factor_by_measure"

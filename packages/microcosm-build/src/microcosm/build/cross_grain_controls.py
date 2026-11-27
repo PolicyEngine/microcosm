@@ -1,44 +1,199 @@
-"""Controls, allocators and checks that sit beside the cross-grain operator.
+"""The row-level pass and the allocators beside the cross-grain operator.
 
-:mod:`microcosm.build.cross_grain` groups the rows of one quantity, finds the
-control of each lower leg, divides the control among the leg's rows, checks
-the sum and writes the receipt. A country's sources can need more than that
-around the same job (microcosm#1760):
+:mod:`microcosm.build.cross_grain` reconciles a surface that is a data frame,
+and its receipt names legs, not rows. A caller that holds target rows wants
+the answer for each row: its new value, what reconciled it, with which
+factor, and under which control row. :func:`reconcile_rows` runs the operator
+and gives that answer. It holds no country: the caller supplies the rows,
+the measurements and the rule.
 
-- **allocators**: another way to divide a control among its rows than the
-  operator's standing rule. A country names one in its declarations and passes
-  it as ``CrossGrainRule.allocator``;
-- **derived controls**: a control that no source publishes as one row, computed
-  before the operator runs and placed on the surface as the control row;
-- **the factor band**: how far one control's ratio to its lower rows may sit
-  from the median ratio across the controls of the same quantity;
-- **completeness**: whether a leg holds exactly the members it must, with
-  declared combined cells;
-- **self-consistency**: a source's own total against the sum of its own lower
-  rows.
+The module also holds:
 
-Every function here is plain arithmetic on values and keys. None knows a
-country, a source or a geography: the caller's declarations supply them. The
-operator does not import this module, so the graphs that hash the operator do
-not hash it.
+- :func:`sum_of_lower_rows`, the arithmetic of a derived control that is the
+  sum of its lower rows;
+- three allocators for ``CrossGrainRule.allocator``. They keep, bit for bit,
+  rows that were first made outside the operator. They go when the feed that
+  holds those rows is pinned again, and the operator's own rule then divides
+  every control (microcosm#1760).
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Hashable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+import pandas as pd
 
-#: ``(values, factor, raw_sum)``, as ``CrossGrainRule.allocator`` returns it.
+from microcosm.build.cross_grain import (
+    EXACT_SIGNATURE_CONTROL,
+    CrossGrainRule,
+    _contract_target_id,
+    _control_grains,
+    _inconsistency_identity,
+    _measurement_signature,
+    _row_legs,
+    apply_cross_grain_reconciliation,
+)
+
+# ---------------------------------------------------------------------------
+# The row-level pass
+# ---------------------------------------------------------------------------
+
+RECONCILED = "reconciled"
+UNBOUND = "unbound"
+UNTOUCHED = "untouched"
+
+
+@dataclass(frozen=True)
+class SurfaceRow:
+    """One row of a reconciliation surface."""
+
+    grain: str
+    geography_id: str
+    target_id: str
+    value: float
+
+
+@dataclass(frozen=True)
+class RowOutcome:
+    """What a pass did with one surface row.
+
+    ``status`` is :data:`RECONCILED` (the row was divided from a control),
+    :data:`UNBOUND` (its leg was out of the bound of a bridge that unbinds, so
+    the row keeps its value and the caller takes it off its surface) or
+    :data:`UNTOUCHED` (a control row, or a row that no group covers).
+    ``control`` is the bridge id, or ``exact_signature``. ``factor`` and
+    ``lower_total`` are those of the row's leg. ``parent`` is the position of
+    the control row, when the control is one row.
+    """
+
+    value: float
+    status: str = UNTOUCHED
+    control: str | None = None
+    factor: float | None = None
+    lower_total: float | None = None
+    parent: int | None = None
+
+
+def reconcile_rows(
+    rows: Sequence[SurfaceRow],
+    bound_higher_targets: Iterable[str],
+    signatures: Mapping[str, Mapping[str, Any]],
+    rule: CrossGrainRule,
+    *,
+    expected_members: Mapping[str, Mapping[str, frozenset[str]]] | None = None,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
+) -> tuple[list[RowOutcome], dict[str, Any]]:
+    """Run the operator on ``rows`` and say what it did with each row.
+
+    Returns one :class:`RowOutcome` for each row, in the order of ``rows``,
+    and the operator's pass receipt.
+    """
+
+    frame = pd.DataFrame(
+        [
+            (row.grain, row.geography_id, row.target_id, float(row.value))
+            for row in rows
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        frame,
+        bound_higher_targets,
+        signatures,
+        rule,
+        expected_members=expected_members,
+        licensed_empty_legs=licensed_empty_legs,
+    )
+    values = reconciled["value"].to_numpy(dtype=np.float64).tolist()
+    control_grains = set(_control_grains(rule))
+    target_ids = [_contract_target_id(row.target_id) for row in rows]
+    controls: dict[tuple[str, str], int] = {}
+    lower: dict[tuple[str, str, str], list[int]] = {}
+    for position, (row, target_id) in enumerate(zip(rows, target_ids, strict=True)):
+        if row.grain in control_grains:
+            controls.setdefault((target_id, row.geography_id), position)
+        for leg in _row_legs(row.geography_id, rule):
+            lower.setdefault((target_id, row.grain, leg), []).append(position)
+    identities: dict[str, list[str]] = {}
+    for target_id in dict.fromkeys(target_ids):
+        if target_id in signatures:
+            identity = _inconsistency_identity(
+                "signature",
+                "",
+                _measurement_signature(signatures[target_id], rule.signature_fields),
+            )
+            identities.setdefault(identity, []).append(target_id)
+    lower_side = {
+        bridge.bridge_id: _contract_target_id(bridge.lower_side)
+        for bridge in rule.bridges
+    }
+
+    def parent_of(leg: Mapping[str, Any]) -> int | None:
+        higher = leg["higher_target_ids"]
+        if len(higher) != 1:
+            return None
+        return controls.get((str(higher[0]), str(leg["parent_geography_id"])))
+
+    outcomes = [RowOutcome(value=value) for value in values]
+    for group in receipt["groups"]:
+        bridge_id = group["bridge_id"]
+        if bridge_id is None:
+            control = EXACT_SIGNATURE_CONTROL
+            lower_targets = identities.get(
+                group["inconsistency_id"].rsplit(":", 1)[0], []
+            )
+        else:
+            control = str(bridge_id)
+            lower_targets = [lower_side[bridge_id]]
+        for leg in group["legs"]:
+            parent = parent_of(leg)
+            for target_id in lower_targets:
+                for name in str(leg["leg"]).split("+"):
+                    for position in lower.get(
+                        (target_id, group["lower_grain"], name), ()
+                    ):
+                        outcomes[position] = RowOutcome(
+                            value=values[position],
+                            status=RECONCILED,
+                            control=control,
+                            factor=float(leg["declared_factor"]),
+                            lower_total=float(leg["old_total"]),
+                            parent=parent,
+                        )
+    for leg in receipt.get("unbound_legs", ()):
+        parent = parent_of(leg)
+        for position in leg["positions"]:
+            outcomes[position] = RowOutcome(
+                value=values[position],
+                status=UNBOUND,
+                control=str(leg["bridge_id"]),
+                factor=float(leg["factor_on_input_totals"]),
+                parent=parent,
+            )
+    return outcomes, receipt
+
+
+# ---------------------------------------------------------------------------
+# A derived control
+# ---------------------------------------------------------------------------
+
+
+def sum_of_lower_rows(values: Iterable[float]) -> float:
+    """A total that is the exactly rounded sum of its own lower rows."""
+
+    return math.fsum(float(value) for value in values)
+
+
+# ---------------------------------------------------------------------------
+# Allocators (until the feed that holds their rows is pinned again)
+# ---------------------------------------------------------------------------
+
 Allocation = tuple[np.ndarray, float, float]
 Allocator = Callable[[np.ndarray, float], Allocation]
-
-
-# ---------------------------------------------------------------------------
-# Allocators
-# ---------------------------------------------------------------------------
 
 
 def proportional_fsum(raw_values: np.ndarray, parent_value: float) -> Allocation:
@@ -81,8 +236,7 @@ def share_residual_to_largest(
     rows' total; no single factor reproduces the rows.
 
     This allocator and :func:`scale_residual_to_largest` reproduce, bit for
-    bit, rows that were first made outside the operator. Stage B of
-    microcosm#1760 replaces the two with one allocator.
+    bit, rows that were first made outside the operator.
     """
 
     if math.fsum(raw_values.tolist()) == 0.0:
@@ -136,202 +290,3 @@ def allocator_named(name: str) -> Allocator:
             f"Unknown cross-grain allocator {name!r}; expected one of "
             f"{sorted(ALLOCATORS)}."
         ) from None
-
-
-# ---------------------------------------------------------------------------
-# Derived controls
-# ---------------------------------------------------------------------------
-
-
-def sum_of_lower_rows(values: Iterable[float]) -> float:
-    """A total that is the exactly rounded sum of its own lower rows."""
-
-    return math.fsum(float(value) for value in values)
-
-
-def sibling_ratio(sibling_higher: float, sibling_lower: float) -> float:
-    """A sibling quantity's level in the higher source over the lower one's."""
-
-    return float(sibling_higher) / float(sibling_lower)
-
-
-def scaled_by_sibling_ratio(
-    value: float, sibling_higher: float, sibling_lower: float
-) -> tuple[float, float]:
-    """A lower-source level lifted onto the higher source's basis.
-
-    Only the lower source publishes this quantity. A sibling quantity that
-    both sources publish at the same geography estimates the gap between
-    them. Returns ``(value * factor, factor)`` with the sibling's ratio as
-    the factor. The caller refuses a missing or zero sibling first.
-    """
-
-    factor = sibling_ratio(sibling_higher, sibling_lower)
-    return float(value) * factor, factor
-
-
-# ---------------------------------------------------------------------------
-# The factor band
-# ---------------------------------------------------------------------------
-
-
-def level_ratio(higher: float, lower: float) -> float:
-    """Two levels of one quantity as a ratio; ``NaN`` where none is defined.
-
-    No ratio is defined against a zero lower level, or when the two levels
-    disagree on being positive.
-    """
-
-    higher, lower = float(higher), float(lower)
-    if lower != 0.0 and (higher > 0) == (lower > 0):
-        return higher / lower
-    return math.nan
-
-
-def control_ratio(
-    control_value: float, lower_values: Iterable[float]
-) -> tuple[float | None, float]:
-    """``(control / lower sum, lower sum)``, with the sum exactly rounded.
-
-    The ratio is the factor :func:`proportional_fsum` gives the same rows. It
-    is ``None`` when the rows sum to zero.
-    """
-
-    lower_sum = sum_of_lower_rows(lower_values)
-    if lower_sum == 0.0:
-        return None, lower_sum
-    return float(control_value) / lower_sum, lower_sum
-
-
-def median_by_group[Key: Hashable, Group: Hashable](
-    ratios: Mapping[Key, float],
-    group_of: Callable[[Key], Group],
-    *,
-    positive_only: bool = False,
-) -> dict[Group, float]:
-    """The median finite ratio of each group of keys.
-
-    ``positive_only`` also leaves out ratios that are zero or negative.
-    """
-
-    grouped: dict[Group, list[float]] = {}
-    for key, ratio in ratios.items():
-        if math.isfinite(ratio) and (ratio > 0 or not positive_only):
-            grouped.setdefault(group_of(key), []).append(ratio)
-    return {group: float(np.median(values)) for group, values in grouped.items()}
-
-
-@dataclass(frozen=True)
-class BandVerdict:
-    """One ratio judged against its group's median."""
-
-    ok: bool
-    ratio: float
-    median: float
-    relative: float
-
-
-def band_verdict(ratio: float, median: float, band: float) -> BandVerdict:
-    """Whether ``ratio`` sits within ``band`` of ``median``, either way.
-
-    ``relative`` is the ratio over the median. It is ``NaN``, and the verdict
-    fails, when the ratio is not finite or the median is zero or unknown.
-    """
-
-    relative = ratio / median if math.isfinite(ratio) and median else math.nan
-    ok = math.isfinite(relative) and 1 / band <= relative <= band
-    return BandVerdict(ok=ok, ratio=ratio, median=median, relative=relative)
-
-
-# ---------------------------------------------------------------------------
-# Completeness
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class LegCompleteness:
-    """A leg's present members against the members it must hold."""
-
-    missing: tuple
-    unexpected: tuple
-    duplicated: tuple
-    #: Absent member -> the present host whose row covers it.
-    merged: Mapping
-
-    @property
-    def complete(self) -> bool:
-        return not (self.missing or self.unexpected or self.duplicated)
-
-
-def leg_completeness[Member: Hashable](
-    present: Iterable[Member],
-    expected: Iterable[Member],
-    *,
-    combined_cells: Mapping[Member, Member] | None = None,
-) -> LegCompleteness:
-    """Compare the members a leg holds with the members it must hold.
-
-    ``combined_cells`` maps a member that may be absent to its declared host.
-    An absent member is covered, not missing, when its host is present and
-    expected: the host's row then stands for both.
-    """
-
-    held = list(present)
-    held_set, expected_set = set(held), set(expected)
-    combined = dict(combined_cells or {})
-    absent = expected_set - held_set
-    merged = {
-        member: combined[member]
-        for member in sorted(absent)
-        if member in combined
-        and combined[member] in held_set
-        and combined[member] in expected_set
-    }
-    seen: set = set()
-    duplicated = sorted(
-        {member for member in held if member in seen or seen.add(member)}
-    )
-    return LegCompleteness(
-        missing=tuple(sorted(absent - merged.keys())),
-        unexpected=tuple(sorted(held_set - expected_set)),
-        duplicated=tuple(duplicated),
-        merged=merged,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Self-consistency
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class SumGap:
-    """The distance between a total and the sum of its lower rows."""
-
-    gap: float
-    scale: float
-
-    @property
-    def relative(self) -> float:
-        return self.gap / self.scale
-
-    def within(self, rtol: float) -> bool:
-        """The gap is at most ``rtol`` of the scale."""
-
-        return self.gap <= rtol * self.scale
-
-    def exceeds(self, rtol: float) -> bool:
-        """The gap is more than ``rtol`` of the scale."""
-
-        return self.gap > rtol * self.scale
-
-
-def sum_gap(total: float, lower_sum: float, *, floor: float = 1.0) -> SumGap:
-    """A total against the sum of its lower rows.
-
-    The scale is the total's size, and at least ``floor``, so a total near
-    zero is judged on an absolute gap.
-    """
-
-    total = float(total)
-    return SumGap(gap=abs(total - lower_sum), scale=max(abs(total), floor))

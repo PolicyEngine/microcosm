@@ -1,15 +1,16 @@
-"""The US nesting inventory covers every family that two levels measure.
+"""The US nesting declarations cover every family that two levels measure.
 
-``us/cross_grain_declarations.json`` lists, under ``inventory``, each US
-family that two geography levels measure, with the route that ties the levels
-today or the reason none does (microcosm#1760). It records what the code
-does; it decides no rule. These tests read it:
+``us/cross_grain_declarations.json`` says, for each US family that two
+geography levels measure, what ties the levels (microcosm#1760): a bridge
+selector, a derived control, a same-measurement entry, a relation that is not
+reconciled, a local route with no higher control, a compile rule that stays
+until the feed re-pin, or a known gap. These tests read it:
 
-- each entry is well formed, the eight rows of the issue each have one entry,
-  and each mechanism on the shared operator has one;
-- ``us_cross_grain_coverage_violations`` finds a family at a lower level with
-  no entry, an entry whose rows are gone, and a compile rule whose marker is
-  on no row;
+- the eight rows of the issue each have one entry, and each compile rule
+  names code that exists;
+- ``us_cross_grain_coverage_violations`` finds a family at a lower level that
+  nothing covers, a declaration whose rows are gone, a compile rule whose
+  marker is on no row, and a subset that is larger than its whole;
 - on the pinned feed, the compiled registry has no violation. That test runs
   only when ``MICROCOSM_US_CHRONICLE_FACTS`` names the pinned feed, because
   ``main`` has no committed list of the US families and levels.
@@ -20,7 +21,6 @@ nothing.
 
 from __future__ import annotations
 
-import copy
 import importlib.util
 import os
 import re
@@ -35,106 +35,84 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 
-def _entries():
-    return declarations.us_cross_grain_inventory()
+def _declared():
+    return declarations.load_us_cross_grain_declarations()
+
+
+def _transitional_entries() -> list:
+    transitional = _declared()["until_the_feed_repin"]
+    return [*transitional["compile_rules"], *transitional["known_gaps"]]
 
 
 def test_each_row_of_the_issue_has_one_entry() -> None:
-    rows = [entry["issue_row"] for entry in _entries() if "issue_row" in entry]
-    assert sorted(rows) == [1, 2, 3, 4, 5, 6, 7, 8]
-    routes = {
-        entry["issue_row"]: entry["route"]
-        for entry in _entries()
-        if "issue_row" in entry
+    declared = _declared()
+    passes = {
+        entry["issue_row"]: section
+        for section in ("bridge_selectors", "derived_controls", "same_measurement")
+        for entry in declared[section]
     }
-    # Rows 1 to 4 stay in the compile; rows 5 to 8 run on the shared operator.
-    assert routes == {
-        **dict.fromkeys((1, 2, 3, 4), "compile_rule"),
-        **dict.fromkeys((5, 6, 7, 8), "mechanism"),
+    compile_rules = {
+        rule["issue_row"]: "compile_rules"
+        for rule in declared["until_the_feed_repin"]["compile_rules"]
+    }
+    assert not set(passes) & set(compile_rules)
+    # Rows 1 to 4 stay in the compile until the feed re-pin. Rows 5 to 8 run
+    # on the shared operator.
+    assert {**passes, **compile_rules} == {
+        **dict.fromkeys((1, 2, 3, 4), "compile_rules"),
+        5: "bridge_selectors",
+        6: "bridge_selectors",
+        7: "derived_controls",
+        8: "same_measurement",
     }
 
 
-def test_each_mechanism_has_one_entry_that_matches_it() -> None:
-    mechanisms = declarations.load_us_cross_grain_declarations()["mechanisms"]
-    named = [
-        entry["mechanism"] for entry in _entries() if entry["route"] == "mechanism"
-    ]
-    assert sorted(named) == sorted(mechanisms)
-    for entry in _entries():
-        if entry["route"] != "mechanism":
-            continue
-        mechanism = mechanisms[entry["mechanism"]]
-        assert entry["issue_row"] == mechanism["issue_row"]
-        assert entry["family"] == mechanism["family"]
-        assert entry["levels"] == [mechanism["lower_grain"]]
-        assert entry["higher_level"] == mechanism["higher_grain"]
-
-
-def test_each_entry_gives_a_route_and_what_the_route_needs() -> None:
-    declared = declarations.load_us_cross_grain_declarations()
-    routes = declared["inventory"]["routes"]
-    ids = [entry["id"] for entry in _entries()]
+def test_each_entry_gives_a_reason_and_a_compile_rule_names_its_code() -> None:
+    declared = _declared()
+    ids = [entry["id"] for entry in _transitional_entries()]
     assert len(ids) == len(set(ids))
-    for entry in _entries():
-        assert entry["route"] in routes
-        assert entry["issues"] and all(
-            re.fullmatch(r"microcosm#\d+", issue) for issue in entry["issues"]
+    for entry in _transitional_entries():
+        assert len(entry["reason"]) > 40
+        assert all(re.fullmatch(r"microcosm#\d+", issue) for issue in entry["issues"])
+    for rule in declared["until_the_feed_repin"]["compile_rules"]:
+        module, _, function = rule["code"].split(",")[0].strip().rpartition(".")
+        source = (_TEST_PATHS.package / "src" / Path(*module.split("."))).with_suffix(
+            ".py"
         )
-        if entry["route"] != "mechanism":
-            # A route with no mechanism says why in words.
+        assert f"def {function}(" in source.read_text()
+        assert rule["marker"]["metadata_key"]
+    for section in ("bridge_selectors", "derived_controls", "same_measurement"):
+        for entry in declared[section]:
             assert len(entry["reason"]) > 40
-        if entry["route"] == "compile_rule":
-            module, _, function = entry["code"].split(",")[0].strip().rpartition(".")
-            source = (
-                _TEST_PATHS.package / "src" / Path(*module.split("."))
-            ).with_suffix(".py")
-            assert f"def {function}(" in source.read_text()
-            assert entry["marker"]["metadata_key"]
-            assert entry["compiled"] is True
-    # Every route the file lists is in use, so none is a dead name.
-    assert {entry["route"] for entry in _entries()} == set(routes)
+    for entry in (*declared["relations"], *declared["local_routes"].values()):
+        assert len(entry["reason"]) > 40
 
 
-def _tampered(change) -> dict:
-    payload = copy.deepcopy(dict(declarations.load_us_cross_grain_declarations()))
-    change(payload["inventory"]["entries"])
-    return payload
-
-
-@pytest.mark.parametrize(
-    ("change", "message"),
-    [
-        (lambda entries: entries[0].update(route="merged"), "unknown route"),
-        (lambda entries: entries[0].update(reason=" "), "no reason"),
-        (lambda entries: entries[0].pop("marker"), "the marker it writes"),
-        (lambda entries: entries[4].update(family="usda_snap"), "does not match"),
-        (lambda entries: entries[1].update(id=entries[0]["id"]), "blank or repeated"),
-        (lambda entries: entries[0].update(levels=["tract"]), "must name a family"),
-        (
-            lambda entries: entries[0].update(higher_level="county"),
-            "must name a family",
-        ),
-        (lambda entries: entries[0].update(issues=[]), "name an issue"),
-    ],
-)
-def test_a_malformed_entry_is_refused_when_the_file_loads(change, message) -> None:
-    with pytest.raises(ValueError, match=message):
-        declarations._validate_inventory(_tampered(change))
-
-
-def _spec(family: str, level: str, **metadata):
+def _spec(family: str, level: str | None, value: float = 1.0, **metadata):
+    level_metadata = {} if level is None else {"ledger_geography_level": level}
     return SimpleNamespace(
-        family=family, metadata={"ledger_geography_level": level, **metadata}
+        family=family, value=value, metadata={**level_metadata, **metadata}
     )
 
 
 def _covered_specs() -> list:
-    """One spec for each compiled entry and level, with the rule's marker."""
+    """Rows for each declared relation, local route, compile rule and gap."""
 
+    declared = _declared()
+    grains = tuple(declared["grain_precedence"])
     specs = [_spec("irs_soi", "country"), _spec("bea", "country")]
-    for entry in _entries():
-        if not entry["compiled"]:
-            continue
+    for relation in declared["relations"]:
+        for target in relation["targets"]:
+            family, role, level = declarations._relation_target(target, grains)
+            if target == relation["part"]:
+                # Two parts that sum to nine tenths of their whole.
+                specs.append(_spec(family, level, 40.0, target_role=role))
+                specs.append(_spec(family, level, 50.0, target_role=role))
+            else:
+                specs.append(_spec(family, level, 100.0, target_role=role))
+    for target in declared["local_routes"]:
+        specs.append(_spec(*declarations._route_target(target, grains)))
+    for entry in _transitional_entries():
         marker = entry.get("marker") or {}
         metadata = (
             {
@@ -155,7 +133,7 @@ def test_the_coverage_check_finds_each_kind_of_gap() -> None:
     covered = _covered_specs()
     assert declarations.us_cross_grain_coverage_violations(covered) == []
 
-    # A family at a lower level with no entry.
+    # A family at a lower level that nothing covers.
     unrouted = [*covered, _spec("usda_wic", "state")]
     assert declarations.us_cross_grain_coverage_violations(unrouted) == [
         {
@@ -165,14 +143,25 @@ def test_the_coverage_check_finds_each_kind_of_gap() -> None:
             "where": "compiled specs",
         }
     ]
-    # An entry whose compiled rows are gone.
+    # A relation whose rows are gone, at both of its levels.
     without_tanf = [spec for spec in covered if spec.family != "hhs_acf_tanf"]
     assert declarations.us_cross_grain_coverage_violations(without_tanf) == [
         {
-            "kind": "stale_inventory_entry",
+            "kind": "stale_declaration",
             "family": "hhs_acf_tanf",
+            "level": level,
+            "where": f"hhs_acf_tanf.tanf_total@{level}",
+        }
+        for level in ("state", "country")
+    ]
+    # A local route whose rows are gone.
+    without_ssa = [spec for spec in covered if spec.family != "ssa"]
+    assert declarations.us_cross_grain_coverage_violations(without_ssa) == [
+        {
+            "kind": "stale_declaration",
+            "family": "ssa",
             "level": "state",
-            "where": "hhs_acf_tanf_state_rows_and_national_row",
+            "where": "ssa@state",
         }
     ]
     # A compile rule that marks no row of its declared level.
@@ -186,23 +175,45 @@ def test_the_coverage_check_finds_each_kind_of_gap() -> None:
         }
     ]
     # Rows at the top level, and rows with no level, nest in nothing.
-    top_only = [
-        *covered,
-        _spec("jct", "country"),
-        SimpleNamespace(family="x", metadata={}),
-    ]
+    top_only = [*covered, _spec("jct", "country"), _spec("x", None)]
     assert declarations.us_cross_grain_coverage_violations(top_only) == []
 
 
+def test_a_subset_larger_than_its_whole_is_a_violation() -> None:
+    covered = _covered_specs()
+
+    def with_part(family: str, role: str, value: float) -> list:
+        return [*covered, _spec(family, "state", value, target_role=role)]
+
+    # SNAP declares no excess: 110 of 100 is beyond it.
+    assert declarations.us_cross_grain_coverage_violations(
+        with_part("usda_snap", "snap_total", 20.0)
+    ) == [
+        {
+            "kind": "subset_exceeded",
+            "family": "usda_snap",
+            "level": "state",
+            "where": "usda_snap.snap_total@state is 1.1 of its whole",
+        }
+    ]
+    # Medicaid declares an excess of one percent.
+    within = with_part("cms_medicaid", "medicaid_enrollment", 10.5)
+    assert declarations.us_cross_grain_coverage_violations(within) == []
+    beyond = with_part("cms_medicaid", "medicaid_enrollment", 11.5)
+    (violation,) = declarations.us_cross_grain_coverage_violations(beyond)
+    assert violation["kind"] == "subset_exceeded"
+    assert violation["where"].startswith("cms_medicaid.medicaid_enrollment@state is ")
+
+
 def test_the_coverage_check_is_a_receipt_and_refuses_nothing() -> None:
-    receipt = declarations.us_cross_grain_coverage_receipt(
-        [*_covered_specs(), _spec("usda_wic", "state")]
-    )
+    specs = [*_covered_specs(), _spec("usda_wic", "state")]
+    receipt = declarations.us_cross_grain_coverage_receipt(specs)
     assert receipt["covered"] is False
     assert [violation["kind"] for violation in receipt["violations"]] == [
         "family_level_without_route"
     ]
-    assert receipt["inventory_entries"] == len(_entries())
+    assert receipt["checked_specs"] == len(specs)
+    assert receipt["declarations"] == "cross_grain_declarations.json"
     assert declarations.us_cross_grain_coverage_receipt(_covered_specs())["covered"]
 
 
@@ -236,20 +247,22 @@ def test_the_pinned_feeds_compiled_registry_is_covered() -> None:
     spec.loader.exec_module(tool)
     registry, _substitutions = tool._compiled_fiscal_registry(feed)
 
+    # No violation: each family that the registry holds below the national
+    # level is covered, no declaration names rows that are gone, each compile
+    # rule's marker is on its rows, and no subset is larger than its whole.
     receipt = declarations.us_cross_grain_coverage_receipt(registry.specs)
     assert receipt["violations"] == []
     assert receipt["checked_specs"] == len(registry.specs)
-    # The families the registry holds below the national level are the ones
-    # the inventory's compiled entries name: no more and no fewer.
-    compiled = {
-        (spec.family, spec.metadata["ledger_geography_level"])
-        for spec in registry.specs
-        if spec.metadata.get("ledger_geography_level") not in (None, "country")
-    }
-    declared = {
-        (entry["family"], level)
-        for entry in _entries()
-        if entry["compiled"]
-        for level in entry["levels"]
-    }
-    assert compiled == declared
+    # The relations read real rows: each side holds at least one.
+    declared = _declared()
+    grains = tuple(declared["grain_precedence"])
+    for relation in declared["relations"]:
+        for target in relation["targets"]:
+            family, role, level = declarations._relation_target(target, grains)
+            assert [
+                row
+                for row in registry.specs
+                if row.family == family
+                and row.metadata.get("ledger_geography_level") == level
+                and row.metadata.get("target_role") == role
+            ], target

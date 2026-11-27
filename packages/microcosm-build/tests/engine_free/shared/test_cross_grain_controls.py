@@ -1,8 +1,8 @@
-"""The controls, allocators and checks beside the cross-grain operator.
+"""The row-level pass and the allocators beside the cross-grain operator.
 
-``microcosm.build.cross_grain_controls`` holds what a country's sources can
-need around the operator (microcosm#1760). The allocators must give, bit for
-bit, the arithmetic they replace; the ``_old_*`` functions here state that
+``microcosm.build.cross_grain_controls`` runs the operator on target rows and
+says what it did with each row (microcosm#1760). Its allocators must give, bit
+for bit, the arithmetic they replace; the ``_old_*`` functions here state that
 arithmetic as it was written before the operator ran it.
 """
 
@@ -20,6 +20,8 @@ import pytest
 
 from microcosm.build import cross_grain_controls as controls
 from microcosm.build.cross_grain import (
+    EXACT_SIGNATURE_CONTROL,
+    CrossGrainBridge,
     CrossGrainRule,
     apply_cross_grain_reconciliation,
 )
@@ -197,107 +199,119 @@ def test_the_operator_runs_each_allocator(name: str) -> None:
         )
 
 
-def test_derived_controls() -> None:
-    # Exactly rounded: a running float total would lose the 1.0.
+def test_sum_of_lower_rows_is_exactly_rounded() -> None:
+    # A running float total would lose the 1.0.
     assert controls.sum_of_lower_rows([1e16, 1.0, -1e16]) == 1.0
     assert controls.sum_of_lower_rows([0.1] * 10) == 1.0
-    assert controls.sibling_ratio(110.0, 100.0) == 110.0 / 100.0
-    scaled, factor = controls.scaled_by_sibling_ratio(40.0, 110.0, 100.0)
-    assert (scaled, factor) == (40.0 * (110.0 / 100.0), 110.0 / 100.0)
 
 
-def test_level_ratio_is_undefined_at_zero_or_across_signs() -> None:
-    assert controls.level_ratio(6.0, 4.0) == 1.5
-    assert controls.level_ratio(-6.0, -4.0) == 1.5
-    assert controls.level_ratio(0.0, 0.0) != controls.level_ratio(0.0, 0.0)  # NaN
-    for higher, lower in ((6.0, 0.0), (6.0, -4.0), (-6.0, 4.0), (0.0, 4.0)):
-        assert math.isnan(controls.level_ratio(higher, lower)), (higher, lower)
-    # Zero over a negative level: neither is positive, so a ratio is defined.
-    assert controls.level_ratio(0.0, -4.0) == 0.0
+def _row_rule(*bridges: CrossGrainBridge) -> CrossGrainRule:
+    return CrossGrainRule(
+        grain_precedence=("nation", "state", "district"),
+        signature_fields=("concept",),
+        bridges=bridges,
+        leg_of_area=lambda area: area[0],
+        parent_geography_legs={state: (state,) for state in "ABCDE"},
+        control_grains=("nation", "state"),
+    )
 
 
-def test_control_ratio_is_the_proportional_factor() -> None:
-    for seed in range(40):
-        values, parent = _block(seed, signed=True)
-        ratio, lower_sum = controls.control_ratio(parent, values.tolist())
-        _values, factor, raw_sum = controls.proportional_fsum(values, parent)
-        if raw_sum == 0.0:
-            assert ratio is None
+def _rows(target: str, factors: dict[str, float]) -> list[controls.SurfaceRow]:
+    """A state total and two districts in each state; the factor is their gap."""
+
+    rows = []
+    for state, factor in factors.items():
+        rows.append(controls.SurfaceRow("state", state, "total", 100.0 * factor))
+        rows.append(controls.SurfaceRow("district", f"{state}1", target, 30.0))
+        rows.append(controls.SurfaceRow("district", f"{state}2", target, 70.0))
+    return rows
+
+
+def test_reconcile_rows_names_the_control_of_each_row() -> None:
+    """Rows of the control's own measurement: no bridge, one parent row."""
+
+    signatures = {
+        "total": {"measurement": {"concept": "quantity"}},
+        "parts": {"measurement": {"concept": "quantity"}},
+    }
+    rows = _rows("parts", {"A": 1.1, "B": 0.5})
+    outcomes, receipt = controls.reconcile_rows(
+        rows, ("total",), signatures, _row_rule()
+    )
+    assert len(outcomes) == len(rows)
+    assert [outcome.status for outcome in outcomes] == [
+        controls.UNTOUCHED,
+        controls.RECONCILED,
+        controls.RECONCILED,
+    ] * 2
+    assert [outcome.value for outcome in outcomes] == pytest.approx(
+        [110.0, 33.0, 77.0, 50.0, 15.0, 35.0]
+    )
+    # A control row keeps its value and names nothing.
+    assert outcomes[0] == controls.RowOutcome(value=rows[0].value)
+    for position, parent, factor in ((1, 0, 1.1), (2, 0, 1.1), (4, 3, 0.5)):
+        outcome = outcomes[position]
+        assert outcome.control == EXACT_SIGNATURE_CONTROL
+        assert outcome.parent == parent
+        assert outcome.factor == pytest.approx(factor)
+        assert outcome.lower_total == 100.0
+    assert len(receipt["groups"]) == 1
+
+
+def test_reconcile_rows_reads_a_bridge_and_its_unbound_legs() -> None:
+    """Two sources: the bridge is the control, and a leg out of bound unbinds."""
+
+    signatures = {
+        "total": {"measurement": {"concept": "source one"}},
+        "parts": {"measurement": {"concept": "source two"}},
+    }
+    bridge = CrossGrainBridge(
+        "total_vs_parts",
+        concept="one quantity",
+        higher_target_ids=("total",),
+        lower_side="parts",
+        max_factor_shift=0.25,
+        min_factor_shift=-0.2,
+        shift_around="median",
+        out_of_bound="unbind",
+    )
+    factors = {"A": 2.0, "B": 2.0, "C": 2.0, "D": 2.0, "E": 4.0}
+    rows = _rows("parts", factors)
+    outcomes, receipt = controls.reconcile_rows(
+        rows, ("total",), signatures, _row_rule(bridge)
+    )
+    for index, state in enumerate(factors):
+        total, first, second = outcomes[3 * index : 3 * index + 3]
+        assert total.status == controls.UNTOUCHED
+        assert first.control == second.control == "total_vs_parts"
+        assert first.parent == second.parent == 3 * index
+        if state == "E":
+            # The leg keeps its values. The caller takes it off its surface.
+            assert first.status == second.status == controls.UNBOUND
+            assert (first.value, second.value) == (30.0, 70.0)
+            assert first.factor == pytest.approx(4.0)
         else:
-            assert (ratio, lower_sum) == (factor, raw_sum)
-    assert controls.control_ratio(5.0, [1.0, -1.0]) == (None, 0.0)
+            assert first.status == second.status == controls.RECONCILED
+            assert (first.value, second.value) == pytest.approx((60.0, 140.0))
+            assert first.factor == pytest.approx(2.0)
+            assert first.lower_total == 100.0
+    assert [leg["leg"] for leg in receipt["unbound_legs"]] == ["E"]
 
 
-def test_median_by_group_reads_finite_ratios_only() -> None:
-    ratios = {
-        ("a", "x"): 1.0,
-        ("b", "x"): 3.0,
-        ("c", "x"): math.nan,
-        ("d", "x"): math.inf,
-        ("a", "y"): -2.0,
-        ("b", "y"): 0.0,
-        ("c", "y"): 4.0,
-        ("a", "z"): math.nan,
+def test_reconcile_rows_leaves_a_row_that_no_group_covers() -> None:
+    signatures = {
+        "total": {"measurement": {"concept": "quantity"}},
+        "parts": {"measurement": {"concept": "quantity"}},
+        "other": {"measurement": {"concept": "another quantity"}},
     }
-    assert controls.median_by_group(ratios, lambda key: key[1]) == {
-        "x": 2.0,
-        "y": 0.0,
-    }
-    assert controls.median_by_group(ratios, lambda key: key[1], positive_only=True) == {
-        "x": 2.0,
-        "y": 4.0,
-    }
-
-
-def test_band_verdict() -> None:
-    inside = controls.band_verdict(1.2, 1.0, 1.25)
-    assert inside == controls.BandVerdict(True, 1.2, 1.0, 1.2)
-    assert controls.band_verdict(1.25, 1.0, 1.25).ok
-    assert controls.band_verdict(0.8, 1.0, 1.25).ok
-    assert not controls.band_verdict(1.26, 1.0, 1.25).ok
-    assert not controls.band_verdict(0.79, 1.0, 1.25).ok
-    # No median, a zero median or a ratio that is not finite: no verdict.
-    for ratio, median in ((1.0, math.nan), (1.0, 0.0), (math.nan, 1.0), (math.inf, 1)):
-        verdict = controls.band_verdict(ratio, median, 1.25)
-        assert not verdict.ok and math.isnan(verdict.relative), (ratio, median)
-    # An unbounded band still refuses a ratio on the other side of zero.
-    assert controls.band_verdict(1e9, 1.0, math.inf).ok
-    assert not controls.band_verdict(-1.0, 1.0, math.inf).ok
-
-
-def test_leg_completeness() -> None:
-    complete = controls.leg_completeness(["a", "b"], {"a", "b"})
-    assert complete.complete and complete.merged == {}
-    report = controls.leg_completeness(["a", "a", "x"], ["a", "b", "c"])
-    assert not report.complete
-    assert (report.missing, report.unexpected, report.duplicated) == (
-        ("b", "c"),
-        ("x",),
-        ("a",),
+    rows = [
+        *_rows("parts", {"A": 1.0}),
+        controls.SurfaceRow("district", "A1", "other", 7.0),
+    ]
+    outcomes, _receipt = controls.reconcile_rows(
+        rows, ("total",), signatures, _row_rule()
     )
-    # A declared combined cell covers an absent member through its host.
-    merged = controls.leg_completeness(
-        ["a", "b"], ["a", "b", "c"], combined_cells={"c": "b", "z": "a"}
-    )
-    assert merged.complete and merged.merged == {"c": "b"}
-    # The host must be present and expected.
-    for present, expected in ((["a"], ["a", "b", "c"]), (["a", "b"], ["a", "c"])):
-        report = controls.leg_completeness(present, expected, combined_cells={"c": "b"})
-        assert "c" in report.missing and report.merged == {}
-
-
-def test_sum_gap() -> None:
-    gap = controls.sum_gap(100.0, 99.0)
-    assert (gap.gap, gap.scale, gap.relative) == (1.0, 100.0, 0.01)
-    assert gap.within(0.01) and not gap.exceeds(0.01)
-    assert gap.exceeds(0.001) and not gap.within(0.001)
-    # A total near zero is judged on the absolute gap.
-    small = controls.sum_gap(0.0, 0.5)
-    assert (small.gap, small.scale) == (0.5, 1.0)
-    assert controls.sum_gap(0.0, 0.5, floor=0.25).scale == 0.25
-    # A gap that is not a number is neither within nor beyond a tolerance.
-    undefined = controls.sum_gap(math.nan, 1.0)
-    assert not undefined.within(1.0) and not undefined.exceeds(1.0)
+    assert outcomes[-1] == controls.RowOutcome(value=7.0)
 
 
 def test_the_module_holds_no_country_and_the_operator_does_not_import_it() -> None:
@@ -305,13 +319,20 @@ def test_the_module_holds_no_country_and_the_operator_does_not_import_it() -> No
 
     source = inspect.getsource(controls)
     imported = {
-        (node.module if isinstance(node, ast.ImportFrom) else alias.name).split(".")[0]
+        (node.module if isinstance(node, ast.ImportFrom) else alias.name)
         for node in ast.walk(ast.parse(source))
         if isinstance(node, ast.Import | ast.ImportFrom)
         for alias in node.names
     }
-    assert imported <= {"__future__", "collections", "dataclasses", "math", "numpy"} | {
-        "typing"
+    assert imported <= {
+        "__future__",
+        "collections.abc",
+        "dataclasses",
+        "math",
+        "typing",
+        "numpy",
+        "pandas",
+        "microcosm.build.cross_grain",
     }
     named = re.findall(
         r"\b(us|uk|us_runtime|uk_runtime|irs|soi|census|hmrc)\b", source.lower()

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "US cross-grain nesting declarations (microcosm#1760). Each mechanism makes the rows of a lower geography level from a control at a higher level, on the shared operator microcosm.build.cross_grain, with the helpers of microcosm.build.cross_grain_controls. This file holds the US choices: the order of the levels, which levels hold controls, the allocator of each mechanism, the rule for its control, its bounds, the source of its member lists, and its reviewed registers with their reasons. Tools and tests read it through microcosm.build.us_runtime.cross_grain_declarations; the adapter is microcosm.build.us_runtime.target_nesting. Stage A changes no target value and decides no nesting rule: each mechanism is declared as the code ran it before the move. docs/us-target-nesting.md describes each mechanism.",
+  "description": "US cross-grain nesting declarations (microcosm#1760). A target for a small area must agree with the target of the area that contains it. This file holds the US choices of the shared operator microcosm.build.cross_grain, under the key names of uk/cross_grain_declarations.json where the meaning is the same: the order of the levels, the levels that hold controls, the bridges between two sources of one quantity (written as selectors, one entry for all the measures of a pair of sources), the pairs that are not reconciled, and the lower targets with no higher control. Tools and tests read it through microcosm.build.us_runtime.cross_grain_declarations; the adapter is microcosm.build.us_runtime.target_nesting. Target values are as they were before the operator made them; docs/us-target-nesting.md and docs/us-target-nesting-rule-design.md say what changes at the feed re-pin.",
   "grain_precedence": [
     "country",
     "state",
@@ -16,196 +16,217 @@
     "filters"
   ],
   "bridges": [],
-  "partitions": [],
-  "mechanisms": {
-    "state_congressional_district_soi": {
+  "bridge_selectors": [
+    {
+      "bridge_id": "historic_table_2_state_vs_district_file",
       "issue_row": 5,
-      "title": "State to congressional district, IRS SOI (--soi-mode state_cd)",
-      "tool_function": "tools/us_acs_local_cd_surface.py:state_cd_soi_surface",
       "family": "irs_soi",
-      "higher_grain": "state",
-      "lower_grain": "congressional_district",
-      "allocator": "proportional_fsum",
+      "concept": "irs_soi",
+      "higher": {
+        "source": "state_surface",
+        "grain": "state"
+      },
+      "lower": {
+        "source": "lower_file",
+        "grain": "congressional_district"
+      },
+      "pair_on": [
+        "identity"
+      ],
+      "max_factor_shift": 0.25,
+      "min_factor_shift": -0.2,
+      "shift_around": "median",
+      "out_of_bound": "unbind",
       "vintage_rule": "state_cd.historic_table_2_level_cd_file_shares.v1",
-      "control": {
-        "kind": "bound_row_or_scaled_by_sibling_ratio",
-        "description": "Historic Table 2 (TY2022) is the single vintage of every state concept it carries, and its state row is the control. A concept only the district file carries keeps the district file's own state row as its control, lifted onto the Historic Table 2 basis by a sibling concept's ratio of the two files' state totals in the same state.",
-        "level_bridges": {
-          "description": "District-file-only concepts (Historic Table 2 lacks them) and the sibling concept whose two state levels bridge theirs onto the Historic Table 2 basis. The district file's own state levels sit below Historic Table 2's for two reasons: it covers only the returns processed in its window (about 1.7% fewer), and the feed stamps it one tax year late, so its amounts are aged one year less. A sibling both files carry, in the same state, estimates that gap, on the assumption that the measure shares the sibling's ratio: counts bridge by return_count (counts are not aged), amounts by the closest amount Historic Table 2 carries. The factor band applies to the sibling. The bridge is stamp-invariant: if the stamp is corrected (#1030) both levels move together.",
-          "siblings": {
-            "charitable_amount": "itemized_deductions_amount",
-            "charitable_returns": "return_count",
-            "interest_paid_deduction_amount": "itemized_deductions_amount",
-            "interest_paid_deduction_returns": "return_count",
-            "qualified_business_income_deduction_amount": "adjusted_gross_income",
-            "qualified_business_income_deduction_returns": "return_count"
-          }
-        }
-      },
-      "factor_band": {
-        "tolerance": 1.25,
-        "on_out_of_band": "drop_block",
-        "description": "How far a state's Historic Table 2 / district-file ratio may sit from its measure's median across states before the district file's data for that (state, concept) is refused. The ratio mixes a common part (the file's coverage and aging gap, or a measure-wide rebase such as taxable interest's x2.47 onto Table 4.3), which the median absorbs, with a state-specific part. A state-specific part beyond 25% means the two publications disagree about that state (Hawaii's dividends differ 2.4x from the typical gap on the pinned feed), so the district file's shares, or a bridge built on that sibling, are not trusted: the block's district rows and any bridged state row are dropped and recorded; the Historic Table 2 state row stays."
-      },
-      "self_consistency": {
-        "rtol": 1e-06,
-        "description": "The district file's own state row must equal the sum of its district rows to this relative tolerance wherever both are present (the receipt records the largest gap; the feed-gated contract test pins it on the pinned feed). A gap means a column or crosswalk defect inside the file (#1038 class), which no median absorbs."
-      },
-      "closure": {
-        "rtol": 1e-09,
-        "description": "Relative tolerance for 'district rows sum to their state parent'. The rebase makes it exact up to float64 rounding."
-      },
-      "members": {
-        "source": "congressional_district_vintage_crosswalk",
-        "reviewed_crosswalk_sha256": "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233",
-        "single_member_legs": "dropped",
-        "description": "The 117th->119th congressional-district crosswalk the compiler used names each state's source-plan and current-plan districts. A district block must cover exactly the current plan's districts of its state. A state with one source-plan district is at-large there: the district file has no sub-state rows for it, so its district rows are dropped (at_large_on_source_plan). reviewed_crosswalk_sha256 is the packaged crosswalk the registers below were reviewed against; a test pins it, so regenerating the crosswalk forces a second look at them."
-      },
-      "registers": {
-        "defective_lower_measures": {
-          "description": "District-file measures that read the wrong IRS column (microcosm#1038). The compiler's US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS drops these facts by (measure id, IRS column) before this surface sees them; this register stays as a second fence on the state_cd surface, at both geographies, and records the reason in the receipt.",
-          "entries": {
-            "limited_state_local_taxes_amount": "22incd.csv column A18425 is state and local income taxes (Schedule A line 5a), not the limited SALT deduction (A18460); the district file sums to 1.98x Historic Table 2 (microcosm#1038).",
-            "limited_state_local_taxes_returns": "22incd.csv column N18425 counts state and local income-tax deductions, not the limited SALT deduction (microcosm#1038).",
-            "premium_tax_credit_returns": "22incd.csv column N85530 is the additional Medicare tax (Form 8959 line 24), not the premium tax credit (N85770) (microcosm#1038)."
-          }
-        },
-        "unparented_lower_measures": {
-          "description": "District-file measures with no state parent in either vintage, so their district rows could not nest in a bound state target.",
-          "entries": {
-            "tax_filer_individual_count": "The compiler drops this measure at state and national geography (fiscal_targets._soi_reference_from_fact), so no state target exists for its district rows to reconcile to."
-          }
-        },
-        "excluded_legs": {
-          "description": "States whose district SOI rows stay off the surface, with the evidence. Empty since #1043 rebuilt the 117th->119th crosswalk from the block plan registry: the packaged crosswalk before it (sha256 c7cb040b...) carried North Carolina's 2016 plan instead of the 2019 plan the 117th Congress used, and 37.0% of NC's population mapped to a different 119th district, so NC's district rows were held off until then.",
-          "entries": {}
-        }
-      },
-      "metadata_keys": {
-        "lower_rows": [
-          "state_cd_vintage_rule",
-          "state_cd_parent_target_name",
-          "state_cd_parent_basis",
-          "state_cd_parent_value",
-          "state_cd_cd_file_value",
-          "state_cd_cd_file_state_sum",
-          "state_cd_rebase_factor"
-        ],
-        "derived_controls": [
-          "state_cd_vintage_rule",
-          "state_cd_cd_file_value",
-          "state_cd_level_bridge_sibling",
-          "state_cd_level_bridge_cd_file_sibling",
-          "state_cd_level_bridge_factor"
-        ]
-      },
-      "receipt": "materialize_rss.json: soi_surface"
+      "reason": "Historic Table 2 (TY2022) is the single vintage of every state concept it carries, and its state row is the control. The district file (22incd.csv) gives each district's share of its state: its district rows are divided from that control. The two files differ by a gap that every state shares (the district file covers only the returns processed in its window, and the feed ages it one year less; taxable interest also has a measure-wide rebase), so the bound is around the median factor across states. A state whose factor is more than 25% from that median means that the two publications disagree about that state: its district rows are unbound and recorded, and the Historic Table 2 state row stays."
     },
-    "state_county_population": {
-      "issue_row": 8,
-      "title": "State to county, resident population (PUMA ladder)",
-      "tool_function": "tools/us_acs_local_county_surface.py:with_county_populations",
-      "family": "census_population",
-      "higher_grain": "state",
-      "lower_grain": "county",
-      "allocator": "scale_residual_to_largest",
-      "control": {
-        "kind": "bound_row",
-        "description": "The state total from the 2020 PUMA ladder. The county rows are the ladder's (PUMA, county) population overlaps, summed by county and scaled to the state total; the rounding residual goes to the largest county, never a small one."
-      },
-      "members": {
-        "source": "us_puma_ladder_county_overlaps",
-        "description": "Every county of the ladder's overlaps, on the boundaries of the county column (county_fips: 2020 counties; county_fips_2023: Connecticut's planning regions, from the tract overlaps). A state with no positive county or state population is refused, and so is a county with no state."
-      },
-      "metadata_keys": {
-        "lower_rows": []
-      },
-      "receipt": "none before microcosm#1760"
-    },
-    "state_county_soi": {
+    {
+      "bridge_id": "state_soi_vs_county_file",
       "issue_row": 6,
-      "title": "State to county, IRS SOI (--soi-mode state_county)",
-      "tool_function": "tools/us_acs_local_county_surface.py:state_county_soi_surface",
       "family": "irs_soi",
-      "higher_grain": "state",
-      "lower_grain": "county",
-      "allocator": "share_residual_to_largest",
-      "control": {
-        "kind": "bound_row",
-        "description": "The broad state row that already exists on the state surface: all returns, no AGI class, no filing status. County SOI facts supply shares, never a second state level."
+      "concept": "irs_soi",
+      "higher": {
+        "source": "state_surface",
+        "grain": "state"
       },
+      "lower": {
+        "source": "county_file",
+        "grain": "county"
+      },
+      "pair_on": [
+        "source_measure_id",
+        "source_period"
+      ],
       "required_measures": [
         "return_count",
         "adjusted_gross_income"
       ],
-      "members": {
-        "source": "us_puma_ladder_county_populations",
-        "description": "Every county of the state in the ladder's county populations. A county absent from a block is refused unless combined_cells declares it with its host present: then one child row covers both counties.",
-        "combined_cells": [
-          {
-            "absent": "15005",
-            "host": "15009"
-          }
-        ],
-        "combined_cell_basis": "IRS SOI 2022 county users guide (22incydocguide.docx): items with fewer than 20 returns for a county were excluded; 22incyallnoagi.csv has no row for this county, so its SOI value is missing, not zero, and it is merged into its declared host county for the SOI families only.",
-        "combined_cell_description": "Counties absent from an IRS SOI county file, each merged into one declared host county of the same state for the SOI families only. The IRS 2022 county users guide (https://www.irs.gov/pub/irs-soi/22incydocguide.docx) says items with fewer than 20 returns for a county were excluded, and 22incyallnoagi.csv has no row for Kalawao County, HI (15005). Its SOI value is therefore missing, not zero; the guide does not say whether its returns are counted in another county's row. Kalawao is merged into Maui (15009), which surrounds it: the combined cell's share is Maui's published value over the state's published county sum, and its households are those in either county. Kalawao keeps its own ladder population, ACS household and validation rows. Any other absent county is refused unless declared here."
-      },
-      "metadata_keys": {
-        "lower_rows": [
-          "state_county_parent_target_name",
-          "state_county_share",
-          "state_county_source_value",
-          "county_population",
-          "state_population",
-          "state_county_cell_members",
-          "state_county_cell_basis"
-        ]
-      },
-      "receipt": "county_surface.json"
-    },
-    "county_state_acs_households": {
+      "reason": "The broad state row that exists on the state surface (all returns, no AGI class, no filing status) is the control. County SOI facts supply shares, never a second state level. Return count and adjusted gross income must have a state row in every state."
+    }
+  ],
+  "derived_controls": [
+    {
+      "bridge_id": "acs_households_state_is_the_county_sum",
       "issue_row": 7,
-      "title": "County to state, ACS households (--soi-mode state_county)",
-      "tool_function": "tools/us_acs_local_county_surface.py:acs_household_surface",
       "family": "acs_households",
+      "derive": "sum_of_lower_rows",
       "higher_grain": "state",
       "lower_grain": "county",
-      "allocator": "share_residual_to_largest",
-      "control": {
-        "kind": "sum_of_lower_rows",
-        "description": "The children make the parent: each state's households target is the sum of its counties' ACS 5-year B11001_001E estimates, a new state target. The county rows then divide it by county share, so they sum to it."
-      },
-      "members": {
-        "source": "us_puma_ladder_county_populations",
-        "description": "Every county of the ladder's county populations must carry an estimate; a missing or unexpected county is refused."
-      },
-      "metadata_keys": {
-        "lower_rows": [
-          "state_county_parent_target_name",
-          "state_county_share",
-          "state_county_source_value",
-          "county_population",
-          "state_population"
-        ],
-        "derived_controls": [
-          "acs_state_parent_basis",
-          "new_state_target"
-        ]
-      },
-      "receipt": "county_surface.json: acs_households"
+      "reason": "The children make the parent: each state's households target is the sum of its counties' ACS 5-year B11001_001E estimates, a new state target. The county rows then divide it by county share, so they sum to it."
+    }
+  ],
+  "same_measurement": [
+    {
+      "id": "ladder_population_state_vs_county",
+      "issue_row": 8,
+      "family": "census_population",
+      "higher_grain": "state",
+      "lower_grain": "county",
+      "reason": "The state total from the 2020 PUMA ladder. The county rows are the ladder's (PUMA, county) population overlaps, summed by county and scaled to the state total; the rounding residual goes to the largest county, never a small one. One source at two levels has one measurement, so nothing else is declared."
+    }
+  ],
+  "partitions": [],
+  "relations": [
+    {
+      "targets": [
+        "usda_snap.snap_total@state",
+        "usda_snap.snap_total@country"
+      ],
+      "relation": "subset",
+      "part": "usda_snap.snap_total@state",
+      "whole": "usda_snap.snap_total@country",
+      "reason": "Cells of one publication of one fiscal year. The state rows are the 50 states and DC; they sum to 0.998 of the national row on the pinned feed, and are not scaled to it."
+    },
+    {
+      "targets": [
+        "usda_snap.snap_households@state",
+        "usda_snap.snap_households@country"
+      ],
+      "relation": "subset",
+      "part": "usda_snap.snap_households@state",
+      "whole": "usda_snap.snap_households@country",
+      "reason": "Cells of one publication of one fiscal year. The state rows sum to 0.999 of the national row on the pinned feed, and are not scaled to it."
+    },
+    {
+      "targets": [
+        "cms_medicaid.medicaid_enrollment@state",
+        "cms_medicaid.medicaid_enrollment@country"
+      ],
+      "relation": "subset",
+      "part": "cms_medicaid.medicaid_enrollment@state",
+      "whole": "cms_medicaid.medicaid_enrollment@country",
+      "max_excess": 0.01,
+      "reason": "Cells of one publication. The state rows sum to 1.0038 of the national row on the pinned feed (one state's row is from another month); the cause is not established, so the pair is declared with an allowance and is not scaled."
+    },
+    {
+      "targets": [
+        "cms_medicaid.medicaid_chip_enrollment@state",
+        "cms_medicaid.medicaid_chip_enrollment@country"
+      ],
+      "relation": "subset",
+      "part": "cms_medicaid.medicaid_chip_enrollment@state",
+      "whole": "cms_medicaid.medicaid_chip_enrollment@country",
+      "max_excess": 0.001,
+      "reason": "Cells of one publication. The 50 state rows sum to the national row on the pinned feed."
+    },
+    {
+      "targets": [
+        "cms_medicaid.chip_enrollment@state",
+        "cms_medicaid.chip_enrollment@country"
+      ],
+      "relation": "subset",
+      "part": "cms_medicaid.chip_enrollment@state",
+      "whole": "cms_medicaid.chip_enrollment@country",
+      "reason": "Only 31 states bind a CHIP row: a reviewed rule drops the 20 M-CHIP states. Scaling the present states to the national row would give them the mass of the missing ones."
+    },
+    {
+      "targets": [
+        "hhs_acf_tanf.tanf_total@state",
+        "hhs_acf_tanf.tanf_total@country"
+      ],
+      "relation": "subset",
+      "part": "hhs_acf_tanf.tanf_total@state",
+      "whole": "hhs_acf_tanf.tanf_total@country",
+      "reason": "Only 29 states bind a TANF row. Scaling them to the national row would give them the mass of the missing ones."
+    }
+  ],
+  "local_routes": {
+    "cms_aca@state": {
+      "route": "no_higher_control",
+      "reason": "The compiled registry holds the ACA marketplace rows at state level only: no national row of the family binds."
+    },
+    "state_income_tax@state": {
+      "route": "no_higher_control",
+      "reason": "The compiled registry holds the state income tax rows at state level only: no national row of the family binds."
+    },
+    "ssa@state": {
+      "route": "no_higher_control",
+      "reason": "The state rows are SSI recipients and state payments by state. No national row of the same role binds."
     }
   },
-  "inventory": {
-    "description": "What the code does today, as data. It decides no rule: the decisions of microcosm#1760 (which level holds the level value of a family, two sources at two levels, the direction of the county households rows, the parent row in the loss, the factor bound, children that are not complete) are open, and Stage B applies them. How each US family that two geography levels measure gets its lower level from its higher one, or why it does not. An entry names a family, its lower levels and the higher level, and one route: 'mechanism' (the shared cross-grain operator makes the rows; mechanisms above), 'compile_rule' (a pass of the compile makes them and stays where it is in Stage A, with the reason), 'same_source' (both levels are sums of one source's cells), 'no_higher_control' (no row at a higher level measures the quantity), 'not_reconciled' (two levels measure it and no rule ties them yet, with the reason and the issue) or 'not_in_the_fit' (the rows are not compiled). 'compiled' says whether the compiled registry of the pinned feed holds the rows; 'marker' names the metadata that the rule writes on them. The coverage test reads this section; it refuses nothing in a build.",
-    "routes": [
-      "mechanism",
-      "compile_rule",
-      "same_source",
-      "no_higher_control",
-      "not_reconciled",
-      "not_in_the_fit"
-    ],
-    "entries": [
+  "members": {
+    "congressional_district": {
+      "source": "congressional_district_vintage_crosswalk",
+      "reviewed_crosswalk_sha256": "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233",
+      "single_member_legs": "not bound",
+      "description": "The 117th->119th congressional-district crosswalk the compiler used names each state's source-plan and current-plan districts. A district block must cover exactly the current plan's districts of its state. A state with one source-plan district is at-large there: the district file has no sub-state rows for it, so its district rows are dropped (at_large_on_source_plan). reviewed_crosswalk_sha256 is the packaged crosswalk the registers below were reviewed against; a test pins it, so regenerating the crosswalk forces a second look at them."
+    },
+    "county": {
+      "source": "us_puma_ladder_county_populations",
+      "description": "Every county of the state in the ladder's county populations. A county absent from a block is refused unless combined_cells declares it with its host present: then one child row covers both counties.",
+      "combined": [
+        {
+          "bridge_id": "state_soi_vs_county_file",
+          "absent": "15005",
+          "host": "15009",
+          "basis": "IRS SOI 2022 county users guide (22incydocguide.docx): items with fewer than 20 returns for a county were excluded; 22incyallnoagi.csv has no row for this county, so its SOI value is missing, not zero, and it is merged into its declared host county for the SOI families only.",
+          "description": "Counties absent from an IRS SOI county file, each merged into one declared host county of the same state for the SOI families only. The IRS 2022 county users guide (https://www.irs.gov/pub/irs-soi/22incydocguide.docx) says items with fewer than 20 returns for a county were excluded, and 22incyallnoagi.csv has no row for Kalawao County, HI (15005). Its SOI value is therefore missing, not zero; the guide does not say whether its returns are counted in another county's row. Kalawao is merged into Maui (15009), which surrounds it: the combined cell's share is Maui's published value over the state's published county sum, and its households are those in either county. Kalawao keeps its own ladder population, ACS household and validation rows. Any other absent county is refused unless declared here."
+        }
+      ]
+    }
+  },
+  "registers": {
+    "description": "Which rows of the district file enter the surface. These are choices of selection, not of nesting; each entry has its reason.",
+    "defective_lower_measures": {
+      "description": "District-file measures that read the wrong IRS column (microcosm#1038). The compiler's US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS drops these facts by (measure id, IRS column) before this surface sees them; this register stays as a second fence on the state_cd surface, at both geographies, and records the reason in the receipt.",
+      "entries": {
+        "limited_state_local_taxes_amount": "22incd.csv column A18425 is state and local income taxes (Schedule A line 5a), not the limited SALT deduction (A18460); the district file sums to 1.98x Historic Table 2 (microcosm#1038).",
+        "limited_state_local_taxes_returns": "22incd.csv column N18425 counts state and local income-tax deductions, not the limited SALT deduction (microcosm#1038).",
+        "premium_tax_credit_returns": "22incd.csv column N85530 is the additional Medicare tax (Form 8959 line 24), not the premium tax credit (N85770) (microcosm#1038)."
+      }
+    },
+    "unparented_lower_measures": {
+      "description": "District-file measures with no state parent in either vintage, so their district rows could not nest in a bound state target.",
+      "entries": {
+        "tax_filer_individual_count": "The compiler drops this measure at state and national geography (fiscal_targets._soi_reference_from_fact), so no state target exists for its district rows to reconcile to."
+      }
+    },
+    "excluded_legs": {
+      "description": "States whose district SOI rows stay off the surface, with the evidence. Empty since #1043 rebuilt the 117th->119th crosswalk from the block plan registry: the packaged crosswalk before it (sha256 c7cb040b...) carried North Carolina's 2016 plan instead of the 2019 plan the 117th Congress used, and 37.0% of NC's population mapped to a different 119th district, so NC's district rows were held off until then.",
+      "entries": {}
+    }
+  },
+  "until_the_feed_repin": {
+    "description": "What stays only until Microcosm re-pins its feed after PolicyEngine/chronicle#451. Then the operator's own rule divides every control, Historic Table 2 holds the six parents, and rows 1 to 4 and the known gaps get their ruled treatment (docs/us-target-nesting-rule-design.md).",
+    "allocators": {
+      "historic_table_2_state_vs_district_file": "proportional_fsum",
+      "state_soi_vs_county_file": "share_residual_to_largest",
+      "acs_households_state_is_the_county_sum": "share_residual_to_largest",
+      "ladder_population_state_vs_county": "scale_residual_to_largest"
+    },
+    "level_bridges": {
+      "description": "District-file-only concepts (Historic Table 2 lacks them) and the sibling concept whose two state levels bridge theirs onto the Historic Table 2 basis. The district file's own state levels sit below Historic Table 2's for two reasons: it covers only the returns processed in its window (about 1.7% fewer), and the feed stamps it one tax year late, so its amounts are aged one year less. A sibling both files carry, in the same state, estimates that gap, on the assumption that the measure shares the sibling's ratio: counts bridge by return_count (counts are not aged), amounts by the closest amount Historic Table 2 carries. The factor band applies to the sibling. The bridge is stamp-invariant: if the stamp is corrected (#1030) both levels move together.",
+      "siblings": {
+        "charitable_amount": "itemized_deductions_amount",
+        "charitable_returns": "return_count",
+        "interest_paid_deduction_amount": "itemized_deductions_amount",
+        "interest_paid_deduction_returns": "return_count",
+        "qualified_business_income_deduction_amount": "adjusted_gross_income",
+        "qualified_business_income_deduction_returns": "return_count"
+      }
+    },
+    "closure_rtol": 1e-09,
+    "compile_rules": [
       {
         "id": "soi_capital_gains_shares_of_national_control",
         "issue_row": 1,
@@ -215,13 +236,10 @@
           "congressional_district"
         ],
         "higher_level": "country",
-        "route": "compile_rule",
-        "compiled": true,
         "code": "microcosm.build.us_runtime.fiscal_targets._rebase_stale_soi_capital_gains_distributions",
         "marker": {
           "metadata_key": "soi_control_concept"
         },
-        "level_holder": "country: the Table 1.4 national control at or after the row's period",
         "reason": "Each Historic Table 2 or district-file capital-gains row ships as its share of its own family's national total, scaled to the control: one factor for each family, quantity and period. A row with no control is dropped. It stays in the compile because it is another operation than the operator's: every row takes one factor, control / published national total, the rows are not scaled to sum to the control, and the control and the total are read from the facts, not from rows of the registry. The operator divides a control that is a row of its surface.",
         "issues": [
           "microcosm#1035",
@@ -237,14 +255,11 @@
           "congressional_district"
         ],
         "higher_level": "country",
-        "route": "compile_rule",
-        "compiled": true,
         "code": "microcosm.build.us_runtime.fiscal_targets._rebase_stale_soi_taxable_interest_distributions",
         "marker": {
           "metadata_key": "uprating_index",
           "value_prefix": "total_taxable_interest_"
         },
-        "level_holder": "country: the latest Pub 1304 national value",
         "reason": "Every stale Historic Table 2 taxable-interest row is multiplied by one national factor onto the latest national value; the TY2022 shares across states stay. It stays in the compile for the reason of row 1: one factor from the facts, no scaling of rows to a control row.",
         "issues": [
           "microcosm#489"
@@ -258,13 +273,10 @@
           "state"
         ],
         "higher_level": "state",
-        "route": "compile_rule",
-        "compiled": true,
         "code": "microcosm.build.us_runtime.fiscal_targets._rebase_soi_state_agi_bands",
         "marker": {
           "metadata_key": "state_agi_band_share"
         },
-        "level_holder": "state: the all-returns row that binds",
         "reason": "A partition inside one area, not a relation between levels: each flagged AGI band becomes control x band / published partition. The partition is the sum of the state's published bands over the whole AGI line, read from the facts, and only the bands from the $100k floor up bind. It stays in the compile because the operator's partitions need every member on the surface.",
         "issues": [
           "microcosm#940"
@@ -278,113 +290,18 @@
           "congressional_district"
         ],
         "higher_level": "state",
-        "route": "compile_rule",
-        "compiled": true,
         "code": "microcosm.build.ledger_targets.reconcile_ledger_target_hierarchy, declared in us/fiscal_target_references.json (congressional_district_children_scale_to_state_parent)",
         "marker": {
           "metadata_key": "hierarchy_reconciliation_rule",
           "value": "congressional_district_children_scale_to_state_parent"
         },
-        "level_holder": "state: the district file's own state row",
         "reason": "A second shared rule for the same job, with its rule as data: the district rows of the district file are scaled to sum to that file's own state row, and a missing district fails the compile. It stays where it is in Stage A because it sums with the builtin sum, formats its factor with 15 significant digits and writes its own hierarchy_* keys, and the bytes of the full and state_cd surfaces depend on all three. Folding it into the operator is a Stage B step or a consolidation issue.",
         "issues": [
           "microcosm#1760"
         ]
-      },
-      {
-        "id": "soi_district_shares_of_historic_table_2_state",
-        "issue_row": 5,
-        "family": "irs_soi",
-        "levels": [
-          "congressional_district"
-        ],
-        "higher_level": "state",
-        "route": "mechanism",
-        "mechanism": "state_congressional_district_soi",
-        "compiled": true,
-        "surfaces": [
-          "state_cd"
-        ],
-        "level_holder": "state: the Historic Table 2 state row, or the district file's state row lifted by a sibling ratio",
-        "issues": [
-          "microcosm#1760",
-          "microcosm#1731"
-        ]
-      },
-      {
-        "id": "soi_county_shares_of_state",
-        "issue_row": 6,
-        "family": "irs_soi",
-        "levels": [
-          "county"
-        ],
-        "higher_level": "state",
-        "route": "mechanism",
-        "mechanism": "state_county_soi",
-        "compiled": false,
-        "surfaces": [
-          "state_county"
-        ],
-        "level_holder": "state: the broad state row that exists",
-        "issues": [
-          "microcosm#922",
-          "microcosm#1760"
-        ]
-      },
-      {
-        "id": "acs_households_state_is_the_county_sum",
-        "issue_row": 7,
-        "family": "acs_households",
-        "levels": [
-          "county"
-        ],
-        "higher_level": "state",
-        "route": "mechanism",
-        "mechanism": "county_state_acs_households",
-        "compiled": false,
-        "surfaces": [
-          "state_county"
-        ],
-        "level_holder": "county: the state target is the sum of the county estimates",
-        "issues": [
-          "microcosm#922",
-          "microcosm#1760"
-        ]
-      },
-      {
-        "id": "ladder_county_population_scaled_to_state",
-        "issue_row": 8,
-        "family": "census_population",
-        "levels": [
-          "county"
-        ],
-        "higher_level": "state",
-        "route": "mechanism",
-        "mechanism": "state_county_population",
-        "compiled": false,
-        "surfaces": [
-          "state_county"
-        ],
-        "level_holder": "state: the total of the 2020 PUMA ladder",
-        "issues": [
-          "microcosm#922",
-          "microcosm#1760"
-        ]
-      },
-      {
-        "id": "ladder_state_and_district_population_from_one_ladder",
-        "family": "census_population_ladder",
-        "levels": [
-          "congressional_district"
-        ],
-        "higher_level": "state",
-        "route": "same_source",
-        "compiled": false,
-        "reason": "The state and district population totals of the local build are sums of the cells of one 2020 PUMA ladder. No rule runs.",
-        "issues": [
-          "microcosm#1760"
-        ]
-      },
+      }
+    ],
+    "known_gaps": [
       {
         "id": "soi_state_rows_under_two_national_rows",
         "family": "irs_soi",
@@ -392,8 +309,6 @@
           "state"
         ],
         "higher_level": "country",
-        "route": "not_reconciled",
-        "compiled": true,
         "reason": "Several SOI families bind a Historic Table 2 US row beside a newer Table 1.x row, and no rule ties their state rows to either. Rows 1 and 2 are the treatment that the issue asks for the others. It waits for Stage A.",
         "issues": [
           "microcosm#1243"
@@ -406,111 +321,11 @@
           "state"
         ],
         "higher_level": "country",
-        "route": "not_reconciled",
-        "compiled": true,
         "reason": "The national build fits Census age bands for each state. The local build fits state totals from the 2020 ladder and no age row. No rule ties the age rows of a state to its total, or to the national age rows.",
         "issues": [
           "microcosm#1528",
           "microcosm#1526",
           "microcosm#1531"
-        ]
-      },
-      {
-        "id": "usda_snap_state_rows_and_national_row",
-        "family": "usda_snap",
-        "levels": [
-          "state"
-        ],
-        "higher_level": "country",
-        "route": "not_reconciled",
-        "compiled": true,
-        "reason": "Not checked yet: whether the state rows of SNAP sum to the national row of the family. No rule ties them.",
-        "issues": [
-          "microcosm#1760"
-        ]
-      },
-      {
-        "id": "cms_medicaid_state_rows_and_national_row",
-        "family": "cms_medicaid",
-        "levels": [
-          "state"
-        ],
-        "higher_level": "country",
-        "route": "not_reconciled",
-        "compiled": true,
-        "reason": "Not checked yet: whether the state rows of Medicaid and CHIP sum to the national row of the family. No rule ties them.",
-        "issues": [
-          "microcosm#1760"
-        ]
-      },
-      {
-        "id": "ssa_state_rows_and_national_row",
-        "family": "ssa",
-        "levels": [
-          "state"
-        ],
-        "higher_level": "country",
-        "route": "not_reconciled",
-        "compiled": true,
-        "reason": "Not checked yet: whether the state rows of SSI sum to the national row of the family. No rule ties them.",
-        "issues": [
-          "microcosm#1760"
-        ]
-      },
-      {
-        "id": "hhs_acf_tanf_state_rows_and_national_row",
-        "family": "hhs_acf_tanf",
-        "levels": [
-          "state"
-        ],
-        "higher_level": "country",
-        "route": "not_reconciled",
-        "compiled": true,
-        "reason": "Not checked yet: whether the state rows of TANF sum to the national row of the family. No rule ties them.",
-        "issues": [
-          "microcosm#1760"
-        ]
-      },
-      {
-        "id": "cms_aca_state_rows_have_no_national_row",
-        "family": "cms_aca",
-        "levels": [
-          "state"
-        ],
-        "higher_level": "country",
-        "route": "no_higher_control",
-        "compiled": true,
-        "reason": "The compiled registry holds the ACA marketplace rows at state level only: no national row of the family binds.",
-        "issues": [
-          "microcosm#1760"
-        ]
-      },
-      {
-        "id": "state_income_tax_state_rows_have_no_national_row",
-        "family": "state_income_tax",
-        "levels": [
-          "state"
-        ],
-        "higher_level": "country",
-        "route": "no_higher_control",
-        "compiled": true,
-        "reason": "The compiled registry holds the state income tax rows at state level only: no national row of the family binds.",
-        "issues": [
-          "microcosm#1760"
-        ]
-      },
-      {
-        "id": "acs_district_age_and_households",
-        "family": "census_acs",
-        "levels": [
-          "congressional_district"
-        ],
-        "higher_level": "state",
-        "route": "not_in_the_fit",
-        "compiled": false,
-        "reason": "District age and household rows from ACS are not in the fit. Their state parent would come from another source: the districts from a survey, the states from the Census estimates.",
-        "issues": [
-          "microcosm#1731"
         ]
       }
     ]

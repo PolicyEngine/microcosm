@@ -424,7 +424,7 @@ def _parented_surface_specs(fixtures) -> tuple:
                 spec,
                 metadata={
                     **spec.metadata,
-                    "state_cd_parent_target_name": parents[state].name,
+                    "cross_grain_parent": parents[state].name,
                 },
             )
         specs.append(spec)
@@ -551,14 +551,8 @@ def test_a_state_cd_row_without_a_compiled_parent_is_refused() -> None:
 
     module = _load_tool_module()
     fixtures = _load_fixtures()
-    specs = []
-    for spec in _parented_surface_specs(fixtures):
-        if spec.name == "cd_0601_agi":
-            spec = dataclasses.replace(
-                spec,
-                metadata={**spec.metadata, "state_cd_vintage_rule": "fixture"},
-            )
-        specs.append(spec)
+    # Each district row of the fixture names its parent (``cross_grain_parent``).
+    specs = list(_parented_surface_specs(fixtures))
     plan = module.cd_surface.plan_carriers(specs)
     compiled = {spec.name for spec in plan.engine_specs}
     parents, _unchecked = module.cd_surface.district_row_parents(plan, compiled)
@@ -611,7 +605,7 @@ def test_calibration_never_sees_a_held_out_target(monkeypatch, tmp_path) -> None
         if record.get("geography_level") is None and record["family"] == "irs_soi":
             if record.get("congressional_district_geoid"):
                 record["geography_level"] = "congressional_district"
-                record["state_cd_parent_target_name"] = "agi_amount"
+                record["cross_grain_parent"] = "agi_amount"
     module.cd_surface.assign_target_roles(records, fraction=0.5)
     held = {record["name"] for record in records if record["role"] == "holdout"}
     assert held, "the fixture must hold something out at 0.5"
@@ -742,7 +736,7 @@ def test_holdout_scoring_against_the_pro_rata_baseline() -> None:
                 "state_fips": "06",
                 "congressional_district_geoid": d,
                 "source_measure_id": "adjusted_gross_income",
-                "state_cd_parent_target_name": "state_agi",
+                "cross_grain_parent": "state_agi",
                 "cd_population": population,
                 "state_population": 100.0,
             }
@@ -955,35 +949,38 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
         if module.cd_surface.is_cd_file_spec(spec)
         and spec.metadata["source_measure_id"] in defective
     ]
-    assert all(spec.metadata.get("state_cd_parent_target_name") for spec in districts)
+    assert all(spec.metadata.get("cross_grain_parent") for spec in districts)
     assert receipt["sigma"]["targets_with_sigma"] == 0
-    # The factor band drops these (state, measure) pairs, and only these:
-    # four district blocks whose two publications disagree about the state,
-    # and the itemized bridge of two at-large states (no district rows).
-    # The district file agrees with itself in every block, to float precision.
-    internal = receipt["internal_consistency"]
-    assert internal["blocks_checked"] == 2193
-    assert internal["max_relative_gap"] < 1e-12
-    band = receipt["factor_band"]
-    assert band["tolerance"] == module.cd_surface.STATE_CD_FACTOR_BAND == 1.25
+    # The bridge's bound is measured from each concept's median factor. It
+    # unbinds these four district blocks, and only these: the two publications
+    # disagree about the state.
+    bridge = receipt["bridge"]
+    assert bridge["bridge_id"] == "historic_table_2_state_vs_district_file"
+    assert bridge["max_factor_shift"] == 0.25
+    assert bridge["min_factor_shift"] == -0.2
+    assert (bridge["shift_around"], bridge["out_of_bound"]) == ("median", "unbind")
+    assert module.cd_surface.STATE_CD_FACTOR_BAND == 1.25
+    assert {(row["state_fips"], row["concept"]) for row in bridge["unbound"]} == {
+        ("15", "ordinary_dividends_amount"),
+        ("15", "qualified_dividends_amount"),
+        ("36", "rental_royalty_income_amount"),
+        ("49", "tax_exempt_interest_amount"),
+    }
+    # The itemized level bridge of two at-large states is distrusted (they
+    # have no district rows).
     assert {
-        (row["state_fips"], row["measure"], row["basis"].split(":")[0])
-        for row in band["out_of_band"]
+        (row["state_fips"], row["measure"])
+        for row in receipt["level_bridge_out_of_band"]
     } == {
-        ("15", "ordinary_dividends_amount", "rebase"),
-        ("15", "qualified_dividends_amount", "rebase"),
-        ("36", "rental_royalty_income_amount", "rebase"),
-        ("49", "tax_exempt_interest_amount", "rebase"),
-        ("46", "charitable_amount", "level_bridge"),
-        ("46", "interest_paid_deduction_amount", "level_bridge"),
-        ("56", "charitable_amount", "level_bridge"),
-        ("56", "interest_paid_deduction_amount", "level_bridge"),
+        ("46", "charitable_amount"),
+        ("46", "interest_paid_deduction_amount"),
+        ("56", "charitable_amount"),
+        ("56", "interest_paid_deduction_amount"),
     }
     # 43 states carry district rows (51 minus the 8 at-large on the 117th
-    # plan), less the band's four blocks.
+    # plan), less the bridge's four unbound blocks.
     rebase_n = {
-        measure: entry["n"]
-        for measure, entry in receipt["rebase_factor_by_measure"].items()
+        measure: entry["n"] for measure, entry in receipt["factor_by_measure"].items()
     }
     banded = {
         "ordinary_dividends_amount",

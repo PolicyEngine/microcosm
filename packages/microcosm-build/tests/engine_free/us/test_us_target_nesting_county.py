@@ -1,16 +1,18 @@
-"""The county rows on the shared operator give what the tool gave.
+"""The county rows on the cross-grain model are the rows the tool made.
 
-microcosm#1760 moved three county mechanisms of the ACS local release onto
-the shared cross-grain operator (``microcosm.build.cross_grain``), through
+microcosm#1760 runs three county passes of the ACS local release on the
+shared cross-grain operator (``microcosm.build.cross_grain``), through
 ``microcosm.build.us_runtime.target_nesting``: the county populations
-(``with_county_populations``), the county SOI shares
+(``with_county_populations``), the county SOI rows
 (``state_county_soi_surface``) and the county household rows
-(``acs_household_surface``). These tests hold the tool functions, which now
-call the adapter, to verbatim copies of the code they replace
+(``acs_household_surface``). These tests hold the tool functions to verbatim
+copies of the code they replace
 (``test_support/microcosm_build/us_target_nesting_reference.py``) on seeded
-random blocks: the same specs in the same order, the same value bits, the
-same metadata keys in the same order, the same receipt bytes and the same
-refusal texts.
+random blocks: the same specs in the same order, the same value bits, the same
+parent, value before and members under the operator's metadata keys, and the
+same receipt. Where the old code refused, the new code refuses: with the same
+text when the adapter refuses, and with the operator's text when the operator
+does.
 
 The blocks are synthetic. No test here reads the pinned county facts file
 (``us/chronicle_county_facts.json``), which is not a test input on every
@@ -28,6 +30,12 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from microcosm.build.cross_grain import (
+    CONTROL_KEY,
+    MEMBERS_KEY,
+    PARENT_KEY,
+    VALUE_BEFORE_KEY,
+)
 from microcosm.build.us_runtime import cross_grain_declarations as declarations
 from microcosm.build.us_runtime import target_nesting
 from microcosm.calibrate import (
@@ -67,22 +75,98 @@ def _bits(values) -> bytes:
     return b"".join(struct.pack("<d", float(value)) for value in values)
 
 
-def _spec_image(spec) -> tuple:
+_OLD_KEYS = "state_county_"
+_NEW_KEYS = "cross_grain_"
+
+
+def _plain_image(spec, prefix: str) -> tuple:
+    """Everything a spec holds but its nesting keys, with the value's bits."""
+
     fields = {
         field.name: getattr(spec, field.name) for field in dataclasses.fields(spec)
     }
     return (
         struct.pack("<d", spec.value),
-        list(spec.metadata.items()),
-        {name: value for name, value in fields.items() if name != "value"},
+        [item for item in spec.metadata.items() if not item[0].startswith(prefix)],
+        {
+            name: value
+            for name, value in fields.items()
+            if name not in ("value", "metadata")
+        },
     )
 
 
-def _surface_image(surface) -> tuple:
+def _old_nesting(spec) -> tuple | None:
+    """What the old keys say: (parent, value before, members)."""
+
+    metadata = spec.metadata
+    if "state_county_parent_target_name" not in metadata:
+        assert not any(key.startswith(_OLD_KEYS) for key in metadata), spec.name
+        return None
     return (
-        [_spec_image(spec) for spec in surface.specs],
-        json.dumps(surface.receipt, indent=1),
+        metadata["state_county_parent_target_name"],
+        metadata["state_county_source_value"],
+        metadata.get("state_county_cell_members"),
     )
+
+
+def _new_nesting(spec) -> tuple | None:
+    """The same three things from the operator's keys."""
+
+    metadata = spec.metadata
+    if CONTROL_KEY not in metadata:
+        assert not any(key.startswith(_NEW_KEYS) for key in metadata), spec.name
+        return None
+    return (
+        metadata[PARENT_KEY],
+        metadata[VALUE_BEFORE_KEY],
+        metadata.get(MEMBERS_KEY),
+    )
+
+
+def _receipt_image(receipt: dict, *, old: bool) -> str:
+    """The receipt without what only one side writes.
+
+    The old blocks hold ``share_sum``, the float sum of the shares (one, or
+    one bit from it). The new receipt names its declared pass under ``bridge``.
+    """
+
+    image = {key: value for key, value in receipt.items() if key != "bridge"}
+    if old:
+        image["blocks"] = [
+            {key: value for key, value in block.items() if key != "share_sum"}
+            for block in receipt["blocks"]
+        ]
+    return json.dumps(image, indent=1)
+
+
+def _assert_same_surface(new, old, pass_id: str, seed: int) -> None:
+    assert [
+        (_plain_image(spec, _NEW_KEYS), _new_nesting(spec)) for spec in new.specs
+    ] == [(_plain_image(spec, _OLD_KEYS), _old_nesting(spec)) for spec in old.specs], (
+        seed
+    )
+    assert _receipt_image(new.receipt, old=False) == _receipt_image(
+        old.receipt, old=True
+    ), seed
+    assert new.receipt["bridge"] == pass_id
+
+
+def _assert_same_refusal(new: tuple, old: tuple, seed: int) -> bool:
+    """Both refuse. True when the text is the old text.
+
+    The operator checks the members of a block after the adapter's own
+    checks. So for inputs with two defects, where the old code named the
+    block that is not complete, the new code can name the other defect.
+    """
+
+    assert new[0] == old[0] == "refused", (seed, new[1], old[1])
+    if new[1] == old[1]:
+        return True
+    assert new[1].startswith("cross-grain ") or old[1].startswith(
+        "Incomplete county SOI block"
+    ), (seed, new[1], old[1])
+    return False
 
 
 def _outcome(function, *args, **kwargs):
@@ -175,6 +259,7 @@ def _population_image(result) -> tuple:
 
 def test_county_populations_are_the_old_populations_on_random_ladders(county) -> None:
     outcomes = {"result": 0, "refused": 0}
+    texts = {True: 0, False: 0}
     cells = 0
     for seed in SEEDS:
         ladder, given = _ladder(seed)
@@ -182,7 +267,7 @@ def test_county_populations_are_the_old_populations_on_random_ladders(county) ->
         old = _outcome(reference.with_county_populations, ladder, given, ["county"])
         assert new[0] == old[0], seed
         if new[0] == "refused":
-            assert new[1] == old[1], seed
+            texts[_assert_same_refusal(new, old, seed)] += 1
         else:
             assert _population_image(new[1]) == _population_image(old[1]), seed
             cells += len(new[1]["county"])
@@ -190,6 +275,8 @@ def test_county_populations_are_the_old_populations_on_random_ladders(county) ->
         # Without the county level the populations pass through untouched.
         assert county.with_county_populations(ladder, given, ["state", "cd"]) is given
     assert outcomes["result"] >= 90 and outcomes["refused"] >= 5
+    # Both kinds of refusal occur: the adapter's and the operator's.
+    assert min(texts.values()) >= 1
     assert cells >= 1_000
 
 
@@ -334,49 +421,43 @@ def _soi_inputs(seed: int):
     return parents, [facts[index] for index in order], populations
 
 
-def _surface_outcome(function, *args, **kwargs):
-    outcome = _outcome(function, *args, **kwargs)
-    if outcome[0] == "refused":
-        return outcome
-    return ("surface", *_surface_image(outcome[1]))
-
-
 def test_the_county_soi_surface_is_the_old_surface_on_random_blocks(county) -> None:
-    outcomes = {"surface": 0, "refused": 0}
+    outcomes = {"result": 0, "refused": 0}
+    texts = {True: 0, False: 0}
     refusals: set[str] = set()
     rows = combined = 0
     for seed in SEEDS:
         parents, facts, populations = _soi_inputs(seed)
-        new = _surface_outcome(
-            county.state_county_soi_surface, parents, facts, populations
-        )
-        old = _surface_outcome(
-            reference.state_county_soi_surface, parents, facts, populations
-        )
-        assert new == old, seed
+        new = _outcome(county.state_county_soi_surface, parents, facts, populations)
+        old = _outcome(reference.state_county_soi_surface, parents, facts, populations)
+        assert new[0] == old[0], (seed, new[1], old[1])
         outcomes[new[0]] += 1
         if new[0] == "refused":
-            refusals.add(" ".join(new[1].split(" ")[:3]))
+            texts[_assert_same_refusal(new, old, seed)] += 1
+            refusals.add(" ".join(old[1].split(" ")[:3]))
             continue
-        receipt = json.loads(new[2])
-        rows += receipt["county_targets"]
-        combined += len(receipt["combined_cells"])
-    assert outcomes["surface"] >= 80 and outcomes["refused"] >= 10
+        _assert_same_surface(new[1], old[1], declarations.COUNTY_SOI, seed)
+        rows += new[1].receipt["county_targets"]
+        combined += len(new[1].receipt["combined_cells"])
+    assert outcomes["result"] >= 80 and outcomes["refused"] >= 10
     assert len(refusals) >= 4
+    # A county absent from a block is the operator's refusal. The others are
+    # the adapter's, with their old text.
+    assert min(texts.values()) >= 2
     assert rows >= 2_000 and combined >= 10
 
 
 def test_a_combined_cell_other_than_the_declared_one_is_the_old_refusal(county) -> None:
     parents, facts, populations = _soi_inputs(3)
     for cells in ({1001: 1001}, {1001: 2001}, {1003: 1001, 1001: 1005}):
-        new = _surface_outcome(
+        new = _outcome(
             county.state_county_soi_surface,
             parents,
             facts,
             populations,
             combined_cells=cells,
         )
-        old = _surface_outcome(
+        old = _outcome(
             reference.state_county_soi_surface,
             parents,
             facts,
@@ -447,22 +528,24 @@ def _acs_inputs(seed: int):
 def test_the_county_household_surface_is_the_old_surface_on_random_blocks(
     county,
 ) -> None:
-    outcomes = {"surface": 0, "refused": 0}
+    outcomes = {"result": 0, "refused": 0}
     rows = 0
     for seed in SEEDS:
         facts, populations = _acs_inputs(seed)
         period = 2024 if seed % 3 else 2026
-        new = _surface_outcome(
-            county.acs_household_surface, facts, populations, period=period
-        )
-        old = _surface_outcome(
+        new = _outcome(county.acs_household_surface, facts, populations, period=period)
+        old = _outcome(
             reference.acs_household_surface, facts, populations, period=period
         )
-        assert new == old, seed
+        assert new[0] == old[0], (seed, new[1], old[1])
         outcomes[new[0]] += 1
-        if new[0] == "surface":
-            rows += json.loads(new[2])["county_targets"]
-    assert outcomes["surface"] >= 90 and outcomes["refused"] >= 5
+        if new[0] == "refused":
+            # Each household refusal is the adapter's, with its old text.
+            assert _assert_same_refusal(new, old, seed), seed
+            continue
+        _assert_same_surface(new[1], old[1], declarations.COUNTY_ACS_HOUSEHOLDS, seed)
+        rows += new[1].receipt["county_targets"]
+    assert outcomes["result"] >= 90 and outcomes["refused"] >= 5
     assert rows >= 1_000
 
 
@@ -474,8 +557,8 @@ def test_household_refusals_come_in_state_order_as_before(county) -> None:
         _acs_fact(14001, "B11001_001E", 5.0),
         _acs_fact(34001, "B11001_001E", 0.0),
     ]
-    new = _surface_outcome(county.acs_household_surface, facts, populations)
-    old = _surface_outcome(reference.acs_household_surface, facts, populations)
+    new = _outcome(county.acs_household_surface, facts, populations)
+    old = _outcome(reference.acs_household_surface, facts, populations)
     assert new == old == ("refused", "State 14 has no Census state name.")
     # The other way round, the zero sum of the earlier state comes first.
     populations = {1001: 10.0, 14001: 10.0}
@@ -483,8 +566,8 @@ def test_household_refusals_come_in_state_order_as_before(county) -> None:
         _acs_fact(1001, "B11001_001E", 0.0),
         _acs_fact(14001, "B11001_001E", 5.0),
     ]
-    new = _surface_outcome(county.acs_household_surface, facts, populations)
-    old = _surface_outcome(reference.acs_household_surface, facts, populations)
+    new = _outcome(county.acs_household_surface, facts, populations)
+    old = _outcome(reference.acs_household_surface, facts, populations)
     assert new == old and "no positive share denominator" in new[1]
 
 
@@ -511,11 +594,12 @@ def test_the_helpers_the_tool_keeps_by_name_are_the_adapters(county) -> None:
     assert county.acs_households_parent_name(6) == reference.acs_households_parent_name(
         6
     )
-    for metadata in (
-        {"county_fips": "15009"},
-        {"county_fips": "15009", "state_county_cell_members": "15005,15009"},
-    ):
-        assert county.cell_members(metadata) == reference.cell_members(metadata)
+    assert county.cell_members({"county_fips": "15009"}) == [15009]
+    # The members of a combined cell, under the operator's key.
+    combined = {"county_fips": "15009", MEMBERS_KEY: "15005,15009"}
+    assert county.cell_members(combined) == reference.cell_members(
+        {"county_fips": "15009", "state_county_cell_members": "15005,15009"}
+    )
 
 
 def test_each_county_pass_records_the_operators_receipt(county) -> None:
@@ -544,7 +628,7 @@ def test_each_county_pass_records_the_operators_receipt(county) -> None:
         acs = county.acs_household_surface(acs_facts, acs_populations)
     finally:
         target_nesting.stop_nesting_receipts()
-    assert [(entry["mechanism"], entry["allocator"]) for entry in recorded] == [
+    assert [(entry["pass"], entry["allocator"]) for entry in recorded] == [
         (declarations.COUNTY_POPULATION, "scale_residual_to_largest"),
         (declarations.COUNTY_SOI, "share_residual_to_largest"),
         (declarations.COUNTY_ACS_HOUSEHOLDS, "share_residual_to_largest"),
@@ -557,15 +641,14 @@ def test_each_county_pass_records_the_operators_receipt(county) -> None:
             for group in entry["operator_receipt"]["groups"]
             for leg in group["legs"]
         ]
-        assert len(legs) == entry["blocks"] == len(blocks)
+        assert len(legs) == len(blocks)
         assert {
             group["winning_grain"] for group in entry["operator_receipt"]["groups"]
         } == {"state"}
-        # Each leg closed on its control; the old receipt's target sum is that
-        # control under an exactly rounded sum.
+        # Each leg closed on its control.
         for leg in legs:
             assert leg["new_total"] == pytest.approx(
                 leg["old_total"] * leg["declared_factor"], rel=1e-12
             )
-    # The old receipts do not hold the operator's receipt.
+    # The surfaces' receipts do not hold the operator's receipt.
     assert "groups" not in soi.receipt and "groups" not in acs.receipt

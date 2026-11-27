@@ -1,14 +1,24 @@
-"""The district SOI shares on the shared operator give what the tool gave.
+"""The district SOI rows on the cross-grain model are the rows the tool made.
 
-microcosm#1760 moved ``state_cd_soi_surface`` of the ACS local release onto
-the shared cross-grain operator (``microcosm.build.cross_grain``), through
+microcosm#1760 runs ``state_cd_soi_surface`` of the ACS local release on the
+shared cross-grain operator (``microcosm.build.cross_grain``), through
 ``microcosm.build.us_runtime.target_nesting``. These tests hold the tool
-function, which now calls the adapter, to a verbatim copy of the code it
-replaces (``test_support/microcosm_build/us_target_nesting_reference.py``) on
-seeded random surfaces: the same specs in the same order, the same value bits,
-the same metadata keys in the same order, the same receipt bytes and the same
-refusal texts. ``test_us_acs_local_surface_bytes.py`` checks the same on the
-pinned feed.
+function to a verbatim copy of the code it replaces
+(``test_support/microcosm_build/us_target_nesting_reference.py``) on seeded
+random surfaces: the same specs in the same order, the same value bits, the
+same parent, factor and value before under the operator's metadata keys, and
+the same counts, drops and summaries in the receipt.
+``test_us_acs_local_surface_bytes.py`` pins the bytes on the pinned feed.
+
+Three things differ by design, and the tests state each one:
+
+- A refusal that the operator makes has the operator's text.
+- The check that the district file's own state row is the sum of its district
+  rows is gone. Row 4 of the compile makes that sum hold, and the state row is
+  not a control of a concept that Historic Table 2 holds.
+- With the bound turned off (only tests do that), a concept whose Historic
+  Table 2 level is zero in every state keeps district rows of zero. The old
+  code dropped them, because such a concept has no median factor.
 """
 
 from __future__ import annotations
@@ -17,12 +27,22 @@ import dataclasses
 import importlib.util
 import json
 import math
+import os
 import struct
+from collections import Counter
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.cross_grain import (
+    CONTROL_KEY,
+    EXACT_SIGNATURE_CONTROL,
+    FACTOR_KEY,
+    PARENT_KEY,
+    VALUE_BEFORE_KEY,
+)
 from microcosm.build.us_runtime import cross_grain_declarations as declarations
 from microcosm.build.us_runtime import target_nesting
 from microcosm.calibrate import TargetSpec
@@ -95,8 +115,9 @@ def _inputs(seed: int):
     """Compiled-looking SOI specs and a crosswalk, with the hard cases.
 
     Some draws are refused (an incomplete plan, a zero sum under a nonzero
-    parent, a sign conflict, a district file that disagrees with itself);
-    the old and the new code must then refuse with the same text.
+    parent, a sign conflict): the old and the new code must then both refuse.
+    Some hold a district file that disagrees with itself, which only the old
+    code refused.
     """
 
     rng = np.random.default_rng(seed)
@@ -236,23 +257,134 @@ def _inputs(seed: int):
     return [specs[index] for index in order], pd.DataFrame(crosswalk), band
 
 
-def _spec_image(spec) -> tuple:
-    """Everything a spec holds, with the value's bits and the key order."""
+_OLD_KEYS = "state_cd_"
+_NEW_KEYS = "cross_grain_"
+_SHARED_RECEIPT_KEYS = (
+    "vintage_rule",
+    "counts",
+    "dropped",
+    "dropped_examples",
+    "defective_cd_file_measures",
+    "unparented_cd_measures",
+    "excluded_cd_states",
+    "at_large_on_source_plan",
+    "level_bridges",
+    "level_bridge_factor_by_measure",
+    "crosswalk",
+    "sigma",
+)
+
+
+def _plain_image(spec, prefix: str) -> tuple:
+    """Everything a spec holds but its nesting keys, with the value's bits."""
 
     fields = {
         field.name: getattr(spec, field.name) for field in dataclasses.fields(spec)
     }
     return (
         struct.pack("<d", spec.value),
-        list(spec.metadata.items()),
-        {name: value for name, value in fields.items() if name != "value"},
+        [item for item in spec.metadata.items() if not item[0].startswith(prefix)],
+        {
+            name: value
+            for name, value in fields.items()
+            if name not in ("value", "metadata")
+        },
     )
 
 
-def _surface_image(surface) -> tuple:
+def _old_nesting(spec) -> tuple | None:
+    """What the old keys say: (parent, value before, factor, kind of control)."""
+
+    metadata = spec.metadata
+    if "state_cd_level_bridge_factor" in metadata:
+        sibling = metadata["state_cd_level_bridge_sibling"].rsplit(".", 1)[-1]
+        return (
+            None,
+            metadata["state_cd_cd_file_value"],
+            metadata["state_cd_level_bridge_factor"],
+            f"level_bridge:{sibling}",
+        )
+    if "state_cd_parent_target_name" not in metadata:
+        assert not any(key.startswith(_OLD_KEYS) for key in metadata), spec.name
+        return None
     return (
-        [_spec_image(spec) for spec in surface.specs],
-        json.dumps(surface.receipt, indent=1),
+        metadata["state_cd_parent_target_name"],
+        metadata["state_cd_cd_file_value"],
+        metadata["state_cd_rebase_factor"],
+        metadata["state_cd_parent_basis"],
+    )
+
+
+def _new_nesting(spec) -> tuple | None:
+    """The same four things from the operator's keys."""
+
+    metadata = spec.metadata
+    if CONTROL_KEY not in metadata:
+        assert not any(key.startswith(_NEW_KEYS) for key in metadata), spec.name
+        return None
+    control = metadata[CONTROL_KEY]
+    if control.startswith(f"{declarations.DISTRICT_SOI}:"):
+        control = "historic_table_2"
+    elif control == EXACT_SIGNATURE_CONTROL:
+        # The district file's own state row, lifted by a level bridge.
+        control = "cd_file_state_total_bridged"
+    return (
+        metadata.get(PARENT_KEY),
+        metadata[VALUE_BEFORE_KEY],
+        metadata[FACTOR_KEY],
+        control,
+    )
+
+
+def _band_row(row: dict, verdict: str) -> str:
+    return json.dumps(
+        {
+            "state_fips": row["state_fips"],
+            "measure": row["measure"],
+            "concept": row["concept"],
+            "verdict": verdict,
+            "ratio": row["ratio"],
+            "median_ratio": row["median_ratio"],
+            "relative": row["relative"],
+        }
+    )
+
+
+def _old_image(surface) -> tuple:
+    receipt = surface.receipt
+    out_of_band = receipt["factor_band"]["out_of_band"]
+    return (
+        [(_plain_image(spec, _OLD_KEYS), _old_nesting(spec)) for spec in surface.specs],
+        json.dumps({key: receipt[key] for key in _SHARED_RECEIPT_KEYS}),
+        json.dumps(receipt["rebase_factor_by_measure"]),
+        sorted(
+            (row["state_fips"], row["concept"])
+            for row in out_of_band
+            if row["verdict"] == "rebase_factor"
+        ),
+        sorted(
+            _band_row(row, row["verdict"].replace("sibling_rebase_", "sibling_"))
+            for row in out_of_band
+            if row["verdict"] != "rebase_factor"
+        ),
+        json.dumps(reference.state_parent_reconciliation(surface.specs)),
+    )
+
+
+def _new_image(surface, closure_report) -> tuple:
+    receipt = surface.receipt
+    return (
+        [(_plain_image(spec, _NEW_KEYS), _new_nesting(spec)) for spec in surface.specs],
+        json.dumps({key: receipt[key] for key in _SHARED_RECEIPT_KEYS}),
+        json.dumps(receipt["factor_by_measure"]),
+        sorted(
+            (row["state_fips"], row["concept"]) for row in receipt["bridge"]["unbound"]
+        ),
+        sorted(
+            _band_row(row, row["verdict"])
+            for row in receipt["level_bridge_out_of_band"]
+        ),
+        json.dumps(closure_report(surface.specs)),
     )
 
 
@@ -267,53 +399,72 @@ def _run(module, specs, crosswalk, band, predicate):
         )
     except ValueError as error:
         return ("refused", str(error))
-    return ("surface", *_surface_image(surface))
+    return ("surface", surface)
 
 
 def test_the_district_surface_is_the_old_surface_on_random_inputs(tool) -> None:
     predicate = tool.soi_surface_predicate("state")
+    closure_report = tool.cd_surface.state_parent_reconciliation
     outcomes = {"surface": 0, "refused": 0}
-    refusals: set[str] = set()
-    rows = out_of_band = bridged = signed = single = nan_rows = 0
+    same_text = operator_text = self_disagreements = unbounded_zero = 0
+    rows = unbound = bridged = signed = single = distrusted = 0
     for seed in SEEDS:
         specs, crosswalk, band = _inputs(seed)
         new = _run(tool.cd_surface, specs, crosswalk, band, predicate)
         old = _run(reference, specs, crosswalk, band, predicate)
-        assert new == old, seed
+        if old[0] == "refused" and "differs from the sum of its district" in old[1]:
+            # By design: the new code does not make this check.
+            self_disagreements += 1
+            continue
+        assert new[0] == old[0], (seed, new[1], old[1])
         outcomes[new[0]] += 1
         if new[0] == "refused":
-            refusals.add(new[1].split(" ")[0] + " " + new[1].split(" ")[1])
+            # The adapter's refusals keep their text. The operator's have its.
+            if new[1] == old[1]:
+                same_text += 1
+            else:
+                assert new[1].startswith("cross-grain "), (seed, new[1], old[1])
+                operator_text += 1
             continue
-        receipt = json.loads(new[2])
+        old_surface, surface = old[1], new[1]
+        zero_levels = [
+            row
+            for row in old_surface.receipt["factor_band"]["out_of_band"]
+            if row["verdict"] == "rebase_factor" and math.isnan(row["median_ratio"])
+        ]
+        if math.isinf(band) and zero_levels:
+            # By design: with no bound, the rows of a concept that is zero in
+            # every state stay, with a value of zero.
+            dropped = {row["concept"] for row in zero_levels}
+            kept = [
+                spec
+                for spec in surface.specs
+                if PARENT_KEY in spec.metadata
+                and spec.metadata["source_measure_id"] in dropped
+            ]
+            assert kept and {spec.value for spec in kept} == {0.0}, seed
+            unbounded_zero += 1
+            continue
+        assert _new_image(surface, closure_report) == _old_image(old_surface), seed
+        receipt = surface.receipt
         rows += receipt["counts"]["congressional_district"]
-        out_of_band += len(receipt["factor_band"]["out_of_band"])
-        nan_rows += sum(
-            row["relative"] != row["relative"]
-            for row in receipt["factor_band"]["out_of_band"]
-        )
+        unbound += len(receipt["bridge"]["unbound"])
+        distrusted += len(receipt["level_bridge_out_of_band"])
         bridged += receipt["counts"]["cd_file_state"]
-        surface = tool.cd_surface.state_cd_soi_surface(
-            specs,
-            state_surface_predicate=predicate,
-            crosswalk=crosswalk,
-            factor_band=band,
-        )
         children: dict[str, int] = {}
         for spec in surface.specs:
-            parent = spec.metadata.get("state_cd_parent_target_name")
+            parent = spec.metadata.get(PARENT_KEY)
             if parent is not None:
                 children[parent] = children.get(parent, 0) + 1
                 signed += spec.value < 0
         single += sum(count == 1 for count in children.values())
-        # The closure report of the tool is the old report.
-        assert tool.cd_surface.state_parent_reconciliation(
-            surface.specs
-        ) == reference.state_parent_reconciliation(surface.specs)
     # The draws reach the hard cases the move must keep.
-    assert outcomes["surface"] >= 100 and outcomes["refused"] >= 10
-    assert len(refusals) >= 3
+    assert outcomes["surface"] >= 100 and outcomes["refused"] >= 8
+    assert min(same_text, operator_text) >= 2
     assert rows >= 2_000
-    assert min(out_of_band, bridged, signed, single, nan_rows) >= 5
+    assert min(unbound, bridged, signed, single) >= 5
+    # And the three differences that are by design.
+    assert min(self_disagreements, unbounded_zero) >= 1
 
 
 def _two_district_case(parent_value: float, values: tuple[float, float]):
@@ -351,9 +502,9 @@ def _two_district_case(parent_value: float, values: tuple[float, float]):
 @pytest.mark.parametrize(
     ("parent_value", "values"),
     [
-        (100.0, (5.0, 15.0)),  # a plain rebase
+        (100.0, (5.0, 15.0)),  # a plain division
         (0.0, (0.0, 0.0)),  # an all-zero block under a zero parent
-        (0.0, (5.0, 15.0)),  # a zero parent: out of band, with NaN in the receipt
+        (0.0, (5.0, 15.0)),  # a zero parent: unbound, with no median factor
         (100.0, (0.1, 0.2)),  # shares whose products round
         (10.0, (-5.0, 15.0)),  # a signed row
     ],
@@ -366,8 +517,11 @@ def test_the_hard_cases_are_the_old_surface(tool, parent_value, values) -> None:
         for spec in specs
     ]
     new = _run(tool.cd_surface, specs, crosswalk, 1.25, predicate)
-    assert new == _run(reference, specs, crosswalk, 1.25, predicate)
-    assert new[0] == "surface"
+    old = _run(reference, specs, crosswalk, 1.25, predicate)
+    assert new[0] == old[0] == "surface"
+    assert _new_image(
+        new[1], tool.cd_surface.state_parent_reconciliation
+    ) == _old_image(old[1])
 
 
 def test_the_district_pass_records_the_operators_receipt(tool) -> None:
@@ -382,10 +536,9 @@ def test_the_district_pass_records_the_operators_receipt(tool) -> None:
     finally:
         target_nesting.stop_nesting_receipts()
     (entry,) = recorded
-    assert (entry["mechanism"], entry["allocator"], entry["blocks"]) == (
+    assert (entry["pass"], entry["allocator"]) == (
         declarations.DISTRICT_SOI,
         "proportional_fsum",
-        1,
     )
     (group,) = entry["operator_receipt"]["groups"]
     (leg,) = group["legs"]
@@ -393,14 +546,79 @@ def test_the_district_pass_records_the_operators_receipt(tool) -> None:
         "state",
         "congressional_district",
     )
+    # The bridge that the declared selector makes for this measure.
+    bridge_id = f"{declarations.DISTRICT_SOI}:lower_file|adjusted_gross_income|-inf|inf|all|None"
+    assert group["bridge_id"] == bridge_id
     assert (leg["old_total"], leg["declared_factor"], leg["new_total"]) == (
         20.0,
         5.0,
         100.0,
     )
-    # The old metadata reads the same factor and sum.
+    # A district row names the same bridge, factor and parent.
     district = surface.specs[-1]
-    assert district.metadata["state_cd_rebase_factor"] == repr(leg["declared_factor"])
-    assert district.metadata["state_cd_cd_file_state_sum"] == repr(leg["old_total"])
-    # The old receipt does not hold the operator's receipt.
+    assert district.metadata[CONTROL_KEY] == bridge_id
+    assert district.metadata[FACTOR_KEY] == repr(leg["declared_factor"])
+    assert district.metadata[PARENT_KEY] == "ht2.10.adjusted_gross_income"
+    assert district.metadata[VALUE_BEFORE_KEY] == repr(15.0)
+    assert not [key for key in district.metadata if key.startswith(_OLD_KEYS)]
+    # The surface's receipt does not hold the operator's receipt.
     assert "groups" not in surface.receipt
+
+
+def test_the_pinned_feed_surface_is_the_old_surface(tool) -> None:
+    """On the pinned feed: the old rows and value bits, under the new keys.
+
+    ``test_us_acs_local_surface_bytes.py`` pins the bytes of the ``state_cd``
+    surface. Those bytes moved with the metadata keys. This test holds what
+    did not move: each row, the bits of its value, its parent, its factor and
+    its value before, and the counts, drops and summaries of the receipt.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip("set MICROCOSM_US_CHRONICLE_FACTS to the pinned 41b2fb2 feed")
+    from microcosm.build.us_runtime import (
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+    )
+
+    registry, _substitutions = tool._compiled_fiscal_registry(feed)
+    candidates = registry.select(
+        family="irs_soi", predicate=tool.soi_surface_predicate("state_cd")
+    ).specs
+    crosswalk = load_congressional_district_vintage_crosswalk(
+        default_congressional_district_vintage_crosswalk_path()
+    )
+    predicate = tool.soi_surface_predicate("state")
+    new = _run(tool.cd_surface, candidates, crosswalk, 1.25, predicate)
+    old = _run(reference, candidates, crosswalk, 1.25, predicate)
+    assert new[0] == old[0] == "surface"
+    assert _new_image(
+        new[1], tool.cd_surface.state_parent_reconciliation
+    ) == _old_image(old[1])
+    controls = Counter(
+        (_new_nesting(spec) or (None, None, None, "no nesting"))[3]
+        for spec in new[1].specs
+    )
+    assert controls == {
+        "historic_table_2": 19_181,
+        "cd_file_state_total_bridged": 2_562,
+        "no nesting": 4_227,
+        **{
+            f"level_bridge:{sibling}": count
+            for sibling, count in Counter(
+                _new_nesting(spec)[3].split(":", 1)[1]
+                for spec in new[1].specs
+                if (_new_nesting(spec) or ("",) * 4)[3].startswith("level_bridge:")
+            ).items()
+        },
+    }
+    assert sum(controls.values()) == 26_272
+    assert (
+        sum(
+            count
+            for kind, count in controls.items()
+            if kind.startswith("level_bridge:")
+        )
+        == 302
+    )

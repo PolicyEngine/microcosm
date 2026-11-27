@@ -17,7 +17,16 @@ household stops the run without ``--allow-partial-geography``). So the test
 gives the population rows a small household table that supports every ladder
 cell, and pins the rows' matrix on that table too.
 
-The pins were measured at ``3316038cc``, before any code moved. They run only
+The pins were measured at ``3316038cc``, before any code moved. Three pins of
+``state_cd`` (the registry, the roles and the receipts) were measured again
+for microcosm#1760, when the district rows took the metadata keys of the
+shared cross-grain operator (``cross_grain_*`` in place of ``state_cd_*``) and
+the receipt took its fields. No target value moved:
+``test_us_target_nesting_district.py`` holds each row of that surface, on the
+same feed, to the bits of its old value. The other modes hold no row that the
+operator makes, and their pins are the first ones.
+
+The pins run only
 when ``MICROCOSM_US_CHRONICLE_FACTS`` names the pinned feed and
 ``MICROCOSM_US_PUMA_LADDER_ARTIFACT`` names the pinned PUMA ladder. The
 county mode (``state_county``) needs the pinned county facts and a household
@@ -89,13 +98,13 @@ PINNED_BYTES: dict[str, dict[str, object]] = {
     "state_cd": {
         "targets": 26_912,
         "target_registry_sha256": (
-            "fad3ddf61915407fe187d9c739bd379d17c804347dc446e85f3e0303e8518bf3"
+            "596ae9ab155a6f5e99c615fbe33d5567d0194c7f28acc9e4dfeb973cc02510f7"
         ),
         "target_roles_sha256": (
-            "ffa9c4c964ea84385f0bfe5ef3c1053937897bfcecff941315d0a61f0ab0cca4"
+            "14bbdc62e2c1dd6bf8bc11938db013928cd1587aa99f2f76f1c087ea78fc3b72"
         ),
         "receipts_sha256": (
-            "9c67654cd7c8ab53b68969bf7ea30134871a1407af37d87ae3b2067294efed7f"
+            "f4e925d799e68d889d1cd54ba3f28aeeb403834f67eec6b89befcd1c60a3e5bb"
         ),
         "population_matrix_sha256": (
             "ae7785b655538f802e9ef7203c3ae6160ad250ed9e22c06c39475ae4614994f4"

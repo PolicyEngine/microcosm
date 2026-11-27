@@ -52,10 +52,10 @@ def _district_soi_nesting():
     """The declared choices of the ``state_cd`` surface (microcosm#1760).
 
     ``us/cross_grain_declarations.json`` holds them with their reasons: the
-    vintage rule, the registers of defective, unparented and excluded
-    district measures, the level bridges, the factor band and the two
-    tolerances. The names below are those choices under the names they had as
-    literals here.
+    bridge between Historic Table 2 and the district file with its bound, the
+    registers of defective, unparented and excluded district measures, and
+    the level bridges that stay until the feed re-pin. The names below are
+    those choices under the names this module always had.
     """
 
     from microcosm.build.us_runtime.cross_grain_declarations import (
@@ -65,7 +65,25 @@ def _district_soi_nesting():
     return us_district_soi_nesting()
 
 
+def _cross_grain():
+    """The shared cross-grain operator module (its metadata key names)."""
+
+    from microcosm.build import cross_grain
+
+    return cross_grain
+
+
 _DISTRICT_SOI_NESTING = _district_soi_nesting()
+#: The metadata that a reconciled district row keeps, as every row that the
+#: shared cross-grain operator reconciles does (the UK rows too): its parent
+#: row, what reconciled it, the factor, and its value before.
+PARENT_KEY = _cross_grain().PARENT_KEY
+NESTING_KEYS = (
+    PARENT_KEY,
+    _cross_grain().CONTROL_KEY,
+    _cross_grain().FACTOR_KEY,
+    _cross_grain().VALUE_BEFORE_KEY,
+)
 #: How the ``state_cd`` surface resolves the two vintages of a state concept.
 STATE_CD_VINTAGE_RULE = _DISTRICT_SOI_NESTING.vintage_rule
 #: District-file measures that read the wrong IRS column (microcosm#1038).
@@ -77,24 +95,21 @@ STATE_CD_UNPARENTED_CD_MEASURES: Mapping[str, str] = dict(
     _DISTRICT_SOI_NESTING.unparented_lower_measures
 )
 #: District-file-only concepts and the sibling concept that bridges their
-#: state level onto the Historic Table 2 basis.
+#: state level onto the Historic Table 2 basis (until the feed re-pin).
 STATE_CD_LEVEL_BRIDGES: Mapping[str, str] = dict(_DISTRICT_SOI_NESTING.level_bridges)
 #: States whose district SOI rows stay off the surface, with the evidence.
 STATE_CD_EXCLUDED_CD_STATES: Mapping[str, str] = dict(
     _DISTRICT_SOI_NESTING.excluded_legs
 )
-#: How far a state's Historic Table 2 / district-file ratio may sit from its
-#: measure's median across states.
+#: How far a state's Historic Table 2 / district-file factor may sit from its
+#: measure's median across states: the declared bound of the bridge, as a
+#: ratio to that median.
 STATE_CD_FACTOR_BAND = _DISTRICT_SOI_NESTING.factor_band
-#: Relative tolerance between the district file's own state row and the sum
-#: of its district rows.
-STATE_CD_INTERNAL_RTOL = _DISTRICT_SOI_NESTING.internal_rtol
 #: The packaged crosswalk the registers above were reviewed against. A test
 #: pins it, so regenerating the crosswalk forces a second look at them.
 STATE_CD_REVIEWED_CROSSWALK_SHA256 = _DISTRICT_SOI_NESTING.reviewed_crosswalk_sha256
 
-#: Relative tolerance for "district rows sum to their state parent". The
-#: rebase makes it exact up to float64 rounding.
+#: Relative tolerance for "district rows sum to their state parent".
 RECONCILIATION_RTOL = _DISTRICT_SOI_NESTING.closure_rtol
 
 SIGMA_BASIS_FEED = "feed_standard_error"
@@ -314,7 +329,7 @@ def state_parent_reconciliation(
 ) -> list[dict]:
     """Every (state parent, district rows) block and whether it adds up.
 
-    A block is the district specs naming one ``state_cd_parent_target_name``.
+    A block is the district specs naming one parent (``cross_grain_parent``).
     Returns one entry per block with the parent value, the district sum and
     ``ok`` (relative difference within ``rtol``).
     """
@@ -601,7 +616,7 @@ def district_row_parents(
     Returns ``{row index: (parent name, strict)}`` and the rows with no parent,
     over the rows whose carrier compiled.
 
-    - A ``state_cd`` row names its parent (``state_cd_parent_target_name``),
+    - A ``state_cd`` row names its parent (``cross_grain_parent``),
       and its block partitions that parent's state, so the check is strict:
       the stored district rows, laid side by side, must equal the parent's
       column on every household. A ``state_cd`` row without a compiled parent
@@ -635,8 +650,8 @@ def district_row_parents(
             continue  # the row is not materialized, so not on the surface
         spec = plan.declared[index]
         metadata = spec.metadata
-        named = metadata.get("state_cd_parent_target_name")
-        if "state_cd_vintage_rule" in metadata and named not in compiled:
+        named = metadata.get(PARENT_KEY)
+        if PARENT_KEY in metadata and named not in compiled:
             raise ValueError(
                 f"state_cd district row {spec.name} has no compiled state "
                 f"parent ({named!r}); its per-chunk check would be vacuous."
@@ -807,12 +822,7 @@ def target_record(spec) -> dict:
         "sigma": None if se is None else float(se),
         "sigma_basis": SIGMA_BASIS_NONE if se is None else SIGMA_BASIS_FEED,
     }
-    for key in (
-        "state_cd_parent_target_name",
-        "state_cd_parent_basis",
-        "state_cd_rebase_factor",
-        "state_cd_cd_file_value",
-    ):
+    for key in NESTING_KEYS:
         if key in metadata:
             record[key] = metadata[key]
     return record
@@ -825,7 +835,7 @@ def cd_holdout_unit_key(record: Mapping) -> str | None:
         return None
     if record.get("geography_level") != GEOGRAPHY_CD:
         return None
-    if not record.get("state_cd_parent_target_name"):
+    if not record.get(PARENT_KEY):
         return None
     return (
         f"{record['state_fips']}|"
@@ -993,7 +1003,7 @@ def pro_rata_baseline(records: Sequence[Mapping], rows: Sequence[int]) -> np.nda
     values = []
     for index in rows:
         record = records[index]
-        parent = by_name.get(record.get("state_cd_parent_target_name"))
+        parent = by_name.get(record.get(PARENT_KEY))
         if parent is None:
             raise ValueError(
                 f"{record['name']} has no bound state parent for the baseline."

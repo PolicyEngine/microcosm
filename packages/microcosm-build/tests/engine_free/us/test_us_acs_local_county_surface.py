@@ -333,15 +333,10 @@ def test_county_soi_reconciles_only_existing_broad_state_concepts() -> None:
     for spec in surface.specs:
         assert spec.metadata["ledger_geography_level"] == "county"
         assert spec.period == 2024
-        by_parent.setdefault(
-            spec.metadata["state_county_parent_target_name"], []
-        ).append(spec)
+        by_parent.setdefault(spec.metadata["cross_grain_parent"], []).append(spec)
         record = _county().target_record(spec)
         assert record["county_fips"] == spec.metadata["county_fips"]
-        assert (
-            record["state_county_parent_target_name"]
-            == spec.metadata["state_county_parent_target_name"]
-        )
+        assert record["cross_grain_parent"] == spec.metadata["cross_grain_parent"]
     assert set(by_parent) == {parent.name for parent in parents[:2]}
     assert [s.value for s in by_parent[parents[0].name]] == pytest.approx([25.0, 75.0])
     assert [s.value for s in by_parent[parents[1].name]] == pytest.approx(
@@ -396,7 +391,14 @@ def test_state_county_requires_both_concepts_and_parents_in_every_state(
             and omitted_state in (None, code[:2])
         )
     ]
-    with pytest.raises(ValueError, match=f"concept={measure}"):
+    # A state row with no parent is the adapter's refusal. County facts that
+    # are absent are the operator's: the leg does not hold its declared members.
+    message = (
+        f"concept={measure}"
+        if omission == "state_parent"
+        else f"county_file\\|{measure}\\|.* does not hold the declared members"
+    )
+    with pytest.raises(ValueError, match=message):
         _county().state_county_soi_surface(
             parents, facts, {1001: 50.0, 1003: 50.0, 6001: 100.0}
         )
@@ -451,7 +453,7 @@ def test_all_return_county_facts_do_not_become_sliced_state_targets(
     )
     assert len(surface.specs) == 4
     assert {
-        spec.metadata["state_county_parent_target_name"]
+        spec.metadata["cross_grain_parent"]
         for spec in surface.specs
         if spec.metadata["source_measure_id"] == "return_count"
     } == {parent.name}
@@ -485,7 +487,7 @@ def test_county_soi_uses_exact_parent_household_values_including_signed_values()
         [
             spec
             for spec in surface.specs
-            if spec.metadata["state_county_parent_target_name"] == parent.name
+            if spec.metadata["cross_grain_parent"] == parent.name
         ],
         households,
         county_column="county_fips_2023",
@@ -521,7 +523,7 @@ def test_county_holdout_preserves_existing_roles_and_uses_a_population_baseline(
                 "state_fips": "01",
                 "county_fips": code,
                 "source_measure_id": "adjusted_gross_income",
-                "state_county_parent_target_name": "state_agi",
+                "cross_grain_parent": "state_agi",
                 "county_population": population,
                 "state_population": 100.0,
             }
@@ -1113,7 +1115,7 @@ def test_county_hooks_materialize_a_fixture_and_preserve_configured_geography(
         == 0
     )
     for record in records:
-        if record.get("state_county_parent_target_name"):
+        if record.get("cross_grain_parent"):
             record["role"] = "holdout"
     evidence = module.calibration_evidence(
         frame=loaded,
@@ -1267,7 +1269,7 @@ def test_support_moves_reach_materialize_the_checkpoint_and_the_export(
     np.testing.assert_array_equal(lean["household_id"], ids)
     np.testing.assert_array_equal(lean["county_fips"].to_numpy(), expected)
     for record in records:
-        if record.get("state_county_parent_target_name"):
+        if record.get("cross_grain_parent"):
             record["role"] = "holdout"
     weights = np.full(len(ids), 10.0)
     evidence = module.calibration_evidence(
@@ -1393,7 +1395,7 @@ def test_county_loss_weights_share_a_state_concept_budget_without_changing_other
         indices = [
             index
             for index, spec in enumerate(specs)
-            if spec.metadata.get("state_county_parent_target_name") == parent.name
+            if spec.metadata.get("cross_grain_parent") == parent.name
         ]
         assert len({mapping.concept_budget_key(specs[index]) for index in indices}) == 1
         assert weights[indices[0]] / weights[indices[1]] == pytest.approx(
@@ -1838,7 +1840,7 @@ def test_a_county_whose_households_all_have_zero_agi_refuses_or_drops_its_row(
     # Calibrate grades 01003 without its AGI row; the packaged report and its
     # CSV name the row in 01003's cell (review of #1660).
     for record in records:
-        if record.get("state_county_parent_target_name"):
+        if record.get("cross_grain_parent"):
             record["role"] = "holdout"
     evidence = run.module.calibration_evidence(
         frame=loaded,
@@ -1956,7 +1958,7 @@ def test_dropping_empty_soi_rows_never_drops_a_county_without_households() -> No
             metadata={
                 "county_fips": code,
                 "source_measure_id": "adjusted_gross_income",
-                "state_county_parent_target_name": "agi",
+                "cross_grain_parent": "agi",
             },
         )
         for code in ("01001", "01003")

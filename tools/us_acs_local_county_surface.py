@@ -76,6 +76,10 @@ def _target_nesting():
 
 
 _COUNTY_SOI_NESTING = _county_soi_nesting()
+#: The metadata keys of a row that the shared cross-grain operator
+#: reconciled: its parent row, and the counties a combined cell stands for.
+PARENT_KEY = cd_surface.PARENT_KEY
+MEMBERS_KEY = _target_nesting().MEMBERS_KEY
 COUNTY_SOI_REQUIRED_MEASURES = _COUNTY_SOI_NESTING.required_measures
 #: Puerto Rico (state 72) is outside the County Files. The county facts loader
 #: drops its municipios with a count; a row that still reaches this module is
@@ -308,7 +312,7 @@ def state_county_soi_surface(
     A county absent from a block is refused unless ``combined_cells`` declares
     it, with its host present: then one child row covers both counties, its
     share is the host's published value over the state's published sum, and
-    ``state_county_cell_members`` lists the member counties.
+    ``cross_grain_members`` lists the member counties.
 
     The work is in
     :func:`microcosm.build.us_runtime.target_nesting.county_soi_surface`: the
@@ -347,7 +351,7 @@ def split_state_rows(
     by_name = {spec.name: index for index, spec in enumerate(state_specs)}
     blocks = defaultdict(list)
     for index, spec in enumerate(county_specs):
-        blocks[spec.metadata["state_county_parent_target_name"]].append(index)
+        blocks[spec.metadata[PARENT_KEY]].append(index)
     rows, cols, data = [], [], []
     for parent_name, indices in blocks.items():
         parent_index = by_name[parent_name]
@@ -1165,20 +1169,13 @@ def target_record(spec):
     record["geography_level"] = record["geography_level"] or spec.metadata.get(
         "geography_level"
     )
-    for key in (
-        "county_fips",
-        "state_county_parent_target_name",
-        "state_county_share",
-        "county_population",
-        "state_population",
-        "state_county_cell_members",
-    ):
+    # The parent, control, factor and value before are on the record already.
+    for key in ("county_fips", "county_population", "state_population", MEMBERS_KEY):
         if key in spec.metadata:
             value = spec.metadata[key]
             record[key] = (
                 float(value)
-                if key
-                in {"state_county_share", "county_population", "state_population"}
+                if key in {"county_population", "state_population"}
                 else value
             )
     return record
@@ -1202,7 +1199,7 @@ def assign_target_roles(
         if record.get("geography_level") != "county":
             continue
         unit = None
-        if record.get("state_county_parent_target_name"):
+        if record.get(PARENT_KEY):
             family = (
                 cd_surface.soi_concept_family(str(record.get("source_measure_id")))
                 if record.get("family") == "irs_soi"
@@ -1237,7 +1234,7 @@ def pro_rata_baseline(records, rows):
     values = []
     for index in rows:
         record = records[index]
-        parent = by_name.get(record.get("state_county_parent_target_name"))
+        parent = by_name.get(record.get(PARENT_KEY))
         county, state = (
             float(record.get("county_population", 0)),
             float(record.get("state_population", 0)),
@@ -1311,7 +1308,7 @@ def reliability_grade(ess, error):
 
 def record_counties(record):
     """The counties a county record's error counts toward (combined cells: all)."""
-    members = record.get("state_county_cell_members")
+    members = record.get(MEMBERS_KEY)
     if members:
         return [int(member) for member in str(members).split(",")]
     return [int(record["county_fips"])]
@@ -2003,7 +2000,7 @@ def zero_measure_soi_rows(specs, households, empty, *, county_column=COUNTY_COLU
                 "county_fips": str(spec.metadata["county_fips"]),
                 "cell_members": [f"{member:05d}" for member in members],
                 "concept": spec.metadata.get("source_measure_id"),
-                "parent": spec.metadata.get("state_county_parent_target_name"),
+                "parent": spec.metadata.get(PARENT_KEY),
                 "target_value": float(spec.value),
                 "households": int(in_cell),
                 "reason": (
@@ -2788,9 +2785,7 @@ def loss_row_mapping(specs):
         if not _is_county(spec):
             return base.concept_budget_key(spec)
         code = spec.metadata["county_fips"]
-        concept = spec.metadata.get(
-            "state_county_parent_target_name", "resident_population"
-        )
+        concept = spec.metadata.get(PARENT_KEY, "resident_population")
         return (
             basis(spec),
             spec.entity,
