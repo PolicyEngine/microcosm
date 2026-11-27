@@ -150,8 +150,10 @@ the nesting work of microcosm#1760.
 - `test_uk_graph_terminal.py` pins the shared modules in the hash of the
   hold-out kernel and of each gate kernel.
 - `test_uk_target_surface_pins.py` pins the bytes of the UK target nodes'
-  artifacts on the pinned Chronicle feed: the full surface, each selection
-  and the national registry.
+  artifacts on Chronicle feed `15040ea5`: the full surface, each selection
+  and the national registry. Every pin passed after the move. The digests
+  hold that feed, so the tests skip while the package pins another feed,
+  until the pins are measured again on it.
 
 ## What a UK build computes again
 

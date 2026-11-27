@@ -17,6 +17,15 @@ feed's artifact folder and ``MICROCOSM_UK_OA_LADDER`` names the ladder. The
 selection tests can read a saved surface instead (``MICROCOSM_UK_TARGET_SURFACE``),
 which must have the pinned digest. The compile reads published Chronicle
 facts and the census ladder, not survey microdata, and the pins are digests.
+
+The digests hold one feed (``PINNED_FEED_COMMIT``), the UK input files of
+``38dbd0187`` and one review date. At ``9130ebe15``, after the move, every
+test passed on them: that is the proof of the move. A feed re-pin changes the
+surface, and a renewed register entry is not in force on the old review date.
+So when the package pins another feed, the tests skip: measure the surface,
+the selections and the national registry again on the new feed (two compiles,
+about two hours), and set ``PINNED_FEED_COMMIT``, ``REVIEW_DATE`` and the
+digests together.
 """
 
 from __future__ import annotations
@@ -31,6 +40,9 @@ import pytest
 
 CALIBRATION_YEAR = 2025
 REVIEW_DATE = "2026-11-26"
+#: The Chronicle commit of the feed the pins were measured on: the
+#: ``source_commit`` of ``uk/chronicle_feed.json`` at ``38dbd0187``.
+PINNED_FEED_COMMIT = "15040ea53a131ee09f713459554f5f22a4afc6bd"
 
 #: (sha256, bytes) of each node's artifact at 38dbd0187.
 PINNED_SURFACE = (
@@ -165,7 +177,27 @@ def _context(*, artifacts=None, params=None, sources=None) -> SimpleNamespace:
     )
 
 
+def _packaged_feed_commit() -> str:
+    from importlib.resources import files
+
+    pin = files("microcosm.build.uk").joinpath("chronicle_feed.json")
+    return json.loads(pin.read_text(encoding="utf-8"))["source_commit"]
+
+
+def _require_the_measured_feed() -> None:
+    """Skip when the package pins another feed than the pins were measured on."""
+
+    packaged = _packaged_feed_commit()
+    if packaged != PINNED_FEED_COMMIT:
+        pytest.skip(
+            f"the pins were measured on feed {PINNED_FEED_COMMIT[:8]}, and the "
+            f"package now pins {packaged[:8]}: measure them again on the new "
+            "feed (see the module docstring)"
+        )
+
+
 def _feed_and_ladder() -> tuple[str, str]:
+    _require_the_measured_feed()
     feed = os.environ.get("MICROCOSM_UK_CHRONICLE_FACTS", "")
     ladder = os.environ.get("MICROCOSM_UK_OA_LADDER", "")
     if not (feed and Path(feed).exists() and ladder and Path(ladder).is_file()):
@@ -194,6 +226,7 @@ def compiled_surface() -> bytes:
 
 @pytest.fixture(scope="module")
 def surface(request) -> bytes:
+    _require_the_measured_feed()
     saved = os.environ.get("MICROCOSM_UK_TARGET_SURFACE", "")
     if saved and Path(saved).is_file():
         payload = Path(saved).read_bytes()
