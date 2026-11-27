@@ -28,6 +28,11 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
 )
+from microcosm.build.transport.compose import (
+    _resource_param,
+    load_transport_spec,
+    transport_resource,
+)
 from microcosm.build.transport.geography_kernels import support_from_surface
 from microcosm.build.transport.target_kernels import (
     TargetSurface,
@@ -54,6 +59,16 @@ _STRADDLING = {
     "038": {"06", "08"},
     "041": {"08", "09"},
     "068": {"13", "14"},
+}
+# Each household column nz.geo.derive writes, and the transport support column
+# it must carry. The test states this map itself: derivation and validation both
+# follow the assignment's layers, so they agree with a layer that reads the
+# wrong support column.
+_TRANSPORT_LAYER_COLUMNS = {
+    "ta_code": "ta_code",
+    "household_region_code": "region_code",
+    "as_area": "as_area",
+    "as_area_alt": "as_area_alt",
 }
 
 
@@ -554,21 +569,96 @@ def test_committed_support_executes_atomic_assignment_derivation_and_gate() -> N
         geography.validate_geography(corrupted, specification, supports)
 
 
+def _assert_layers_carry_their_support_columns(
+    frame: pd.DataFrame, area: str, rows: dict[str, dict]
+) -> None:
+    """Check every derived layer against the committed support row of its area.
+
+    ``rows`` maps each atomic area code to that row's codes, read straight from
+    the support definition; ``_TRANSPORT_LAYER_COLUMNS`` names the support
+    column each layer must carry.
+    """
+    areas = frame[area].tolist()
+    assert set(areas) <= set(rows)
+    for output, column in _TRANSPORT_LAYER_COLUMNS.items():
+        expected = [rows[code][column] for code in areas]
+        assert frame[output].tolist() == expected, (
+            f"derived {output} differs from support column {column}"
+        )
+
+
 def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
-    """Run the shared assignment, derivation and validation on the committed
-    declarations that nz.geo.assign, nz.geo.derive and nz.geo.gate read, with
-    synthetic population counts, and check their outputs against the columns
-    the graph declares for those nodes.
+    """Check the committed declarations that nz.geo.assign, nz.geo.derive and
+    nz.geo.gate read, and run the shared assignment, derivation and validation
+    on them with synthetic population counts.
+
+    Some values are written in the test itself: the ids of nz.geo.assign,
+    nz.geo.derive and nz.geo.gate, the support kernel and the artifact name
+    the support edge requests, each derived layer's output and the support
+    column it reads (``_TRANSPORT_LAYER_COLUMNS``), and the as_area value of
+    area 011|03|2. Changing one of those means updating the test. Most other
+    checks compare one committed declaration with another, for example
+    derive's and gate's parameters and support edge with the assignment's,
+    the assignment's system id with the support alias, and the columns the
+    assignment and derivation write with their declared outputs; an edit made
+    the same way on both sides passes them. The test also requires one
+    assignment system, one support edge and JSON resource selections for
+    both definitions. It does not check everything in these declarations: other
+    edits can pass, and microcosm#1788 lists ones found. The test reads the
+    nodes from the committed transport graph and resolves the assignment and
+    support definitions with the composer's resolver. It does not compose or
+    run the graph.
+
+    The graph supplies the support definition, the support's system and the
+    alias the three kernels key the support by. Derive and gate declare the
+    assignment's parameters and support edge. An assignment whose system
+    differs from that alias fails here, as the kernels refuse it. The columns
+    the assignment and derivation write must equal the outputs the graph
+    declares for nz.geo.assign and nz.geo.derive.
+
+    Each derived layer must declare as its input the support column that
+    ``_TRANSPORT_LAYER_COLUMNS`` names for it. Derivation and validation
+    recompute the assignment's own layers, so that check against a map the
+    test states itself is what catches a layer that reads the wrong column.
+    The derived columns must also carry the support's values, on the drawn
+    areas and on every committed area.
 
     Each layer's source, vintage and relation must equal the support column it
     reads, or the shared binder refuses before any household is placed.
     """
-    definition = _read(_SPEC / "transport_atomic_geography_support.json")
-    specification = _read(_SPEC / "geography_assignment.json")
-    (system,) = specification["systems"]
+    transport = load_transport_spec(_SPEC)
     graph = {
-        node["id"]: node for node in _read(_SPEC / "transport_graph.json")["nodes"]
+        node["id"]: node
+        for node in transport_resource(transport, "transport_graph")["nodes"]
     }
+    assign = graph["nz.geo.assign"]
+    for node_id in ("nz.geo.derive", "nz.geo.gate"):
+        assert graph[node_id]["params"] == assign["params"]
+        assert graph[node_id]["artifact_inputs"] == assign["artifact_inputs"]
+    (edge,) = assign["artifact_inputs"]
+    alias, producer = edge["name"], graph[edge["producer"]]
+    assert (producer["kernel"], edge["artifact"]) == (
+        "geography.support_from_facts@1",
+        "support",
+    )
+
+    def selected(selection: dict) -> dict:
+        # Resolve a node's resource selection as the composer does: the
+        # resource by its name or stem, then its path and encoding.
+        assert selection.get("encoding") == "json"
+        return json.loads(_resource_param(transport, selection))
+
+    definition = selected(producer["params"]["definition"])
+    specification = selected(assign["params"]["definition"])
+    (system,) = specification["systems"]
+    # The kernels refuse unless the support aliases are the assignment's system
+    # ids, and the binder refuses unless the support's own system is too.
+    assert (system["id"], producer["params"]["system"]) == (alias, alias)
+    # A layer can read another support column that holds the same values; the
+    # value checks below cannot see that, so check the declared input too.
+    assert sorted(
+        (layer["output"], layer["input"]) for layer in system["layers"]
+    ) == sorted(_TRANSPORT_LAYER_COLUMNS.items())
 
     def declared(node_id: str) -> set[tuple[str, str, str]]:
         return {
@@ -581,21 +671,43 @@ def test_committed_transport_assignment_runs_on_its_committed_support() -> None:
         support_from_surface(
             _surface(references, [1000] * len(references)),
             definition,
-            system=system["id"],
+            system=producer["params"]["system"],
         )
     )
-    supports = {system["id"]: support}
+    supports = {alias: support}
+    rows = {row["codes"]["area"]: row["codes"] for row in definition["rows"]}
+    outputs = specification["outputs"]
     households = pd.DataFrame({"household_id": np.arange(len(support.arrays["area"]))})
     placed = geography.assign_atomic(households, specification, supports)
     assert {("household", c, "string") for c in placed} == declared("nz.geo.assign")
     assigned = pd.concat([households, placed], axis=1)
     derived = geography.derive_geography(assigned, specification, supports)
     assert {("household", c, "string") for c in derived} == declared("nz.geo.derive")
+    assert set(derived) == set(_TRANSPORT_LAYER_COLUMNS)
+
     completed = pd.concat([assigned, derived], axis=1)
     assert (
         geography.validate_geography(completed, specification, supports)["outcome"]
         == "pass"
     )
+    _assert_layers_carry_their_support_columns(completed, outputs["area"], rows)
+    # Derive every committed area too, so the check also covers areas the draw
+    # never reaches.
+    areas = sorted(rows)
+    every = pd.DataFrame(
+        {
+            outputs["area"]: pd.array(areas, dtype="string"),
+            outputs["system"]: pd.array([alias] * len(areas), dtype="string"),
+        }
+    )
+    looked_up = pd.concat(
+        [every, geography.derive_geography(every, specification, supports)], axis=1
+    )
+    _assert_layers_carry_their_support_columns(looked_up, outputs["area"], rows)
+    # Pin one committed value. A swap of as_area and as_area_alt inside the
+    # support rows moves ``rows`` with the support, so the checks above pass;
+    # this literal sees such a swap when it reaches 011|03|2.
+    assert looked_up.loc[areas.index("011|03|2"), "as_area"] == "2"
     for position, layer in enumerate(system["layers"]):
         for key in ("source", "vintage", "relation"):
             changed = copy.deepcopy(specification)
