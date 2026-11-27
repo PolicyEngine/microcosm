@@ -407,7 +407,11 @@ def test_one_child_writes_the_same_files_as_one_process_per_step(
         f"checkpoints/{pipeline.index(stage):03d}_{stage}.frame.h5"
         for stage in _ONE_PROCESS_STEPS
     ]
-    assert set(checkpoint_names) <= set(files_one_child)
+    observation_names = [
+        f"checkpoints/{builder.GATE_BATTERY_SHADOW_DIRECTORY}/{stage}.observations.json"
+        for stage in _ONE_PROCESS_STEPS
+    ]
+    assert set(checkpoint_names) | set(observation_names) <= set(files_one_child)
     assert f"checkpoints/{OUTER_STAGE_CONTEXT_FILENAME}" in files_one_child
     assert files_one_child == files_one_per_step
     assert (
@@ -768,6 +772,25 @@ def test_the_parent_starts_one_child_for_the_16_and_records_each_step(
         assert environment["PYTHONHASHSEED"] == "0"
     # One stage change per step, under the step's own name.
     assert telemetry.stages == list(remaining)
+
+
+def test_a_report_variable_the_parent_inherited_reaches_no_child(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    steps = builder.PIPELINE_STEPS
+    _stand_in_parent(builder, monkeypatch, ())
+    processes = _ChildProcesses(builder, monkeypatch)
+    inherited = json.dumps({"fd": 9, "parent_pid": os.getppid(), "schema_version": 1})
+    monkeypatch.setenv(_REPORT_VARIABLE, inherited)
+
+    builder._run_staged_all(SimpleNamespace(checkpoint_dir=tmp_path), _Telemetry())
+
+    assert len(processes.started) == len(steps) - 15
+    for first, environment, popen in processes.started:
+        if popen:
+            assert environment[_REPORT_VARIABLE] != inherited
+        else:
+            assert _REPORT_VARIABLE not in environment, first
 
 
 def test_a_failed_child_is_recorded_against_the_step_that_failed(
