@@ -472,6 +472,9 @@ class RunnerTests(unittest.TestCase):
         old_record=None,
         replayed=(),
         fetched=None,
+        bundle_packages=None,
+        extra_args=(),
+        rewritten=(),
     ):
         if receipt is None and uc_code == 0:
             receipt = {
@@ -489,7 +492,8 @@ class RunnerTests(unittest.TestCase):
         bundle = {
             "data_releases": {
                 "uk": {"default_dataset": "candidate", **(old_record or {})}
-            }
+            },
+            **({"packages": bundle_packages} if bundle_packages else {}),
         }
         if resume:
             path = worktree / "src/policyengine/data/bundle/manifest.json"
@@ -521,6 +525,7 @@ class RunnerTests(unittest.TestCase):
                 "--skip-writer-check",
                 "offline regression",
                 *(["--resume-worktree"] if resume else []),
+                *extra_args,
             ]
         )
         calls = []
@@ -542,7 +547,9 @@ class RunnerTests(unittest.TestCase):
             if call_details is not None:
                 call_details.append((argv, kwargs))
             if "constant-rewrite" == kwargs.get("step"):
-                return subprocess.CompletedProcess(argv, 0, "[]", "")
+                return subprocess.CompletedProcess(
+                    argv, 0, json.dumps(list(rewritten)), ""
+                )
             if "audit-help" == kwargs.get("step"):
                 flags = (
                     "--regional-manifest-uri --artifact --model-version "
@@ -760,6 +767,58 @@ class RunnerTests(unittest.TestCase):
                 call_details=details,
             )
         self.assertEqual(details, [])
+
+    def test_certify_data_follows_the_bundles_core_pin_by_default(self):
+        """.py's default certificate follows the bundle's shared core pin
+        (core_binding: bundle_pin). --core-version would bind the UK to one
+        core and move the pin, so a later core move for another country
+        would need a UK re-certification first."""
+
+        details = []
+        result, _, root = self.run_mock_pipeline(
+            evidence=EVIDENCE,
+            call_details=details,
+            bundle_packages={"policyengine-core": {"version": "3.1"}},
+        )
+        self.assertEqual(result, 0)
+        by_step = {kwargs.get("step"): argv for argv, kwargs in details}
+        self.assertNotIn("--core-version", by_step["certify-data"])
+        # The audit runs the target pair the bundle will serve.
+        self.assertIn("policyengine-core==3.1", by_step["audit-model-install"])
+        first = (root / "certification.pr-body.md").read_text().splitlines()[0]
+        self.assertIn("policyengine-core 3.1", first)
+        self.assertIn("`core_binding: bundle_pin`", first)
+
+    def test_an_operators_core_version_binds_the_certificate(self):
+        details = []
+        _, _, root = self.run_mock_pipeline(
+            evidence=EVIDENCE,
+            call_details=details,
+            bundle_packages={"policyengine-core": {"version": "3.1"}},
+            extra_args=["--core-version", "3.2"],
+        )
+        by_step = {kwargs.get("step"): argv for argv, kwargs in details}
+        certify = by_step["certify-data"]
+        self.assertEqual(certify[certify.index("--core-version") + 1], "3.2")
+        self.assertIn("policyengine-core==3.2", by_step["audit-model-install"])
+        first = (root / "certification.pr-body.md").read_text().splitlines()[0]
+        self.assertIn("`core_binding: certified`", first)
+
+    def test_each_rewritten_constant_file_is_listed_once(self):
+        with patch.object(
+            runner,
+            "rewrite_regional_constants",
+            return_value=["tests/test_uk_regions.py", "tests/test_models.py"],
+        ):
+            _, _, root = self.run_mock_pipeline(
+                evidence=EVIDENCE,
+                rewritten=["tests/test_models.py", "tests/test_uk_regions.py"],
+            )
+        self.assertIn(
+            "Certified-constant files rewritten: tests/test_models.py, "
+            "tests/test_uk_regions.py\n",
+            (root / "certification.pr-body.md").read_text(),
+        )
 
     def test_package_steps_get_no_hugging_face_token(self):
         details = []

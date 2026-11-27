@@ -7,6 +7,7 @@ import dataclasses
 import hashlib
 import json
 import re
+import shlex
 import subprocess
 from types import SimpleNamespace
 
@@ -948,6 +949,43 @@ def test_a_regional_file_outside_its_pin_is_refused(tmp_path, artifact, message)
     with pytest.raises(handoff.CertifyError, match=message):
         handoff.fetch_regional_microdata(dense, timings=tmp_path / "t.jsonl", api=hub)
     assert len(hub.downloads) == 1
+
+
+def test_a_command_is_shown_without_local_paths_or_records(tmp_path):
+    worktree = tmp_path / "_worktrees" / "pepy-certify-uk-a858c100"
+    record = json.dumps({"data_releases": {"uk": {}}})
+    argv = [
+        str(worktree / ".venv/bin/python"), "-c", "print(1)", record,
+        "--output", f"{worktree.parent}/{worktree.name}.uc_floor.json",
+        "--artifact", f"dense={tmp_path}/.cache/huggingface/x.h5", "-q",
+    ]  # fmt: skip
+    assert handoff.public_command(argv, worktree, home=tmp_path) == shlex.join(
+        [
+            ".venv/bin/python", "-c", "print(1)",
+            f"<JSON, {len(record)} characters>",
+            "--output", "../pepy-certify-uk-a858c100.uc_floor.json",
+            "--artifact", "dense=~/.cache/huggingface/x.h5", "-q",
+        ]
+    )  # fmt: skip
+
+
+def test_the_pr_body_shows_each_command_without_local_paths_or_records(tmp_path):
+    """--open-pr posts the body as it is: no operator paths, and not the old
+    and new bundle records the constant rewrite is passed."""
+
+    worktree = tmp_path / "_worktrees" / "pepy-certify-uk-a858c100"
+    shell = handoff.Shell(worktree, worktree.parent / "run.log", dry_run=True)
+    record = json.dumps({"data_releases": {"uk": {"default_dataset": "x"}}})
+    shell([str(worktree / ".venv/bin/python"), "-c", "code", record, record])
+    shell(["uv", "lock"])
+    assert shell.public_commands(home=tmp_path) == [
+        shlex.join(
+            [".venv/bin/python", "-c", "code",
+             f"<JSON, {len(record)} characters>",
+             f"<JSON, {len(record)} characters>"]
+        ),
+        "uv lock",
+    ]  # fmt: skip
 
 
 def test_the_audit_argv_passes_every_file_and_limitation(tmp_path):
