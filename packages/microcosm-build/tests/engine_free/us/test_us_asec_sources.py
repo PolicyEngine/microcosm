@@ -411,9 +411,10 @@ def _args(asec_h5: list[str] | None, pins: list[str] | None) -> SimpleNamespace:
 
 
 def test_verify_is_a_no_op_without_pins() -> None:
+    # Nothing is hashed, so there are no digests for the step processes.
     builder = _load_tool_module("build_us_puf_support_base")
-    assert builder._verify_asec_source_digests(_args(None, None)) is None
-    assert builder._verify_asec_source_digests(_args(["2022=missing.h5"], [])) is None
+    assert builder._verify_asec_source_digests(_args(None, None)) == {}
+    assert builder._verify_asec_source_digests(_args(["2022=missing.h5"], [])) == {}
 
 
 @pytest.mark.parametrize(
@@ -527,15 +528,17 @@ def test_verify_accepts_matching_bytes_for_pinned_and_unpinned_years(
     unpinned = tmp_path / "census_cps_2019.h5"
     pinned.write_bytes(_FIXTURE_BYTES)
     unpinned.write_bytes(_FIXTURE_BYTES)
-    assert (
-        builder._verify_asec_source_digests(
-            _args(
-                [f"2022={pinned}", f"2019={unpinned}"],
-                [f"2022={_FIXTURE_SHA256.upper()}", f"2019={_FIXTURE_SHA256}"],
-            )
+    # It returns each file's digest under its resolved path, which a
+    # --stage all parent passes to its step processes.
+    assert builder._verify_asec_source_digests(
+        _args(
+            [f"2022={pinned}", f"2019={unpinned}"],
+            [f"2022={_FIXTURE_SHA256.upper()}", f"2019={_FIXTURE_SHA256}"],
         )
-        is None
-    )
+    ) == {
+        str(pinned.resolve()): _FIXTURE_SHA256,
+        str(unpinned.resolve()): _FIXTURE_SHA256,
+    }
 
 
 def _receipt(**digests: str) -> dict:

@@ -113,7 +113,6 @@ def graph_step_arguments(tmp_path: Path, out: Path) -> Namespace:
         no_staging=False,
         no_staged_dataset=False,
         staging_local_only=True,
-        publish_orrery=None,
     )
 
 
@@ -455,23 +454,21 @@ def test_a_graph_step_failure_registers_nothing_and_says_so(tmp_path, capsys):
     assert "Orrery inputs were not written (ValueError)" in capsys.readouterr().err
 
 
-def test_publish_orrery_only_warns_that_the_build_uploads_no_graph(tmp_path, capsys):
+@pytest.mark.parametrize("flag", ["--publish-orrery", "--no-publish-orrery"])
+def test_the_retired_orrery_upload_flags_are_refused(tmp_path, capsys, flag):
     """``--publish-orrery`` asked for an upload to the public Orrery, which
     builds no longer make: the collector builds the graph files from the
-    inputs the staged bundle submits, and keeps a licensed build's private.
-    The flag is accepted, says so, and changes nothing."""
+    inputs the staged bundle submits. Neither it nor ``--no-publish-orrery``
+    is an option any more."""
 
-    args = full_build_support.arguments(tmp_path, "--publish-orrery")
-    warning = capsys.readouterr().err
-    assert "--publish-orrery no longer uploads the graph" in warning
-    assert "collector" in warning
-    # Every emitter a build starts has its collector submissions on
-    # (telemetry_emitter.COLLECTOR_SUBMISSIONS), so a remotely staged bundle
-    # submits its Orrery inputs whether or not the flag is given.
-    assert "submits them to the collector with or without the flag" in warning
-    quiet = full_build_support.arguments(tmp_path, "--no-publish-orrery")
-    assert "--publish-orrery" not in capsys.readouterr().err
-    assert args.publish_orrery is True and quiet.publish_orrery is False
+    with pytest.raises(SystemExit) as refused:
+        full_build_support.arguments(tmp_path, flag)
+    assert refused.value.code == 2
+    assert f"unrecognized arguments: {flag}" in capsys.readouterr().err
+
+
+def test_a_build_request_has_no_orrery_upload_setting(tmp_path):
+    assert not hasattr(full_build_support.arguments(tmp_path), "publish_orrery")
 
 
 def test_a_refused_build_hands_over_check_verdicts_without_their_failure_lines(

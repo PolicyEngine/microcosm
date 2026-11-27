@@ -386,9 +386,8 @@ def test_batched_base_simulation_refuses_a_stored_aggregate_input(
     assert all(simulation.dataset is None for simulation in ledger.simulations)
 
 
-@pytest.mark.parametrize("aggregate_in_baseline", [False, True])
 def test_batched_reform_simulation_refuses_population_aggregates(
-    monkeypatch, aggregate_in_baseline
+    monkeypatch,
 ) -> None:
     builder = _load_builder_module()
     ledger = _install_fake_engine(
@@ -396,18 +395,135 @@ def test_batched_reform_simulation_refuses_population_aggregates(
         monkeypatch,
         reform_specs=_REFORMS,
         aggregate_reads={"income_tax": ("medicaid_slcsp_state_denominator",)},
-        aggregate_branch="baseline/temporary",
+        aggregate_branch="temporary_parent/temporary_child",
         aggregate_delete_branch=True,
         aggregate_reform_only=True,
-        aggregate_in_baseline=aggregate_in_baseline,
         clone_branches=True,
     )
-    with pytest.raises(ValueError, match=r"computed medicaid_slcsp_state_denominator@"):
+    # The Medicaid denominator is also a baseline-branch reader; this matches
+    # the population-aggregate refusal's own message, which comes first.
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"is not batch-invariant: the engine for household batch \d+/\d+ "
+            r"computed medicaid_slcsp_state_denominator@"
+        ),
+    ):
         builder._materialize_target_frame(
             _nested_frame(), _TARGETS, maximum_microsim_batch_size=2
         )
     assert sum(entry["reform"] is None for entry in ledger.constructions) == 3
     assert sum(entry["reform"] is not None for entry in ledger.constructions) == 1
+    assert all(simulation.dataset is None for simulation in ledger.simulations)
+
+
+@pytest.mark.parametrize("batch_size", [None, 2])
+def test_jct_reform_engines_get_the_family_system_alone(
+    monkeypatch, batch_size
+) -> None:
+    """Each JCT batch engine gets the family's reform system and no ``reform=``.
+
+    Given both, policyengine-us 2.2.1 clones the supplied system for every
+    batch and adds a ``baseline`` branch. The family system's
+    behavioral-response parameters are compared once, before its first
+    engine, with the engine's shared baseline system."""
+
+    builder = _load_builder_module()
+    _, _, _, ledger = _materialize(builder, monkeypatch, _nested_frame(), batch_size)
+
+    family_system = ledger.reform_systems[1]
+    assert family_system.reform == "mock_credit"
+    reform_constructions = [
+        entry for entry in ledger.constructions if entry["reform"] is not None
+    ]
+    assert len(reform_constructions) == (1 if batch_size is None else 3)
+    for entry in reform_constructions:
+        assert entry["reform_argument"] is None
+        assert entry["tax_benefit_system"] is family_system
+    assert not any(entry["baseline_branch"] for entry in ledger.constructions)
+    assert ledger.behavioral_response_checks == [
+        (family_system, ledger.shared_baseline_system, builder.PERIOD)
+    ]
+
+
+@pytest.mark.parametrize("batch_size", [None, 2])
+@pytest.mark.parametrize(
+    ("branch", "delete_branch"),
+    [
+        pytest.param(None, False, id="root-engine"),
+        pytest.param("temporary_parent/temporary_child", True, id="deleted-branch"),
+    ],
+)
+def test_jct_reform_batches_refuse_baseline_branch_readers(
+    monkeypatch, batch_size, branch, delete_branch
+) -> None:
+    """A JCT batch engine refuses a formula that reads the ``baseline`` branch.
+
+    It carries none, at every batch count, so the refusal does not depend on
+    the population-aggregate refusal being on, and it reads branches a formula
+    created and deleted again. The first reform engine refuses, and every
+    engine is released."""
+
+    builder = _load_builder_module()
+    for reader in builder.POST_EXPORT_BASELINE_BRANCH_READERS:
+        ledger = _install_fake_engine(
+            builder,
+            monkeypatch,
+            reform_specs=_REFORMS,
+            aggregate_reads={"income_tax": (reader,)},
+            aggregate_branch=branch,
+            aggregate_delete_branch=delete_branch,
+            aggregate_reform_only=True,
+        )
+        with pytest.raises(
+            ValueError, match=rf"computed {reader}@{builder.PERIOD}"
+        ) as raised:
+            builder._materialize_target_frame(
+                _nested_frame(), _TARGETS, maximum_microsim_batch_size=batch_size
+            )
+        if (
+            batch_size is None
+            or reader not in builder.US_POPULATION_AGGREGATE_VARIABLES
+        ):
+            # Otherwise the population-aggregate refusal names it first.
+            assert "jct_mock_credit" in str(raised.value), reader
+            assert "baseline branch" in str(raised.value), reader
+        reform_engines = [
+            simulation for simulation in ledger.simulations if simulation.reform
+        ]
+        assert len(reform_engines) == 1, reader
+        assert all(simulation.dataset is None for simulation in ledger.simulations), (
+            reader
+        )
+
+
+def test_jct_reform_refuses_moved_behavioral_responses_before_its_engines(
+    monkeypatch,
+) -> None:
+    """A JCT reform system that sets a behavioral-response parameter off
+    baseline is refused before any of its batch engines is built: those
+    engines carry no ``baseline`` branch, so policyengine-us would score the
+    response as zero."""
+
+    builder = _load_builder_module()
+    moved = "gov.simulation.labor_supply_responses.elasticities.income"
+    ledger = _install_fake_engine(
+        builder,
+        monkeypatch,
+        reform_specs=_REFORMS,
+        moved_behavioral_response_parameters=(moved,),
+    )
+    with pytest.raises(
+        ValueError,
+        match=rf"jct_mock_credit.* off baseline at {builder.PERIOD}: {re.escape(moved)}\.",
+    ):
+        builder._materialize_target_frame(
+            _nested_frame(), _TARGETS, maximum_microsim_batch_size=2
+        )
+    assert [entry for entry in ledger.constructions if entry["reform"]] == []
+    assert ledger.behavioral_response_checks == [
+        (ledger.reform_systems[1], ledger.shared_baseline_system, builder.PERIOD)
+    ]
     assert all(simulation.dataset is None for simulation in ledger.simulations)
 
 
