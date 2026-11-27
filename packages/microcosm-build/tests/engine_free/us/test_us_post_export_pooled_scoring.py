@@ -28,12 +28,14 @@ import json
 import multiprocessing
 import os
 import sys
+import time
 import types
 from collections import defaultdict
 from pathlib import Path
 
 import pytest
 
+from microcosm.build.termination import BuildTerminatedError
 from microcosm.build.us_runtime.post_export_requests import (
     RECORDS_REQUESTS_ONLY,
     ParameterChangesReform,
@@ -136,10 +138,11 @@ def _load(frame):
     return load_frame
 
 
-def _serial_scorer(builder, plan, directory: Path):
+def _serial_scorer(builder, plan, directory: Path, *, batch_parent=None):
     return builder._HouseholdBatchedPostExportScorer(
         _written_h5(directory),
         maximum_microsim_batch_size=BATCH_SIZE,
+        batch_parent=batch_parent,
         expected_n_households=N_HOUSEHOLDS,
         microsimulation_cls=FakeMicrosimulation,
         dataset_from_frame=identity_dataset,
@@ -148,10 +151,13 @@ def _serial_scorer(builder, plan, directory: Path):
     )
 
 
-def _pooled_scorer(builder, plan, directory: Path, workers: int, **settings):
+def _pooled_scorer(
+    builder, plan, directory: Path, workers: int, *, batch_parent=None, **settings
+):
     return builder._PooledPostExportScorer(
         _written_h5(directory),
         maximum_microsim_batch_size=BATCH_SIZE,
+        batch_parent=batch_parent,
         expected_n_households=N_HOUSEHOLDS,
         consumer_requests=plan.consumer_requests,
         pooling=_pooling(builder, workers, **settings),
@@ -1402,22 +1408,39 @@ def _certification(builder, tmp_path: Path, *, evidence_release: bool, owners=()
     )
 
 
-def _certify_with(builder, monkeypatch, scorer, record, certification) -> None:
-    """Run ``_certify_us_build`` on ``scorer`` (which holds the fixture frame)."""
-    monkeypatch.setattr(
-        builder, "_open_post_export_scorer", lambda *args, **options: scorer
-    )
+def _certify_with(builder, monkeypatch, make_scorer, record, certification, opened):
+    """Run ``_certify_us_build`` with ``make_scorer(batch_parent)`` as the
+    scorer it opens, in the batch parent certification passes (the scorer
+    holds the fixture frame). Each scorer opened is added to ``opened``."""
+
+    def open_scorer(plan, dataset_path, *, batch_parent=None, pooling=None):
+        opened.append(make_scorer(batch_parent))
+        return opened[-1]
+
+    monkeypatch.setattr(builder, "_open_post_export_scorer", open_scorer)
     builder._certify_us_build(record, certification=certification, telemetry=None)
 
 
-def _live_workers(events) -> list[int]:
-    """The processes in the engine log that are still running."""
-    logged = {event["pid"] for event in events}
-    return [
-        process.pid
-        for process in multiprocessing.active_children()
-        if process.pid in logged
-    ]
+def _close_opened(builder, opened) -> None:
+    for scorer in opened:
+        builder._close_post_export_scorer(scorer)
+
+
+def _child_processes() -> set[int]:
+    """The process IDs of this process's live ``multiprocessing`` children."""
+    return {process.pid for process in multiprocessing.active_children()}
+
+
+def _engine_events(log: Path) -> list[dict]:
+    """The engine log so far; a line a worker is still writing is skipped."""
+    events = []
+    for path in sorted(log.glob("*.jsonl")):
+        for text in path.read_text().splitlines():
+            try:
+                events.append({"pid": int(path.stem), **json.loads(text)})
+            except ValueError:
+                continue
+    return events
 
 
 @pytest.mark.parametrize(
@@ -1441,52 +1464,83 @@ def test_a_failed_check_that_stops_certification_stops_the_pools_workers(
     stops certification (the certified tier, or a failure no evidence owner
     matches), certification closes the scorer before its refusal leaves
     ``_certify_us_build``: the reform-validation unit a worker had already
-    started is killed, not left to run until the process exits, and the
-    scorer's batch files are removed."""
+    started is killed at once, not left to run until the process exits, and
+    the scorer's batch files and the batch parent it made are removed."""
     probes = _use_probes(monkeypatch, passing=False)
+    probe_ids = [probe.id for probe in probes]
     plan, fit = _release_plan(builder)
     log = tmp_path / "engine-log"
     log.mkdir()
     monkeypatch.setenv(ENGINE_LOG, str(log))
-    # Every reform other than the check's waits for a file nobody writes.
+    # Every reform other than the check's waits for a file nobody writes, so
+    # reform validation's first unit is still running when the check fails.
     monkeypatch.setenv(
         WAIT_FOR_OTHER_REFORMS,
-        json.dumps(
-            {
-                "file": str(tmp_path / "never-written"),
-                "except": [probe.id for probe in probes],
-            }
-        ),
+        json.dumps({"file": str(tmp_path / "never-written"), "except": probe_ids}),
     )
-    scorer = _pooled_scorer(builder, plan, tmp_path / "scoring", 1)
+    checked_gate = builder.us_reform_coverage_smoke_gate
+    decided: list[float] = []
+
+    def gate_once_reform_validation_started(**arguments):
+        # The pool hands reform validation's first unit to the worker as the
+        # check's last result comes back; wait until the worker has built
+        # that unit's first engine before the check's result is returned.
+        result = checked_gate(**arguments)
+        deadline = time.monotonic() + 60
+        while not any(
+            event["event"] == "construct" and event["reform"] not in (None, *probe_ids)
+            for event in _engine_events(log)
+        ):
+            assert time.monotonic() < deadline, "reform validation never started"
+            time.sleep(0.05)
+        decided.append(time.monotonic())
+        return result
+
+    # After the plan's dry run, which runs the check on a recording seam.
+    monkeypatch.setattr(
+        builder, "us_reform_coverage_smoke_gate", gate_once_reform_validation_started
+    )
+    children_before = _child_processes()
+    opened: list = []
     try:
         with pytest.raises(RuntimeError, match=refusal):
             _certify_with(
                 builder,
                 monkeypatch,
-                scorer,
+                lambda batch_parent: _pooled_scorer(
+                    builder, plan, tmp_path / "scoring", 1, batch_parent=batch_parent
+                ),
                 _record_for_certification(builder, plan, fit, tmp_path),
                 _certification(builder, tmp_path, evidence_release=evidence_release),
+                opened,
             )
-        events = engine_log(log)
-        assert _live_workers(events) == []
+        # The busy worker was killed: the pool waits 10 seconds for a worker
+        # it has told to stop, and the unit it ran waits two minutes.
+        assert time.monotonic() - decided[0] < 8.0
+        assert _child_processes() - children_before == set()
+        [scorer] = opened
         assert not scorer.batch_directory.exists()
+        assert not (
+            tmp_path / "build" / builder.US_POST_EXPORT_BATCH_DIRECTORY
+        ).exists()
 
-        # One worker ran every unit, in the order the pool handed them out.
+        # One worker ran every unit, in the order the pool handed them out:
+        # the merged baseline pass, the check's reformed simulations, then
+        # reform validation's first, which never finished.
+        events = _engine_events(log)
         assert len({event["pid"] for event in events}) == 1
-        reforms = [
-            event["reform"]
-            for event in events
-            if event["event"] == "construct" and event["reform"] is not None
-        ]
+        built = [event["reform"] for event in events if event["event"] == "construct"]
+        first_reform = next(
+            index for index, reform in enumerate(built) if reform is not None
+        )
+        assert first_reform > 0
+        assert None not in built[first_reform:]
         started = [
             reform
-            for index, reform in enumerate(reforms)
-            if index == 0 or reforms[index - 1] != reform
+            for index, reform in enumerate(built[first_reform:], start=first_reform)
+            if built[index - 1] != reform
         ]
-        assert started[: len(probes)] == [probe.id for probe in probes]
-        # One reformed simulation of reform validation had started, and never
-        # finished.
+        assert started[: len(probes)] == probe_ids
         assert len(started) == len(probes) + 1
         execution = scorer.execution_record()
         assert execution["report"]["units_completed"] == (
@@ -1496,50 +1550,69 @@ def test_a_failed_check_that_stops_certification_stops_the_pools_workers(
         assert (release_dir / "reform_coverage_smoke.json").exists()
         assert not (release_dir / "reform_validation.json").exists()
     finally:
-        builder._close_post_export_scorer(scorer)
+        _close_opened(builder, opened)
 
 
-@pytest.mark.parametrize("pooled", [True, False], ids=["pooled", "serial"])
+@pytest.mark.parametrize(
+    ("pooled", "error"),
+    [
+        (True, RuntimeError("the demographics writer broke")),
+        (False, RuntimeError("the demographics writer broke")),
+        (True, BuildTerminatedError()),
+    ],
+    ids=["pooled", "serial", "pooled_sigterm"],
+)
 def test_any_error_during_scoring_closes_the_scorer(
     builder,
     pooled_reforms,
     tmp_path,
     monkeypatch,
     pooled,
+    error,
 ) -> None:
     """An error in any post-export stage, not only the check's refusal, stops
     certification with the scorer closed: no worker is left running and the
-    batch files are removed. The serial scorer is closed the same way."""
+    batch files are removed. That includes a SIGTERM, which certification
+    raises as ``BuildTerminatedError`` (a ``KeyboardInterrupt``, not an
+    ``Exception``). The serial scorer is closed the same way."""
     _use_probes(monkeypatch, passing=True)
     plan, fit = _release_plan(builder)
-    log = tmp_path / "engine-log"
-    log.mkdir()
-    monkeypatch.setenv(ENGINE_LOG, str(log))
-    scorer = (
-        _pooled_scorer(builder, plan, tmp_path / "scoring", 1)
-        if pooled
-        else _serial_scorer(builder, plan, tmp_path / "scoring")
-    )
+
+    def make_scorer(batch_parent):
+        if pooled:
+            return _pooled_scorer(
+                builder, plan, tmp_path / "scoring", 1, batch_parent=batch_parent
+            )
+        return _serial_scorer(
+            builder, plan, tmp_path / "scoring", batch_parent=batch_parent
+        )
 
     def broken_demographics(**arguments):
-        raise RuntimeError("the demographics writer broke")
+        raise error
 
     monkeypatch.setattr(builder, "_write_demographics", broken_demographics)
+    children_before = _child_processes()
+    opened: list = []
     try:
-        with pytest.raises(RuntimeError, match="the demographics writer broke"):
+        with pytest.raises(type(error)) as raised:
             _certify_with(
                 builder,
                 monkeypatch,
-                scorer,
+                make_scorer,
                 _record_for_certification(builder, plan, fit, tmp_path),
                 _certification(builder, tmp_path, evidence_release=False),
+                opened,
             )
+        assert raised.value is error
         assert (tmp_path / "release" / "reform_validation.json").exists()
+        [scorer] = opened
         assert not scorer.batch_directory.exists()
-        if pooled:
-            assert _live_workers(engine_log(log)) == []
+        assert not (
+            tmp_path / "build" / builder.US_POST_EXPORT_BATCH_DIRECTORY
+        ).exists()
+        assert _child_processes() - children_before == set()
     finally:
-        builder._close_post_export_scorer(scorer)
+        _close_opened(builder, opened)
 
 
 def test_an_error_closing_the_scorer_does_not_replace_the_one_that_stopped_it(
@@ -1553,24 +1626,32 @@ def test_an_error_closing_the_scorer_does_not_replace_the_one_that_stopped_it(
     that second error and raises the first, the check's refusal."""
     _use_probes(monkeypatch, passing=False)
     plan, fit = _release_plan(builder)
-    scorer = _serial_scorer(builder, plan, tmp_path / "scoring")
 
     def failing_close():
         raise OSError("the batch directory is gone")
 
-    monkeypatch.setattr(scorer, "close", failing_close)
+    def make_scorer(batch_parent):
+        scorer = _serial_scorer(
+            builder, plan, tmp_path / "scoring", batch_parent=batch_parent
+        )
+        monkeypatch.setattr(scorer, "close", failing_close)
+        return scorer
+
+    opened: list = []
     try:
         with pytest.raises(RuntimeError, match="Release gates failed"):
             _certify_with(
                 builder,
                 monkeypatch,
-                scorer,
+                make_scorer,
                 _record_for_certification(builder, plan, fit, tmp_path),
                 _certification(builder, tmp_path, evidence_release=False),
+                opened,
             )
         assert "OSError: the batch directory is gone" in capsys.readouterr().err
     finally:
-        type(scorer).close(scorer)
+        for scorer in opened:
+            type(scorer).close(scorer)
 
 
 @pytest.mark.parametrize(
@@ -1595,18 +1676,20 @@ def test_a_failed_check_that_does_not_stop_certification_cancels_nothing(
     is scored in the pool and writes its file."""
     _use_probes(monkeypatch, passing=False)
     plan, fit = _release_plan(builder)
-    scorer = _pooled_scorer(builder, plan, tmp_path / "scoring", 1)
 
     def finished(**arguments):
         raise _ScoringFinishedError
 
     monkeypatch.setattr(builder, "_write_population_structure_holdout", finished)
+    opened: list = []
     try:
         with pytest.raises(_ScoringFinishedError):
             _certify_with(
                 builder,
                 monkeypatch,
-                scorer,
+                lambda batch_parent: _pooled_scorer(
+                    builder, plan, tmp_path / "scoring", 1, batch_parent=batch_parent
+                ),
                 _record_for_certification(builder, plan, fit, tmp_path, **settings),
                 _certification(
                     builder,
@@ -1614,6 +1697,7 @@ def test_a_failed_check_that_does_not_stop_certification_cancels_nothing(
                     evidence_release=evidence_release,
                     owners=owners,
                 ),
+                opened,
             )
         release_dir = tmp_path / "release"
         assert {path.name for path in release_dir.iterdir()} == {
@@ -1629,4 +1713,4 @@ def test_a_failed_check_that_does_not_stop_certification_cancels_nothing(
             "allow_reform_coverage_smoke_failures", False
         )
     finally:
-        builder._close_post_export_scorer(scorer)
+        _close_opened(builder, opened)
