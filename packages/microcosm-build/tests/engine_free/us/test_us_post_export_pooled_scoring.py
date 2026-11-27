@@ -9,6 +9,11 @@ through it on the scoring tests' fake engine, in spawned workers, and require:
   be byte-identical to the serial scorer's, at one and at three workers
   (``assert_identical_across_worker_counts``), with only the block's
   ``execution`` record (run metadata) apart;
+- every baseline pass to run in the certifying process, as the serial scorer
+  runs it, before the pool starts, and the pool to run only reform passes
+  (Anthony's decision of 27 November: a worker's memory cap is sized for
+  reform passes, and a baseline pass over one batch went over it in the 5%
+  export probe);
 - the serial scorer's refusals to happen in the workers, with the serial
   error's class name and text: a population aggregate in a multi-batch pass,
   a baseline-branch reader in a reform pass, a reform that moves a
@@ -42,6 +47,7 @@ from microcosm.build.worker_pool import (
     WorkerPoolUnitError,
 )
 from microcosm.calibrate import TargetRegistry
+from test_support.microcosm_build import us_post_export_pool as fake_engines
 from test_support.microcosm_build.us_post_export_pool import (
     COMPUTES,
     ENGINE_LOG,
@@ -228,6 +234,36 @@ def _reform_unit_count(plan) -> int:
     )
 
 
+def _record_pool_starts(monkeypatch, builder) -> list[dict[str, int]]:
+    """Each pool the scorer creates, with how many fake engines this process
+    had built by then and how many of those were not yet released."""
+    starts: list[dict[str, int]] = []
+    pool_class = builder.WorkerPool
+
+    def recording_pool(*arguments, **options):
+        starts.append(
+            {
+                "built_here": len(fake_engines._ENGINES),
+                "unreleased_here": sum(
+                    engine.dataset is not None for engine in fake_engines._ENGINES
+                ),
+            }
+        )
+        return pool_class(*arguments, **options)
+
+    monkeypatch.setattr(builder, "WorkerPool", recording_pool)
+    return starts
+
+
+def _baseline_pass_records(execution) -> list[tuple[str, int, str | None]]:
+    """The execution record's baseline passes: label, keys and error."""
+    passes = execution["baseline_passes"]
+    assert all(
+        record["wall_seconds"] >= 0 and record["cpu_seconds"] >= 0 for record in passes
+    )
+    return [(record["label"], record["keys"], record["error"]) for record in passes]
+
+
 def test_pooled_scoring_writes_the_serial_scorers_bytes_at_any_worker_count(
     builder,
     pooled_reforms,
@@ -275,8 +311,17 @@ def test_pooled_scoring_writes_the_serial_scorers_bytes_at_any_worker_count(
     assert canonical_result_bytes(pooled) == canonical_result_bytes(serial)
 
     reform_units = _reform_unit_count(plan)
+    merged_keys = len(
+        builder._ascending_period_plan(
+            key for keys in plan.baseline_plans.values() for key in keys
+        )
+    )
     for workers, execution in executions.items():
         report = execution.pop("report")
+        assert _baseline_pass_records(execution) == [
+            ("merged baseline plan", merged_keys, None)
+        ]
+        del execution["baseline_passes"]
         assert execution == {
             "mode": "pooled",
             "chosen_by": "test",
@@ -287,18 +332,24 @@ def test_pooled_scoring_writes_the_serial_scorers_bytes_at_any_worker_count(
             "max_attempts": 2,
             "max_units_ahead": None,
             "worker_environment_variables": [],
-            "units": {"baseline": workers, "reform": reform_units},
+            "units": {"reform": reform_units},
             "resources": None,
             "merged_baseline_fallback": None,
         }
-        assert report["units_completed"] == workers + reform_units
+        assert report["units_completed"] == reform_units
         assert report["failed_attempts"] == []
         assert 1 <= report["max_live_workers"] <= workers
 
     events = engine_log(logs[3])
     constructions = [event for event in events if event["event"] == "construct"]
-    assert os.getpid() not in {event["pid"] for event in events}
-    assert len({event["pid"] for event in constructions}) > 1
+    # The merged baseline pass ran here, one engine per batch; the workers
+    # built reform engines only.
+    here = [event for event in constructions if event["pid"] == os.getpid()]
+    assert len(here) == 3
+    assert all(event["system_reform"] is None for event in here)
+    in_workers = [event for event in constructions if event["pid"] != os.getpid()]
+    assert len({event["pid"] for event in in_workers}) > 1
+    assert all(event["system_reform"] is not None for event in in_workers)
     assert all(
         event["spm"] == dict(US_RELEASE_SPM_SELECTION) for event in constructions
     )
@@ -526,9 +577,11 @@ def test_a_failed_merged_pass_falls_back_as_the_serial_scorer_does(
     assert holdout["status"] == "unavailable"
     assert holdout["error"] == "RuntimeError: fixture engine refuses medicare_enrolled"
     planned = [name for name, keys in plan.baseline_plans.items() if keys]
-    assert execution["report"]["units_completed"] == (
-        2 + 2 * len(planned) + _reform_unit_count(plan)
-    )
+    assert [label for label, _, _ in _baseline_pass_records(execution)] == [
+        "merged baseline plan",
+        *(f"{name} baseline plan" for name in planned),
+    ]
+    assert execution["report"]["units_completed"] == _reform_unit_count(plan)
 
 
 def test_a_changed_batch_file_stops_pooled_scoring(
@@ -627,11 +680,39 @@ def test_a_reform_a_worker_cannot_unpickle_stops_the_run_and_names_its_unit(
         scorer.close()
 
 
-def test_the_pool_starts_no_more_workers_than_units(
+def test_the_pool_starts_no_more_workers_than_reform_units(
     builder,
     pooled_reforms,
     tmp_path,
 ) -> None:
+    def asks(total):
+        return [
+            (FIXTURE_REFORM, [("income_tax", 2024)]),
+            (OTHER_REFORM, [("income_tax", 2024)]),
+        ]
+
+    consumer = _fixture_consumer(asks)
+    plan = _fixture_plan(builder, consumer)
+    scorer = _pooled_scorer(builder, plan, tmp_path, 8)
+    try:
+        scoring = scorer.open_consumer("fixture", plan.baseline_plan("fixture"))
+        consumer(scoring.simulate)
+        scorer.finish_consumer(scoring)
+        execution = scorer.execution_record()
+    finally:
+        scorer.close()
+    assert execution["units"] == {"reform": 2}
+    assert (execution["requested_workers"], execution["workers"]) == (8, 2)
+    assert execution["report"]["max_live_workers"] <= 2
+
+
+def test_a_consumer_without_reforms_starts_no_pool(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    starts = _record_pool_starts(monkeypatch, builder)
     plan = _fixture_plan(builder, _fixture_consumer(lambda total: []))
     scorer = _pooled_scorer(builder, plan, tmp_path, 8)
     try:
@@ -640,9 +721,12 @@ def test_the_pool_starts_no_more_workers_than_units(
         execution = scorer.execution_record()
     finally:
         scorer.close()
-    assert execution["units"] == {"baseline": 3, "reform": 0}
-    assert (execution["requested_workers"], execution["workers"]) == (8, 3)
-    assert execution["report"]["max_live_workers"] <= 3
+    assert starts == []
+    assert (execution["units"], execution["workers"], execution["report"]) == (
+        {"reform": 0},
+        0,
+        None,
+    )
 
 
 def test_workers_get_the_lock_check_record_and_the_set_environment(
@@ -695,18 +779,6 @@ def test_the_plan_records_each_consumers_requests_and_passes(builder) -> None:
     validation = plan.consumer_requests["reform_validation"]
     assert max(len(keys) for _, keys in validation.reform_passes) == 2
     assert "consumer_requests" not in json.dumps(plan.record())
-
-
-def test_the_batch_ranges_cover_every_batch_once(builder) -> None:
-    for n_batches in (1, 2, 3, 7, 177):
-        for ranges in (1, 2, 4, 17, 200):
-            split = builder._post_export_batch_ranges(n_batches, ranges)
-            assert [position for batches in split for position in batches] == list(
-                range(n_batches)
-            )
-            assert len(split) == min(ranges, n_batches)
-            sizes = {len(batches) for batches in split}
-            assert max(sizes) - min(sizes) <= 1
 
 
 # ---------------------------------------------------------------------------
@@ -930,7 +1002,7 @@ def _baseline_consumer(*variables):
     return consumer
 
 
-def test_a_merged_pass_a_worker_cannot_finish_falls_back_as_the_serial_scorer_does(
+def test_a_merged_pass_that_runs_out_of_memory_falls_back_here_before_the_pool(
     builder,
     pooled_reforms,
     tmp_path,
@@ -938,13 +1010,16 @@ def test_a_merged_pass_a_worker_cannot_finish_falls_back_as_the_serial_scorer_do
     capsys,
 ) -> None:
     """An engine runs out of memory on the merged pass's three keys but not
-    on either consumer's two. The serial scorer catches the MemoryError and
-    scores each consumer's own plan; so does the pool, once the merged unit
-    has failed on every attempt."""
+    on any consumer's own plan. As the serial scorer does, every consumer then
+    scores its own plan in this process; all of them are scored before the
+    pool starts, so no baseline engine is built here while workers run."""
     monkeypatch.setenv(MEMORY_KEYS, "2")
     consumers = {
         "first": _baseline_consumer("age", "snap"),
         "second": _baseline_consumer("age", "income_tax"),
+        "third": _fixture_consumer(
+            lambda total: [(FIXTURE_REFORM, [("income_tax", 2024)])]
+        ),
     }
     plan = builder._post_export_scoring_plan(
         n_households=N_HOUSEHOLDS,
@@ -969,19 +1044,35 @@ def test_a_merged_pass_a_worker_cannot_finish_falls_back_as_the_serial_scorer_do
 
     serial = run(_serial_scorer(builder, plan, tmp_path / "serial"))
     assert "merged baseline plan failed" in capsys.readouterr().out
+    starts = _record_pool_starts(monkeypatch, builder)
+    before = len(fake_engines._ENGINES)
     pooled = run(_pooled_scorer(builder, plan, tmp_path / "pooled", 1))
     assert "merged baseline plan failed" in capsys.readouterr().out
     assert canonical_result_bytes(pooled) == canonical_result_bytes(serial)
-    # The record keeps the failed pool's report: the attempts that failed and
-    # the workers they started, with the fallback's units.
+    # One engine for the merged pass (it fails in the first batch), then
+    # three batches for each consumer's own plan, all before the pool starts.
+    built_here = len(fake_engines._ENGINES) - before
+    assert built_here == 1 + 3 * 3
+    assert [start["built_here"] - before for start in starts] == [built_here]
+    assert [start["unreleased_here"] for start in starts] == [0]
     execution = executions[1]
-    assert execution["merged_baseline_fallback"].startswith("WorkerPoolUnitError")
-    assert execution["units"] == {"baseline": 1, "reform": 0, "fallback_baseline": 2}
+    assert execution["merged_baseline_fallback"] == (
+        "MemoryError: fixture engine holds more than 2 keys"
+    )
+    assert _baseline_pass_records(execution) == [
+        (
+            "merged baseline plan",
+            3,
+            "MemoryError: fixture engine holds more than 2 keys",
+        ),
+        ("first baseline plan", 2, None),
+        ("second baseline plan", 2, None),
+        ("third baseline plan", 1, None),
+    ]
+    assert execution["units"] == {"reform": 1}
     report = execution["report"]
-    assert report["pools"] == 2
-    assert len(report["failed_attempts"]) == 2
-    assert report["worker_starts"] >= 3
-    assert report["units_completed"] == 2
+    assert (report["pools"], report["failed_attempts"]) == (1, [])
+    assert report["units_completed"] == 1
 
 
 def test_a_unit_the_pool_cannot_finish_fails_its_own_consumer_alone(
@@ -1138,20 +1229,29 @@ def test_a_pool_that_cannot_start_refuses_every_consumer(
     digest, none starts, and every consumer is refused with a WorkerPoolError
     that names the refusal."""
     monkeypatch.setattr(builder, "_RELEASE_TOOL_SHA256", "0" * 64)
+    consumers = {
+        "first": _fixture_consumer(
+            lambda total: [(FIXTURE_REFORM, [("income_tax", 2024)])]
+        ),
+        "second": _fixture_consumer(
+            lambda total: [(OTHER_REFORM, [("income_tax", 2024)])]
+        ),
+    }
     plan = builder._post_export_scoring_plan(
         n_households=N_HOUSEHOLDS,
         maximum_microsim_batch_size=BATCH_SIZE,
-        consumers={
-            "first": _baseline_consumer("age"),
-            "second": _baseline_consumer("snap"),
-        },
+        consumers=consumers,
     )
     scorer = _pooled_scorer(builder, plan, tmp_path, 1)
     try:
+        # The baseline passes run here, so a consumer opens; its first reform
+        # request needs the workers.
+        first = scorer.open_consumer("first", plan.baseline_plan("first"))
         with pytest.raises(WorkerPoolError, match="SHA-256"):
-            scorer.open_consumer("first", plan.baseline_plan("first"))
+            consumers["first"](first.simulate)
+        second = scorer.open_consumer("second", plan.baseline_plan("second"))
         with pytest.raises(builder.PostExportPoolStoppedError):
-            scorer.open_consumer("second", plan.baseline_plan("second"))
+            consumers["second"](second.simulate)
     finally:
         scorer.close()
 
@@ -1209,12 +1309,15 @@ def test_the_execution_record_names_the_environment_workers_got(
         "us_engine_abi_lock_check_environment",
         lambda: {"MICROCOSM_TEST_HANDED_DOWN": "handed down"},
     )
-    plan = _fixture_plan(builder, _fixture_consumer(lambda total: []))
+    consumer = _fixture_consumer(
+        lambda total: [(FIXTURE_REFORM, [("income_tax", 2024)])]
+    )
+    plan = _fixture_plan(builder, consumer)
     scorer = _pooled_scorer(builder, plan, tmp_path, 1)
     try:
-        scorer.finish_consumer(
-            scorer.open_consumer("fixture", plan.baseline_plan("fixture"))
-        )
+        scoring = scorer.open_consumer("fixture", plan.baseline_plan("fixture"))
+        consumer(scoring.simulate)
+        scorer.finish_consumer(scoring)
         execution = scorer.execution_record()
     finally:
         scorer.close()
@@ -1276,20 +1379,21 @@ def test_workers_check_they_run_the_parents_release_tool(builder) -> None:
     assert builder._RELEASE_TOOL_SHA256 == hashlib.sha256(tool.read_bytes()).hexdigest()
 
 
-def test_a_stage_own_baseline_raises_its_first_problem_in_batch_order(
+def test_a_stage_whose_own_baseline_failed_raises_that_error_when_it_opens(
     builder,
     pooled_reforms,
     tmp_path,
     monkeypatch,
 ) -> None:
-    """After the merged pass fails, a stage's own baseline pass that raises in
-    its first batch raises that error, as the serial scorer does, even when a
-    later range of it also fails on every attempt in the pool."""
+    """After the merged pass fails, every stage's own baseline pass runs here
+    before the pool starts. One that raises is kept, without its traceback's
+    frames, and raised when that stage opens, with the error the serial
+    scorer raises then; the original traceback is a note on it."""
     monkeypatch.setenv(FAIL_ON_HOUSEHOLDS, json.dumps({"snap": [1]}))
-    monkeypatch.setenv(MEMORY_ON_HOUSEHOLDS, json.dumps({"snap": [7]}))
     consumers = {
         "first": _baseline_consumer("age", "income_tax"),
         "second": _baseline_consumer("age", "snap"),
+        "third": _baseline_consumer("age"),
     }
     plan = builder._post_export_scoring_plan(
         n_households=N_HOUSEHOLDS,
@@ -1297,22 +1401,32 @@ def test_a_stage_own_baseline_raises_its_first_problem_in_batch_order(
         consumers=consumers,
     )
 
-    def run(scorer):
+    def run(scorer, kept=None):
         observed = {}
         try:
             for name, consumer in consumers.items():
+                if kept is not None and name == "second":
+                    kept.extend(scorer._own_baselines.values())
                 try:
                     scoring = scorer.open_consumer(name, plan.baseline_plan(name))
-                except (RuntimeError, MemoryError) as error:
+                except RuntimeError as error:
                     observed[name] = f"{type(error).__name__}: {error}"
+                    notes = getattr(error, "__notes__", [])
+                    observed[f"{name} notes"] = any(
+                        "Traceback" in note for note in notes
+                    )
                     continue
                 observed[name] = consumer(scoring.simulate)
         finally:
             scorer.close()
         return observed
 
-    monkeypatch.setenv(MEMORY_ON_HOUSEHOLDS, "{}")
     serial = run(_serial_scorer(builder, plan, tmp_path / "serial"))
     assert serial["second"] == "RuntimeError: fixture engine refuses snap"
-    monkeypatch.setenv(MEMORY_ON_HOUSEHOLDS, json.dumps({"snap": [7]}))
-    assert run(_pooled_scorer(builder, plan, tmp_path / "pooled", 2)) == serial
+    kept: list = []
+    pooled = run(_pooled_scorer(builder, plan, tmp_path / "pooled", 2), kept)
+    assert pooled.pop("second notes") is True
+    serial.pop("second notes")
+    assert pooled == serial
+    errors = [value for value in kept if isinstance(value, BaseException)]
+    assert len(errors) == 1 and errors[0].__traceback__ is None

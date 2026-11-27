@@ -1355,15 +1355,24 @@ def test_a_pooled_probe_writes_the_serial_probes_files_and_times_its_workers(
     assert {(row["stage"], row["label"]) for row in pooled_passes} == {
         (row["stage"], row["label"]) for row in serial_passes
     }
-    assert all(row["process"] == "pool worker" for row in pooled_passes)
-    assert os.getpid() not in {row["worker_pid"] for row in pooled_passes}
+    # The baseline passes ran in this process, as in the serial probe; the
+    # workers ran the reform passes.
+    assert all(row["process"] == "certifying process" for row in serial_passes)
+    in_workers = [row for row in pooled_passes if row["process"] == "pool worker"]
+    here = [row for row in pooled_passes if row["process"] == "certifying process"]
+    assert len(in_workers) + len(here) == len(pooled_passes)
+    assert here and not any(row["reform"] for row in here)
+    assert in_workers and all(row["reform"] for row in in_workers)
+    assert [(row["stage"], row["label"]) for row in here] == [
+        (row["stage"], row["label"]) for row in serial_passes if not row["reform"]
+    ]
+    assert os.getpid() not in {row["worker_pid"] for row in in_workers}
     assert all(
-        row["cpu_seconds"] >= 0 and row["worker_peak_rss_gib"] > 0
-        for row in pooled_passes
+        row["cpu_seconds"] >= 0 and row["worker_peak_rss_gib"] > 0 for row in in_workers
     )
     smoke_timing = pooled["stages"]["reform_coverage_smoke"]["timing"]
     assert smoke_timing["worker_passes"] == sum(
-        row["stage"] == "reform_coverage_smoke" for row in pooled_passes
+        row["stage"] == "reform_coverage_smoke" for row in in_workers
     )
     assert smoke_timing["worker_cpu_seconds"] > 0
     assert serial["stages"]["reform_coverage_smoke"]["timing"]["worker_passes"] == 0
