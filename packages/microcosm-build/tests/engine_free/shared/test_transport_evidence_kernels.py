@@ -151,6 +151,10 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # their reviewed registers through these two modules.
         "microcosm.build.declared_registers",
         "microcosm.build.us_runtime.fiscal_target_registers",
+        # microcosm#1755: the country spec checks a package's declared target
+        # sets with the shared reader when it loads the bundle, and the US
+        # field ledger does the same for its target_sets claim.
+        "microcosm.calibrate.target_sets",
         # microcosm#1585: the US keyed draws call
         # stochastic_assignment.stable_identity_uniforms.
         "microcosm.build.stochastic_assignment",
