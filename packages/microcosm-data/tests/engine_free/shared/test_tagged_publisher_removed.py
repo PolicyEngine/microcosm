@@ -23,11 +23,14 @@ from test_support.paths import REPOSITORY_ROOT
 #: The tagged publisher's public names, none of which is left.
 TAGGED_PUBLISHER_NAMES = ("publish_release", "prepare_release", "PreparedRelease")
 
-#: How code ran the tagged publisher: its module, or its command (but not
-#: ``microcosm-publish-release-build``).
+#: How code ran the tagged publisher: its module, by any import, its command
+#: (but not ``microcosm-publish-release-build``) or its shell wrapper.
 TAGGED_PUBLISHER_REFERENCE = re.compile(
-    r"microcosm\.data\.publish_cli|microcosm-publish-release(?!-build)"
+    r"\bpublish_cli\b|microcosm-publish-release(?!-build)|publish_release\.sh"
 )
+#: The files searched: code, shell scripts, configuration, workflows and the
+#: tools' own READMEs. The packages' JSON data is left out for its size.
+SEARCHED_SUFFIXES = {".py", ".sh", ".example", ".toml", ".md", ".yml", ".yaml"}
 
 
 def test_microcosm_data_installs_no_tagged_publish_command() -> None:
@@ -74,11 +77,12 @@ def test_no_tool_or_package_runs_the_tagged_publisher() -> None:
     searched = [
         *sorted((REPOSITORY_ROOT / "tools").rglob("*")),
         *sorted((REPOSITORY_ROOT / "packages").glob("*/src/**/*")),
+        *sorted((REPOSITORY_ROOT / ".github/workflows").glob("*")),
     ]
     references = [
         f"{source.relative_to(REPOSITORY_ROOT)}:{number}"
         for source in searched
-        if source.is_file() and source.suffix in {".py", ".sh", ".example", ".toml"}
+        if source.is_file() and source.suffix in SEARCHED_SUFFIXES
         for number, text in enumerate(
             source.read_text(errors="replace").splitlines(), start=1
         )

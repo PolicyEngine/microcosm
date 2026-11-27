@@ -655,6 +655,27 @@ def test_prepare_build_folder_release_lists_the_bound_gate_evidence(
         assert files[name].path == national / name
 
 
+def test_prepare_build_folder_release_repeats_the_contract_warnings_and_proceeds(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """A release contract warning is repeated as a warning and listed with the
+    build, never refused (microcosm#1301)."""
+    national = _as_us_national_build_folder_release(release_dir)
+    root = _microcosm_named_artifacts(artifact_root)
+    monkeypatch.setattr(
+        release_module,
+        "validate_release_dir",
+        lambda _path, **_kwargs: list(_CONTRACT_WARNINGS),
+    )
+
+    with pytest.warns(UserWarning, match="release contract: synthetic.json carries"):
+        prepared = release_module.prepare_build_folder_release(
+            national, artifact_root=root
+        )
+
+    assert prepared.contract_warnings == tuple(_CONTRACT_WARNINGS)
+
+
 def test_prepare_build_folder_release_publishes_a_build_whose_diagnostics_failed(
     release_dir: Path, artifact_root: Path, monkeypatch
 ) -> None:
