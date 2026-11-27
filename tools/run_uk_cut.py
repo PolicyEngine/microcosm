@@ -100,7 +100,9 @@ CANDIDATE_NAME = "microcosm_uk_2024_25"
 SPINE_NAME = "uk_frs_spine_2024_25.h5"
 PUBLISH_REPO = "policyengine/populace-uk-private"
 TELEMETRY_REPO = "policyengine/populace-uk-staging"
-STAGING_BRANCH = f"release-staging/{RELEASE_ID}"
+#: The publisher: it publishes each build into its own folder through the
+#: emitter and records it in releases.json.
+PUBLISHER_MODULE = "microcosm.build.release_publication"
 #: Where the inputs the Hub holds nowhere else live, and where a dense spine
 #: built elsewhere is handed over (``dense-spine``'s printed upload).
 BUILD_INPUTS_REPO = "policyengine/microcosm-uk-build-inputs"

@@ -436,7 +436,7 @@
     "frs_company_car_fuel_code",
     "frs_company_car_contribution"
    ],
-   "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults. frs_company_car_price_band, frs_company_car_fuel_code, frs_company_car_private_fuel and frs_company_car_contribution carry each person's company car from the FRS job tab (CARVAL, FUELTYP, EXPBEN03, and CARAMT where CARCON is 1, on their EXPBEN01 job with the lowest JOBTYPE), stage-internal carriers the company_cars stage reads and the release drops (PolicyEngine/uk-autumn-budget-dashboard-2026#316). frs_uc_lcw_status carries DWP's limited capability for work status on a linked Universal Credit claim (BENEFITS.UCLCW, coded 0 None, 1 LCFW Group and 2 LCFWRA Group in SN 9563's UKDA data dictionary; blank, as UCSTART is, where the claim has no linked record) on the UC row's person, NOT_LINKED for everyone else; the FRS keeps one UC row per claim, couples included, so the status is the claim's. It is a stage-internal carrier the uc_limited_capability stage reads and the release drops (microcosm#1095, Y1). frs_uc_carer_element carries DWP's carer element on a linked Universal Credit claim (BENEFITS.UCCAREEL, which SN 9563's UKDA data dictionary labels the weekly carer element amount and gives no value labels; the 2024-25 file codes it 0 or 1 on every linked claim, read as NONE or CARER on a claim with a linked record, UCSTART present, and NOT_LINKED on any other) on the UC row's person, NOT_LINKED for everyone else; frs_disability reads it only to check the carer link against DWP's record, and the release drops it (A3 (f) of the November event-data plan's PR3, microcosm#1095). frs_care_recipients carries each person's main care recipients from the FRS care tab (CARE.NEEDPER, WHOLOO01 to WHOLOO14 and HOUR01 to HOUR14, coded as HOURTOT is) as a bitmask, with bit n for household member n among the people given the person's largest weekly band and bit 15 for anyone outside the household among them; frs_disability reads it to write cares_for_severely_disabled_person, and the release drops it (A3 of the November event-data plan's PR3, microcosm#1095). imd_decile, each household's decile on its own nation's index of multiple deprivation (IMDE, IMDW, IMDS or IMDN), 1 to 10, and 0 where none is observed or the region is unknown, and council_tax_band_observed, False in Northern Ireland, for a CTBAND code outside 1 to 9, for a band the household's region does not use and for an unknown region (council_tax_band itself is unchanged), are stage-internal carriers the clone-first spine's area assignment conditions on and the release drops; they stay out of every receipt and of the spine sidecar's nonzero shares, and a household tab without one of the four IMD variables is refused (microcosm#931)."
+   "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage, except two identity-keyed draws. One is the UC start-up claim recency (uk-data#527). The other is each person's months_since_last_birthday, which policyengine-uk reads to place a date of birth (the two-child limit, the State Pension scheme, the Pension Credit qualifying age). Each single year of age and sex is spread evenly over the year at the FRS weights, in an order set by a draw on the person's stable id, as the engine spreads it when the column is unset, and the column is stored so every later engine read, the calibration's and the release's included, takes the same months whatever weights or identifiers the file carries (microcosm#1095). The UC start-up period needs the raw claim, interview and job dates only this stage reads, so a UC record without a linked claim date takes its claim recency from a benefit-unit-keyed draw at the linked share. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge), and frs_care_hours_in_household the largest of the four in-household care bands (HOURAB, HOURAH, HOURCB, HOURCH) the same way, a stage-internal carrier the Carer's Allowance draw reads and the release drops (microcosm#1418); would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882); after the SPI income chain, carers_allowance_take_up opens the flag to carers the earnings limit alone keeps from the allowance (microcosm#1319). SEINCAM2, the self-employment income the respondent gives, splits by its sign (uk-data#528), so profits go to self_employment_income and losses to trading_loss as a positive amount, the two inputs policyengine-uk reads from 2.131.0 (pe-uk#2085). The engine uprates trading_loss into each projected year as it does self_employment_income, so a loss persists like a profit; the engine documents that a one-off loss would be set to zero in later years, which a one-year survey cannot tell apart. Six of policyengine-uk's eleven owned-company inputs (pe-uk#1965) come from the FRS job tab (microcosm#1095). A director (DIRECTOR 1 or NATURE 1) who owns at least half of the company (DIRPERC 1 to 3, the ruling of 2026-10-16) stands as its sole owner or partner and works in it. The company is their main employment when the job is their first (JOBTYPE 1); it carries on a property business when the main job's SIC division is 68 and a trade otherwise, and its income share is the dividends the job records (DIVIDEND, after tax), the part of the company's profit the survey sees. A company held in another job carries on neither, since ADULT.SIC codes the main job only, which leaves the engine's company-owner rules off for it. The stocks and the intermediaries inputs keep the engine's defaults. frs_company_car_price_band, frs_company_car_fuel_code, frs_company_car_private_fuel and frs_company_car_contribution carry each person's company car from the FRS job tab (CARVAL, FUELTYP, EXPBEN03, and CARAMT where CARCON is 1, on their EXPBEN01 job with the lowest JOBTYPE), stage-internal carriers the company_cars stage reads and the release drops (PolicyEngine/uk-autumn-budget-dashboard-2026#316). frs_uc_lcw_status carries DWP's limited capability for work status on a linked Universal Credit claim (BENEFITS.UCLCW, coded 0 None, 1 LCFW Group and 2 LCFWRA Group in SN 9563's UKDA data dictionary; blank, as UCSTART is, where the claim has no linked record) on the UC row's person, NOT_LINKED for everyone else; the FRS keeps one UC row per claim, couples included, so the status is the claim's. It is a stage-internal carrier the uc_limited_capability stage reads and the release drops (microcosm#1095, Y1). frs_uc_carer_element carries DWP's carer element on a linked Universal Credit claim (BENEFITS.UCCAREEL, which SN 9563's UKDA data dictionary labels the weekly carer element amount and gives no value labels; the 2024-25 file codes it 0 or 1 on every linked claim, read as NONE or CARER on a claim with a linked record, UCSTART present, and NOT_LINKED on any other) on the UC row's person, NOT_LINKED for everyone else; frs_disability reads it only to check the carer link against DWP's record, and the release drops it (A3 (f) of the November event-data plan's PR3, microcosm#1095). frs_uc_housing_element_status carries whether DWP's award statement on a linked Universal Credit claim holds the housing costs element (BENEFITS.UCHOUSEL, the weekly housing element amount, read only on a claim with a linked record, UCSTART present, as PAID where it is positive and NONE where it is zero, and NOT_LINKED on any other) on the UC row's person, NOT_LINKED for everyone else; it is a stage-internal carrier the uc_housing_costs_claim stage reads and the release drops (B1 of microcosm#1710). frs_care_recipients carries each person's main care recipients from the FRS care tab (CARE.NEEDPER, WHOLOO01 to WHOLOO14 and HOUR01 to HOUR14, coded as HOURTOT is) as a bitmask, with bit n for household member n among the people given the person's largest weekly band and bit 15 for anyone outside the household among them; frs_disability reads it to write cares_for_severely_disabled_person, and the release drops it (A3 of the November event-data plan's PR3, microcosm#1095). imd_decile, each household's decile on its own nation's index of multiple deprivation (IMDE, IMDW, IMDS or IMDN), 1 to 10, and 0 where none is observed or the region is unknown, and council_tax_band_observed, False in Northern Ireland, for a CTBAND code outside 1 to 9, for a band the household's region does not use and for an unknown region (council_tax_band itself is unchanged), are stage-internal carriers the clone-first spine's area assignment conditions on and the release drops; they stay out of every receipt and of the spine sidecar's nonzero shares, and a household tab without one of the four IMD variables is refused (microcosm#931). frs_uc_claim_months carries how recent a benefit unit's linked Universal Credit claim is, the completed calendar months from DWP's claim start (BENEFITS.UCSTART on the claim's UC row) to the interview (INTDATE), counted as for the start-up period, and -1 where the unit has no linked claim start; it is a stage-internal carrier the uc_new_claimant_draw stage orders its draw by, and the release drops it (microcosm#1095)."
   },
   {
    "stage": "age_tail",
@@ -899,7 +899,7 @@
     "is_enhanced_disabled_for_benefits",
     "cares_for_severely_disabled_person"
    ],
-   "notes": "Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed. is_severely_disabled_for_benefits, the tax credit severe disability condition, is left to policyengine-uk's formula (A4 of the November event-data plan's PR3, microcosm#1095; María's signature of 2026-11-11), which reads the categories this stage writes (DLA care at the highest rate, PIP daily living at the enhanced rate, or higher-rate Attendance Allowance) and Armed Forces Independence Payment, which the build never writes, since FRS code 8 cannot be told apart from other Armed Forces Compensation Scheme payments. A stored copy would override the formula in every projected year, so a change to PIP's points thresholds would not reach the tax credit severe disability elements or the working-age council tax reduction's child amounts, which read it. cares_for_severely_disabled_person, the carer link (A3 of the November event-data plan's PR3, microcosm#1095, Mar\u00eda's choices of 2026-11-10), is true for a carer whose main care recipients (frs_spine.frs_care_recipients) include a household member with Attendance Allowance, DLA care at the middle or highest rate (Child Disability Payment's included), or PIP or Adult Disability Payment daily living. A carer whose main recipients include someone outside the household and no such member is drawn at the share, by design weight, of the in-household carers whose care hours reach gov.dwp.carers_allowance.min_hours and who report no Carer's Allowance that have such a member, on an identity-keyed uniform balanced by weight within the strata of care hours at or above the minimum and below it, as carers_allowance_take_up drew its pool before it read this link (Mar\u00eda's decision (a) of 2026-10-28). A claimant or partner at the hours on such a claim whose award DWP records with a carer element is linked whatever the care tab says (B3 of the November event-data plan's PR3; Mar\u00eda's ruling of 2026-11-11). A carer with care hours and no link in the care tab keeps the engine's default, true, and everyone else is false; Armed Forces Independence Payment is not seen, since the FRS can't tell it from other Armed Forces Compensation Scheme payments. The stage receipt gives each route's records in rounded counts and support bands, and the drawn route's share. It also checks the link against DWP's record of the Universal Credit carer element (frs_spine.frs_uc_carer_element) on each benefit unit with a linked claim, against whether the stage holds a claimant or partner a carer for Universal Credit (care hours at the minimum with the link true, or Carer's Allowance reported), in rounded counts and support bands; the check changes no value (A3 (f), María's choices of 2026-11-10). The SPI channel takes the link again on its households from the disability benefits it re-imputes (hmrc_spi_income_spine)."
+   "notes": "Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed. is_severely_disabled_for_benefits, the tax credit severe disability condition, is left to policyengine-uk's formula (A4 of the November event-data plan's PR3, microcosm#1095; María's signature of 2026-11-11), which reads the categories this stage writes (DLA care at the highest rate, PIP daily living at the enhanced rate, or higher-rate Attendance Allowance) and Armed Forces Independence Payment, which the build never writes, since FRS code 8 cannot be told apart from other Armed Forces Compensation Scheme payments. A stored copy would override the formula in every projected year, so a change to PIP's points thresholds would not reach the tax credit severe disability elements or the working-age council tax reduction's child amounts, which read it. cares_for_severely_disabled_person, the carer link (A3 of the November event-data plan's PR3, microcosm#1095, María's choices of 2026-11-10), is true for a carer whose main care recipients (frs_spine.frs_care_recipients) include a household member with Attendance Allowance, DLA care at the middle or highest rate (Child Disability Payment's included), or PIP or Adult Disability Payment daily living. A carer whose main recipients include someone outside the household and no such member is drawn at the share, by design weight, of the in-household carers whose care hours reach gov.dwp.carers_allowance.min_hours and who report no Carer's Allowance that have such a member, on an identity-keyed uniform balanced by weight within the strata of care hours at or above the minimum and below it, as carers_allowance_take_up drew its pool before it read this link (María's decision (a) of 2026-10-28). A claimant or partner at the hours on such a claim whose award DWP records with a carer element is linked whatever the care tab says (B3 of the November event-data plan's PR3; María's ruling of 2026-11-11). A carer with care hours and no link in the care tab keeps the engine's default, true, and everyone else is false; Armed Forces Independence Payment is not seen, since the FRS can't tell it from other Armed Forces Compensation Scheme payments. The stage receipt gives each route's records in rounded counts and support bands, and the drawn route's share. It also checks the link against DWP's record of the Universal Credit carer element (frs_spine.frs_uc_carer_element) on each benefit unit with a linked claim, against whether the stage holds a claimant or partner a carer for Universal Credit (care hours at the minimum with the link true, or Carer's Allowance reported), in rounded counts and support bands; the check changes no value (A3 (f), María's choices of 2026-11-10). The SPI channel takes the link again on its households from the disability benefits it re-imputes (hmrc_spi_income_spine)."
   },
   {
    "stage": "frs_education",
@@ -1078,70 +1078,84 @@
   {
    "stage": "frs_hmrc_spine_leaves",
    "survey": "Family Resources Survey 2024-25",
-   "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input",
+   "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab, child.tab and benefits.tab, caller-supplied local input",
    "grain": "person",
    "artifacts": [
     {
-     "role": "frs_table",
-     "table": "adult",
-     "kind": "licensed_microdata",
+     "doi": "10.5255/UKDA-SN-9563-1",
      "format": "tab",
-     "vintage": "2024_25",
+     "kind": "licensed_microdata",
      "locator": "adult.tab",
+     "role": "frs_table",
+     "runtime_sha256_required": true,
      "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
      "size_bytes": 34885825,
-     "runtime_sha256_required": true,
+     "table": "adult",
      "tax_year_start": 2024,
      "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
+     "vintage": "2024_25"
     },
     {
-     "role": "frs_table",
-     "table": "benefits",
-     "kind": "licensed_microdata",
+     "doi": "10.5255/UKDA-SN-9563-1",
      "format": "tab",
-     "vintage": "2024_25",
+     "kind": "licensed_microdata",
+     "locator": "child.tab",
+     "role": "frs_table",
+     "runtime_sha256_required": true,
+     "sha256": "88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5",
+     "size_bytes": 2753961,
+     "table": "child",
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "vintage": "2024_25"
+    },
+    {
+     "doi": "10.5255/UKDA-SN-9563-1",
+     "format": "tab",
+     "kind": "licensed_microdata",
      "locator": "benefits.tab",
+     "role": "frs_table",
+     "runtime_sha256_required": true,
      "sha256": "f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3",
      "size_bytes": 2362329,
-     "runtime_sha256_required": true,
+     "table": "benefits",
      "tax_year_start": 2024,
      "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
+     "vintage": "2024_25"
     },
     {
-     "role": "frs_table",
-     "table": "job",
-     "kind": "licensed_microdata",
+     "doi": "10.5255/UKDA-SN-9563-1",
      "format": "tab",
-     "vintage": "2024_25",
+     "kind": "licensed_microdata",
      "locator": "job.tab",
+     "role": "frs_table",
+     "runtime_sha256_required": true,
      "sha256": "eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2",
      "size_bytes": 10518760,
-     "runtime_sha256_required": true,
+     "table": "job",
      "tax_year_start": 2024,
      "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
+     "vintage": "2024_25"
     },
     {
-     "role": "frs_table",
-     "table": "penprov",
-     "kind": "licensed_microdata",
+     "doi": "10.5255/UKDA-SN-9563-1",
      "format": "tab",
-     "vintage": "2024_25",
+     "kind": "licensed_microdata",
      "locator": "penprov.tab",
+     "role": "frs_table",
+     "runtime_sha256_required": true,
      "sha256": "9e53de0dc969baec000b3cd68387f0f2dfb3f678732e408de175e0a1d6e3fdc1",
      "size_bytes": 513614,
-     "runtime_sha256_required": true,
+     "table": "penprov",
      "tax_year_start": 2024,
      "ukds_study_number": 9563,
-     "doi": "10.5255/UKDA-SN-9563-1"
+     "vintage": "2024_25"
     },
     {
-     "role": "employer_rate_bands",
+     "format": "json",
      "kind": "public_aggregate_reference",
      "resource": "ashe_employer_pension_contribution_rates.json",
-     "format": "json",
+     "role": "employer_rate_bands",
      "runtime_sha256_required": true
     }
    ],
@@ -1158,9 +1172,10 @@
        "spi_concept": "PAY",
        "scope": "full",
        "raw_sources": [
-        "ADULT.INEARNS"
+        "ADULT.INEARNS",
+        "CHILD.CHEARNS"
        ],
-       "formula": "max(0, ADULT.INEARNS) * 52"
+       "formula": "max(0, ADULT.INEARNS) * 52 on the adult tab, max(0, CHILD.CHEARNS) * 52 on the child tab"
       },
       "hmrc_spi_unemployment_benefit_income": {
        "spi_concept": "UBISJA",
@@ -1795,7 +1810,7 @@
     "maximum_extended_childcare_hours_usage",
     "max_free_entitlement_hours_used"
    ],
-   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The three anchored draws, would_claim_child_benefit, would_claim_pc and would_claim_uc, count their contract targets within each geographic clone (household_clone_index, microcosm#931), so each clone fills its own residual to int(rate * n_units) over its own units, clone 0 takes a one-clone spine's flags at any K, and a spine without the clone index counts over every unit. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.177.7's is_uc_eligible; the engine lockstep test pins it and names the engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A, and from 2.173.2 a unit whose working-age claimants all receive education with no exception, since frs_education sets is_in_full_time_education from the FRS). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30."
+   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The three anchored draws, would_claim_child_benefit, would_claim_pc and would_claim_uc, count their contract targets within each geographic clone (household_clone_index, microcosm#931), so each clone fills its own residual to int(rate * n_units) over its own units, clone 0 takes a one-clone spine's flags at any K, and a spine without the clone index counts over every unit. The Universal Credit draw's population is the benefit units with a UC claimant or partner (is_uc_claimant) aged 18 or over and under Pension Credit qualifying age (66 for everyone who can reach it in this release), the age and role conditions of policyengine-uk 2.180.0's is_uc_eligible; the engine lockstep test pins it and names the engine cases not mirrored (16- and 17-year-old claimants under the UC Regs 2013 reg 8 exceptions, mixed-age couples on the Pension Credit route, from 2.128.0 pension-age families moved onto Universal Credit when their legacy benefit closes, SI 2014/1230 reg 60A, and from 2.173.2 a unit whose working-age claimants all receive education with no exception, since frs_education sets is_in_full_time_education from the FRS). So the contract rate is a share of those units, an anchor outside them stays true, and any other unit is never drawn; a unit with no claimant or partner of that age keeps its reported Housing Benefit, which a claim it cannot make no longer zeroes (#882, microcosm#867, microcosm#1095). The universal childcare flag is nested under the working-parent one. A unit that claims the extended hours claims the universal hours, and any other unit claims them at the contract's universal_childcare rate, the rate conditional on not claiming the extended hours; the extended draw is unchanged. childcare_copy_take_up later re-draws the childcare flags and hours of the support and CGT copies on their own benefit units. A child of DfE age 0 or 1 (its age on 31 December of the fit's model year, the age DfE counts by) in a unit that claims the working-parent hours uses them at its age's contract rate, extended_childcare_age_0_usage or extended_childcare_age_1_usage (DfE registers far fewer of the youngest eligible children than of those aged 2 to 4, and fewer at 9 to 11 months than at age 1); a child that does not gets max_free_entitlement_hours_used 0, so the engine funds it no hours, and every other person keeps the engine's default of 30."
   },
   {
    "stage": "frs_person_draws",
@@ -7749,7 +7764,7 @@
     "frs_benunit_capital",
     "would_claim_uc"
    ],
-   "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donor survey records (a unit's geographic clones count once, every other copy as a record of its own) widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.177.7 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. From policyengine-uk 2.173.3 Council Tax Reduction counts the same three at the same value, from the household's own sources, except that a working-age applicant with Universal Credit takes the Universal Credit assessment. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base."
+   "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws every SPI benefit unit's capital, since the channel's incomes are SPI draws and the copied FRS answer no longer belongs to the unit (uk-data#495, microcosm#1095), from weighted base-FRS units with available capital in cells of UC reporter status by financial investment income band (interest, dividends and other investment income; property income is excluded because TOTCAPB4 counts accounts and assets) by is_uc_couple (two retained FRS claimant/partner roles, independently of legal is_married) by dependent-children band. A cell with fewer than 20 donor survey records (a unit's geographic clones count once, every other copy as a record of its own) widens in the declared coarsening order, and reporter status is never coarsened. It then applies the monotone reported-UC OR refresh. The recorded capitals add property (uk-data#495, microcosm#1095), since policyengine-uk 2.180.0 replaces every capital source with a recorded figure of 0 or more and takes it as countable, and TOTCAPB4 has no property. WAS records the property for the household, and each means test counts the claimant's and partner's own capital (UC Regs 2013 reg 18; SPCA 2002 s.5). The household reference person's benefit unit therefore holds all of the household's property, and no other unit records any (María's ruling of 2026-10-12), since that person is the one in whose name the home is owned or rented, the best single reading of the owner. The engine shares household property over every claimant or partner instead, which puts a parent's property on an adult child's claim; a recorded figure consumes its own unit's share, so the engine's shares reach only a unit on the unavailable sentinel, and since policyengine-uk 2.136.1 such a unit takes its share whatever a recording unit beside it holds (the receipt counts any unit left there). The property counts at 90% of its value, market value less 10% for the costs of sale, less the debt secured on it, class by class and floored at zero per class (UC Regs 2013 reg 49(1); SPC Regs 2002 reg 19), as policyengine-uk values Universal Credit property capital. The was_wealth stage draws the debt on other residential and on non-residential property (microcosm#1095), and owned land carries none, as the engine has no input for it (pe-uk#1969). Universal Credit counts other residential and non-residential property, and Pension Credit counts those and owned land. From policyengine-uk 2.173.3 Council Tax Reduction counts the same three at the same value, from the household's own sources, except that a working-age applicant with Universal Credit takes the Universal Credit assessment. A unit that reports Universal Credit keeps its receipt and records the carrier alone for Universal Credit, since DWP assessed its capital to pay it and the property is imputed without that receipt. frs_benunit_capital stays the financial carrier, and its unavailable sentinel -1 passes through to both. Both recorded figures project to later years by GDP per head, as financial capital does, while policyengine-uk 2.139.1 projects other residential property by house prices, so the other residential property in a recorded figure grows faster than the engine's own projection of it; by the OBR indices the engine carries, it grows 1.5% faster by 2025 and 2.0% by 2026 from a 2024 base."
   },
   {
    "stage": "uc_limited_capability",
@@ -7784,34 +7799,34 @@
      "not_linked": "NOT_LINKED",
      "claimant": "is_uc_assessed_claimant",
      "carer": "is_carer_for_benefits",
-     "esa_award": "has_own_esa_award",
      "linked_scope": "household_is_spi_synthetic",
+     "rule": "Every person takes the locked engine's own proxy for both flags. A linked FRS claim (a non-SPI household whose UC row carries a status) takes DWP's: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags, and if it flags none gives both flags to one claimant; LCW keeps the claimants the proxy gives limited capability for work, and if it gives none gives it to one claimant, with WRA false for every claimant.",
+     "joint_claim_rule": "The FRS keeps one UC row per claim, couples included, so the status is the claim's. Where a claimant must be chosen it is the UC row's person, or the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not; the other claimant keeps the proxy.",
+     "scope": "SPI rows, and claims in which a claimant has their own ESA award, keep the proxy; no later stage writes the proxy's inputs, so their stored value equals the formula's.",
      "age": "age",
      "age_bands": [
       {
        "band": "16_to_24",
-       "low": 16,
-       "high": 24
+       "high": 24,
+       "low": 16
       },
       {
        "band": "25_to_49",
-       "low": 25,
-       "high": 49
+       "high": 49,
+       "low": 25
       },
       {
        "band": "50_and_over",
-       "low": 50,
-       "high": null
+       "high": null,
+       "low": 50
       }
      ],
      "condition": "frs_condition_limits_activities",
      "condition_cell": "A_LOT",
-     "seed": 0,
-     "salt": "frs_uc_lcw_status_imputed",
-     "rule": "Every person takes the locked engine's own proxy for both flags. A linked FRS claim (a non-SPI household whose UC row carries a status) takes DWP's: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags, and if it flags none gives both flags to one claimant; LCW keeps the claimants the proxy gives limited capability for work, and if it gives none gives it to one claimant, with WRA false for every claimant.",
-     "joint_claim_rule": "The FRS keeps one UC row per claim, couples included, so the status is the claim's. Where a claimant must be chosen it is the UC row's person, or the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not; the other claimant keeps the proxy.",
+     "esa_award": "has_own_esa_award",
      "imputation_rule": "Every other claim outside the SPI rows (an unlinked reporter, a take-up entrant or any other benefit unit with a claimant) takes an imputed status: LCWRA when its identity-keyed uniform falls below its cell's rate, NONE otherwise, and then the linked rules with the claim's first claimant in place of the UC row's person. A cell is the youngest claimant's age band, whether the proxy flags any claimant, and whether any claimant's long-standing illness limits their day-to-day activities a lot (frs_spine's ADULT.CONDIT carrier); its rate is the share of linked claims in it with DWP's LCWRA status, at the stage's household weights, counting only linked claims in which no claimant has their own ESA award: a claim with one keeps the proxy rather than drawing, so the rates are measured on the kind of claim that draws. A cell with fewer than three distinct source households takes its proxy and condition group's rate over every age, then its proxy group's over every age, and a group with fewer keeps the proxy.",
-     "scope": "SPI rows, and claims in which a claimant has their own ESA award, keep the proxy; no later stage writes the proxy's inputs, so their stored value equals the formula's."
+     "salt": "frs_uc_lcw_status_imputed",
+     "seed": 0
     },
     {
      "kind": "record_mass_conservation_receipt",
@@ -7825,14 +7840,12 @@
     "uc_limited_capability_for_WRA",
     "uc_limited_capability_for_work"
    ],
-   "notes": "DWP's limited capability for work status on linked Universal Credit claims (Y1 of the November event-data plan, microcosm#1095; María's NS6 ruling of 9 November 2026, which revisits her ruling of 29 October 2026 to keep the engine's proxy; she signed the choices below the same day). policyengine-uk 2.180.0 gives limited capability for work and work-related activity (uc_limited_capability_for_WRA) to a person flagged is_disabled_for_benefits, which the spine sets from any reported disability benefit or ESA, unless their own ESA award lacks the support component, and limited capability for work (uc_limited_capability_for_work) to that or the same flag. The FRS 2024-25 links most UC claims to DWP's records, and BENEFITS.UCLCW, which frs_spine carries as frs_uc_lcw_status on the UC row's person, gives the claim's own status; the status and the proxy disagree on a substantial share of linked claims in both directions, so the stage changes who has the LCWRA element more than how many. Every person takes the locked engine's own proxy, so nothing mirrors its formula here, and a linked FRS claim (a non-SPI household) takes DWP's status: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags and, if it flags none, gives both flags to the UC row's person, or to the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not, so a carer keeps the carer element; LCW does the same for limited capability for work, with WRA false for every claimant. The FRS keeps one UC row per claim, couples included, so which partner holds a joint claim's status is this rule's approximation. Unlinked reporters, the take-up redraw's entrants, the legacy-closure movers and every SPI row keep the proxy, which their stored value equals, since no later stage writes its inputs. The flags are stored as survey-year inputs, which the engine carries into every projected year, and the release carries both. uc_reporter_redraw's award screen, earlier in the spine, still reads the proxy. On María's call of 17 November 2026, after the Milburn review's benchmarks put the build's young claimants with the LCWRA element about a third above the Resolution Foundation's count, nine in ten of them on PIP (PolicyEngine/uk-milburn-review-dashboard#1), every other claim outside the SPI rows takes an imputed status instead of the proxy: LCWRA at the share of linked claims with that status in its cell (the youngest claimant's age band, and whether the proxy flags any claimant), among the linked claims in which no claimant has their own ESA award, NONE otherwise, so the take-up redraw's entrants carry the element at the rates DWP's own records show and not only where someone gets a disability benefit. Claims in which a claimant has their own ESA award keep the proxy, since the award carries DWP's determination, and linked claims with one stay out of the rates, so the rates are measured on the kind of claim that draws (the review of microcosm#1663); the receipt gives their own rate beside each cell's. On Mar\u00eda's go of 18 November 2026 (\"lets start UC parts 1-2\", PolicyEngine/microcosm#1663), the cells also split on whether any claimant's long-standing illness limits their day-to-day activities a lot (ADULT.CONDIT, frs_spine's carrier): on linked claims DWP's LCWRA status is far commoner where such a condition is reported, whether or not the proxy flags the claim, so a drawn claim with no disability benefit takes the element at its condition's rate rather than its whole group's."
+   "notes": "DWP's limited capability for work status on linked Universal Credit claims (Y1 of the November event-data plan, microcosm#1095; María's NS6 ruling of 9 November 2026, which revisits her ruling of 29 October 2026 to keep the engine's proxy; she signed the choices below the same day). policyengine-uk 2.180.0 gives limited capability for work and work-related activity (uc_limited_capability_for_WRA) to a person flagged is_disabled_for_benefits, which the spine sets from any reported disability benefit or ESA, unless their own ESA award lacks the support component, and limited capability for work (uc_limited_capability_for_work) to that or the same flag. The FRS 2024-25 links most UC claims to DWP's records, and BENEFITS.UCLCW, which frs_spine carries as frs_uc_lcw_status on the UC row's person, gives the claim's own status; the status and the proxy disagree on a substantial share of linked claims in both directions, so the stage changes who has the LCWRA element more than how many. Every person takes the locked engine's own proxy, so nothing mirrors its formula here, and a linked FRS claim (a non-SPI household) takes DWP's status: NONE sets every claimant false on both flags; LCWRA keeps the claimants the proxy flags and, if it flags none, gives both flags to the UC row's person, or to the partner where the UC row's person cares (is_carer_for_benefits) and the partner does not, so a carer keeps the carer element; LCW does the same for limited capability for work, with WRA false for every claimant. The FRS keeps one UC row per claim, couples included, so which partner holds a joint claim's status is this rule's approximation. Unlinked reporters, the take-up redraw's entrants, the legacy-closure movers and every SPI row keep the proxy, which their stored value equals, since no later stage writes its inputs. The flags are stored as survey-year inputs, which the engine carries into every projected year, and the release carries both. uc_reporter_redraw's award screen, earlier in the spine, still reads the proxy. On María's call of 17 November 2026, after the Milburn review's benchmarks put the build's young claimants with the LCWRA element about a third above the Resolution Foundation's count, nine in ten of them on PIP (PolicyEngine/uk-milburn-review-dashboard#1), every other claim outside the SPI rows takes an imputed status instead of the proxy: LCWRA at the share of linked claims with that status in its cell (the youngest claimant's age band, and whether the proxy flags any claimant), among the linked claims in which no claimant has their own ESA award, NONE otherwise, so the take-up redraw's entrants carry the element at the rates DWP's own records show and not only where someone gets a disability benefit. Claims in which a claimant has their own ESA award keep the proxy, since the award carries DWP's determination, and linked claims with one stay out of the rates, so the rates are measured on the kind of claim that draws (the review of microcosm#1663); the receipt gives their own rate beside each cell's. On María's go of 18 November 2026 (\"lets start UC parts 1-2\", PolicyEngine/microcosm#1663), the cells also split on whether any claimant's long-standing illness limits their day-to-day activities a lot (ADULT.CONDIT, frs_spine's carrier): on linked claims DWP's LCWRA status is far commoner where such a condition is reported, whether or not the proxy flags the claim, so a drawn claim with no disability benefit takes the element at its condition's rate rather than its whole group's."
   },
   {
-   "stage": "uc_housing_costs_claim",
-   "survey": "Family Resources Survey 2024-25 (BENEFITS.UCHOUSEL, the weekly housing element in DWP's award statement on a linked Universal Credit claim) and policyengine-uk's Universal Credit housing costs element, evaluated by the pinned engine",
-   "source": "frs_uc_housing_element_status (frs_spine) on the UC row's person, the household's household_is_spi_synthetic, and the locked engine's uc_housing_costs_element on the frame as it stands",
-   "grain": "benunit",
    "artifacts": [],
+   "grain": "benunit",
+   "notes": "DWP's award statement on linked Universal Credit claims (B1 of microcosm#1710; María signed its choices on 2026-11-25). policyengine-uk 2.180.0 pays the housing costs element to every renting claimant the engine finds entitled unless would_claim_uc_housing_costs_element is false (policyengine-uk#2951). The FRS 2024-25 links most UC claims to DWP's award statement for the assessment period that contains the interview (DWP's technical paper on integrating administrative data for benefits, section 4.3.2), and on some linked claims the statement carries no housing element where the engine pays one, which overstates their Universal Credit and the benefit cap's reach. The stage runs just before uc_take_up, so the take-up draw sees the awards the flag leaves; the flag is inert for a unit that doesn't claim.",
    "operations": [
     {
      "kind": "materialize_rules_engine_predictors",
@@ -7842,33 +7855,35 @@
      "year_rule": "survey_year"
     },
     {
+     "carrier": "frs_uc_housing_element_status",
+     "element": "uc_housing_costs_element",
      "kind": "assign_uc_housing_claim_from_admin_status",
+     "linked_scope": "household_is_spi_synthetic",
+     "not_linked": "NOT_LINKED",
      "outputs": [
       "would_claim_uc_housing_costs_element"
      ],
-     "carrier": "frs_uc_housing_element_status",
+     "rule": "Every benefit unit takes the engine's default, true. A linked FRS claim (a non-SPI household whose UC row carries a status) is false where DWP's award statement carries no housing element (UCHOUSEL 0) and the locked engine pays a positive uc_housing_costs_element, and true otherwise, so a false carries only the zeros the engine can't explain.",
+     "scope": "Only linked FRS claims set the flag. Every other benefit unit keeps the default: an unlinked reporter or a future take-up entrant has no statement of its own, and an SPI-channel unit's copied statement no longer belongs to it, since the SPI income chain redraws the copies' incomes and benefit reports. Nothing is imputed for them.",
      "statuses": [
       "NONE",
       "PAID"
-     ],
-     "not_linked": "NOT_LINKED",
-     "element": "uc_housing_costs_element",
-     "linked_scope": "household_is_spi_synthetic",
-     "rule": "Every benefit unit takes the engine's default, true. A linked FRS claim (a non-SPI household whose UC row carries a status) is false where DWP's award statement carries no housing element (UCHOUSEL 0) and the locked engine pays a positive uc_housing_costs_element, and true otherwise, so a false carries only the zeros the engine can't explain.",
-     "scope": "Only linked FRS claims set the flag. Every other benefit unit keeps the default: an unlinked reporter or a future take-up entrant has no statement of its own, and an SPI-channel unit's copied statement no longer belongs to it, since the SPI income chain redraws the copies' incomes and benefit reports. Nothing is imputed for them."
+     ]
     },
     {
-     "kind": "record_mass_conservation_receipt",
+     "declared_factor": 1,
      "entity": "household",
-     "reason": "UC housing costs element claim flag stored on the source spine: household weights pass through unchanged and total household mass is conserved.",
-     "declared_factor": 1.0,
-     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason."
+     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+     "kind": "record_mass_conservation_receipt",
+     "reason": "UC housing costs element claim flag stored on the source spine: household weights pass through unchanged and total household mass is conserved."
     }
    ],
    "outputs": [
     "would_claim_uc_housing_costs_element"
    ],
-   "notes": "DWP's award statement on linked Universal Credit claims (B1 of microcosm#1710; María signed its choices on 2026-11-25). policyengine-uk 2.180.0 pays the housing costs element to every renting claimant the engine finds entitled unless would_claim_uc_housing_costs_element is false (policyengine-uk#2951). The FRS 2024-25 links most UC claims to DWP's award statement for the assessment period that contains the interview (DWP's technical paper on integrating administrative data for benefits, section 4.3.2), and on some linked claims the statement carries no housing element where the engine pays one, which overstates their Universal Credit and the benefit cap's reach. The stage runs just before uc_take_up, so the take-up draw sees the awards the flag leaves; the flag is inert for a unit that doesn't claim."
+   "source": "frs_uc_housing_element_status (frs_spine) on the UC row's person, the household's household_is_spi_synthetic, and the locked engine's uc_housing_costs_element on the frame as it stands",
+   "stage": "uc_housing_costs_claim",
+   "survey": "Family Resources Survey 2024-25 (BENEFITS.UCHOUSEL, the weekly housing element in DWP's award statement on a linked Universal Credit claim) and policyengine-uk's Universal Credit housing costs element, evaluated by the pinned engine"
   },
   {
    "stage": "uc_take_up",
@@ -7877,40 +7892,42 @@
    "grain": "benunit",
    "artifacts": [
     {
-     "role": "uc_award_band_facts",
+     "format": "json",
      "kind": "public_aggregate_reference",
      "resource": "dwp_uc_award_band_facts.json",
-     "format": "json",
+     "role": "uc_award_band_facts",
      "runtime_sha256_required": true
     },
     {
-     "role": "uc_people_by_age_facts",
+     "format": "json",
      "kind": "public_aggregate_reference",
      "resource": "dwp_uc_people_by_age_facts.json",
-     "format": "json",
+     "role": "uc_people_by_age_facts",
      "runtime_sha256_required": true
     },
     {
-     "role": "uc_lcwra_households_facts",
+     "format": "json",
      "kind": "public_aggregate_reference",
      "resource": "dwp_uc_lcwra_households_facts.json",
-     "format": "json",
+     "role": "uc_lcwra_households_facts",
      "runtime_sha256_required": true
     },
     {
-     "role": "uc_young_lcwra_people_facts",
+     "format": "json",
      "kind": "public_aggregate_reference",
      "resource": "dwp_uc_young_lcwra_people_facts.json",
-     "format": "json",
+     "role": "uc_young_lcwra_people_facts",
      "runtime_sha256_required": true
     }
    ],
    "operations": [
     {
-     "kind": "verify_vendored_fact_resource",
      "artifact_role": "uc_award_band_facts",
-     "resource": "dwp_uc_award_band_facts.json",
+     "fail_on_mismatch": true,
      "feed_pin": "chronicle_feed.json",
+     "kind": "verify_vendored_fact_resource",
+     "mapped_build_period": 2025,
+     "period_mapping": "calendar_year_average_of_monthly_counts",
      "record_sets": [
       "dwp.statx.uc_benefit_units.award_band_family_type.month2025_04",
       "dwp.statx.uc_benefit_units.award_band_family_type.month2025_05",
@@ -7922,36 +7939,36 @@
       "dwp.statx.uc_benefit_units.award_band_family_type.month2025_11",
       "dwp.statx.uc_benefit_units.award_band_family_type.month2025_12"
      ],
-     "source_vintage": "April to December 2025",
-     "mapped_build_period": 2025,
-     "period_mapping": "calendar_year_average_of_monthly_counts",
      "require_before_source_read": true,
+     "resource": "dwp_uc_award_band_facts.json",
      "runtime_sha256_required": true,
-     "fail_on_mismatch": true
+     "source_vintage": "April to December 2025"
     },
     {
-     "kind": "verify_vendored_fact_resource",
      "artifact_role": "uc_people_by_age_facts",
-     "resource": "dwp_uc_people_by_age_facts.json",
+     "fail_on_mismatch": true,
      "feed_pin": "chronicle_feed.json",
+     "kind": "verify_vendored_fact_resource",
+     "mapped_build_period": 2025,
+     "period_mapping": "mean_of_four_quarterly_monthly_counts_in_2025",
      "record_sets": [
       "dwp.statx.uc_people.country_age_conditionality_regime.month2025_02.total",
       "dwp.statx.uc_people.country_age_conditionality_regime.month2025_05.total",
       "dwp.statx.uc_people.country_age_conditionality_regime.month2025_08.total",
       "dwp.statx.uc_people.country_age_conditionality_regime.month2025_11.total"
      ],
-     "source_vintage": "February, May, August and November 2025",
-     "mapped_build_period": 2025,
-     "period_mapping": "mean_of_four_quarterly_monthly_counts_in_2025",
      "require_before_source_read": true,
+     "resource": "dwp_uc_people_by_age_facts.json",
      "runtime_sha256_required": true,
-     "fail_on_mismatch": true
+     "source_vintage": "February, May, August and November 2025"
     },
     {
-     "kind": "verify_vendored_fact_resource",
      "artifact_role": "uc_lcwra_households_facts",
-     "resource": "dwp_uc_lcwra_households_facts.json",
+     "fail_on_mismatch": true,
      "feed_pin": "chronicle_feed.json",
+     "kind": "verify_vendored_fact_resource",
+     "mapped_build_period": 2025,
+     "period_mapping": "calendar_year_average_of_monthly_counts",
      "record_sets": [
       "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_01",
       "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_02",
@@ -7966,30 +7983,30 @@
       "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_11",
       "dwp.statx.uc_benefit_units.lcw_entitlement_group_payment_indicator.month2025_12"
      ],
-     "source_vintage": "January to December 2025",
-     "mapped_build_period": 2025,
-     "period_mapping": "calendar_year_average_of_monthly_counts",
      "require_before_source_read": true,
+     "resource": "dwp_uc_lcwra_households_facts.json",
      "runtime_sha256_required": true,
-     "fail_on_mismatch": true
+     "source_vintage": "January to December 2025"
     },
     {
-     "kind": "verify_vendored_fact_resource",
      "artifact_role": "uc_young_lcwra_people_facts",
-     "resource": "dwp_uc_young_lcwra_people_facts.json",
+     "fail_on_mismatch": true,
      "feed_pin": "chronicle_feed.json",
+     "kind": "verify_vendored_fact_resource",
+     "mapped_build_period": 2025,
+     "period_mapping": "calendar_year_window_of_fiscal_years",
      "record_sets": [
       "dwp.young_people_work_interim_2026.table_28.caseload.fy2024",
       "dwp.young_people_work_interim_2026.table_28.caseload.fy2025"
      ],
-     "source_vintage": "financial years 2024-25 and 2025-26",
-     "mapped_build_period": 2025,
-     "period_mapping": "calendar_year_window_of_fiscal_years",
      "require_before_source_read": true,
+     "resource": "dwp_uc_young_lcwra_people_facts.json",
      "runtime_sha256_required": true,
-     "fail_on_mismatch": true
+     "source_vintage": "financial years 2024-25 and 2025-26"
     },
     {
+     "consumed_only": true,
+     "dataset_year_rule": "survey_year",
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
       "universal_credit",
@@ -7997,53 +8014,51 @@
       "is_child_or_qualifying_young_person_for_universal_credit",
       "uc_LCWRA_element"
      ],
-     "consumed_only": true,
-     "year_rule": "calibration_year",
-     "dataset_year_rule": "survey_year"
+     "year_rule": "calibration_year"
     },
     {
-     "kind": "aggregate_person_to_benunit",
-     "method": "any_positive",
-     "consumed_only": true,
      "aggregates": {
       "universal_credit_reported_anchor": "universal_credit_reported"
-     }
+     },
+     "consumed_only": true,
+     "kind": "aggregate_person_to_benunit",
+     "method": "any_positive"
     },
     {
-     "kind": "aggregate_person_to_benunit",
-     "method": "any_uc_claimant_aged_18_under_pension_credit_age",
-     "consumed_only": true,
      "aggregates": {
       "uc_age_eligible": "age"
      },
+     "consumed_only": true,
+     "kind": "aggregate_person_to_benunit",
+     "method": "any_uc_claimant_aged_18_under_pension_credit_age",
      "role_column": "is_uc_claimant"
     },
     {
-     "kind": "assign_award_band_take_up_residual",
-     "output": "would_claim_uc",
-     "draw": "would_claim_uc",
-     "seed": 0,
-     "anchor": "universal_credit_reported_anchor",
-     "population": "uc_age_eligible",
-     "award": "universal_credit on a temporary copy where every unit claims and carries the deduction attributes uc_deduction_attributes assigns from its identity and region",
-     "family_type": "two FRS claimant or partner roles make a couple; children are UC children or qualifying young people and other non-claimants under 20 (the calibration measure's uc_calibration_family_type)",
-     "award_bands": "GBP 1,200 a year (DWP's GBP 100 a month), (1,200 i, 1,200 (i + 1)] in whole pence for i < 25, and above GBP 30,000",
-     "targets": "DWP Stat-Xplore Households on Universal Credit by family type and monthly award band, mean of April to December 2025",
-     "pooling": "adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct source_household_id values; a short last pool joins the one before it. Then, lowest first, a pool that cannot meet DWP's count (its undrawn entitled units' expected claims exceed the count, or the count exceeds them plus the weight of every drawn unit) is held at the nearer of those ends and passes its gap to the other pools, nearest first, the one with more room first at equal distance and the lower on a tie, each taking what its room allows; a gap no pool can take leaves the family type unreachable. With the fits, a passed shortfall's room is the pool's undrawn claims plus the weight of its drawn units with neither a young claimant or partner nor the LCWRA element, less its count (age_fit, lcwra_fit)",
-     "minimum_pool_sources": 30,
-     "drawn_units": "entitled, non-reporting units of the population that the engine does not move off their legacy benefits (legacy_benefits_closed) and that report none, since a legacy benefit the engine leaves in place ends once the unit claims UC",
-     "undrawn_claims": "a reporter at 1, a moved unit at the claim probability uc_legacy_closure_take_up's rule gives it (dwp_move_to_uc_facts.json), a unit keeping income-related ESA at 0, any other at its stored flag",
-     "kept_legacy_award": "a unit whose claimant or partner reports income-related ESA (esa_income_reported), and that neither reports Universal Credit nor is moved off its legacy benefits, claims no Universal Credit, since policyengine-uk ends that award once the family claims it",
-     "weight_mapping": "household_to_benunit",
-     "residual_rate": "(T - F) / D, clipped to [0, 1]; T DWP's calendar-2025 mean count of the pool's bands after any gaps passed to or from it, D the weight of the pool's drawn units and F the expected claims of its other entitled units, over Great Britain at the stage's household weights; realized by the drawn units claiming in the order of their uniform until their weight is nearest T - F, and applied at that uniform to Northern Ireland's drawn units too",
-     "solve_scope": "great_britain",
-     "not_drawn": "keeps its stored flag, except a unit keeping income-related ESA, which claims none",
-     "young_people": "claimants and partners (is_claimant_or_partner) aged 16 to 24, at the stored age, which policyengine-uk carries unchanged to the entitlement year; a unit counts each of them",
-     "age_targets": "DWP Stat-Xplore People on Universal Credit in Great Britain aged 16 to 24, every conditionality regime: the single years summed in February, May, August and November 2025 and averaged, as the dwp.uc.people_aged_16_to_24 diagnostic reads them",
      "age_fit": "one odds ratio theta for the drawn units with a young claimant or partner: in every pool they claim at theta times the odds of the pool's other drawn units, the two rates together realizing the pool's count, each realized in the order of the uniform as a pool's rate is; theta is solved so that the young claimants and partners of Great Britain's entitled units that claim, at the stage's household weights, are nearest DWP's count, held at the nearer end of exp(-12) to exp(12) where no theta reaches it, solved in turn with the LCWRA fit's ratio (lcwra_fit); a shortfall passed to another pool fills only that pool's drawn units with neither a young claimant or partner nor the LCWRA element, and what no pool can take that way stays unplaced, leaving the family type short of DWP's count by it (María's call of 2026-11-09; the joint fit, her choices of 2026-11-11)",
-     "lcwra_units": "benefit units whose award, were they to claim, would include the limited capability for work and work-related activity element (uc_LCWRA_element above zero at the entitlement year, on the temporary claiming copy)",
+     "age_targets": "DWP Stat-Xplore People on Universal Credit in Great Britain aged 16 to 24, every conditionality regime: the single years summed in February, May, August and November 2025 and averaged, as the dwp.uc.people_aged_16_to_24 diagnostic reads them",
+     "anchor": "universal_credit_reported_anchor",
+     "award": "universal_credit on a temporary copy where every unit claims and carries the deduction attributes uc_deduction_attributes assigns from its identity and region",
+     "award_bands": "GBP 1,200 a year (DWP's GBP 100 a month), (1,200 i, 1,200 (i + 1)] in whole pence for i < 25, and above GBP 30,000",
+     "draw": "would_claim_uc",
+     "drawn_units": "entitled, non-reporting units of the population that the engine does not move off their legacy benefits (legacy_benefits_closed) and that report none, since a legacy benefit the engine leaves in place ends once the unit claims UC",
+     "family_type": "two FRS claimant or partner roles make a couple; children are UC children or qualifying young people and other non-claimants under 20 (the calibration measure's uc_calibration_family_type)",
+     "kept_legacy_award": "a unit whose claimant or partner reports income-related ESA (esa_income_reported), and that neither reports Universal Credit nor is moved off its legacy benefits, claims no Universal Credit, since policyengine-uk ends that award once the family claims it",
+     "kind": "assign_award_band_take_up_residual",
+     "lcwra_fit": "a second odds ratio for the drawn units whose award would include the LCWRA element: a drawn unit's claim odds are its pool's base odds times each ratio that applies, so a young unit with the element takes both, and the four groups' rates together realize the pool's count, each in the order of the uniform; the two ratios are solved in turn over Great Britain, at the stage's household weights, until the young claimants and partners and the LCWRA households of the entitled units that claim are nearest DWP's two counts, each held at the nearer end of exp(-12) to exp(12) where none reaches it (María's choices of 2026-11-11, B3 of the November event-data plan's PR3)",
      "lcwra_targets": "DWP Stat-Xplore Households on Universal Credit in Great Britain with the LCWRA element (entitlement group 'LCWRA', both rates), paid (Payment Indicator Yes), the mean of January to December 2025, as the dwp.uc.households_lcwra_element row reads them",
-     "lcwra_fit": "a second odds ratio for the drawn units whose award would include the LCWRA element: a drawn unit's claim odds are its pool's base odds times each ratio that applies, so a young unit with the element takes both, and the four groups' rates together realize the pool's count, each in the order of the uniform; the two ratios are solved in turn over Great Britain, at the stage's household weights, until the young claimants and partners and the LCWRA households of the entitled units that claim are nearest DWP's two counts, each held at the nearer end of exp(-12) to exp(12) where none reaches it (María's choices of 2026-11-11, B3 of the November event-data plan's PR3)"
+     "lcwra_units": "benefit units whose award, were they to claim, would include the limited capability for work and work-related activity element (uc_LCWRA_element above zero at the entitlement year, on the temporary claiming copy)",
+     "minimum_pool_sources": 30,
+     "not_drawn": "keeps its stored flag, except a unit keeping income-related ESA, which claims none",
+     "output": "would_claim_uc",
+     "pooling": "adjacent bands within a family type, lowest first, until the drawn units rest on minimum_pool_sources distinct source_household_id values; a short last pool joins the one before it. Then, lowest first, a pool that cannot meet DWP's count (its undrawn entitled units' expected claims exceed the count, or the count exceeds them plus the weight of every drawn unit) is held at the nearer of those ends and passes its gap to the other pools, nearest first, the one with more room first at equal distance and the lower on a tie, each taking what its room allows; a gap no pool can take leaves the family type unreachable. With the fits, a passed shortfall's room is the pool's undrawn claims plus the weight of its drawn units with neither a young claimant or partner nor the LCWRA element, less its count (age_fit, lcwra_fit)",
+     "population": "uc_age_eligible",
+     "residual_rate": "(T - F) / D, clipped to [0, 1]; T DWP's calendar-2025 mean count of the pool's bands after any gaps passed to or from it, D the weight of the pool's drawn units and F the expected claims of its other entitled units, over Great Britain at the stage's household weights; realized by the drawn units claiming in the order of their uniform until their weight is nearest T - F, and applied at that uniform to Northern Ireland's drawn units too",
+     "seed": 0,
+     "solve_scope": "great_britain",
+     "targets": "DWP Stat-Xplore Households on Universal Credit by family type and monthly award band, mean of April to December 2025",
+     "undrawn_claims": "a reporter at 1, a moved unit at the claim probability uc_legacy_closure_take_up's rule gives it (dwp_move_to_uc_facts.json), a unit keeping income-related ESA at 0, any other at its stored flag",
+     "weight_mapping": "household_to_benunit",
+     "young_people": "claimants and partners (is_claimant_or_partner) aged 16 to 24, at the stored age, which policyengine-uk carries unchanged to the entitlement year; a unit counts each of them"
     }
    ],
    "outputs": [],
@@ -8194,23 +8209,16 @@
    ],
    "operations": [
     {
+     "consumed_only": true,
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
       "is_child_or_qualifying_young_person_for_child_benefit",
       "adjusted_net_income",
       "child_benefit_entitlement"
-     ],
-     "consumed_only": true
+     ]
     },
     {
-     "kind": "redraw_spi_reported_child_benefit",
-     "output": "child_benefit_reported",
-     "draw": "child_benefit_reported",
-     "seed": 0,
-     "rows": "benunit_support_channel == spi",
-     "twin": "benunit_source_id",
-     "person_twin": "person_source_id",
-     "eligibility": "is_child_or_qualifying_young_person_for_child_benefit",
+     "amount": "child_benefit_entitlement",
      "charge_income": "adjusted_net_income",
      "charge_parameters": "gov.hmrc.income_tax.charges.CB_HITC",
      "children": [
@@ -8218,58 +8226,65 @@
       "2",
       "3+"
      ],
+     "draw": "child_benefit_reported",
+     "eligibility": "is_child_or_qualifying_young_person_for_child_benefit",
      "income_bands": [
       "below_charge_start",
       "taper",
       "fully_charged"
      ],
-     "source_household": "source_household_id",
-     "minimum_source_households": 30,
-     "amount": "child_benefit_entitlement",
+     "kind": "redraw_spi_reported_child_benefit",
      "landing": "is_benunit_head",
-     "weight_mapping": "household_to_benunit",
-     "rule": "an SPI copy's benefit unit with an eligible child reports at the weighted share of FRS benefit units with an eligible child that report Child Benefit in its cell of eligible children (1, 2, 3+) by the charge band of its highest adjusted net income (at most the charge start, inside the taper, fully charged), adjacent bands pooled until a cell rests on 30 FRS source households and a children group short of that merged with its neighbour first; coupled to its FRS twin (benunit_source_id): a copy of a reporting twin reports when u * p_twin < p_copy, of a non-reporting twin when p_twin + u * (1 - p_twin) < p_copy; a reporting copy takes its twin's reported amounts (person_source_id), or child_benefit_entitlement on its benefit unit head when the twin does not report; a copy without an eligible child takes its twin's reports; FRS rows are unchanged"
+     "minimum_source_households": 30,
+     "output": "child_benefit_reported",
+     "person_twin": "person_source_id",
+     "rows": "benunit_support_channel == spi",
+     "rule": "an SPI copy's benefit unit with an eligible child reports at the weighted share of FRS benefit units with an eligible child that report Child Benefit in its cell of eligible children (1, 2, 3+) by the charge band of its highest adjusted net income (at most the charge start, inside the taper, fully charged), adjacent bands pooled until a cell rests on 30 FRS source households and a children group short of that merged with its neighbour first; coupled to its FRS twin (benunit_source_id): a copy of a reporting twin reports when u * p_twin < p_copy, of a non-reporting twin when p_twin + u * (1 - p_twin) < p_copy; a reporting copy takes its twin's reported amounts (person_source_id), or child_benefit_entitlement on its benefit unit head when the twin does not report; a copy without an eligible child takes its twin's reports; FRS rows are unchanged",
+     "seed": 0,
+     "source_household": "source_household_id",
+     "twin": "benunit_source_id",
+     "weight_mapping": "household_to_benunit"
     },
     {
-     "kind": "aggregate_person_to_benunit",
-     "method": "any_positive",
-     "consumed_only": true,
      "aggregates": {
       "child_benefit_reported_anchor": "child_benefit_reported"
-     }
+     },
+     "consumed_only": true,
+     "kind": "aggregate_person_to_benunit",
+     "method": "any_positive"
     },
     {
-     "kind": "assign_family_claims_by_child_age",
-     "output": "would_claim_child_benefit",
-     "draw": "would_claim_child_benefit",
-     "seed": 0,
      "anchor": "child_benefit_reported_anchor",
+     "draw": "would_claim_child_benefit",
      "eligibility": "is_child_or_qualifying_young_person_for_child_benefit",
      "family_key": "age of the benefit unit's eldest eligible child under 16, or of its eldest eligible child when none is under 16",
-     "resource": "hmrc_child_benefit_statistics.json",
+     "kind": "assign_family_claims_by_child_age",
+     "output": "would_claim_child_benefit",
      "rate_measure": "claim_rate",
      "rate_period": "2025-05",
-     "weight_mapping": "household_to_benunit",
-     "rule": "a reporter claims; a non-reporting family of key age g claims at r_g = (t_g * C_g - R_g - sum over the solved keys k of N_gk * r_k) / N_gg, weighted, solved for ages 15 down to 0 and then 19 down to 16, and clipped to [0, 1]"
+     "resource": "hmrc_child_benefit_statistics.json",
+     "rule": "a reporter claims; a non-reporting family of key age g claims at r_g = (t_g * C_g - R_g - sum over the solved keys k of N_gk * r_k) / N_gg, weighted, solved for ages 15 down to 0 and then 19 down to 16, and clipped to [0, 1]",
+     "seed": 0,
+     "weight_mapping": "household_to_benunit"
     },
     {
-     "kind": "assign_opt_out_by_charge_income",
-     "output": "child_benefit_opts_out",
-     "draw": "child_benefit_opts_out",
-     "seed": 0,
-     "resource": "hmrc_child_benefit_statistics.json",
-     "numerator_measure": "families_opted_out_claimant_all",
-     "denominator_measure": "families_registered",
      "caseload_period": "2025-08",
      "charge_income": "adjusted_net_income",
      "charge_parameters": "gov.hmrc.income_tax.charges.CB_HITC",
+     "denominator_measure": "families_registered",
+     "draw": "child_benefit_opts_out",
+     "kind": "assign_opt_out_by_charge_income",
+     "numerator_measure": "families_opted_out_claimant_all",
+     "output": "child_benefit_opts_out",
+     "payment_rule": "would_claim_child_benefit = claims on families with an eligible child when the model exposes gov.hmrc.child_benefit.opt_out_charge_share; otherwise claims and not opted out for legacy models; a benefit unit without an eligible child keeps its early draw",
      "pools": [
       "fully_charged",
       "taper"
      ],
-     "weight_mapping": "household_to_benunit",
+     "resource": "hmrc_child_benefit_statistics.json",
      "rule": "published opted-out share of registered families, of the claiming families; drawn among claiming non-reporting families, fully charged first then inside the taper; opt-out-aware models restrict both pools to a positive charge fraction at least the installed opt_out_charge_share, recording any pool shortfall; legacy models retain the unfiltered pools",
-     "payment_rule": "would_claim_child_benefit = claims on families with an eligible child when the model exposes gov.hmrc.child_benefit.opt_out_charge_share; otherwise claims and not opted out for legacy models; a benefit unit without an eligible child keeps its early draw"
+     "seed": 0,
+     "weight_mapping": "household_to_benunit"
     }
    ],
    "outputs": [],
@@ -9758,32 +9773,20 @@
    "survey": "The self-employed's own profit on the final spine, and HMRC's policy paper on the Budget 2026 trading allowance raise (calibration)"
   },
   {
-   "stage": "uc_new_claimant_draw",
-   "survey": "Family Resources Survey 2024-25 (DWP's Universal Credit claim start, BENEFITS.UCSTART) and the locked policyengine-uk's Universal Credit award",
-   "source": "frs_uc_claim_months from frs_spine, the claimants' and partners' ages, and the locked engine's universal_credit and uc_LCWRA_element at the calibration year on the frame as it stands",
    "grain": "benunit",
+   "notes": "The last spine stage, so every writer of an input the Universal Credit award reads has run (microcosm#1095). From 6 April 2026 the LCWRA element of a claim made on or after that date is paid at the lower new-claimant rate (UC Regs 2013 reg. 36; Universal Credit Act 2025 s. 2), and policyengine-uk 2.179.0 (policyengine-uk#2877) gives a unit with the element that rate in each rebalancing year where its stored uc_new_claimant_health_element_draw falls below gov.dwp.universal_credit.rebalancing.new_claimant_share; without the column the engine draws in benefit-unit order, at random with respect to everything the file records. The stage stores the draw so that the claims most likely to be new get the lowest draws: the population, the units the engine pays Universal Credit with the LCWRA element at the calibration year, is ordered by claim recency (the months from DWP's claim start, BENEFITS.UCSTART, to the interview, which frs_spine carries as frs_uc_claim_months), then by the age of the youngest claimant or partner, youngest first, and each unit takes the midpoint of its slice of the population's weight, so the draw is uniform within the population at the stage's weights; every other unit takes an identity-keyed uniform, so the draw is uniform overall and the engine keeps the parameter's share each year. A unit with no linked claim start (an unlinked reporter, a take-up entrant, a legacy-closure mover or an SPI-channel unit) takes months drawn from the linked claims in its age band. The draw is a survey-year input the engine carries into every projected year, so the new claimants of each year are the units below its share. The calibration reweights the units, so the share at the release's weights moves with how it reweights recent claims; a unit that has the element only in a later year, such as one moved off income-related ESA from 2027-28, takes the identity uniform. The receipt bands its population, pools and imputed units by distinct source households and gives the weighted share of the population, and of its units whose youngest claimant or partner is 16 to 24, below three probes.",
    "operations": [
     {
+     "consumed_only": true,
+     "dataset_year_rule": "survey_year",
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
       "universal_credit",
       "uc_LCWRA_element"
      ],
-     "consumed_only": true,
-     "year_rule": "calibration_year",
-     "dataset_year_rule": "survey_year"
+     "year_rule": "calibration_year"
     },
     {
-     "kind": "assign_uc_new_claimant_draw",
-     "output": "uc_new_claimant_health_element_draw",
-     "draw": "uc_new_claimant_health_element_draw",
-     "order_draw": "uc_new_claimant_order",
-     "claim_months_draw": "uc_new_claimant_claim_months",
-     "seed": 0,
-     "claim_months": "frs_uc_claim_months",
-     "not_linked": -1,
-     "linked_scope": "household_is_spi_synthetic",
-     "age_role": "is_claimant_or_partner",
      "age_bands": [
       {
        "lower": 16,
@@ -9805,25 +9808,37 @@
        "lower": 55
       }
      ],
-     "minimum_pool_sources": 30,
-     "weight_mapping": "household_to_benunit",
-     "population": "benefit units the locked engine pays universal_credit with uc_LCWRA_element above zero at the calibration year, on the frame as it stands, its survey-year values projected by policyengine-uk",
-     "order": "claim recency first, the completed months from the claim's start to the interview, fewest first (frs_uc_claim_months on a linked claim, the imputed months otherwise); then the age of the unit's youngest claimant or partner (is_claimant_or_partner, at the stored age), youngest first; then the order draw, a uniform keyed on benunit_id",
+     "age_role": "is_claimant_or_partner",
+     "claim_months": "frs_uc_claim_months",
+     "claim_months_draw": "uc_new_claimant_claim_months",
+     "draw": "uc_new_claimant_health_element_draw",
      "imputation": "a unit of the population without a linked claim start (frs_uc_claim_months at not_linked, or a unit of an SPI-channel household, household_is_spi_synthetic) takes the months of the population's linked claims whose youngest claimant or partner is in its age band, at the household-weighted quantile of the claim months draw, a uniform keyed on benunit_id; adjacent bands pool, youngest first, until the linked claims rest on minimum_pool_sources distinct source households, and a short last pool joins the one before it",
-     "rule": "each unit of the population takes the midpoint of its slice of the population's benefit-unit weight in that order, over the population's weight, so the weighted share of the population below any u in [0, 1) is u to within one unit's weight; every other unit takes a uniform keyed on benunit_id, the output's own stream, so the draw is uniform overall. policyengine-uk carries the stored survey-year draw into every projected year and gives a unit with the LCWRA element the new-claimant rate where it falls below that year's gov.dwp.universal_credit.rebalancing.new_claimant_share"
+     "kind": "assign_uc_new_claimant_draw",
+     "linked_scope": "household_is_spi_synthetic",
+     "minimum_pool_sources": 30,
+     "not_linked": -1,
+     "order": "claim recency first, the completed months from the claim's start to the interview, fewest first (frs_uc_claim_months on a linked claim, the imputed months otherwise); then the age of the unit's youngest claimant or partner (is_claimant_or_partner, at the stored age), youngest first; then the order draw, a uniform keyed on benunit_id",
+     "order_draw": "uc_new_claimant_order",
+     "output": "uc_new_claimant_health_element_draw",
+     "population": "benefit units the locked engine pays universal_credit with uc_LCWRA_element above zero at the calibration year, on the frame as it stands, its survey-year values projected by policyengine-uk",
+     "rule": "each unit of the population takes the midpoint of its slice of the population's benefit-unit weight in that order, over the population's weight, so the weighted share of the population below any u in [0, 1) is u to within one unit's weight; every other unit takes a uniform keyed on benunit_id, the output's own stream, so the draw is uniform overall. policyengine-uk carries the stored survey-year draw into every projected year and gives a unit with the LCWRA element the new-claimant rate where it falls below that year's gov.dwp.universal_credit.rebalancing.new_claimant_share",
+     "seed": 0,
+     "weight_mapping": "household_to_benunit"
     },
     {
-     "kind": "record_mass_conservation_receipt",
-     "entity": "household",
-     "reason": "UC new-claimant health element draw stored on the source spine: household weights pass through unchanged and total household mass is conserved.",
      "declared_factor": 1,
-     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason."
+     "entity": "household",
+     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+     "kind": "record_mass_conservation_receipt",
+     "reason": "UC new-claimant health element draw stored on the source spine: household weights pass through unchanged and total household mass is conserved."
     }
    ],
    "outputs": [
     "uc_new_claimant_health_element_draw"
    ],
-   "notes": "The last spine stage, so every writer of an input the Universal Credit award reads has run (microcosm#1095). From 6 April 2026 the LCWRA element of a claim made on or after that date is paid at the lower new-claimant rate (UC Regs 2013 reg. 36; Universal Credit Act 2025 s. 2), and policyengine-uk 2.179.0 (policyengine-uk#2877) gives a unit with the element that rate in each rebalancing year where its stored uc_new_claimant_health_element_draw falls below gov.dwp.universal_credit.rebalancing.new_claimant_share; without the column the engine draws in benefit-unit order, at random with respect to everything the file records. The stage stores the draw so that the claims most likely to be new get the lowest draws: the population, the units the engine pays Universal Credit with the LCWRA element at the calibration year, is ordered by claim recency (the months from DWP's claim start, BENEFITS.UCSTART, to the interview, which frs_spine carries as frs_uc_claim_months), then by the age of the youngest claimant or partner, youngest first, and each unit takes the midpoint of its slice of the population's weight, so the draw is uniform within the population at the stage's weights; every other unit takes an identity-keyed uniform, so the draw is uniform overall and the engine keeps the parameter's share each year. A unit with no linked claim start (an unlinked reporter, a take-up entrant, a legacy-closure mover or an SPI-channel unit) takes months drawn from the linked claims in its age band. The draw is a survey-year input the engine carries into every projected year, so the new claimants of each year are the units below its share. The calibration reweights the units, so the share at the release's weights moves with how it reweights recent claims; a unit that has the element only in a later year, such as one moved off income-related ESA from 2027-28, takes the identity uniform. The receipt bands its population, pools and imputed units by distinct source households and gives the weighted share of the population, and of its units whose youngest claimant or partner is 16 to 24, below three probes."
+   "source": "frs_uc_claim_months from frs_spine, the claimants' and partners' ages, and the locked engine's universal_credit and uc_LCWRA_element at the calibration year on the frame as it stands",
+   "stage": "uc_new_claimant_draw",
+   "survey": "Family Resources Survey 2024-25 (DWP's Universal Credit claim start, BENEFITS.UCSTART) and the locked policyengine-uk's Universal Credit award"
   }
  ]
 }

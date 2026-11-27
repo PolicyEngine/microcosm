@@ -428,14 +428,13 @@ come from `policyengine/microcosm-uk-build-inputs`, under the sha256 of their
 15-clone spine, with its memory profile, and prints the upload that hands the
 spine to a dense build elsewhere.
 It hands the signing key, which must be registered in
-`microcosm.data.gate_signing_keys`, only to the steps that sign or verify. It
-does not complete a cut today. The national step refuses until the
-degenerate-surface register's `household.atomic_area_basis` exclusion applies
-on the national line. The publication steps (the publish preflight, which
-`all` always runs, and the inspection-only `--publish`) still build the
-tagged publisher's arguments, which `prepare_release` refuses for the national
-release ([release contract](release-contract.md)). Never publish or promote
-artifacts as a side effect of another task. A UK rowwise run's **staged** bundle
+`microcosm.data.gate_signing_keys`, only to the steps that sign or verify, and
+its `--publish` publishes the build through the emitter
+(`microcosm-publish-release-build`) without making it current. It does not
+complete a cut today: the national step refuses until the degenerate-surface
+register's `household.atomic_area_basis` exclusion applies on the national
+line. Never publish or promote artifacts as a side effect of another task. A
+UK rowwise run's **staged** bundle
 (`staged/<run_id>/` in the private repository, written by the build itself)
 is inspection evidence, not a release: it never moves `releases/` or
 `latest.json` and is not loadable through the certified loader. The build's

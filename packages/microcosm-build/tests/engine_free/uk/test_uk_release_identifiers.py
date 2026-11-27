@@ -35,7 +35,7 @@ from microcosm.build.uk_runtime.national_frame import (
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.weight_year import uk_dataset_year_frame
-from microcosm.frame import WeightKind
+from microcosm.frame import SharedColumnChangedError, WeightKind
 from microcosm.frame.adapters.engine_identifiers import identifier_columns
 from microcosm.frame.adapters.policyengine_uk import UK_ENGINE_IDENTIFIERS, UK_SCHEMA
 from test_support.microcosm_build.uk_graph_terminal import _frame as _ladder_frame

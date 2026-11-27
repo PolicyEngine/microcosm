@@ -3258,6 +3258,7 @@ _CHILD_BENEFIT_PARAMETERS = {
     "minimum_age_child_rows": 200,
     "maximum_opt_out_share_deviation": 0.01,
     "minimum_eligible_family_units": 1,
+    "maximum_copy_report_rate_deviation": 0.05,
 }
 
 
@@ -3274,6 +3275,29 @@ def _child_benefit_age(value, published, realized, *, rows=1_000, clipped=False)
     }
 
 
+def _child_benefit_copies(**changes):
+    receipt = {
+        "minimum_source_households": 30,
+        "cells": [
+            {
+                "children": ["1"],
+                "income_bands": ["taper"],
+                "frs_source_households": 40,
+            },
+            {
+                "children": ["2", "3+"],
+                "income_bands": ["taper"],
+                "frs_source_households": 31,
+            },
+        ],
+        "copy_rate_expected": 0.67,
+        "copy_rate_after": 0.69,
+        "frs_rows_unchanged": True,
+    }
+    receipt.update(changes)
+    return receipt
+
+
 def _child_benefit_gate(
     *,
     realized=0.868,
@@ -3281,10 +3305,15 @@ def _child_benefit_gate(
     share=0.0905,
     exhausted=False,
     units=100,
+    copy_reports=None,
+    omit_copies=False,
     parameters=_CHILD_BENEFIT_PARAMETERS,
 ):
     evidence = {
         "stage": "child_benefit_take_up",
+        "copy_reports": _child_benefit_copies()
+        if copy_reports is None
+        else copy_reports,
         "claims": {
             "eligible_family_units": units,
             "target_rate": 0.871,
@@ -3302,6 +3331,8 @@ def _child_benefit_gate(
             "pool_exhausted": exhausted,
         },
     }
+    if omit_copies:
+        del evidence["copy_reports"]
     return uk_stage_health_gate(
         evidence=evidence,
         stage="child_benefit_take_up",
@@ -3311,7 +3342,7 @@ def _child_benefit_gate(
 
 
 def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> None:
-    age, gate = _child_benefit_age, _child_benefit_gate
+    age, gate, copies = _child_benefit_age, _child_benefit_gate, _child_benefit_copies
     result = gate()
     assert _passed(result)
     assert result.details["ages_measured"] == 2

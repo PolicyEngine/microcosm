@@ -746,6 +746,8 @@ class UKNationalProblemKernel(_NationalKernel):
     def implementation_hash(self) -> str:
         import microcosm.calibrate.monetary_binding as monetary_binding
         from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame import shared_columns as frame_shared_columns
+        from microcosm.frame import table_copies as frame_table_copies
         from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
         from .. import gate_battery
@@ -779,7 +781,9 @@ class UKNationalProblemKernel(_NationalKernel):
         # since the resolver reads zeros where a frame lacks the column. The
         # name lives in annuity_trust_column, which holds nothing else, so
         # this hash leaves frs_spine out, and an edit there does not re-solve
-        # the national line (microcosm#931, ruled 9 Nov (late)).
+        # the national line (microcosm#931, ruled 9 Nov (late)). The frames it
+        # writes check their shared columns' digests before each write
+        # (frame_shared_columns, microcosm#1683).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -791,6 +795,7 @@ class UKNationalProblemKernel(_NationalKernel):
                         diagnostics,
                         frs_annual_income,
                         graph_population,
+                        frame_table_copies,
                         hmrc_income,
                         income_tax_rate_classes,
                         lcfs_consumption,
@@ -800,6 +805,7 @@ class UKNationalProblemKernel(_NationalKernel):
                         gate_battery,
                         monetary_binding,
                         frame_materialize,
+                        frame_shared_columns,
                         uk_engine_adapter,
                     ),
                 }
@@ -1155,6 +1161,7 @@ class UKNationalGateKernel(_NationalKernel):
         import microcosm.calibrate.registry as calibrate_registry
         import microcosm.calibrate.solve as calibrate_solve
         import microcosm.calibrate.target as calibrate_target
+        from microcosm.frame import table_copies as frame_table_copies
 
         from .. import gate_battery, gates
         from . import (
@@ -1212,6 +1219,7 @@ class UKNationalGateKernel(_NationalKernel):
                         calibrate_solve,
                         graph_targets,
                         graph_population,
+                        frame_table_copies,
                         national_frame,
                         etb_services,
                         cgt_projection,
@@ -1323,6 +1331,7 @@ class UKNationalReadbackKernel(KernelBase):
 
     def implementation_hash(self) -> str:
         from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame import table_copies as frame_table_copies
         from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
         from .. import artifact_files, trace
@@ -1353,6 +1362,7 @@ class UKNationalReadbackKernel(KernelBase):
             uk_engine_adapter,
             geography_ladder,
             graph_population,
+            frame_table_copies,
             hmrc_uprating,
             canonical_json,
         )

@@ -32,7 +32,7 @@ from microcosm.fit import donors as fit_donors
 from microcosm.fit import held_out as fit_held_out
 from microcosm.fit import model as fit_model
 from microcosm.fit import qrf as fit_qrf
-from microcosm.frame import Frame, MassChangeRecord, WeightKind, table_copies
+from microcosm.frame import Frame, MassChangeRecord, WeightKind
 from microcosm.frame import materialize as frame_materialize
 from microcosm.frame import rules as frame_rules
 from microcosm.frame.adapters import engine_identifiers, engine_population
@@ -922,12 +922,28 @@ _STAGE_HELPER_MODULES = {
     ),
     # Unavailable capital is frs_spine's sentinel (microcosm#931).
     "uc_capital_coherence": (uc_relationships, frs_spine, stochastic_assignment),
-    # One engine materialization of the proxy, the claimant role and carer
-    # status, which runs as every engine call does (microcosm#931), with the
-    # year's rules from the FRS release; the frs_spine carrier's codes, whose
-    # module draws through the keyed-draw helpers; the receipt's support
-    # counts (microcosm#1095, Y1).
+    # One engine materialization of the proxy, the claimant role, carer status
+    # and own ESA awards, which runs as every engine call does (microcosm#931),
+    # with the year's rules from the FRS release; the frs_spine carrier's
+    # codes, whose module draws through the keyed-draw helpers; the receipt's
+    # support counts (microcosm#1095, Y1); the imputation's age source, the
+    # take-up redraw's young ages and its identity-keyed draw (María's call of
+    # 2026-11-17).
     "uc_limited_capability": (
+        *_ENGINE_STAGE_MODULES,
+        frs_release,
+        frs_spine,
+        receipt_counts,
+        frs_take_up,
+        uc_take_up,
+        stochastic_assignment,
+    ),
+    # One engine materialization of the housing costs element, which runs as
+    # every engine call does (microcosm#931), with the year's rules from the
+    # FRS release; the frs_spine carrier's codes, whose module draws through
+    # the keyed-draw helpers; the receipt's support counts (B1 of
+    # microcosm#1710).
+    "uc_housing_costs_claim": (
         *_ENGINE_STAGE_MODULES,
         frs_release,
         frs_spine,
@@ -1062,12 +1078,14 @@ _STAGE_HELPER_MODULES = {
     # The claimant draw is keyed on identity and its receipt rounds its
     # support (microcosm#1428).
     "trading_allowance_receipts": (receipt_counts, stochastic_assignment),
-    # The new-claimant draw reads the award through the adapter, the claim
-    # recency carrier's sentinel, the UC stages' household-to-benefit-unit
-    # weight mapping, and keys its draws on identity and counts its receipt on
-    # the source lineage (microcosm#1095).
+    # The new-claimant draw reads the award through the engine, which runs as
+    # every engine call does (microcosm#931), with the year's rules from the
+    # FRS release; the claim recency carrier's sentinel, the UC stages'
+    # household-to-benefit-unit weight mapping, and keys its draws on identity
+    # and counts its receipt on the source lineage (microcosm#1095).
     "uc_new_claimant_draw": (
-        uk_engine_adapter,
+        *_ENGINE_STAGE_MODULES,
+        frs_release,
         frs_spine,
         uc_capital_coherence,
         receipt_counts,
@@ -1210,6 +1228,7 @@ _COUNTING_STAGES = frozenset(
         "uc_deduction_attributes",
         "isa_subscriptions",
         "trading_allowance_receipts",
+        "uc_new_claimant_draw",
         "frs_disability",
         "spi_employment_shell",
         "aps_occupation",
@@ -1264,6 +1283,8 @@ def _stage_module(stage: str):
 
 
 def _implementation_hash(kernel: object, stage: str, transform: object | None) -> str:
+    from microcosm.frame import table_copies as frame_table_copies
+
     from . import graph_evidence
 
     # The stage module is the behavior-bearing source in every mode. Hashing
@@ -1277,7 +1298,9 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
     # each frame it builds with the engine adapter's ISA income contract and
     # savings income projection, so every kernel hashes the adapter with it.
     # Every kernel casts the cells it owns, and the root normalises the frame
-    # it creates, through graph_frames.
+    # it creates, through graph_frames. Every stage builds its frame from one
+    # copy of each input table (_minimal_frame, through table_copies,
+    # microcosm#1746).
     dependencies = getattr(transform, "graph_implementation_dependencies", None)
     return source_hash(
         type(kernel),
@@ -1286,8 +1309,7 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
         national_frame,
         uk_engine_adapter,
         graph_frames,
-        # _minimal_frame copies the stage's inputs with copy_table.
-        table_copies,
+        frame_table_copies,
         _stage_artifacts,
         _mass_log_payload,
         _stage_module(stage),
@@ -2043,11 +2065,11 @@ def _minimal_frame(
 ) -> Frame:
     """The kernel's own Frame over its context's declared slices.
 
-    ``Frame`` copies each table it is given, so the context's frozen tables
-    go in as they are: a deep copy here first held one more copy of the
-    population at every hand-over, three at once beside the stored
-    population while the Frame was built (microcosm#931). The strata, one
-    person-level column, keep their copy. ``mass_log`` and ``metadata``
+    Each input column is copied once, in the block layout ``copy(deep=True)``
+    gives, and ``Frame.adopt`` stores the copies without copying them again
+    (microcosm#1746): a deep copy here and the constructor's own copy once
+    held more copies of the population at every hand-over (microcosm#931).
+    The strata are copied the same way. ``mass_log`` and ``metadata``
     replace the stage defaults for a caller that brings its own, so the
     spine gate kernel builds this one Frame rather than a second from it.
     """
@@ -2088,8 +2110,13 @@ def _minimal_frame(
                     reason=reason,
                 ),
             )
-    return Frame(
-        {entity: context.tables[entity] for entity in UK_NATIONAL_SCHEMA.entities},
+    # One copy of each input column, in the block layout copy(deep=True) gives,
+    # which Frame.adopt stores without copying again (microcosm#1746).
+    return Frame.adopt(
+        {
+            entity: copy_table(context.tables[entity])
+            for entity in UK_NATIONAL_SCHEMA.entities
+        },
         UK_NATIONAL_SCHEMA,
         {"household": context.weights["household"]},
         copy_series(context.strata),

@@ -38,7 +38,6 @@ from microcosm.build.gate_battery import (
 )
 from microcosm.build.gate_battery import (
     gate_signing_key_env,
-    scoped_gate_manifest,
 )
 from microcosm.build.uk_runtime.cgt_projection import (
     UKCGTProjection,

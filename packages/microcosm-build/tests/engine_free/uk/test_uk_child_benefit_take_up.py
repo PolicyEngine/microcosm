@@ -376,7 +376,9 @@ def _thin_age_evidence(clones: int, *, count_every_clone: bool = False) -> dict:
     rates of 0.9 and 0.5. Every clone of a family weighs ``1 / clones`` of it
     and takes its source's draw, so the realised rates are the same at every
     clone count: 819 of the 900 and 63 of the 150 claim, 0.91 and 0.42. No
-    family reports, and the opted-out share is at its target."""
+    family reports, and the opted-out share is at its target. The frame has
+    no SPI copies, so its copy reports (microcosm#1508) hold no share, and
+    their one cell rests on the 1,050 source families at every clone count."""
 
     sources = 1_050
     ages = np.r_[np.full(900, 5), np.full(150, 19)]
@@ -395,6 +397,19 @@ def _thin_age_evidence(clones: int, *, count_every_clone: bool = False) -> dict:
     )
     return {
         "stage": CHILD_BENEFIT_TAKE_UP_STAGE_NAME,
+        "copy_reports": {
+            "minimum_source_households": 30,
+            "cells": [
+                {
+                    "children": ["1"],
+                    "income_bands": ["below_charge_start"],
+                    "frs_source_households": sources,
+                }
+            ],
+            "copy_rate_expected": None,
+            "copy_rate_after": None,
+            "frs_rows_unchanged": True,
+        },
         "claims": claims,
         "opt_outs": {
             "target_share": 0.1,

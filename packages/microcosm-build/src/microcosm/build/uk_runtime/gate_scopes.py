@@ -20,6 +20,7 @@ beside the calibration, national and local diagnostic scopes it keeps.
 from __future__ import annotations
 
 from microcosm.build.country_spec import GatesManifest, load_country_spec
+from microcosm.build.gate_battery import scoped_gate_manifest
 
 UK_LOCAL_GATE_SCOPE = (
     "uk_local_geography_ladder_post_calibration",
@@ -49,6 +50,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_lcfs_consumption_excise_quantities",
     "uk_stage_lcfs_consumption_gambling_participation",
     "uk_stage_lcfs_consumption_basis",
+    "uk_stage_lcfs_consumption_decile_fit",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
     "uk_stage_etb_services_support_pricing",
@@ -136,22 +138,15 @@ def uk_scoped_gate_manifest(
 ) -> GatesManifest:
     """Filter the declared UK gate spec to one battery's scope.
 
-    The one scope-filtering implementation every scoped producer shares
-    (spine build, calibration seam, release cut). ``source`` lets a caller
+    The shared :func:`~microcosm.build.gate_battery.scoped_gate_manifest`,
+    which every scoped producer calls through here (spine build, calibration
+    seam, release cut). ``source`` lets a caller
     that already holds a loaded spec — or a hermetic test that stubs one —
     supply it; the default is the committed package spec.
     """
 
     if source is None:
         source = load_country_spec("uk").gates
-    entries = tuple(entry for entry in source.gates if entry.id in scope)
-    missing = sorted(set(scope) - {entry.id for entry in entries})
-    if missing:
-        raise RuntimeError(f"UK gate scope names undeclared gate id(s): {missing}.")
-    return GatesManifest(
-        country=source.country,
-        version=source.version,
-        policy=f"{source.policy}; {policy_suffix}",
-        phases=phases,
-        gates=entries,
+    return scoped_gate_manifest(
+        source, scope, phases=phases, policy_suffix=policy_suffix
     )

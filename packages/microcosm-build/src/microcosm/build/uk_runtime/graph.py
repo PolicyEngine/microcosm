@@ -921,6 +921,11 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     )
     | _GEOGRAPHIC_CLONE_LINEAGE,
+    # One engine materialization of the Universal Credit award and its LCWRA
+    # element over the whole frame, beside the claim recency carrier, the
+    # claimants' ages and the source lineage its pools and receipt count by:
+    # an open surface (microcosm#1095).
+    "uc_new_claimant_draw": None,
     # The copies' childcare re-draw reads every household's clone path (the
     # lineage columns of each copy stage) and keeps the native units' cells:
     # an open surface, like the other take-up redraws.

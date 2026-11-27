@@ -6,8 +6,8 @@ from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import NamedTuple
 
-from microcosm.graph import graph_schema, orrery_document
-from microcosm.graph.canonical import canonical_json
+from microcosm.graph import graph_schema
+from microcosm.graph.schema import validate_graph_schema
 from test_support.microcosm_build.derived_binding_rule import (
     FIRST_PARTY_SCOPE,
     GRAPH_RECORD_REASONS,
@@ -93,8 +93,11 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     # regional_home_values, whose England and Wales home values was_wealth
     # now reads off each owner's constituency; and microcosm#931 adds
     # council_tax_localise, the council tax at each household's local
-    # authority, after private_rent and just before was_wealth.
-    assert len(expected) == 63
+    # authority, after private_rent and just before was_wealth; and
+    # microcosm#1095 uc_new_claimant_draw last, after
+    # trading_allowance_receipts; and B1 of microcosm#1710
+    # uc_housing_costs_claim after uc_limited_capability.
+    assert len(expected) == 65
     assert "frs_brma" not in expected
     assert "regional_home_values" not in expected
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
@@ -504,7 +507,9 @@ _COPY_ID_TABLE_NAME_ONLY_STAGES = frozenset(
         "spi_benefit_coherence",
         "uc_capital_coherence",
         "uc_deduction_attributes",
+        "uc_housing_costs_claim",
         "uc_limited_capability",
+        "uc_new_claimant_draw",
         "uc_take_up",
         "was_lisa",
         "was_wealth",

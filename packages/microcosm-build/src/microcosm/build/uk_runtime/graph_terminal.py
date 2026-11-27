@@ -355,6 +355,8 @@ class UKExportPrepareKernel(KernelBase):
 
     def implementation_hash(self) -> str:
         from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame import table_copies as frame_table_copies
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
         from .. import gates
         from . import (
@@ -373,8 +375,11 @@ class UKExportPrepareKernel(KernelBase):
         # (frame_materialize) and the clone index columns geographic_clones
         # names, the engine's weight projection factor (hmrc_uprating's
         # pins), the frame it rebuilds (graph_population) and the canonical
-        # encoding of the descriptor (microcosm#931). The gate report it reads
-        # only admits it (_require_full_gate_admission).
+        # encoding of the descriptor (microcosm#931). The dataset year's frame
+        # is rebuilt with the UK totals and carries the ISA income contract
+        # and the savings income projection the engine adapter defines
+        # (weight_year.uk_dataset_year_frame). The gate report it reads only
+        # admits it (_require_full_gate_admission).
         return source_hash(
             sys.modules[__name__],
             national_frame,
@@ -383,12 +388,14 @@ class UKExportPrepareKernel(KernelBase):
             gates,
             atomic_area_support,
             graph_population,
+            frame_table_copies,
             hmrc_uprating,
             local_authority_input,
             rowwise_dataset,
             geographic_clones,
             rowwise_geography,
             frame_materialize,
+            uk_engine_adapter,
             canonical_json,
         )
 
@@ -1460,6 +1467,7 @@ class UKFullHoldoutKernel(KernelBase):
         import microcosm.calibrate.solve as calibrate_solve
         import microcosm.calibrate.target as calibrate_target
         import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
+        from microcosm.frame import table_copies as frame_table_copies
         from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
         from .. import cross_grain, gate_battery, holdout, stage_evidence
@@ -1532,6 +1540,7 @@ class UKFullHoldoutKernel(KernelBase):
                         local_geography,
                         geography_ladder,
                         graph_population,
+                        frame_table_copies,
                         national_frame,
                         holdout,
                         local_target_census,

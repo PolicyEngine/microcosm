@@ -495,7 +495,10 @@ def test_export_candidate_columns_strip_ids_and_carry_the_weight() -> None:
     # disability carriers, the salary-sacrifice pre-conversion pay carrier,
     # the landlord carrier, the FRS bonus carrier (microcosm#1340), the
     # in-household care hours carrier (microcosm#1418), the admin UC limited
-    # capability carrier (microcosm#1095, Y1), the company car carriers
+    # capability carrier (microcosm#1095, Y1), the admin UC housing element
+    # carrier (B1 of microcosm#1710), the limiting condition carrier
+    # its imputation reads (PolicyEngine/microcosm#1663), the UC claim recency
+    # carrier (microcosm#1095), the company car carriers
     # (PolicyEngine/uk-autumn-budget-dashboard-2026#316), the WAS chain's kept
     # draw of the main residence (microcosm#1112, microcosm#931), the household
     # ISA totals policyengine-uk sums from the person balances

@@ -1152,6 +1152,10 @@ def _child_benefit_take_up_gate(
     realised rate is weighted. The opted-out share of claiming families is
     held to the published share, or may fall short of it only where the
     receipt shows the charged families exhausted (microcosm#1063).
+    The SPI copies' redrawn reports (microcosm#1508) must leave FRS rows
+    unchanged, rest every cell on the declared number of FRS source
+    households, and give the copy families a weighted reporting share within
+    the tolerance of their cells' FRS rates.
 
     An age's child rows, for the floor ``minimum_age_child_rows`` and for the
     band's n alike, are the receipt's ``eligible_child_rows``, which the stage

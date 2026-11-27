@@ -448,6 +448,7 @@ class UKSpineGateKernel(KernelBase):
         import microcosm.calibrate.geography_constants as geography_constants
         import microcosm.graph.canonical as graph_canonical
         import microcosm.graph.randomness as graph_randomness
+        from microcosm.frame import table_copies as frame_table_copies
         from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
         from microcosm.graph.canonical import canonical_json
 
@@ -477,7 +478,9 @@ class UKSpineGateKernel(KernelBase):
         # leaves an in-graph spine a cache hit (microcosm#1301). The code is
         # what both phases compute through (microcosm#931 ruling 6): this
         # kernel's run, the frame it rebuilds (graph_kernels' _minimal_frame,
-        # national_frame) and the evidence it decodes (stage_evidence); the
+        # national_frame, and the one copy of each table it makes,
+        # frame_table_copies, microcosm#1746) and the evidence it decodes
+        # (stage_evidence); the
         # battery and the gate registry (gate_battery, battery_bindings,
         # gates); the stage-health checks (stage_health, the independent
         # review of microcosm#1420, finding 5), with the receipt bands of the
@@ -516,6 +519,7 @@ class UKSpineGateKernel(KernelBase):
                         stage_evidence,
                         graph_kernels,
                         national_frame,
+                        frame_table_copies,
                         receipt_counts,
                         council_tax_constants,
                         geography_constants,

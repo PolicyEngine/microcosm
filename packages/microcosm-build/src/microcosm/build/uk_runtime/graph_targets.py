@@ -472,6 +472,8 @@ class UKFullMeasureKernel(_TargetKernel):
         import microcosm.calibrate.monetary_binding as monetary_binding
         from microcosm.build import chronicle_epoch
         from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame import shared_columns as frame_shared_columns
+        from microcosm.frame import table_copies as frame_table_copies
         from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
         from . import (
@@ -483,6 +485,7 @@ class UKFullMeasureKernel(_TargetKernel):
             hmrc_income,
             income_tax_rate_classes,
             lcfs_consumption,
+            local_rowwise,
             national_calibration,
             national_frame,
             uc_target_measurements,
@@ -504,7 +507,9 @@ class UKFullMeasureKernel(_TargetKernel):
         # It lives in annuity_trust_column, which holds nothing else, not in
         # frs_spine, which writes the column, so this hash leaves frs_spine
         # out, and on a bound spine an edit there leaves the measures' key
-        # alone (microcosm#931, ruled 9 Nov (late)).
+        # alone (microcosm#931, ruled 9 Nov (late)). The frames the measures
+        # write check their shared columns' digests before each write
+        # (frame_shared_columns, microcosm#1683).
         return hashlib.sha256(
             canonical_json(
                 {
@@ -516,6 +521,7 @@ class UKFullMeasureKernel(_TargetKernel):
                         dfe_spring_term,
                         frs_annual_income,
                         graph_population,
+                        frame_table_copies,
                         hmrc_income,
                         income_tax_rate_classes,
                         lcfs_consumption,
@@ -525,6 +531,7 @@ class UKFullMeasureKernel(_TargetKernel):
                         uc_target_measurements,
                         monetary_binding,
                         frame_materialize,
+                        frame_shared_columns,
                         uk_engine_adapter,
                     ),
                 }
@@ -735,36 +742,29 @@ class UKFullProblemKernel(_TargetKernel):
 
     def implementation_hash(self) -> str:
         import microcosm.calibrate.monetary_binding as monetary_binding
+        from microcosm.frame import table_copies as frame_table_copies
 
         from . import graph_population, local_geography, national_frame
+        from .target_compile_modules import uk_full_problem_loss_weight_modules
 
-        # The loss weights the problem binds are built by
-        # ``local_rowwise.prepare_uk_full_solve`` from the rules in
-        # ``target_weights`` and ``national_doctrine`` (microcosm#1124), so an
-        # edit there re-keys the problem instead of replaying a stale vector.
-        # ``target_weights`` reads the UK-wide geography codes from
-        # ``geography_constants``, and the loss scales the problem stores from
-        # ``calibrate.solve.default_target_loss_scales`` (microcosm#1492). All
-        # of ``calibrate.solve`` is hashed: ``calibrate.adam@1``, whose hash
-        # every UK solve kernel embeds, already hashes it, so an edit there
-        # re-solves anyway and re-keys only this node besides. The problem
-        # also computes through the frame it rebuilds on national_frame's
-        # schema (graph_population, national_frame), the area columns of the
-        # local surface matrix local_rowwise builds (local_geography) and the
+        # Beside the target modules, the problem hashes the modules that
+        # decide the loss weights and scales it binds, so an edit to one of
+        # them re-keys the problem instead of replaying a stale vector.
+        # ``target_compile_modules`` names them and says why each is there.
+        # They are named, not imported here: the other kernels of this module
+        # run none of that code (microcosm#1729). The problem also computes
+        # through the frame it rebuilds on national_frame's schema
+        # (graph_population, national_frame), the area columns of the local
+        # surface matrix local_rowwise builds (local_geography) and the
         # constraint matrix's monetary check (monetary_binding) (microcosm#931).
         return hashlib.sha256(
             canonical_json(
                 {
                     "targets": super().implementation_hash(),
-                    "weights": source_hash(
-                        local_rowwise,
-                        national_doctrine,
-                        target_weights,
-                        geography_constants,
-                        calibrate_solve,
-                    ),
+                    "weights": source_hash(*uk_full_problem_loss_weight_modules()),
                     "problem": source_hash(
                         graph_population,
+                        frame_table_copies,
                         national_frame,
                         local_geography,
                         monetary_binding,

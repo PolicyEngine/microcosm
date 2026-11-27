@@ -256,6 +256,7 @@ def uk_terminal_only_code_hash() -> str:
     import microcosm.calibrate.solve as calibrate_solve
     import microcosm.diagnostics.catalogs as diagnostics_catalogs
     import microcosm.diagnostics.schema as diagnostics_schema
+    from microcosm.frame import table_copies as frame_table_copies
 
     from .. import chronicle_epoch, input_mass, source_lineage
     from . import (
@@ -302,6 +303,7 @@ def uk_terminal_only_code_hash() -> str:
         monetary_binding,
         calibrate_solve,
         graph_population,
+        frame_table_copies,
         local_rowwise,
         support_floor,
         rowwise_geography,

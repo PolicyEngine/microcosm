@@ -859,7 +859,7 @@ def impute_salary_sacrifice(
             & ~support_copies.astype(bool)
             & adult_record
         ).to_numpy(),
-        spi=channels.ne("frs").to_numpy(),
+        spi=(channels.ne("frs") & adult_record).to_numpy(),
         clone_indices=_geographic_clone_indices(person_households, households),
     )
     bonus = convert_bonuses_to_bonus_sacrifice(

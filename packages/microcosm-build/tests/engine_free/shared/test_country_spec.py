@@ -1268,8 +1268,11 @@ class TestUKCountryPackage:
         # private_rent after spi_housing_shell; and microcosm#931 retires
         # regional_home_values, whose England and Wales home values was_wealth
         # reads off each owner's constituency; and microcosm#931 adds
-        # council_tax_localise after private_rent, just before was_wealth.
-        assert len(spec.sources.stages) == 63
+        # council_tax_localise after private_rent, just before was_wealth;
+        # microcosm#1095 uc_new_claimant_draw last, after
+        # trading_allowance_receipts; B1 of microcosm#1710 uc_housing_costs_claim
+        # after uc_limited_capability.
+        assert len(spec.sources.stages) == 65
         assert not {
             "frs_hmrc_retained_leaves",
             "hmrc_spi_income",

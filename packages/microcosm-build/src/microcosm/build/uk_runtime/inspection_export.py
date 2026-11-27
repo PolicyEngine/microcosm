@@ -40,6 +40,8 @@ class UKInspectionExportPrepareKernel(graph_terminal.UKExportPrepareKernel):
 
     def implementation_hash(self) -> str:
         from microcosm.frame import materialize as frame_materialize
+        from microcosm.frame import table_copies as frame_table_copies
+        from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 
         from .. import gates
         from . import (
@@ -59,8 +61,9 @@ class UKInspectionExportPrepareKernel(graph_terminal.UKExportPrepareKernel):
         # (microcosm#931): the ladder gate's results and region codes, the
         # area code frames, the engine tables and the clone index columns
         # geographic_clones names, the dataset year's weights and the
-        # engine's projection factor, the frame it rebuilds, and the
-        # descriptor's canonical encoding.
+        # engine's projection factor, the frame it rebuilds with the UK
+        # totals, the ISA income contract and the savings income projection
+        # the engine adapter defines, and the descriptor's canonical encoding.
         return source_hash(
             sys.modules[__name__],
             graph_terminal,
@@ -69,6 +72,7 @@ class UKInspectionExportPrepareKernel(graph_terminal.UKExportPrepareKernel):
             geographic_clones,
             geography_ladder,
             graph_population,
+            frame_table_copies,
             hmrc_uprating,
             local_authority_input,
             national_frame,
@@ -76,6 +80,7 @@ class UKInspectionExportPrepareKernel(graph_terminal.UKExportPrepareKernel):
             rowwise_geography,
             weight_year,
             frame_materialize,
+            uk_engine_adapter,
             canonical_json,
         )
 

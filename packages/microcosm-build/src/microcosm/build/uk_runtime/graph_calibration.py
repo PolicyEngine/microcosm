@@ -32,7 +32,7 @@ from microcosm.calibrate.exact_k import select_exact_k
 from microcosm.calibrate.gates import HardConcrete
 from microcosm.calibrate.initialization import contribution_initialization
 from microcosm.calibrate.kernels import CalibrateAdamKernel
-from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights, table_copies
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -269,6 +269,7 @@ def _size_solve_modules() -> tuple[object, ...]:
     geography their solves read (microcosm#931)."""
 
     import microcosm.calibrate.geography_constants as geography_constants
+    import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
 
     from . import local_doctrine, local_targets, national_doctrine, target_weights
 
@@ -278,6 +279,9 @@ def _size_solve_modules() -> tuple[object, ...]:
         local_targets,
         national_doctrine,
         geography_constants,
+        # target_weights and national_doctrine compute every weight with the
+        # shared rules (microcosm#1729).
+        calibrate_target_loss_rules,
     )
 
 
@@ -294,6 +298,7 @@ def _calibration_hash(kernel: KernelBase, *modules: object) -> str:
 
     import microcosm.calibrate.hierarchy as calibrate_hierarchy
     import microcosm.calibrate.monetary_binding as monetary_binding
+    from microcosm.frame import table_copies as frame_table_copies
 
     from . import national_frame
 
@@ -307,8 +312,8 @@ def _calibration_hash(kernel: KernelBase, *modules: object) -> str:
                     size_checkpoint,
                     calibration_artifacts,
                     context_frame,
-                    # context_frame copies the kernel's inputs with it.
-                    table_copies,
+                    # context_frame copies each table once (microcosm#1746).
+                    frame_table_copies,
                     select_exact_k,
                     HardConcrete,
                     contribution_initialization,

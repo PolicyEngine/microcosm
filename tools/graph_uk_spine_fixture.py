@@ -261,8 +261,10 @@ _SPI_DONOR_SAMPLE_SIZE = 64
 #: spi_copy_areas) and private_rent made it 63, and regional_home_values'
 #: retirement 62: the WAS chain localises the home values;
 #: council_tax_localise, the council tax at each household's local authority
-#: just before the WAS chain, makes it 63 again (microcosm#931).
-UK_FIXTURE_STAGE_COUNT = 63
+#: just before the WAS chain, makes it 63 again (microcosm#931). Main's
+#: uc_new_claimant_draw (microcosm#1687) makes it 64, and its
+#: uc_housing_costs_claim (B1 of microcosm#1710) 65.
+UK_FIXTURE_STAGE_COUNT = 65
 _QRF_ESTIMATORS = 4
 #: The fixture spine's geographic clone count K (microcosm#931). The config
 #: records it, the oracle builds geographic_expand and its engine with it, as
