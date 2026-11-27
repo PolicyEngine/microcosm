@@ -238,6 +238,10 @@ from microcosm.build.us_runtime.gate_shadow import (
     shadow_value,
     tool_gate_shadows_enabled,
 )
+from microcosm.build.us_runtime.household_batches import (
+    assert_group_entities_nest_in_households,
+    assert_medicaid_claiming_tax_units_local,
+)
 from microcosm.build.us_runtime.org_wages import (
     US_ORG_OCCUPATION_AND_WORK_EXPERIENCE_OUTPUT_COLUMNS,
     require_us_occupation_and_work_experience_inputs,
@@ -1432,8 +1436,10 @@ def materialize_chunked(
     chunk_stats = []
     n_chunks = (n_households + hh_chunk - 1) // hh_chunk
     if n_chunks > 1:
-        release_tool._assert_group_entities_nest_in_households(projected)
-        release_tool._assert_medicaid_claiming_tax_units_local(projected)
+        assert_group_entities_nest_in_households(projected)
+        assert_medicaid_claiming_tax_units_local(
+            projected, work=release_tool.TARGET_MATERIALIZATION_PASS
+        )
     for chunk_index, low in enumerate(range(0, n_households, hh_chunk)):
         high = min(low + hh_chunk, n_households)
         started = time.time()
@@ -2067,10 +2073,18 @@ def _acs_engine_values(
         if held:
             table.drop(columns=held, inplace=True)
     fill_reviewed_nulls(view, summary_path, period=PERIOD)
-    if view.n("household") > hh_chunk:
-        release_tool._assert_group_entities_nest_in_households(view)
-        release_tool._assert_medicaid_claiming_tax_units_local(view)
-    values = helper(view, maximum_microsim_batch_size=hh_chunk)
+    # The view holds the donor households or the ACS households, never the
+    # whole population, so a population-aggregate variable (a sum or rank
+    # over everyone in the engine) would cover only this view even when it
+    # fits in one chunk. The refusal is therefore on for every view, not only
+    # for views split into several chunks; switching it on also refuses a
+    # view whose groups or Medicaid claims cross households before any
+    # engine is built.
+    values = helper(
+        view,
+        maximum_microsim_batch_size=hh_chunk,
+        refuse_population_aggregates=True,
+    )
     gc.collect()
     log(
         f"Engine pre-pass {variable}: {len(values):,} persons "

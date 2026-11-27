@@ -46,6 +46,7 @@ import subprocess
 from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
+from typing import NoReturn
 
 import numpy as np
 import pandas as pd
@@ -56,11 +57,11 @@ from microcosm.build.frame_checkpoint import write_frame_checkpoint
 from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.outer_stage_runtime import (
+    FrameIdentity,
     Stage,
     StagePipeline,
     StageRuntime,
     assert_clone_expansion,
-    assert_unchanged_identity,
     frame_identity,
 )
 from microcosm.build.program_telemetry import (
@@ -858,29 +859,54 @@ def _require_completed_source_receipt_matches_pins(
     )
 
 
-def _verify_asec_source_digests(args: argparse.Namespace) -> None:
+#: Steps that read the pinned ASEC files and hash them nowhere else, so they
+#: hash them for the pin check themselves rather than take the parent's
+#: digests. ``household_location_assignment`` reads the CPS household
+#: geography from them under ``block_v1``. ``source_construction``, the
+#: other step that reads them, hashes each file again once it has read it
+#: and compares that digest with the pin
+#: (``_require_receipt_digests_match_pins``).
+_STEPS_HASHING_THEIR_ASEC_SOURCES = frozenset({HOUSEHOLD_LOCATION_STAGE_NAME})
+
+
+def _verify_asec_source_digests(args: argparse.Namespace) -> dict[str, str]:
     """Refuse a raw ASEC input whose bytes differ from its declared digest.
 
     Every pin is parsed and compared with the canonical roster first
     (:func:`_parse_asec_source_pins`, which reads no file), then each pinned
     file is hashed in year order. Runs before any stage, so a wrong input
-    refuses in seconds rather than surfacing as drift hours later.
+    refuses in seconds rather than surfacing as drift hours later. A step
+    process of a ``--stage all`` run compares each pin with the digest its
+    parent computed for the same resolved path (``PARENT_DIGESTS_VARIABLE``)
+    instead of hashing the file, except in
+    ``_STEPS_HASHING_THEIR_ASEC_SOURCES``.
+
+    Returns each pinned file's digest under its resolved path, empty when
+    nothing is pinned.
     """
 
     pins = _parse_asec_source_pins(args)
     if pins is None:
-        return
+        return {}
+    parent_digests = (
+        None
+        if getattr(args, "stage", "all") in _STEPS_HASHING_THEIR_ASEC_SOURCES
+        else _parent_digests(args)
+    )
     paths = _asec_source_paths(args)
+    verified: dict[str, str] = {}
     for year, sha in sorted(pins.items()):
         path = paths[year]
         if not path.is_file():
             raise SystemExit(f"ASEC {year} source {path} does not exist.")
-        actual = _sha256(path)
+        actual = _input_sha256(path, parent_digests)
         if actual != sha:
             raise SystemExit(
                 f"ASEC {year} source {path} failed digest "
                 f"verification: expected {sha}, got {actual}."
             )
+        verified[str(path.resolve())] = actual
+    return verified
 
 
 #: The telemetry pipeline this builder reports under.
@@ -907,7 +933,7 @@ def _dispatch(
 ) -> None:
     """Run the parsed command, recording stage changes on ``telemetry`` if any."""
 
-    _verify_asec_source_digests(args)
+    verified_asec_sha256 = _verify_asec_source_digests(args)
     stage = getattr(args, "stage", "all")
     checkpoint_dir = getattr(args, "checkpoint_dir", None)
     if stage != "all":
@@ -950,21 +976,36 @@ def _dispatch(
         if observer is not None:
             observer.assert_complete()
         return
-    _run_staged_all(args, telemetry)
+    _run_staged_all(args, telemetry, verified_asec_sha256=verified_asec_sha256)
 
 
 def _run_staged_all(
-    args: argparse.Namespace, telemetry: LocalTelemetryEmitter | None = None
+    args: argparse.Namespace,
+    telemetry: LocalTelemetryEmitter | None = None,
+    *,
+    verified_asec_sha256: Mapping[str, str] | None = None,
 ) -> None:
     """Run every outer boundary in a fresh interpreter, resuming by prefix.
 
     Before each child, ``telemetry`` (the parent's, if any) records that
     child's stage; a child that exits nonzero stops the run, which main()
     records as that stage's failure. The children start no emitter.
+    ``verified_asec_sha256`` holds the digests this process's pin check
+    computed (``_verify_asec_source_digests``), which the children's pin
+    checks use, except in ``_STEPS_HASHING_THEIR_ASEC_SOURCES``.
     """
 
     pipeline_steps = _pipeline_steps_for(args)
-    runtime = _open_stage_runtime(args)
+    run_config = _stage_run_config(args)
+    runtime = _open_stage_runtime(args, run_config)
+    # Each step process takes the PUF and ladder digests from this run
+    # config, which the resume check just compared with the locked one, and
+    # the ASEC digests from the pin check, instead of hashing those files
+    # again; household_location_assignment hashes the ASEC files itself, and
+    # every step hashes the builder's source files itself.
+    digests_environment = _parent_digests_environment(
+        run_config, verified_asec_sha256 or {}
+    )
     completed_prefix = runtime.context.completed
     remaining = pipeline_steps[len(completed_prefix) :]
     if not remaining and completed_prefix == pipeline_steps:
@@ -991,7 +1032,7 @@ def _run_staged_all(
                     *_stage_cli_args(args, stage),
                 ],
                 check=False,
-                env=_staged_subprocess_environment(),
+                env={**_staged_subprocess_environment(), **digests_environment},
             )
             if completed.returncode != 0:
                 raise SystemExit(
@@ -1313,13 +1354,18 @@ def _blas_threads_in_use() -> list[list[object]]:
     )
 
 
-def _open_stage_runtime(args: argparse.Namespace) -> StageRuntime:
-    """Open the checkpoint directory, refusing a resume with changed settings."""
+def _open_stage_runtime(
+    args: argparse.Namespace, run_config: Mapping[str, object] | None = None
+) -> StageRuntime:
+    """Open the checkpoint directory, refusing a resume with changed settings.
+
+    ``run_config`` is ``_stage_run_config(args)``, when the caller has it.
+    """
 
     return StageRuntime(
         args.checkpoint_dir,
         _pipeline_for(args),
-        run_config=_stage_run_config(args),
+        run_config=_stage_run_config(args) if run_config is None else run_config,
         resume_ignored_run_config_paths=_RESUME_IGNORED_RUN_CONFIG_PATHS,
     )
 
@@ -1328,11 +1374,16 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
     """Return the canonical inputs and settings recorded by the first run.
 
     A resume must supply equal values, except for
-    ``_RESUME_IGNORED_RUN_CONFIG_PATHS``.
+    ``_RESUME_IGNORED_RUN_CONFIG_PATHS``. A step process of a ``--stage all``
+    run takes the PUF and location ladder digests its parent passed
+    (``PARENT_DIGESTS_VARIABLE``) instead of hashing those files again; it
+    hashes the builder's source files itself.
     """
 
     def path(value: Path | None) -> str | None:
         return None if value is None else str(value.resolve())
+
+    parent_digests = _parent_digests(args)
 
     asec_sources: list[str] | None = None
     if args.asec_h5 is not None:
@@ -1403,13 +1454,13 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "out": path(args.out),
         "puf_h5": path(args.puf_h5),
         "puf_h5_sha256": (
-            _sha256(args.puf_h5)
+            _input_sha256(args.puf_h5, parent_digests)
             if args.puf_h5 is not None and Path(args.puf_h5).is_file()
             else None
         ),
         "puf_source_year_csv": path(args.puf_source_year_csv),
         "puf_source_year_csv_sha256": (
-            _sha256(args.puf_source_year_csv)
+            _input_sha256(args.puf_source_year_csv, parent_digests)
             if args.puf_source_year_csv is not None
             else None
         ),
@@ -1437,7 +1488,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
                 "location_seed": int(args.location_seed),
                 "location_clones": int(args.location_clones),
                 "block_ladder_artifact_sha256": (
-                    _sha256(args.block_ladder_artifact)
+                    _input_sha256(args.block_ladder_artifact, parent_digests)
                     if Path(args.block_ladder_artifact).is_file()
                     else None
                 ),
@@ -1463,6 +1514,137 @@ def _builder_code_identity() -> dict[str, object]:
             "scikit-learn",
         ),
     )
+
+
+#: The variable in which a ``--stage all`` parent passes each step process,
+#: as JSON, the SHA-256 of the input files it hashed, each under the file's
+#: resolved path: the PUF H5 and CSV and, under ``block_v1``, the location
+#: ladder (from its run config), and each pinned ASEC file (from its pin
+#: check). So the step's own run config (``_stage_run_config``) and pin check
+#: (``_verify_asec_source_digests``) do not read those files again, except
+#: where a step hashes the ASEC files itself
+#: (``_STEPS_HASHING_THEIR_ASEC_SOURCES``). The builder's source files are not
+#: passed: every step hashes them again (about 0.12 s), so a ``git pull`` or
+#: an edit in the checkout after the parent started is refused by the next
+#: step. A step process uses a digest only for the same path, and only when
+#: the process that set the variable is its parent (the recorded process ID
+#: equals ``os.getppid()``); otherwise it hashes the file itself, as a named
+#: ``--stage`` run by hand does when the variable is unset. A malformed
+#: variable stops the process. The parent ignores the variable and hashes
+#: these files at every start, comparing the result with the locked run
+#: config and the ASEC pins before it starts a step, so a resume after one of
+#: them changed is still refused. (Other inputs, such as ``--acs-h5``, are
+#: recorded by path only, as before.) What goes unnoticed, in the steps that
+#: take the parent's digests, is one of these input files changing while the
+#: run is under way. The process-ID comparison does not identify the run: a
+#: copy of the variable used where process IDs repeat (a fresh container)
+#: can match, as ``MICROCOSM_TELEMETRY_PARENT_PID`` can.
+PARENT_DIGESTS_VARIABLE = "MICROCOSM_US_BASE_PARENT_DIGESTS"
+_PARENT_DIGESTS_SCHEMA_VERSION = 1
+_PARENT_DIGESTS_KEYS = frozenset({"file_sha256", "parent_pid", "schema_version"})
+#: The run-config keys of each input path the parent passes a digest for,
+#: and of that digest. The ladder's digest is in the run config only under
+#: ``block_v1``.
+_PARENT_DIGEST_FILE_KEYS = (
+    ("puf_h5", "puf_h5_sha256"),
+    ("puf_source_year_csv", "puf_source_year_csv_sha256"),
+    ("block_ladder_artifact", "block_ladder_artifact_sha256"),
+)
+
+
+def _parent_digests_environment(
+    run_config: Mapping[str, object], verified_asec_sha256: Mapping[str, str]
+) -> dict[str, str]:
+    """``PARENT_DIGESTS_VARIABLE`` carrying this process's input digests.
+
+    They are ``run_config``'s and ``verified_asec_sha256``, the pinned ASEC
+    files' digests under their resolved paths.
+    """
+
+    file_sha256 = dict(verified_asec_sha256)
+    for path_key, digest_key in _PARENT_DIGEST_FILE_KEYS:
+        path, digest = run_config.get(path_key), run_config.get(digest_key)
+        if isinstance(path, str) and isinstance(digest, str):
+            file_sha256[path] = digest
+    payload = {
+        "file_sha256": file_sha256,
+        "parent_pid": os.getpid(),
+        "schema_version": _PARENT_DIGESTS_SCHEMA_VERSION,
+    }
+    return {PARENT_DIGESTS_VARIABLE: json.dumps(payload, sort_keys=True)}
+
+
+def _parent_digests(args: argparse.Namespace) -> Mapping[str, str] | None:
+    """The input digests this step process's parent passed it, or ``None``.
+
+    The digests are keyed by resolved path. ``None`` for a ``--stage all``
+    run, which hashes its own inputs, and for a process whose parent did not
+    set ``PARENT_DIGESTS_VARIABLE``.
+    """
+
+    if getattr(args, "stage", "all") == "all":
+        return None
+    raw = os.environ.get(PARENT_DIGESTS_VARIABLE)
+    if raw is None:
+        return None
+    payload = _parse_parent_digests(raw)
+    if payload["parent_pid"] != os.getppid():
+        return None
+    return payload["file_sha256"]
+
+
+def _parse_parent_digests(raw: str) -> dict[str, object]:
+    """Validate ``PARENT_DIGESTS_VARIABLE``, refusing what no parent writes."""
+
+    def refuse(problem: str) -> NoReturn:
+        raise SystemExit(
+            f"{PARENT_DIGESTS_VARIABLE} {problem}. A --stage all run sets it "
+            "for its step processes; unset it to run a named --stage by hand."
+        )
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+        refuse(f"is not JSON ({error})")
+    if not isinstance(payload, dict) or set(payload) != _PARENT_DIGESTS_KEYS:
+        refuse(
+            f"is not a JSON object with exactly the keys {sorted(_PARENT_DIGESTS_KEYS)}"
+        )
+    if payload["schema_version"] != _PARENT_DIGESTS_SCHEMA_VERSION:
+        refuse(
+            f"has schema_version {payload['schema_version']!r}; this tool "
+            f"reads {_PARENT_DIGESTS_SCHEMA_VERSION}"
+        )
+    if type(payload["parent_pid"]) is not int:
+        refuse("has a parent_pid that is not an integer")
+    files = payload["file_sha256"]
+    if not isinstance(files, dict) or not all(
+        Path(path).is_absolute() and _is_sha256(digest)
+        for path, digest in files.items()
+    ):
+        refuse(
+            "has a file_sha256 that does not map absolute paths to lowercase "
+            "SHA-256 digests"
+        )
+    return payload
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and set(value) <= set("0123456789abcdef")
+    )
+
+
+def _input_sha256(path: Path, parent_digests: Mapping[str, str] | None) -> str:
+    """``path``'s SHA-256: the parent's digest for its resolved path, else hashed."""
+
+    if parent_digests is not None:
+        digest = parent_digests.get(str(Path(path).resolve()))
+        if digest is not None:
+            return digest
+    return _sha256(path)
 
 
 class _EquivalenceBoundaryObserver:
@@ -2811,6 +2993,15 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
         if predecessor is None:
             raise AssertionError(f"stage {args.stage!r} requires a predecessor")
         before = predecessor.frame
+        # StageRuntime.load computed this identity from the loaded frame and
+        # checked it against the run context. Each step whose result must keep
+        # the input's identity and row order passes it to runtime.complete,
+        # which compares the result with it before writing the checkpoint or
+        # recording the step, so the input frame is not needed once the step
+        # (and the clone check) ran.
+        input_identity = predecessor.identity
+        del predecessor
+        expected_identity: FrameIdentity | None = None
         stage_metadata = runtime.metadata
         if args.stage == "pre_clone_enrichment":
             after, metadata = _pre_clone_enrichment_stage(
@@ -2818,7 +3009,7 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
                 before,
                 stage_metadata["source_construction"],
             )
-            assert_unchanged_identity(before, after, stage=args.stage)
+            expected_identity = input_identity
         elif args.stage == "clone_feature_extraction":
             after, metadata = _clone_feature_extraction_stage(args, before)
             assert_clone_expansion(
@@ -2831,22 +3022,30 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             )
         elif args.stage == "qrf_finalization":
             after, metadata = _qrf_finalization_stage(args, before)
-            assert_unchanged_identity(before, after, stage=args.stage)
+            expected_identity = input_identity
         elif args.stage == PUF_CAPITAL_GAINS_TAIL_STAGE_NAME:
             after, metadata = _capital_gains_tail_transfer_stage(args, before)
         elif args.stage == CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME:
             after, metadata = _capital_gain_distributions_stage(args, before)
-            assert_unchanged_identity(before, after, stage=args.stage)
+            expected_identity = input_identity
         elif args.stage == "final_export":
-            after = before
-            metadata = _export_staged_result(args, after, stage_metadata)
-            assert_unchanged_identity(before, after, stage=args.stage)
+            # The export reads the frame and changes no table, so this step
+            # writes no checkpoint of its own: its record names the previous
+            # step's checkpoint file, SHA-256 and identity, and the alias is a
+            # hard link to that file.
+            metadata = _export_staged_result(args, before, stage_metadata)
+            save_gate_shadow()
+            previous_checkpoint = runtime.complete_without_frame(
+                args.stage, metadata=metadata
+            )
+            _link_all_stage_checkpoint(args.checkpoint_dir, previous_checkpoint)
+            return
         elif args.stage == HOUSEHOLD_LOCATION_STAGE_NAME:
             after, household_location = _block_v1_household_location(args, before)
             metadata = {"household_location": household_location}
             # --location-clones is 1 on this line (refused at parse time), so
             # the draw adds geography columns and changes no row or id.
-            assert_unchanged_identity(before, after, stage=args.stage)
+            expected_identity = input_identity
         else:
             after, metadata = _post_qrf_frame_stage(
                 args.stage,
@@ -2854,11 +3053,17 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
                 before,
                 stage_metadata,
             )
-            assert_unchanged_identity(before, after, stage=args.stage)
+            expected_identity = input_identity
+        # Free the input frame before the checkpoint write; nothing below
+        # reads it.
+        del before
         save_gate_shadow()
-        completed = runtime.complete(args.stage, after, metadata=metadata)
-        if args.stage == "final_export":
-            _link_all_stage_checkpoint(args.checkpoint_dir, completed.path)
+        runtime.complete(
+            args.stage,
+            after,
+            metadata=metadata,
+            expected_identity=expected_identity,
+        )
 
 
 def _link_all_stage_checkpoint(checkpoint_dir: Path, source: Path) -> None:
@@ -2874,6 +3079,16 @@ def _repair_completed_final_stage(
     args: argparse.Namespace,
     runtime: StageRuntime,
 ) -> None:
+    """Re-create a missing or changed export and relink the alias.
+
+    ``runtime.load`` follows the ``final_export`` record to the checkpoint it
+    names, the previous step's, and checks that file against the record. A
+    record in which ``final_export`` wrote its own ``NNN_final_export.frame.h5``
+    is read the same way, although this command does not resume such a
+    directory with later builder code: the recorded run config holds the
+    builder's source digest, and a resume compares it.
+    """
+
     _ensure_capital_gains_tail_manifest(
         runtime.metadata[PUF_CAPITAL_GAINS_TAIL_STAGE_NAME]
     )

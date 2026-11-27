@@ -2203,8 +2203,9 @@ def test_upload_commands_refuse_a_file_the_plan_does_not_pin(
 # --------------------------------------------------------------------------- #
 
 # The base's state as the tool leaves it (4b57d15a2): a frame checkpoint per
-# outer stage, the primary-QRF target checkpoints, the final checkpoint's
-# alias, the run context and profile, the output and the runner's log.
+# outer stage, the primary-QRF target checkpoints, stage_all.frame.h5 (a hard
+# link to the last frame checkpoint written, which the push copies as its own
+# file), the run context and profile, the output and the runner's log.
 _BASE_STATE = (
     "base-checkpoints/000_source_construction.frame.h5",
     "base-checkpoints/001_pre_clone_enrichment.frame.h5",
@@ -2279,7 +2280,7 @@ def test_a_stopped_base_pushes_its_output_before_its_checkpoints(
 
 def test_a_finished_base_pushes_only_its_output_and_evidence(tmp_path: Path) -> None:
     # A completed --stage all has nothing to resume: the other checkpoints
-    # (about 42 GB) are hashed into the receipt and not copied.
+    # (about 42 GB at 4b57d15a2) are hashed into the receipt and not copied.
     copied, not_mirrored, volume = _base_push(tmp_path, returncode=0, stopped=False)
     assert copied == _BASE_EVIDENCE_ORDER
     assert not_mirrored == [

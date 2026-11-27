@@ -27,11 +27,13 @@ runs does not change what it is compared with. ``--re-resolve-reference``
 sets the cut's reference aside and resolves the current build again; the
 score and the certification then run again against it.
 
-Outward-facing steps are opt-in. ``--publish`` publishes for inspection
-only, always with ``--no-latest --tag-only``, so the repository's main
-branch and its ``latest-*.json`` pointers never move. Promotion and the
-policyengine.py certification are separate, deliberate calls; this command
-prints them and runs neither.
+Outward-facing steps are opt-in. ``--publish`` publishes the assembled
+build into its own folder through the emitter
+(``microcosm.build.release_publication``, the
+``microcosm-publish-release-build`` command), which lists it in the
+repository's ``releases.json`` without making it the release's current
+build. Promotion is a separate, deliberate call; this command prints it and
+never runs it.
 
 Credentials come from the environment: ``HF_TOKEN`` (write access to
 ``policyengine/populace-uk-private`` and ``policyengine/populace-uk-staging``,
@@ -87,7 +89,9 @@ CANDIDATE_NAME = "microcosm_uk_2024_25"
 SPINE_NAME = "uk_frs_spine_2024_25.h5"
 PUBLISH_REPO = "policyengine/populace-uk-private"
 TELEMETRY_REPO = "policyengine/populace-uk-staging"
-STAGING_BRANCH = f"release-staging/{RELEASE_ID}"
+#: The publisher: it publishes each build into its own folder through the
+#: emitter and records it in releases.json.
+PUBLISHER_MODULE = "microcosm.build.release_publication"
 
 
 #: The steps that sign gate reports (spine, national, certify) or verify them
@@ -717,9 +721,6 @@ def national_argv(
         "--ledger-manifest-sha256", chronicle["manifest.json"],
         "--reference-h5", str(paths.reference_h5(reference)),
         "--reference-record", str(paths.reference_record),
-        # No build uploads its graph any more; builds accept the flag and
-        # ignore it.
-        "--no-publish-orrery",
         "--out", str(paths.run_dir),
     ]  # fmt: skip
     if logbook_prev_row_digest:
@@ -801,30 +802,30 @@ def assemble_argv(paths: CutPaths, *, python: str) -> list[str]:
     ]  # fmt: skip
 
 
-def publish_argv(
-    paths: CutPaths, *, python: str, tag: str, preflight_only: bool
-) -> list[str]:
-    """Inspection publication: never the default line, never main's files."""
+def publish_argv(paths: CutPaths, *, python: str, preflight_only: bool) -> list[str]:
+    """Publish the build into its folder; never make it the current build.
+
+    The assembler leaves the dataset and its calibration beside the
+    candidate, outside the release directory, so that is the artifact root.
+    """
 
     argv = [
-        python, "-m", "microcosm.data.publish_cli", str(paths.release_dir),
+        python, "-m", PUBLISHER_MODULE, str(paths.release_dir),
         "--repo-id", PUBLISH_REPO,
-        "--artifact-root", str(paths.run_dir),
-        "--no-latest", "--tag-only",
-        "--tag-name", tag,
+        "--artifact-root", str(paths.candidate_h5.parent),
     ]  # fmt: skip
     if preflight_only:
         argv.append("--preflight-only")
     return argv
 
 
-def promote_command(paths: CutPaths, tag: str) -> str:
+def promote_command(paths: CutPaths) -> str:
+    """Make the published build the release's current build (printed only)."""
+
     return shlex.join(
         [
-            "uv", "run", "--no-sync", "python", "-m", "microcosm.data.publish_cli",
-            str(paths.release_dir), "--repo-id", PUBLISH_REPO,
-            "--artifact-root", str(paths.run_dir),
-            "--promote-line", "national", "--tag-name", tag,
+            "uv", "run", "--no-sync", "python", "-m", PUBLISHER_MODULE,
+            str(paths.release_dir), "--repo-id", PUBLISH_REPO, "--promote",
         ]
     )  # fmt: skip
 
@@ -962,9 +963,9 @@ def assemble_done(paths: CutPaths) -> tuple[bool, str]:
     summary = _read_json(paths.cut / "assemble_summary.json")
     if not manifest.exists():
         return False, "no release directory"
-    if summary is None or not summary.get("tag"):
+    if summary is None or not summary.get("build"):
         return False, "release directory exists but its assembly summary is missing"
-    return True, f"assembled {summary['tag']}"
+    return True, f"assembled {summary['build']}"
 
 
 # --------------------------------------------------------------------------- #
@@ -1212,8 +1213,6 @@ def hub_checks() -> list[Check]:
             )
         ]
     try:
-        from huggingface_hub import HfApi
-
         emitter = _preflight_emitter()
         try:
             for repo in (PUBLISH_REPO, TELEMETRY_REPO):
@@ -1228,17 +1227,6 @@ def hub_checks() -> list[Check]:
                 )
         finally:
             emitter.close()
-        refs = HfApi().list_repo_refs(PUBLISH_REPO, repo_type="dataset")
-        stale = [b.name for b in refs.branches if b.name == STAGING_BRANCH]
-        checks.append(
-            Check(
-                "no leftover release-staging branch",
-                not stale,
-                f"delete {STAGING_BRANCH} after checking no publish is running"
-                if stale
-                else "none",
-            )
-        )
     except Exception as error:
         checks.append(Check("Hugging Face reachable", False, _error_detail(error)))
     return checks
@@ -1827,10 +1815,9 @@ def run_assemble(runner: Runner) -> dict[str, Any]:
         "assemble", assemble_argv(paths, python=runner.python), cwd=paths.release_parent
     )
     summary = _last_json_object((paths.logs / "assemble.log").read_text())
-    tag = summary.get("tag") or summary.get("cut_tag") or summary.get("tag_name")
-    if not tag:
-        raise CutError("assembly printed no cut tag; see logs/assemble.log")
-    summary["tag"] = tag
+    build = summary.get("build")
+    if not isinstance(build, str) or not build:
+        raise CutError("assembly printed no build; see logs/assemble.log")
     (paths.cut / "assemble_summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True)
     )
@@ -1855,34 +1842,49 @@ def _last_json_object(text: str) -> dict[str, Any]:
     return found
 
 
-def tag_published(tag: str) -> bool:
-    from huggingface_hub import HfApi
+def build_published(
+    build: str, *, hub_download: Callable[..., str] | None = None
+) -> bool:
+    """Whether the repository's ``releases.json`` lists ``build`` of the release.
 
-    refs = HfApi().list_repo_refs(PUBLISH_REPO, repo_type="dataset")
-    return any(ref.name == tag for ref in refs.tags)
+    A withdrawn build stays listed, and publishing it again changes nothing.
+    """
+
+    from microcosm.data.releases_record import (
+        RELEASES_RECORD_PATH,
+        parse_releases_record,
+    )
+
+    if hub_download is None:
+        from huggingface_hub import hf_hub_download as hub_download
+    path = hub_download(
+        repo_id=PUBLISH_REPO, filename=RELEASES_RECORD_PATH, repo_type="dataset"
+    )
+    release = parse_releases_record(Path(path).read_bytes()).releases.get(RELEASE_ID)
+    return release is not None and build in release.builds
 
 
-def run_publish(runner: Runner, tag: str, *, publish: bool) -> None:
+def run_publish(runner: Runner, build: str, *, publish: bool) -> None:
     paths = runner.paths
     # Again here, for a publish step run on its own (round 2 of the review).
     _refuse_a_withdrawn_reference(paths)
     runner.run(
         "publish-preflight",
-        publish_argv(paths, python=runner.python, tag=tag, preflight_only=True),
+        publish_argv(paths, python=runner.python, preflight_only=True),
         cwd=paths.release_parent,
     )
     if not publish:
         runner.log(
-            "[publish] not published: pass --publish to publish this cut for "
-            "inspection (tag only; main and latest-*.json do not move)"
+            f"[publish] not published: pass --publish to publish {build} "
+            "without making it the release's current build"
         )
         return
-    if tag_published(tag):
-        runner.log(f"[publish] done: tag {tag} exists")
+    if build_published(build):
+        runner.log(f"[publish] done: releases.json lists {build}")
         return
     runner.run(
         "publish",
-        publish_argv(paths, python=runner.python, tag=tag, preflight_only=False),
+        publish_argv(paths, python=runner.python, preflight_only=False),
         cwd=paths.release_parent,
     )
 
@@ -2042,7 +2044,10 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--publish",
         action="store_true",
-        help="publish for inspection (--no-latest --tag-only); outward-facing",
+        help=(
+            "publish the build through the emitter without making it the "
+            "release's current build; outward-facing"
+        ),
     )
     args = parser.parse_args(argv)
     if (args.reservation_tool is None) != (args.reservation_caller is None):
@@ -2213,15 +2218,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_certify(runner)
         run_stage1(runner, args.previous_h5)
         summary = run_assemble(runner)
-        tag = summary["tag"]
-        run_publish(runner, tag, publish=args.publish)
-        write_receipt(runner, {"tag": tag, "published": args.publish})
-        print(f"\ncut {tag} assembled; receipt {paths.receipt}")
+        build = summary["build"]
+        run_publish(runner, build, publish=args.publish)
+        write_receipt(runner, {"build": build, "published": args.publish})
+        print(f"\nbuild {build} assembled; receipt {paths.receipt}")
         print(
-            "Next (each a separate, deliberate call):\n"
-            f"  promote: {promote_command(paths, tag)}\n"
+            "Next, each a separate, deliberate call once it is published:\n"
+            f"  promote: {promote_command(paths)}\n"
             "  certify in policyengine.py: tools/certify_uk_cut_in_policyengine_py.py "
-            f"--national-tag {tag} ..."
+            f"--national-build {build} ..."
         )
         return 0
     except CutError as error:
