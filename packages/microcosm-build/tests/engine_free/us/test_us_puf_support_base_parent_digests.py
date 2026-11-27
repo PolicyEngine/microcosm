@@ -1,7 +1,9 @@
 """A checkpointed base run hashes its input files once.
 
 ``tools/build_us_puf_support_base.py --stage all`` starts one step process
-per pipeline step, and each step process opens the checkpoint directory with
+per pipeline step, except for the 16 steps from the capital-gains tail
+transfer to the education inputs, which share one step process. Each step
+process opens the checkpoint directory with
 its own run config, which holds the SHA-256 of the PUF H5, the PUF CSV and
 the builder's source files. The parent computes that run config once,
 compares it with the one locked in the checkpoint directory before any step
@@ -13,8 +15,9 @@ parent; it hashes every other file itself. It always hashes the builder's
 source files itself, so a change to them after the parent started stops the
 next step.
 
-Most of these tests replace ``subprocess.run`` with a stand-in that records
-each step command and environment, then compute each step's run config in
+Most of these tests replace ``subprocess.run`` and ``subprocess.Popen`` with
+stand-ins that record each step process's command and environment, then
+compute each step process's run config in
 this process, as that step process would, while recording what gets hashed.
 One starts a real step process to show that it finds this process as its
 parent.
@@ -40,6 +43,7 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 _TOOL = _TEST_PATHS.repository / "tools" / "build_us_puf_support_base.py"
 _DIGESTS_VARIABLE = "MICROCOSM_US_BASE_PARENT_DIGESTS"
+_REPORT_VARIABLE = "MICROCOSM_US_BASE_STEP_REPORT"
 
 
 def _load_builder() -> ModuleType:
@@ -99,17 +103,61 @@ class _Hashing:
 
 
 class _StepProcesses:
-    """Stands in for ``subprocess.run``: records each step it would start."""
+    """Stands in for ``subprocess.run`` and ``subprocess.Popen``: records each
+    step process the parent would start.
+
+    The parent starts the step process for the 16 steps from the
+    capital-gains tail transfer to the education inputs with ``Popen``; the
+    stand-in reports each of its steps on the pipe the parent opened, as
+    that step process would.
+    """
 
     def __init__(self, builder: ModuleType, monkeypatch: pytest.MonkeyPatch):
         self.started: list[tuple[list[str], dict[str, str]]] = []
+        processes = self
 
         def record_step(command, *, check, env):
             assert not check
             self.started.append((list(command), dict(env)))
             return SimpleNamespace(returncode=0)
 
+        class RecordedPopen:
+            def __init__(self, command, *, env, pass_fds):
+                processes.started.append((list(command), dict(env)))
+                report_fd = json.loads(env[_REPORT_VARIABLE])["fd"]
+                assert tuple(pass_fds) == (report_fd,)
+                first = builder.ONE_PROCESS_STEPS.index(_step_name(command))
+                for step in builder.ONE_PROCESS_STEPS[first:]:
+                    os.write(report_fd, f"{step}\n".encode())
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc_info) -> bool:
+                return False
+
+            def wait(self) -> int:
+                return 0
+
+            def kill(self) -> None:
+                raise AssertionError("the parent stopped a step process")
+
         monkeypatch.setattr(builder.subprocess, "run", record_step)
+        monkeypatch.setattr(builder.subprocess, "Popen", RecordedPopen)
+
+
+def _first_steps_of_step_processes(
+    builder: ModuleType, pipeline_steps: tuple[str, ...]
+) -> list[str]:
+    """The step each step process of a fresh ``--stage all`` run starts at.
+
+    The 16 steps from the capital-gains tail transfer to the education
+    inputs share one step process, which starts at the first of them.
+    """
+
+    return [
+        step for step in pipeline_steps if step not in builder.ONE_PROCESS_STEPS[1:]
+    ]
 
 
 @contextmanager
@@ -199,9 +247,9 @@ def test_each_step_process_uses_the_parent_s_digests_instead_of_hashing(
     assert locked["puf_h5_sha256"] == _sha256(inputs.puf_h5)
     assert locked["puf_source_year_csv_sha256"] == _sha256(inputs.puf_csv)
     assert locked["builder_code_identity"]["source_sha256"] == "c" * 64
-    assert [_step_name(command) for command, _environment in steps.started] == list(
-        builder.PIPELINE_STEPS
-    )
+    assert [
+        _step_name(command) for command, _environment in steps.started
+    ] == _first_steps_of_step_processes(builder, builder.PIPELINE_STEPS)
     for command, environment in steps.started:
         hashing.clear()
         with _as_step_process(monkeypatch, environment):
@@ -368,7 +416,10 @@ def test_the_parent_hashes_its_inputs_whatever_its_own_environment_holds(
     ] == _sha256(inputs.puf_h5)
     # Each step process gets the new digests, not the ones left over.
     puf_path = str(inputs.puf_h5.resolve())
-    for _command, step_environment in steps.started[len(builder.PIPELINE_STEPS) :]:
+    first_run_processes = len(
+        _first_steps_of_step_processes(builder, builder.PIPELINE_STEPS)
+    )
+    for _command, step_environment in steps.started[first_run_processes:]:
         passed = json.loads(step_environment[_DIGESTS_VARIABLE])
         assert passed["file_sha256"][puf_path] == _sha256(inputs.puf_h5)
         assert passed["parent_pid"] == os.getpid()
@@ -598,9 +649,9 @@ def test_step_processes_take_the_asec_digests_from_the_parent_not_the_files(
     assert sorted(hashing.files) == sorted(
         [*_asec_paths(inputs), inputs.puf_h5.resolve(), inputs.puf_csv.resolve()]
     )
-    assert [_step_name(command) for command, _env in steps.started] == list(
-        builder.PIPELINE_STEPS
-    )
+    assert [
+        _step_name(command) for command, _env in steps.started
+    ] == _first_steps_of_step_processes(builder, builder.PIPELINE_STEPS)
     for command, environment in steps.started:
         assert (
             _step_hashes(builder, monkeypatch, hashing, command, environment) == []
@@ -627,9 +678,9 @@ def test_under_block_v1_only_the_location_step_hashes_the_asec_files(
     )
     locked = _locked_run_config(builder, parent)
     assert locked["block_ladder_artifact_sha256"] == _sha256(inputs.ladder)
-    assert [_step_name(command) for command, _env in steps.started] == list(
-        builder.BLOCK_V1_PIPELINE_STEPS
-    )
+    assert [
+        _step_name(command) for command, _env in steps.started
+    ] == _first_steps_of_step_processes(builder, builder.BLOCK_V1_PIPELINE_STEPS)
     for command, environment in steps.started:
         hashed = _step_hashes(builder, monkeypatch, hashing, command, environment)
         if _step_name(command) == builder.HOUSEHOLD_LOCATION_STAGE_NAME:
@@ -709,7 +760,9 @@ def test_relative_and_symlinked_paths_find_the_parent_s_digests(
 
     builder._dispatch(builder._parse_args(argv), None)
 
-    assert len(steps.started) == len(builder.PIPELINE_STEPS)
+    assert len(steps.started) == len(
+        _first_steps_of_step_processes(builder, builder.PIPELINE_STEPS)
+    )
     for command, environment in steps.started:
         assert "inputs/puf_2024.h5" in command
         assert csv_link.name in command
