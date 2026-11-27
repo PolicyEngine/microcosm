@@ -1,7 +1,8 @@
 """The one-time build-folder switch tool is gone.
 
-The tool moved each dataset repository from tags and pointer files to build
-folders and ``releases.json``, then deleted the old layout's files. The US, UK
+The tool moved a dataset repository's builds, tagged or in untagged folders,
+into build folders listed in ``releases.json``, deleted its pointer files, and
+then deleted the old layout's files. The US, UK
 and BE release repositories have all moved and had their old layout deleted,
 so Microcosm no longer has it, and nothing tells an operator to run it or
 configures anything for it. ``changelog.d/`` and the root journals are history

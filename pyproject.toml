@@ -73,8 +73,9 @@ ignore = ["E501"]
 "tools/provision_uk_staging_repository.py" = ["TID251"]
 "tools/fetch_uk_staged_dataset.py" = ["TID251"]
 "packages/microcosm-build/src/microcosm/build/staging_storage.py" = ["TID251"]
-# TID251. BE's remaining publication tool, which substage 5b removes: the
-# tagged publisher (microcosm-publish-release).
+# TID251. microcosm.data.release: the tagged publisher
+# (microcosm-publish-release), the pointer-file readers and the Hub error
+# checks the loader imports.
 "packages/microcosm-data/src/microcosm/data/release.py" = ["TID251"]
 # TID251. Tests and their stand-ins for the Hub (the root conftest.py only).
 "packages/*/tests/**" = ["TID251"]

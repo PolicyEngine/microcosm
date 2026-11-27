@@ -723,11 +723,13 @@ of an ACS local-area build publishes into `microcosm-us-2024-local-annual`,
 carrying its base local build's files
 ([the local projection guide](docs/us-local-annual-projection.md)).
 
-**The switch.** The US, UK and BE repositories each moved once from tags
-and `latest*.json` pointer files to build folders, with a one-time tool. It
-copied each build into its folder, then in one commit wrote `releases.json`
-and deleted every pointer file, and later deleted the old layout's files
-from `main`: the files each tagged build overwrote directly in
+**The switch.** The US, UK and BE repositories each moved once to build
+folders, with a one-time tool: the US and UK repositories' builds from tags,
+BE's from untagged folders on `main`, and all three from `latest*.json`
+pointer files. It copied each build it moved into its folder, then in one
+commit wrote `releases.json` and deleted every pointer file, and later
+deleted the old layout's files from `main`: the files each tagged build
+overwrote directly in
 `releases/<release>/`, each release-per-build or untagged folder
 `releases/<folder>/`, and the dataset files (`.h5`, `.hdf5`, `.npz`) at the
 repository's root. The tool was removed once BE had moved; its last version
