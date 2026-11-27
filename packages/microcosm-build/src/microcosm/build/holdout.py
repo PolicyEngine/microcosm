@@ -215,6 +215,12 @@ def held_estimates(
     in that order, as a solve that kept only some records needs. The matrix
     rows and the weights are widened to float64 before the product, so the
     result does not depend on their stored precision.
+
+    This is the US expression. The UK expression it also replaced
+    (``matrix[rows][:, columns] @ weights``) multiplied in the stored
+    precision. The two give the same bytes when the matrix is float64, which
+    the UK problem matrix always is; they differ only for a float32 matrix
+    with float32 weights, which no build passes.
     """
 
     held = matrix[rows]

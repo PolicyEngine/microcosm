@@ -17,7 +17,12 @@ household stops the run without ``--allow-partial-geography``). So the test
 gives the population rows a small household table that supports every ladder
 cell, and pins the rows' matrix on that table too.
 
-The pins were measured at ``3316038cc``, before any code moved. They run only
+The pins were measured at ``3316038cc``. That is after the declared target
+sets replaced the selection code (``7f4006fff``), and before any other code
+moved. So these bytes hold the later moves: the filter rules, the hold-outs,
+the ladder rows and the compile registers. The declared selection itself is
+held by ``test_us_target_sets.py``, whose registry versions, censuses and
+receipts were measured on main before that change. The pins run only
 when ``MICROCOSM_US_CHRONICLE_FACTS`` names the pinned feed and
 ``MICROCOSM_US_PUMA_LADDER_ARTIFACT`` names the pinned PUMA ladder. The
 county mode (``state_county``) needs the pinned county facts and a household

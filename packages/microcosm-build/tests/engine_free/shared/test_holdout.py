@@ -107,6 +107,28 @@ def test_held_estimates_match_the_uk_expression(seed, weight_dtype) -> None:
         assert new.tobytes() == old.tobytes()
 
 
+def test_held_estimates_widen_a_float32_matrix_before_the_product() -> None:
+    # The premise of the UK equality above: the UK problem matrix is float64.
+    # For a float32 matrix with float32 weights the replaced UK expression
+    # multiplied in float32 and the shared function multiplies in float64, so
+    # the bytes differ (the review of microcosm#1755). No build passes that.
+    from scipy import sparse
+
+    from microcosm.build.holdout import held_estimates
+
+    matrix = _sparse(3, (40, 60), np.float32, sparse.csr_matrix)
+    rows = np.arange(0, 40, 4, dtype=np.int64)
+    weights = np.random.default_rng(7).uniform(0.0, 5.0, size=60).astype(np.float32)
+    in_float32 = np.asarray(matrix[rows] @ weights, dtype=np.float64).reshape(-1)
+    in_float64 = np.asarray(
+        matrix[rows].astype(np.float64) @ weights.astype(np.float64)
+    ).reshape(-1)
+    new = held_estimates(matrix, rows, weights)
+    assert new.tobytes() == in_float64.tobytes()
+    assert new.tobytes() != in_float32.tobytes()
+    np.testing.assert_allclose(new, in_float32, rtol=1e-5)
+
+
 @pytest.mark.parametrize("seed", range(20))
 @pytest.mark.parametrize("weight_dtype", [np.float64, np.float32])
 def test_held_estimates_match_the_us_expression(seed, weight_dtype) -> None:

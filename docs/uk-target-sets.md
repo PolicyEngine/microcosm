@@ -86,7 +86,13 @@ The UK and US hold-outs keep different draws on purpose:
 
 Both now share the last two steps in `microcosm.build.holdout`: the
 `HoldoutSplit` type (`fold_splits` for the UK, `target_holdouts.role_split`
-for the US) and `held_estimates`.
+for the US) and `held_estimates`. `held_estimates` multiplies in float64. The
+UK problem matrix is float64, so the UK estimates are the same bytes as
+before.
+
+The UK hold-out node (`uk.full.rotated-holdout@1`) hashes the shared hold-out
+module. It also hashes the modules it reaches when it rebuilds the problem
+inputs: the declared level rule and the review core.
 
 The UK fold count and seed stay constants in `local_rowwise.py`
 (`UK_LOCAL_HOLDOUT_FOLDS`, `UK_LOCAL_HOLDOUT_SEED`), as María ruled on
@@ -106,8 +112,10 @@ users are:
 - the reviewed exclusions of the target-fit, local target-fit and area-support
   gates (`uk_runtime/weighted_integrity.py`).
 
-Each UK function keeps its error texts and decides what a lapse does: it
-refuses a run, fails a gate, or reports.
+Each UK function keeps its error texts and its error class, and decides what
+a lapse does: it refuses a run, fails a gate, or reports. A gate that fails
+closed records the class name of the error, so the reviewed-exclusion reader
+still raises a plain `ValueError`.
 
 Not moved:
 
@@ -137,7 +145,10 @@ the nesting work of microcosm#1760.
 - `test_holdout.py` compares the split and the held estimates with the
   replaced UK and US expressions, byte for byte.
 - `test_uk_review_loaders.py` and `test_uk_reviewed_exclusions_core.py`
-  compare the signed-entry loaders with verbatim copies of the old code.
+  compare the signed-entry loaders with verbatim copies of the old code, by
+  value, warning, error class and error text.
+- `test_uk_graph_terminal.py` pins the shared modules in the hash of the
+  hold-out kernel and of each gate kernel.
 - `test_uk_target_surface_pins.py` pins the bytes of the UK target nodes'
   artifacts on the pinned Chronicle feed: the full surface, each selection
   and the national registry.

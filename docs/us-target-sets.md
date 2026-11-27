@@ -134,6 +134,16 @@ surface changes. On a feed with such rows at another level (for example county
 rows in the main feed), the declarations keep them out until a clause names
 the level.
 
+The SOI clause of `state` and `state_county` reads a row's level as every
+clause does: `ledger_geography_level`, else `geography_level`. The filter it
+replaced read only `ledger_geography_level`. So a state SOI row that carries
+only `geography_level` now enters these two modes. Every compiled row carries
+`ledger_geography_level`, so no compiled registry changes.
+
+A declaration file is read strictly: a repeated JSON key, a non-finite number,
+`"*"` inside a list of names and a version that is not the integer are
+refused.
+
 ## Rows the local tool builds, and its hold-outs
 
 `us/local_target_construction.json` declares how the ACS local release builds
@@ -151,6 +161,31 @@ The tool functions keep their names (`assign_target_roles`,
 has at least `name`, `value`, `family` and `geography_level`. The role pass
 adds `holdout_unit` and `role`, and the training target set holds the
 training rows only.
+
+### Refusals
+
+The targets, roles and receipts are the same as before the move. A refusal is
+still a `ValueError`: the shared modules raise `TargetHoldoutError` and
+`LadderPopulationError`, which are subclasses. The texts are the replaced
+ones, and a declaration gives the words that name a level (`child_label` and
+`parent_label` of a pass's scoring, `code_name` of a ladder level). One shared
+check now serves both passes, so three cases differ from the replaced code:
+
+- The county pass's fraction refusal also names the value, as the district
+  pass's always did (`..., got 0.51.`).
+- The district pass checks its salt before it reads a record, as the county
+  pass always did, and refuses with `CD holdout salt must be a non-empty
+  string.` The replaced district code left the salt to the hash of the first
+  eligible unit.
+- The county scorer reads `role` on every record, as the district scorer
+  always did. The replaced county scorer skipped a record with no role.
+
+The command line checks the fractions and the salts before any of these, and
+the district pass gives every record a role, so no run of the tool reaches a
+changed case. `fraction=None` and `salt=None` are refused: only an omitted
+argument draws with the declared value. `test_us_target_holdouts.py` and
+`test_us_ladder_population.py` compare each refusal's text with the replaced
+code and pin the three differences.
 
 Two parts of the local surface are still tool code. The district SOI shares
 of `state_cd` (`tools/us_acs_local_cd_surface.py`) and the county rung
