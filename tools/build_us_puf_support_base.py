@@ -41,6 +41,7 @@ if __name__ == "__main__":
 
 import argparse
 import copy
+import fcntl
 import hashlib
 import json
 import os
@@ -1140,7 +1141,9 @@ def _run_one_process_steps(
     ``RuntimeError``; so does a child that exits cleanly before its last
     step started. As with ``subprocess.run``, an exception raised here while
     the child runs (a SIGTERM the build turns into one, say) stops the child
-    before it propagates.
+    before it propagates; after a Ctrl-C, which the child gets too, it first
+    waits up to ``_SIGINT_WAIT_SECONDS`` for the child to finish its own
+    handling.
     """
 
     def step_started(step: str) -> None:
@@ -1150,7 +1153,7 @@ def _run_one_process_steps(
             telemetry.transition_stage(step)
 
     step_started(steps[0])
-    read_fd, write_fd = os.pipe()
+    read_fd, write_fd = _report_pipe_fds()
     try:
         process = subprocess.Popen(
             list(command),
@@ -1167,7 +1170,12 @@ def _run_one_process_steps(
         try:
             reported = _follow_step_reports(reports, steps, step_started)
             returncode = process.wait()
-        except BaseException:
+        except BaseException as error:
+            if isinstance(error, KeyboardInterrupt):
+                try:
+                    process.wait(timeout=_SIGINT_WAIT_SECONDS)
+                except subprocess.TimeoutExpired:
+                    pass
             process.kill()
             raise
     if returncode != 0:
@@ -1187,6 +1195,38 @@ def _run_one_process_steps(
             f"The step process for {steps[0]!r} through {steps[-1]!r} exited "
             f"cleanly before step {steps[reported]!r} started."
         )
+
+
+#: How long the parent waits for the child after a Ctrl-C before stopping
+#: it: what ``Popen.wait`` waits under ``subprocess.run``, which starts the
+#: single-step children (``Popen._sigint_wait_secs``).
+_SIGINT_WAIT_SECONDS = 0.25
+
+
+def _report_pipe_fds() -> tuple[int, int]:
+    """A new pipe for step reports, neither end at descriptor 0, 1 or 2.
+
+    ``os.pipe`` returns the lowest free descriptors. In a process started
+    with a standard stream closed they include that stream's, and a write
+    end there would become the child's standard input, output or error.
+    Both ends are non-inheritable, as ``os.pipe``'s are.
+    """
+
+    read_fd, write_fd = os.pipe()
+    if min(read_fd, write_fd) > 2:
+        return read_fd, write_fd
+    moved: list[int] = []
+    try:
+        for fd in (read_fd, write_fd):
+            moved.append(fcntl.fcntl(fd, fcntl.F_DUPFD_CLOEXEC, 3))
+    except BaseException:
+        for fd in moved:
+            os.close(fd)
+        raise
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
+    return moved[0], moved[1]
 
 
 def _follow_step_reports(
@@ -1234,9 +1274,9 @@ def _follow_step_reports(
 #: ``--stage`` is one of ``ONE_PROCESS_STEPS``. It then runs from that step
 #: through the last of them, writing each step's name and a newline to the
 #: pipe as the step starts. Otherwise it runs its one step, as a named
-#: ``--stage`` run by hand does. A malformed variable stops the process, and
-#: so does one that names a descriptor that is not an open pipe. The
-#: process-ID comparison does not identify the run: a copy of the variable
+#: ``--stage`` run by hand does. A malformed variable stops any step process
+#: that finds it; one naming a descriptor that is not an open pipe stops a
+#: process the variable would take effect in. The process-ID comparison does not identify the run: a copy of the variable
 #: used where process IDs repeat (a fresh container) can match, as
 #: ``MICROCOSM_TELEMETRY_PARENT_PID`` can.
 STEP_REPORT_VARIABLE = "MICROCOSM_US_BASE_STEP_REPORT"
