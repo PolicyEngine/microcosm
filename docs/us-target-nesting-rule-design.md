@@ -328,8 +328,19 @@ Each step is one or more ordered commits on this branch.
 
 Step 2 meets PR #1755 in two places: its pin test holds the registry bytes,
 and its hold-out declaration reads the old key
-(`state_cd_parent_target_name`). The PR that merges second takes the other's
-change.
+(`state_cd_parent_target_name`, now `cross_grain_parent`). The PR that merges
+second takes the other's change.
+
+**Status, 27 Nov 2026.** Steps 1 and 2 are on the branch. Two parts of the
+model are not built, because no rule in force uses them yet:
+
+- the derived control of the kind `scaled`, which decision 2 needs;
+- one pass on one joint surface. In step 2 the four passes call one function,
+  each on its own surface: each pass keeps its allocator until the re-pin,
+  and the county rows are made at a later stage than the district rows.
+
+Step 2 also settled the two open points below. Medicaid is a `subset` with a
+declared `max_excess`. No US surface needs rows that bind nothing yet.
 
 Two points to settle when the code is written:
 

@@ -3,36 +3,22 @@
 A target for a small area must agree with the target of the area that
 contains it. This page says how the US build makes the rows of a lower
 geography level from a control at a higher level, and where each choice is
-declared. The tracking issue is microcosm#1760. Stage A, described here,
-changes no target value.
+declared. The tracking issue is microcosm#1760. The work so far changes no
+target value.
 
-## What Stage A decides: nothing
+## What is decided, and what the code applies
 
-Stage A moves the mechanisms that exist to one operator and writes their
-choices down as data. Each mechanism is declared as the code ran it before
-the move. These decisions of microcosm#1760 are open, and Stage B applies
-them:
-
-1. Which level holds the level value, for each family.
-2. Two sources at two levels: whether district rows from a survey are shares
-   of a state row from estimates, or stay as levels.
-3. Row 7: whether the state households target stays the sum of the county
-   values, or becomes a state level that the counties divide.
-4. The parent row in the loss, when all its children are in the loss too.
-5. The factor bound: one declared bound for each bridge, as in the UK, or
-   the median band of row 5.
-6. Children that are not complete: district plans, a county with no IRS row,
-   a state with one district.
-
-After Stage A, each decision is an edit to the declaration, and for some an
-allocator. It is not a new mechanism.
-
-One point is ruled since (27 Nov 2026): the Historic Table 2 state row is the
-state parent of a district row on every surface, and a parent that it does
-not contain is not removed. The proposed rule for all levels, with a
-recommendation for each open decision, is in
-[US target nesting rule: design and rulings](us-target-nesting-rule-design.md).
-Its nine decisions were accepted on 27 Nov 2026. No code applies them yet.
+- **Ruled, 27 Nov 2026.** The Historic Table 2 state row is the state parent
+  of a district row on every surface, and a parent that it does not contain
+  is not removed. The nine decisions of
+  [US target nesting rule: design and rulings](us-target-nesting-rule-design.md)
+  are accepted. The declaration is one general model in the shared operator,
+  with no construct for one country only.
+- **In the code.** The US nests its rows on that model: one operator, one
+  declaration in the UK's key names, one set of metadata keys, one receipt
+  format. The values are the values the tools made before.
+- **Not in the code yet.** Each ruled change of a target. Those need the
+  Chronicle feed after PolicyEngine/chronicle#451, and a re-pin of the feed.
 
 ## One operator, one declaration
 
@@ -44,169 +30,230 @@ target values only, never loss weights.
 
 | Part | Where | What it holds |
 |---|---|---|
-| The operator | `microcosm.build.cross_grain` | Grouping, the control of each leg, the division, the sum check, the receipt. Shared with the UK. |
-| The helpers | `microcosm.build.cross_grain_controls` | Allocators, derived controls, the factor band, the completeness check, the self-consistency check. No country in it. |
-| The US declaration | `us/cross_grain_declarations.json` | The levels, the levels that hold controls, each mechanism with its registers and reasons, and the inventory. |
-| The reader | `us_runtime/cross_grain_declarations.py` | Typed views of the declaration. |
-| The US adapter | `us_runtime/target_nesting.py` | Which specs or facts are the control and the rows, the refusals with their US texts, the old metadata keys and receipts. |
+| The operator | `microcosm.build.cross_grain` | Grouping, the control of each leg, bridges and bridge selectors, the bound of a bridge, the members of a leg, the division, the sum check, the receipt, and the metadata keys of a reconciled row. Shared with the UK |
+| The row-level pass | `microcosm.build.cross_grain_controls` | `reconcile_rows` runs the operator on target rows and says what it did with each row. `sum_of_lower_rows` is the arithmetic of a derived control. The three allocators stay until the feed re-pin. No country in it |
+| The US declaration | `us/cross_grain_declarations.json` | The US choices, under the key names of `uk/cross_grain_declarations.json` |
+| The reader | `us_runtime/cross_grain_declarations.py` | Typed views of the declaration, and the coverage check |
+| The US adapter | `us_runtime/target_nesting.py` | Which specs or facts are the rows of each pass, the checks that are US rules, and the specs made from the operator's answer |
 
-The declaration uses the key names of `uk/cross_grain_declarations.json` where
-the meaning is the same: `grain_precedence`, `control_grains`,
-`signature_fields`, `bridges` and `partitions`. The US levels are the feed's
-own geography levels: `country`, `state`, `congressional_district`, `county`.
-Districts and counties both divide a state. They do not nest in each other,
-and only `country` and `state` hold controls.
+The US levels are the feed's own geography levels: `country`, `state`,
+`congressional_district`, `county`. Districts and counties both divide a
+state. They do not nest in each other, and only `country` and `state` hold
+controls.
 
-### The allocator
+## The model
 
-The operator's standing rule is `row x control / numpy sum of the rows`. The
-US rows were made with `math.fsum`, and the county rows with a residual rule.
-On the pinned feed the numpy sum changes the last bit of 5,533 of the 21,743
-district values. So a rule can declare an allocator
-(`CrossGrainRule.allocator`), a function that divides one control among its
-rows. With no allocator the operator runs the standing rule, with no float
-operation added or removed; the UK declares none.
+The model has six things. Each one is general: a country declares it, and the
+shared code runs it.
 
-| Allocator | Rule | Used by |
+| Thing | What it is | In the US declaration |
 |---|---|---|
-| `proportional_fsum` | `row x control / exactly rounded sum` | District SOI shares |
-| `share_residual_to_largest` | `control x share`; the rounding residual of the shares, then of the products, goes to the largest row | County SOI shares, county households |
-| `scale_residual_to_largest` | `control x row / total`; the rounding residual goes to the largest row | County population |
+| Measurement | Two targets with the same measurement at two levels are one quantity. Nothing else is declared | `same_measurement`: the ladder population of a state and of its counties |
+| Bridge | Two targets with different measurements that measure one quantity. A bridge names its sides by id, or by a selector that makes one bridge for each pair of targets | `bridge_selectors`: Historic Table 2 state rows over district-file rows; state SOI rows over county-file rows |
+| Derived control | A control that no source publishes as one row | `derived_controls`: a state's households are the sum of its county estimates |
+| Bound | The limits on the factor of a bridge, around one or around the median factor across the legs, and the action out of bound: `refuse` the pass or `unbind` the leg | The district selector: +0.25 and -0.20 around the median, `unbind` |
+| Members | The members that each leg must hold. A member can stand for two geographies | `members`: the districts of the current plan; the counties of the ladder, with one combined cell |
+| Not reconciled | A pair of levels that is not scaled, with a reason | `relations` (six `subset` pairs) and `local_routes` (three families with no higher control) |
 
-The two residual allocators only reproduce the old county arithmetic. Stage B
-replaces them with one allocator.
+`bridges` (by id) and `partitions` are empty in the US file.
 
-## The four mechanisms on the operator
+### What the bound of the district bridge does
 
-Each one is declared under `mechanisms`. The tool function keeps its name and
-signature and calls the adapter.
+The factor of a leg is its control over the sum of its rows. A factor mixes a
+part that every state shares (coverage, aging) with a part of one state. The
+median across states takes the shared part out. A state whose factor is more
+than 1.25 times the median, or less than 0.8 times it, is one where the two
+publications disagree about that state. The operator unbinds that leg: its
+district rows leave the surface, and its Historic Table 2 state row stays. On
+the pinned feed that is four legs.
 
-| Row of the issue | Mechanism | Tool function | The control | The rows |
+## The four passes
+
+| Row of the issue | Declared pass | Tool function | The control | The rows |
 |---|---|---|---|---|
-| 5 | `state_congressional_district_soi` | `us_acs_local_cd_surface.state_cd_soi_surface` | The Historic Table 2 state row. For a concept that only the district file has: the district file's state row, multiplied by a sibling concept's ratio of the two files (`scaled_by_sibling_ratio`) | District file rows of the state |
-| 8 | `state_county_population` | `us_acs_local_county_surface.with_county_populations` | The state total of the 2020 PUMA ladder | The ladder's county overlaps, summed by county |
-| 6 | `state_county_soi` | `us_acs_local_county_surface.state_county_soi_surface` | The broad state SOI row that exists | County facts of the state. One declared combined cell covers a county with no IRS row |
-| 7 | `county_state_acs_households` | `us_acs_local_county_surface.acs_household_surface` | The sum of the county estimates (`sum_of_lower_rows`). It is a new state target | The county estimates |
+| 5 | `historic_table_2_state_vs_district_file` | `us_acs_local_cd_surface.state_cd_soi_surface` | The Historic Table 2 state row | District-file rows of the state |
+| 6 | `state_soi_vs_county_file` | `us_acs_local_county_surface.state_county_soi_surface` | The broad state SOI row that exists | County facts of the state. One declared combined cell covers a county with no IRS row |
+| 7 | `acs_households_state_is_the_county_sum` | `us_acs_local_county_surface.acs_household_surface` | The sum of the county estimates. It is a new state target | The county estimates |
+| 8 | `ladder_population_state_vs_county` | `us_acs_local_county_surface.with_county_populations` | The state total of the 2020 PUMA ladder | The ladder's county overlaps, summed by county |
 
-### What the adapter does before the operator runs
+Each tool function keeps its name and signature. Each one calls the adapter,
+and the adapter calls one function, `run_pass`, which builds the rule from
+the declaration and runs the row-level pass.
 
-These checks are US rules. They run first, with the texts they always had, so
-a refusal reads the same as before.
+The four passes do not yet run on one joint surface. Until the feed re-pin
+each pass has its own allocator, and the county rows are made at a later
+stage than the district rows.
+
+### What the operator checks
+
+- **Members.** A leg must hold exactly its declared members: the districts of
+  the current plan, or the counties of the ladder (less a county that a
+  combined cell covers). A declared leg with no row is refused in the same
+  way.
+- **The bound** of the district bridge, as above.
+- **Arithmetic.** A total that is not finite, a lower sum below `1e-9` of the
+  control, a control and rows of opposite sign, and rows that do not sum to
+  the control within `1e-9` are refused.
+
+### What the adapter checks
+
+These are US rules, with US texts.
 
 - **District SOI.**
-  - The district rows of a block must be exactly the current plan's districts
-    of the state (from the district crosswalk). A state with one district on
-    the source plan has no district rows.
-  - The district file's own state row must equal the sum of its district rows
-    within `1e-6` (`self_consistency`).
-  - A block whose ratio (control over the sum of its rows) is more than 1.25
-    from its concept's median across states is dropped and recorded
-    (`factor_band`). The Historic Table 2 state row stays.
-  - The registers of defective, unparented and excluded district measures and
-    the six level bridges are in the declaration, with their reasons.
-- **County population.** Each state needs a positive total and at least one
-  county with a positive population. Each county needs a state.
-- **County SOI.** Each state block must hold every county of the ladder.
-  A county with no fact is refused unless it is a declared combined cell.
-  Return count and adjusted gross income must have a state parent in every
-  state.
+  - The registers of defective, unparented and excluded district measures
+    (`registers` in the declaration).
+  - A state with one district on the source plan has no district rows.
+  - The rows of a block and their parent must materialize in the same way.
+  - A concept takes its state parent from one source in every state.
+  - The surface is checked again after the pass: each district block must add
+    up to a bound state parent (`closure_rtol`).
+- **County population.** The operator refuses a county with no state and a
+  state with no positive county population.
+- **County SOI.** Each fact is an all-return fact of a tax year, finite and
+  not negative, with the unit of its parent. Return count and adjusted gross
+  income need a state parent in every state. A block needs a positive sum.
+  A combined cell joins two counties of one state.
 - **County households.** Every county of the ladder must carry an estimate,
-  and each state needs a positive sum.
+  each state needs a Census name and a positive sum.
 
-### What the operator refuses
+## What stays until the feed re-pin
 
-The operator applies its own refusals to every block: a total that is not
-finite, a lower sum below `1e-9` of the control, a negative factor, and rows
-that do not sum to the control within `1e-9`. On valid data the result is the
-old result. Three cases that the old code computed are now refused:
+`until_the_feed_repin` in the declaration holds what goes when Microcosm
+pins the feed after PolicyEngine/chronicle#451.
 
-- a block whose rows sum to a value that is not zero but is below `1e-9` of
-  its control;
-- a county SOI block under a negative state row;
-- a control of `-0.0`.
+- **The allocators.** The operator's own rule is
+  `row x control / numpy sum of the rows`. The US rows were made with
+  `math.fsum`, and the county rows with a residual rule. So a rule can name
+  an allocator (`CrossGrainRule.allocator`) that divides one control among
+  its rows. With no allocator the operator runs its own rule, with no float
+  operation added or removed; the UK declares none. The US declares one for
+  each pass, to keep the values bit for bit. At the re-pin they go, and
+  district and county values move in the last bits.
 
-None occurs on the pinned feed. The pinned county facts hold return counts
-and adjusted gross income only, and both are positive in every state.
+  | Allocator | Rule | Pass |
+  |---|---|---|
+  | `proportional_fsum` | `row x control / exactly rounded sum` | District SOI |
+  | `share_residual_to_largest` | `control x share`; the rounding residual of the shares, then of the products, goes to the largest row | County SOI, county households |
+  | `scale_residual_to_largest` | `control x row / total`; the rounding residual goes to the largest row | County population |
 
-## Receipts
+- **The level bridges.** Six concepts are only in the district file. Their
+  state parent is the district file's own state row, multiplied by a sibling
+  concept's ratio of the two files. One function of the adapter makes these
+  parents, as before. The rows under them are tied by their own measurement
+  (`cross_grain_control` reads `exact_signature`), and a bridged state row
+  reads `level_bridge:<sibling>`. After the re-pin Historic Table 2 holds the
+  six parents, and this function goes.
+- **The compile rules of rows 1 to 4**, which stay in the compile:
+  - Rows 1 and 2 (capital gains, taxable interest): each row is multiplied by
+    one factor, `control / published national total`.
+  - Row 3 (state AGI bands): a partition inside one area.
+  - Row 4 (the district file's own state row): shared code with its rule as
+    data (`reconcile_ledger_target_hierarchy`). Its factor is 1 on the pinned
+    feed.
+- **The known gaps.** The SOI families with two national rows
+  (microcosm#1243), and state age rows against state totals (microcosm#1528,
+  #1526, #1531).
 
-- **The old receipts and metadata keys stay**, with the same bytes: the
-  `state_cd_*` and `state_county_*` keys, the `soi_surface` receipt in
-  `materialize_rss.json`, and `county_surface.json`. Other code reads these
-  keys (the loss weights, the pro-rata baselines, the reviewed limitations).
-- **The operator's own receipt goes to a new file**, `target_nesting.json`,
-  which the materialize stage writes beside its other files. It holds one
-  entry for each pass: the mechanism, the allocator, the number of blocks and
-  the operator's receipt (each group and each leg with its control, its old
-  and new totals and its factor). No stage reads the file, and it is not in
-  the run identity.
+## Metadata keys and receipts
 
-One receipt format for both countries is a Stage B step, because it changes
-the bytes of the registry.
+A row that the operator reconciles keeps the operator's keys. A UK row and a
+US row have the same ones.
 
-## The inventory
+| Key | What it holds | The key before |
+|---|---|---|
+| `cross_grain_parent` | The name of the control row | `state_cd_parent_target_name`, `state_county_parent_target_name` |
+| `cross_grain_value_before` | The row's value before the pass | `state_cd_cd_file_value`, `state_county_source_value` |
+| `cross_grain_factor` | The factor of the row's leg | `state_cd_rebase_factor`, `state_cd_level_bridge_factor` |
+| `cross_grain_control` | What reconciled the row: a bridge id, `exact_signature`, or `level_bridge:<sibling>` | `state_cd_parent_basis`, `state_cd_level_bridge_sibling` |
+| `cross_grain_members` | The counties that a combined cell stands for | `state_county_cell_members` |
 
-`inventory` in the declaration lists each US family that two levels measure,
-with one route:
+These old keys have no new one, because another place holds the value: the
+parent's value and the sum of the rows (the parent row, and the operator's
+receipt), the share of a county row (its value over its parent's), the
+vintage rule and the basis of a combined cell (the declaration and the
+receipt).
 
-| Route | Meaning |
-|---|---|
-| `mechanism` | The shared operator makes the rows (rows 5 to 8). |
-| `compile_rule` | A pass of the compile makes them and stays where it is in Stage A (rows 1 to 4). |
-| `same_source` | Both levels are sums of one source's cells. |
-| `no_higher_control` | No row at a higher level measures the quantity. |
-| `not_reconciled` | Two levels measure it and no rule ties them yet. The entry gives the reason and the issue. |
-| `not_in_the_fit` | The rows are not compiled. |
+The readers of the keys read the new ones: the loss weights
+(`us_runtime/target_loss_weights.py`), the hold-outs and their pro-rata
+baselines, and the county reports. The dated runs under `experiments/` read
+registries of their own date and are not changed.
 
-### Why rows 1 to 4 stay in the compile
+Receipts:
 
-- **Rows 1 and 2 (capital gains, taxable interest).** Each row is multiplied
-  by one factor, `control / published national total`. The rows are not scaled
-  to sum to the control, and the control and the total are read from the
-  facts, not from rows of the registry.
-- **Row 3 (state AGI bands).** It is a partition inside one area. The
-  partition is read from the facts, and only some of its bands bind.
-- **Row 4 (the district file's own state row).** It is already shared code
-  with its rule as data (`reconcile_ledger_target_hierarchy`, declared in
-  `us/fiscal_target_references.json`). It sums with the builtin `sum`, formats
-  its factor with 15 significant digits and writes `hierarchy_*` keys. The
-  bytes of the `full` and `state_cd` surfaces depend on all three.
+- **The surface receipts** (`soi_surface` in `materialize_rss.json`, and
+  `county_surface.json`) keep their counts, drops and summaries. The district
+  receipt names the bridge and its bound under `bridge`, with the legs it
+  unbound; it lists the level bridges it distrusts under
+  `level_bridge_out_of_band`, and the factors under `factor_by_measure`. The
+  county receipts name their pass under `bridge`.
+- **The operator's receipt** goes to `target_nesting.json`, which the
+  materialize stage writes beside its other files. It holds one entry for
+  each pass: the pass id, the allocator, and the operator's receipt (each
+  group and each leg with its control, its old and new totals and its
+  factor). No stage reads the file, and it is not in the run identity.
 
-### Families that do not nest today
+## What differs from the code before
 
-- The SOI families with two national rows (microcosm#1243).
-- State age rows and state totals (microcosm#1528, #1526, #1531).
-- The state rows of SNAP, Medicaid and CHIP, SSI and TANF against the national
-  row of each family. This is not checked yet.
-- District age and household rows from ACS, which are not in the fit
-  (microcosm#1731).
+On valid data the rows and their values are the same. These things differ.
+
+1. **Keys and receipt fields**, as above. So the bytes of the `state_cd`
+   registry, roles and receipts moved, and their pins were measured again.
+   `test_us_target_nesting_district.py` holds each row of that surface on the
+   pinned feed to the bits of its old value.
+2. **Refusal texts.** A refusal that the operator makes has the operator's
+   text: a leg that does not hold its members, a sum of zero under a control,
+   opposite signs, a county with no state.
+3. **One check is gone:** that the district file's own state row is the sum
+   of its district rows within `1e-6`. Row 4 of the compile makes that sum
+   hold before this pass runs, and the district file's state row is not a
+   control of a concept that Historic Table 2 holds.
+4. **One refusal is new:** a concept that takes its state parent from
+   Historic Table 2 in some states and from the district file in others. The
+   old code accepted that. It does not occur on the pinned feed.
+5. **With the bound turned off** (only tests do that), a concept whose
+   Historic Table 2 level is zero in every state keeps district rows of
+   zero. The old code dropped them, because such a concept has no median
+   factor.
+6. **Three cases that the oldest code computed are refused**, as since the
+   first move to the operator: a block whose rows sum to a value that is not
+   zero but is below `1e-9` of its control, a county SOI block under a
+   negative state row, and a control of `-0.0`. None occurs on the pinned
+   feed.
 
 ## The coverage test
 
-`test_us_cross_grain_coverage.py` reads the inventory. It checks that each
-entry is well formed, that rows 1 to 8 each have one entry, and that each
-mechanism has one. With the pinned feed it also compiles the registry and
-checks that each family at a level below `country` has an entry, that no
-entry names rows that are gone, and that each compile rule's marker is on
-rows of the declared family and levels.
+`test_us_cross_grain_coverage.py` reads the declaration. With the pinned feed
+it compiles the registry and checks that each family at a level below
+`country` is covered by a selector, a derived control, a same-measurement
+entry, a relation, a local route, a compile rule or a known gap; that no
+declaration names rows that are gone; that each compile rule's marker is on
+rows of its family and levels; and that no `subset` part is larger than its
+whole beyond the declared `max_excess`.
 
 It is a test of the declaration. It refuses nothing in a build and it is not
 a release gate.
 
 ## The UK
 
-The UK graph hashes `cross_grain.py`. The edit that added the allocator makes
-the UK target nodes, and every node after them, compute again on the next UK
-run. The outputs are the same: `test_cross_grain_allocator.py` compares the
-operator with a copy of the file before the edit, bit for bit, on 400 seeded
-surfaces. The UK graph does not hash `cross_grain_controls`.
+The UK graph hashes `cross_grain.py`. The edits to that file make the UK
+target nodes, and every node after them, compute again on the next UK run.
+The outputs are the same: `test_cross_grain_allocator.py` compares the
+operator with a copy of the file before any edit, bit for bit, on 400 seeded
+surfaces, and it pins the list of definitions that the branch changed or
+added. The UK declares none of the new options. The UK graph does not hash
+`cross_grain_controls`.
 
-## Not in Stage A
+## Not done yet
 
-- Every target change (Stage B of microcosm#1760): one allocator for the
-  county rows, one receipt format, the ACS district rows, district and county
-  rows in one run, the families of microcosm#1243, row 4 on the operator.
-- One function for the two matrix splits (`split_carriers_into`,
-  `split_state_rows`). They do no arithmetic on target values.
-- A pin of the county rows on the pinned county facts file. The equivalence
+After PolicyEngine/chronicle#451 and the feed re-pin:
+
+- the ruled target changes: Historic Table 2 parents for the six concepts,
+  district capital gains under the Historic Table 2 state row, the `full`
+  surface nests its district rows, row 4 goes;
+- the allocators go, and the four passes run on one joint surface;
+- the derived control of the kind `scaled`, for the national controls of the
+  state rows (decision 2);
+- the ACS district rows (decision 7) and the ladder under the state estimate
+  (decision 4), each of which can have its own PR;
+- a pin of the county rows on the pinned county facts file. The equivalence
   tests of the county rows use synthetic blocks.

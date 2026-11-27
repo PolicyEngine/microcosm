@@ -352,7 +352,7 @@ The inspected Chronicle publisher inputs have two concrete issues:
   share is Maui's published value over the state's published county sum, and
   its households are those in either county. Kalawao keeps its own
   population row (from the ladder, like every county's) and ACS rows. The SOI receipt records the merge under
-  `combined_cells`, and each Maui row carries `state_county_cell_members`
+  `combined_cells`, and each Maui row carries `cross_grain_members`
   `15005,15009`. Any other county missing from SOI, a declared cell whose
   host is missing too, or a declaration across states is refused.
 - **Connecticut:** both packages use the nine planning-region codes `09110`
