@@ -463,8 +463,8 @@ one Microsimulation over the whole file.
   pass of its own: five passes over 177 batches on a national export. If the
   shared pass raises, every stage runs its own pass as before, so a key that
   only one held-out report asks for still fails that report alone. A refused
-  batch file is the exception: the shared pass raises it, and certification
-  stops there, since every stage's own pass would read the same files. Each
+  batch file does not fall back: it stops certification in the shared pass,
+  and no stage runs its own. Each
   stage's recorded `baseline_passes` stays 1: the one pass its baseline came
   from, shared unless the shared pass failed. Only the build log tells the two
   apart: it prints `Post-export merged baseline plan failed` on a fallback,
@@ -487,7 +487,8 @@ one Microsimulation over the whole file.
     stage now includes every stage's baseline work, and the later stages'
     times include none.
   - A shared pass that fails costs the time it ran in addition to every
-    stage's own pass.
+    stage's own pass. A shared pass stopped by a refused batch file costs a
+    rerun of certification instead.
 - `_record_post_export_request_descriptors` runs the same dry run and returns
   every request, baseline and reform, as a picklable `PostExportRequest`
   (`microcosm.build.us_runtime.post_export_requests`), which a process started

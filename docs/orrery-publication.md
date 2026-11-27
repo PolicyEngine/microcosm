@@ -61,10 +61,11 @@ into a new directory and uploads nothing (see
 a later emitter command, `microcosm-emitter backfill-orrery <dir>`, is planned
 to run it and submit the result.
 
-`--publish-orrery`, which asked for an upload to the public Orrery (María's
-ruling of 2026-10-26 made that upload opt-in), now prints a warning and
-changes nothing; `--no-publish-orrery` is accepted too and changes nothing.
-A later cleanup removes both flags.
+Builds have no `--publish-orrery` or `--no-publish-orrery` option any more.
+The first asked for an upload to the public Orrery (María's ruling of
+2026-10-26 made that upload opt-in), and both changed nothing once builds
+stopped uploading their graph; a build given either now stops with an
+unrecognized-argument error.
 
 Microcosm's build adapter (`microcosm.build.telemetry_emitter`) starts the
 separately installed `microcosm-emitter` command as the build's child process
@@ -161,7 +162,7 @@ Hugging Face.
 ## Emitter dependency
 
 `packages/microcosm-build` depends on `microcosm-emitter-interface`
-(`>=0.16.0,<1`), the dependency-free package of typed calls, which `uv.lock`
+(`>=0.18.0,<1`), the dependency-free package of typed calls, which `uv.lock`
 records with its hashes. The emitter itself, `microcosm-emitter`, is not a
 workspace dependency: each machine installs it on its own with
 `uv tool install microcosm-emitter`, and the Modal image installs the newest

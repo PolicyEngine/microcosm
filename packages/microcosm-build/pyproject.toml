@@ -29,7 +29,7 @@ dependencies = [
     # microcosm-emitter`) and started as the build's child process, so an
     # emitter release needs no change here. The socket protocol carries its
     # own version, and every emitter release accepts the versions in use.
-    "microcosm-emitter-interface>=0.16.0,<1",
+    "microcosm-emitter-interface>=0.18.0,<1",
     # The US base command records each loaded BLAS library's thread count in
     # its run configuration. scikit-learn already depends on it; 3.6 reads
     # the scipy-openblas library that numpy 2 wheels bundle.

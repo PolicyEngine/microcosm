@@ -5089,8 +5089,9 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 #   in ONE batch-outer pass, in ascending period order, serving each consumer
 #   its own keys (microcosm#1595). A consumer without a registered plan, and
 #   every consumer once that pass has failed, scores its own plan in a pass
-#   of its own. The served baseline refuses any key outside the consumer's
-#   recorded plan;
+#   of its own; a refused batch file (``PostExportBatchFileError``) is raised
+#   at once instead. The served baseline refuses any key outside the
+#   consumer's recorded plan;
 # * each reform builds ONE tax-benefit system (microcosm#456) and scores each
 #   key, or each set of keys it is asked to ``prefetch``, in one pass, batch
 #   by batch; every batch engine is released before the next;
@@ -6130,8 +6131,10 @@ class _HouseholdBatchedPostExportScorer:
         pass raises, every consumer scores its own plan, so a key that only
         one consumer planned fails that consumer alone, with the error it
         raised before the merge (the holdout reports catch it). A refused
-        batch file (``PostExportBatchFileError``) is raised instead: every
-        consumer's pass would read the same batch files.
+        batch file (:class:`PostExportBatchFileError`) is the exception: it
+        propagates at once, as it does from every other post-export pass, so
+        it stops certification (or the guard sweep's baseline worker) and no
+        consumer scores its own plan.
         """
         registered = self._registered_baseline_plans.get(name)
         if registered is not None and registered != baseline_plan:
@@ -6153,7 +6156,7 @@ class _HouseholdBatchedPostExportScorer:
                 self._merged_baseline = self._score(union, label="merged baseline plan")
             except PostExportBatchFileError:
                 # The scored file's integrity, not a key one consumer planned:
-                # it stops certification here, before any consumer's own pass.
+                # it stops certification.
                 raise
             except Exception as error:
                 self._merged_baseline_failed = True

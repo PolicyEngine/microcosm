@@ -478,6 +478,87 @@
       ]
     },
     {
+      "resource": "ons_family_spending_income_decile_facts.json",
+      "purpose": "ONS Family Spending, financial year ending 2025 (workbook 1, Table 3.1E, released 11 June 2026), UK private households from the Living Costs and Food Survey: mean weekly household expenditure on each COICOP division and on the twelve together, by equivalised disposable income decile group on the updated OECD-modified scale (2-adult reference), and for all households. The official reference the lcfs_consumption decile_fit receipt sets beside its frame-against-donor comparison (microcosm#1717, PolicyEngine/chronicle#446). ONS suppresses Education in every decile, so those cells have no row.",
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
+      "planned_consumers": [],
+      "licence": {
+        "licence": "Open Government Licence v3.0",
+        "attribution": [
+          "Source: Office for National Statistics licensed under the Open Government Licence v3.0 (Family spending workbook 1: detailed expenditure and trends, financial year ending 2025)."
+        ]
+      },
+      "selections": [
+        {
+          "label": "ons_family_spending_equivalised_deciles_fye2025",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.family_spending.mean_weekly_household_expenditure",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ],
+            "dimension_values": {
+              "income_decile_basis": "equivalised_disposable_income",
+              "equivalence_scale": "updated_oecd_modified_2_adult_reference",
+              "expenditure_group": [
+                "coicop_01",
+                "coicop_02",
+                "coicop_03",
+                "coicop_04",
+                "coicop_05",
+                "coicop_06",
+                "coicop_07",
+                "coicop_08",
+                "coicop_09",
+                "coicop_10",
+                "coicop_11",
+                "coicop_12",
+                "coicop_01_to_12"
+              ]
+            }
+          },
+          "expected_row_count": 120
+        },
+        {
+          "label": "ons_family_spending_all_households_fye2025",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.family_spending.mean_weekly_household_expenditure",
+            "geography_id": "K02000001",
+            "period_type": "fiscal_year",
+            "period_value": [
+              2024
+            ],
+            "dimensions": [
+              "expenditure_group"
+            ],
+            "dimension_values": {
+              "expenditure_group": [
+                "coicop_01",
+                "coicop_02",
+                "coicop_03",
+                "coicop_04",
+                "coicop_05",
+                "coicop_06",
+                "coicop_07",
+                "coicop_08",
+                "coicop_09",
+                "coicop_10",
+                "coicop_11",
+                "coicop_12",
+                "coicop_01_to_12"
+              ]
+            }
+          },
+          "expected_row_count": 13
+        }
+      ]
+    },
+    {
       "resource": "desnz_road_fuel_by_vehicle.json",
       "purpose": "DESNZ sub-national road transport fuel consumption (25 June 2026 workbook), UK totals by vehicle type and fuel in ktoe, calendar years 2022 to 2024: the cars share of each fuel's road use for the LCFS litres audit's per-fuel benchmark (microcosm#1113, PolicyEngine/chronicle#322).",
       "consumers": [

@@ -259,6 +259,10 @@
       "hmrc.benefits_in_kind": {
         "provider_id": "hmrc",
         "label": "Benefits in kind"
+      },
+      "microcosm.centax_childcare_parents": {
+        "provider_id": "microcosm",
+        "label": "Parents of 3- and 4-year-olds by income (CenTax)"
       }
     },
     "target_categories": {

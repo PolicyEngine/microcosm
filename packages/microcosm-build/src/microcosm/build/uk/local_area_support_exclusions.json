@@ -5,16 +5,16 @@
     "local_authority/E06000053": {
       "reason": "Reviewed exclusion of the local-authority support floor for Isles of Scilly (E06000053): population-proportional ladder assignment gives the area too few positive-weight rows, at the ruled K=15 and at every smaller K measured, to meet the 50-row floor, and its effective sample size on the R17 release candidate misses the ESS-50 floor (microcosm#761 receipts section R1, identical on spine-i and spine-k), so the 50-row / ESS-50 / 50-source floor is unreachable by clone count. The area stays in the solve with its measured support and is flagged support_below_floor in the build's area-support table (the candidate manifest's area_support_summary) and named in the release manifest's area_support block; consumers must treat its estimates as unsupported. Re-measured on every candidate; a passing area retires this entry (a stale exclusion fails the gate). Re-worded in microcosm#1278: where the flag is recorded (2026-10-14), and without per-area support figures (2026-10-15). Per microcosm#762 A14 the authority's own local-authority cells are signed-deferred (`local_authority_support_floor_excluded`).",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A4, ruling 2026-09-02)",
-      "approved_on": "2026-09-02",
-      "expires_on": "2026-12-02"
+      "adjudication": "microcosm#762 (A4, ruling 2026-09-02); renewed on 2026-11-27 to 2027-02-27 by juaristi22 (microcosm#1736): both areas are still below the support floor on the local release uk-local-candidate-f100-s42-20261123T075147Z-7081d968",
+      "approved_on": "2026-11-27",
+      "expires_on": "2027-02-27"
     },
     "local_authority/E09000001": {
       "reason": "Reviewed exclusion of the local-authority support floor for City of London (E09000001): population-proportional ladder assignment gives the area enough positive-weight rows at the ruled K=15 to clear the 50-row floor, but its effective sample size on the R17 release candidate misses the ESS-50 floor (microcosm#761 receipts section R1, identical on spine-i and spine-k). This receipt does not establish whether the separate 50-source floor passes or how further cloning would affect ESS. The area stays in the solve with its measured support and is flagged support_below_floor in the build's area-support table (the candidate manifest's area_support_summary) and named in the release manifest's area_support block; consumers must treat its estimates as unsupported. Re-measured on every candidate; a passing area retires this entry (a stale exclusion fails the gate). Re-worded in microcosm#1278: where the flag is recorded (2026-10-14), and without per-area support figures (2026-10-15). Per microcosm#762 A14 the authority's own local-authority cells are signed-deferred (`local_authority_support_floor_excluded`).",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#762 (A4, ruling 2026-09-02)",
-      "approved_on": "2026-09-02",
-      "expires_on": "2026-12-02"
+      "adjudication": "microcosm#762 (A4, ruling 2026-09-02); renewed on 2026-11-27 to 2027-02-27 by juaristi22 (microcosm#1736): both areas are still below the support floor on the local release uk-local-candidate-f100-s42-20261123T075147Z-7081d968",
+      "approved_on": "2026-11-27",
+      "expires_on": "2027-02-27"
     },
     "local_authority/S12000023": {
       "reason": "Reviewed gate-only exclusion of the local-authority support floor for Orkney Islands (S12000023), signed before the first build of the microcosm#1301 local release: the authority missed the floor on the atomic-support builds at K=25 with 60,000 and 100,000 households and on the K=15 build with 95,000 households. Gate-only (microcosm#1301): its cells stay bound and none is deferred, so the entry does not change the solve. The area is flagged support_below_floor in the build's area-support table (the candidate manifest's area_support_summary) and named in the release manifest's area_support block; consumers must treat its estimates as unsupported. Scoped to the local line. Re-measured on every candidate; a passing area retires this entry (a stale exclusion fails the gate).",
@@ -61,9 +61,9 @@
     "census_households": {
       "reason": "The 1,011-cell ons.census.households family is the per-grain A15 denominator. Deferring E06000053 or E09000001 would open the 361-cell local-authority surface and move its factor; those areas remain support-floor-excluded for every other family.",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#887 (review round 1, 2026-09-10)",
-      "approved_on": "2026-09-10",
-      "expires_on": "2026-12-10"
+      "adjudication": "microcosm#887 (review round 1, 2026-09-10); renewed on 2026-11-27 to 2027-02-27 by juaristi22 (microcosm#1736): with the two areas' support-floor exclusions",
+      "approved_on": "2026-11-27",
+      "expires_on": "2027-02-27"
     }
   }
 }

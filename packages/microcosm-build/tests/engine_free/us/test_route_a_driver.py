@@ -634,11 +634,12 @@ def test_a_relative_path_entry_before_the_emitter_is_refused(
 
 
 @pytest.mark.parametrize("required", [False, True])
-def test_undecodable_version_output_is_a_failed_run_as_in_the_release(
+def test_undecodable_standard_error_does_not_fail_the_check_as_in_the_release(
     tmp_path: Path, required: bool
 ) -> None:
-    """The release catches any exception from ``version`` (a decoding error
-    included) and goes on without an emitter unless telemetry is required."""
+    """The release reads ``version`` through microcosm-emitter-interface, which
+    decodes the command's output with replacement characters, so bytes on
+    standard error that are not UTF-8 do not stop a valid answer."""
 
     stub = write_executable(
         tmp_path / "bytes-emitter",
@@ -650,7 +651,23 @@ def test_undecodable_version_output_is_a_failed_run_as_in_the_release(
     if required:
         env["MICROCOSM_TELEMETRY_REQUIRED"] = "1"
     line = _emitter_line(_FLOOR, env)
-    _assert_problem(line, "could not be run (UnicodeDecodeError)", required)
+    assert line == (
+        f"NOTE microcosm-emitter 0.16.0 at {stub} meets the commit's floor 0.16.0"
+    )
+
+
+@pytest.mark.parametrize("required", [False, True])
+def test_an_undecodable_version_answer_is_no_json_object_as_in_the_release(
+    tmp_path: Path, required: bool
+) -> None:
+    stub = write_executable(
+        tmp_path / "bytes-emitter", "#!/bin/bash\nprintf '\\377\\n'\n"
+    )
+    env = {"MICROCOSM_EMITTER_COMMAND": str(stub)}
+    if required:
+        env["MICROCOSM_TELEMETRY_REQUIRED"] = "1"
+    line = _emitter_line(_FLOOR, env)
+    _assert_problem(line, "printed no JSON object", required)
 
 
 def test_a_version_command_that_hangs_is_cut_off(
