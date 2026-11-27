@@ -1,0 +1,1 @@
+Free the copy of the rules that policyengine-us 2.2.1 keeps for New York's pre-2024 credit formulas when an engine simulation is released, so a post-export pass that scores 2024 state income tax no longer leaves about 1.3 GiB of rules and parameters alive.

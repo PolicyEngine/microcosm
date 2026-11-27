@@ -444,6 +444,64 @@ def test_reform_passes_leave_no_rule_modules_behind_and_score_the_same(
     assert released == kept
 
 
+@pytest.mark.slow
+def test_reform_pass_leaves_no_pinned_copy_of_the_rules_behind(
+    builder, tmp_path, monkeypatch
+) -> None:
+    """New York's pre-2024 CTC formulas look up rules pinned to 2017 federal
+    law through ``policyengine_us.tools.pinned_tbs``. In policyengine-us 2.2.1
+    a lookup that misses clones the whole rules system into the module-level
+    ``_PINNED_TBS_CACHE``, and the clone's copied ``simulation`` attribute
+    keeps the batch engine and the reformed parameter tree alive after the
+    reform is finished (214,858 parameters on this fixture, about 1.3 GiB).
+    Releasing each batch engine removes that entry, so no parameter the
+    reform pass added is still alive once its reform is finished.
+
+    The reform is the shipped SALT refund probe's (``salt_refund_income``
+    neutralized), scored on ``state_income_tax`` for 2024 as the probe was
+    on policyengine-us 2.2.1, built here so a manifest change to the probe
+    does not move the test off the lookup. The lookups are counted, so the
+    test fails if the pass stops reaching them. On policyengine-us 2.88.6 or
+    later the cache holds nothing strongly, so this holds there without the
+    removal too."""
+    from policyengine_core.parameters import Parameter
+    from policyengine_core.reforms import Reform
+    from policyengine_us.tools import pinned_tbs
+
+    class NeutralizeSaltRefundIncome(Reform):
+        def apply(self):
+            self.neutralize_variable("salt_refund_income")
+
+    source = _write_engine_h5(builder, tmp_path / "export", _GUARD_HOUSEHOLDS)
+    lookups: list[str] = []
+    original_lookup = pinned_tbs._get_pinned_tbs
+
+    def counted_lookup(base_tbs, pin_name, pin_function):
+        lookups.append(pin_name)
+        return original_lookup(base_tbs, pin_name, pin_function)
+
+    monkeypatch.setattr(pinned_tbs, "_get_pinned_tbs", counted_lookup)
+
+    def live_parameter_ids() -> set[int]:
+        gc.collect()
+        return {id(item) for item in gc.get_objects() if isinstance(item, Parameter)}
+
+    scorer = builder._HouseholdBatchedPostExportScorer(
+        source, maximum_microsim_batch_size=None
+    )
+    consumer = scorer.open_consumer("fixture", ())
+    before = live_parameter_ids()
+    consumer.simulate(NeutralizeSaltRefundIncome).calculate(
+        "state_income_tax", period=2024
+    )
+    scorer.finish_consumer(consumer)
+    scorer.close()
+    added = live_parameter_ids() - before
+
+    assert "ny_pre_tcja_ctc" in lookups
+    assert len(added) == 0
+
+
 def test_batches_read_from_their_files_equal_the_written_h5s_batches(
     builder, tmp_path
 ) -> None:
