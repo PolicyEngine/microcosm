@@ -737,12 +737,24 @@ def state_admin_specs(
 
 
 class AdminSurface:
-    """The compiled admin registry plus how its SOI slice was chosen."""
+    """The compiled admin registry plus how its SOI slice was chosen.
 
-    def __init__(self, registry, ri_substitutions, soi_receipt: dict) -> None:
+    ``levels_left_out`` lists the compiled targets of the selected families
+    that the mode does not keep because of their level: one record for each
+    family and level, with the number of targets.
+    """
+
+    def __init__(
+        self,
+        registry,
+        ri_substitutions,
+        soi_receipt: dict,
+        levels_left_out: list[dict] | None = None,
+    ) -> None:
         self.registry = registry
         self.ri_substitutions = ri_substitutions
         self.soi_receipt = soi_receipt
+        self.levels_left_out = list(levels_left_out or [])
 
 
 def state_admin_surface(
@@ -758,7 +770,10 @@ def state_admin_surface(
     that order; ``families`` turns clauses on by id. The SOI slice follows
     :func:`soi_surface_predicate` for ``state`` (the default), ``totals`` and
     ``full``; ``state_cd`` adds the reconciled congressional-district rows
-    (:func:`us_acs_local_cd_surface.state_cd_soi_surface`).
+    (:func:`us_acs_local_cd_surface.state_cd_soi_surface`). The surface also
+    lists the compiled targets of those families that the mode leaves out
+    because of their level (``levels_left_out``); the materialize stage
+    writes the list in ``materialize_rss.json``.
     """
 
     # Refuse an unknown mode before loading the feed and compiling the registry.
@@ -807,6 +822,10 @@ def state_admin_surface(
         TargetRegistry(list(selection.specs), country="us"),
         ri_substitutions,
         soi_receipt,
+        [
+            {"family": family, "geography_level": level, "targets": count}
+            for (family, level), count in selection.left_out_by_level.items()
+        ],
     )
 
 
@@ -2504,6 +2523,7 @@ def do_materialize(args) -> None:
                 "target_matrix": {"shape": matrix_shape, "nnz": matrix_nnz},
                 "carrier_check": materialized.carrier_check,
                 "soi_surface": surface.soi_receipt,
+                "target_levels_left_out": surface.levels_left_out,
                 "cd_holdout": holdout,
                 **county_surface.run_metadata(args, county_holdout),
                 "sampling": sampling,

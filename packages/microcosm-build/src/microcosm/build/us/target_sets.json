@@ -2,10 +2,15 @@
  "version": 1,
  "country": "us",
  "description": "The targets each US release calibrates to, for each product and mode: the compiled families and levels it keeps, the tests that pick them, and the rows the tool builds itself (microcosm#1728). microcosm.calibrate.target_sets reads this file; docs/us-target-sets.md explains it.",
- "level_keys": [
-  "ledger_geography_level",
-  "geography_level"
- ],
+ "level_rule": {
+  "keys": [
+   "ledger_geography_level",
+   "geography_level"
+  ],
+  "values": "*",
+  "conflict": "first",
+  "rationale": "A compiled US target names its level in the Ledger's metadata (ledger_geography_level). A row that a tool builds from the PUMA ladder or the county facts names it in its local metadata (geography_level). The first key that has a value gives the level, and a target with neither has the level unspecified. The target-loss rows read this rule too (us_runtime.target_loss_weights.target_geography_level, microcosm#1729), so a US target has one level everywhere."
+ },
  "products": {
   "national": {
    "tool": "tools/build_us_fiscal_refresh_release.py",

@@ -11,7 +11,12 @@ A declaration file has this form::
     {
       "version": 1,
       "country": "<country>",
-      "level_keys": ["<metadata key>", ...],
+      "level_rule": {
+        "keys": ["<metadata key>", ...],
+        "values": ["<level>", ...] or "*",
+        "conflict": "first" or "refuse",
+        "rationale": "<why>"
+      },
       "products": {
         "<product>": {
           "tool": "<path of the tool>",
@@ -28,26 +33,18 @@ A declaration file has this form::
       }
     }
 
-**Families and levels.** A target's family is ``spec.family``. Its level is
-the first truthy value of the ``level_keys`` in its metadata, else
-``"unspecified"``. These are the labels the shared target-loss rule reads
-(``microcosm.calibrate.target_loss_rules``, microcosm#1729), so a target has
-one family and one level everywhere.
-
-A declaration can give a ``level_rule`` in place of ``level_keys``::
-
-    "level_rule": {
-      "keys": ["<metadata key>", ...],
-      "values": ["<level>", ...] or "*",
-      "conflict": "first" or "refuse",
-      "rationale": "<why>"
-    }
+**Families and levels.** A target's family is ``spec.family``. Its level
+comes from the country's ``level_rule``: the first truthy value of the rule's
+``keys`` in the target's metadata. These are the labels the shared
+target-loss rule reads (``microcosm.calibrate.target_loss_rules``,
+microcosm#1729), so a target has one family and one level everywhere, and
+each country states its reading in one form.
 
 ``values`` closes the set of levels: a target whose level is not one of them,
-or that has no level, is refused. With ``"conflict": "refuse"``, a target
-whose keys hold two different levels is refused; with ``"first"``, the first
-key that has a value gives the level. ``level_keys`` is the short form of a
-rule with ``"values": "*"`` and ``"conflict": "first"``.
+or that has no level, is refused. With ``"values": "*"`` any level is
+accepted, and a target with no level has the level ``"unspecified"``. With
+``"conflict": "refuse"``, a target whose keys hold two different levels is
+refused; with ``"first"``, the first key that has a value gives the level.
 
 **Compiled clauses.** A clause keeps the compiled specs that pass all of its
 tests, in compile order:
@@ -69,6 +66,13 @@ Each clause has an ``id``. A tool can turn on only some clauses by id (for
 example from a ``--families`` option). The selection is the output of each
 clause in declaration order. A spec that two clauses keep is an error in the
 declaration.
+
+**Rows left out by level.** A clause that lists ``levels`` drops the targets
+of its families at every other level. The selection counts them by family and
+level (``left_out_by_level``), so a target that a product does not keep
+because of its level leaves a record: a target is counted when an active
+clause names its family and no active clause that names its family keeps its
+level. A tool writes the counts in its receipt.
 
 **Built rows.** A tool also makes rows that are not compiled (for example
 population marginals from a ladder). A ``built`` entry names their family and
@@ -122,7 +126,6 @@ __all__ = [
     "load_target_set_declarations",
     "select_by_levels",
     "select_target_set",
-    "target_level",
     "target_set_census",
     "undeclared_cells",
 ]
@@ -134,10 +137,7 @@ UNSPECIFIED_LEVEL = "unspecified"
 LEVEL_CONFLICTS = ("first", "refuse")
 #: The receipt schema of :func:`select_by_levels`.
 SELECTION_RECEIPT_SCHEMA = "microcosm.calibrate.target-selection.v1"
-
-_TOP_KEYS = frozenset(
-    {"version", "country", "description", "level_keys", "level_rule", "products"}
-)
+_TOP_KEYS = frozenset({"version", "country", "description", "level_rule", "products"})
 _LEVEL_RULE_KEYS = frozenset({"keys", "values", "conflict", "rationale"})
 _PRODUCT_KEYS = frozenset({"tool", "option", "default_mode", "modes"})
 _MODE_KEYS = frozenset({"description", "compiled", "built"})
@@ -160,17 +160,6 @@ class TargetSetDeclarationError(ValueError):
 # ---------------------------------------------------------------------------
 
 
-def target_level(spec: Any, level_keys: Sequence[str]) -> str:
-    """A spec's level: the first truthy ``level_keys`` value, else unspecified."""
-
-    metadata = spec.metadata
-    for key in level_keys:
-        value = metadata.get(key)
-        if value:
-            return str(value)
-    return UNSPECIFIED_LEVEL
-
-
 @dataclass(frozen=True)
 class LevelRule:
     """How a target's level is read from its metadata (see the module docstring).
@@ -188,8 +177,6 @@ class LevelRule:
     rationale: str = ""
 
     def level_of(self, spec: Any) -> str:
-        if self.values is None and self.conflict == "first":
-            return target_level(spec, self.keys)
         held = [spec.metadata.get(key) for key in self.keys]
         if self.conflict == "refuse":
             present = [value for value in held if value]
@@ -279,11 +266,10 @@ class TargetSetDeclaration:
     product: str
     mode: str
     description: str
-    level_keys: tuple[str, ...]
+    #: The country's level rule, the same one for every product and mode.
+    level_rule: LevelRule
     compiled: tuple[TargetSetClause, ...]
     built: tuple[BuiltRows, ...]
-    #: The country's level rule; ``None`` reads ``level_keys`` alone.
-    level_rule: LevelRule | None = None
 
     @property
     def clause_ids(self) -> tuple[str, ...]:
@@ -307,9 +293,7 @@ class TargetSetDeclaration:
         )
 
     def level_of(self, spec: Any) -> str:
-        if self.level_rule is not None:
-            return self.level_rule.level_of(spec)
-        return target_level(spec, self.level_keys)
+        return self.level_rule.level_of(spec)
 
 
 @dataclass(frozen=True)
@@ -341,9 +325,8 @@ class TargetSetDeclarations:
     """Every product's declared target sets for one country."""
 
     country: str
-    level_keys: tuple[str, ...]
+    level_rule: LevelRule
     products: Mapping[str, ProductDeclaration]
-    level_rule: LevelRule | None = None
 
     def product(self, name: str) -> ProductDeclaration:
         try:
@@ -448,17 +431,8 @@ def _clause(where: str, raw: object) -> TargetSetClause:
 
 
 def _level_rule(where: str, top: Mapping[str, Any]) -> LevelRule:
-    """The declaration's level rule: ``level_rule``, or the ``level_keys`` form."""
+    """The country's level rule."""
 
-    if ("level_keys" in top) == ("level_rule" in top):
-        raise _fail(where, "give exactly one of level_keys and level_rule.")
-    if "level_keys" in top:
-        level_keys = top["level_keys"]
-        if not isinstance(level_keys, list) or not level_keys:
-            raise _fail(
-                f"{where}.level_keys", "must be a nonempty list of metadata keys."
-            )
-        return LevelRule(tuple(_text(f"{where}.level_keys", key) for key in level_keys))
     at = f"{where}.level_rule"
     rule = _require_keys(at, top["level_rule"], _LEVEL_RULE_KEYS, _LEVEL_RULE_KEYS)
     keys = rule["keys"]
@@ -541,12 +515,13 @@ def load_target_set_declarations(
     else:
         path = Path(source)
         raw, where = _read_declaration_file(path), str(path)
-    top = _require_keys(where, raw, _TOP_KEYS, ("version", "country", "products"))
+    top = _require_keys(
+        where, raw, _TOP_KEYS, ("version", "country", "level_rule", "products")
+    )
     if type(top["version"]) is not int or top["version"] != DECLARATION_VERSION:
         raise _fail(where, f"version must be {DECLARATION_VERSION}.")
     country = _text(f"{where}.country", top["country"])
     level_rule = _level_rule(where, top)
-    level_keys = level_rule.keys
     products_raw = top["products"]
     if not isinstance(products_raw, Mapping) or not products_raw:
         raise _fail(f"{where}.products", "must name at least one product.")
@@ -587,10 +562,9 @@ def load_target_set_declarations(
                 product=product_name,
                 mode=mode_name,
                 description=_text(f"{mode_at}.description", mode["description"]),
-                level_keys=level_keys,
+                level_rule=level_rule,
                 compiled=compiled,
                 built=built,
-                level_rule=level_rule,
             )
         default_mode = _text(f"{at}.default_mode", product["default_mode"])
         if default_mode not in modes:
@@ -606,9 +580,8 @@ def load_target_set_declarations(
         )
     return TargetSetDeclarations(
         country=country,
-        level_keys=level_keys,
-        products=MappingProxyType(products),
         level_rule=level_rule,
+        products=MappingProxyType(products),
     )
 
 
@@ -625,6 +598,10 @@ class TargetSetSelection:
     specs: tuple[Any, ...]
     clause_counts: Mapping[str, int]
     rule_receipts: Mapping[str, Any]
+    #: The input specs that the active clauses name by family and that none
+    #: of those clauses keeps because of its level, counted by (family,
+    #: level) and sorted. Empty when no active clause lists levels.
+    left_out_by_level: Mapping[tuple[str, str], int]
 
 
 def select_target_set(
@@ -642,7 +619,8 @@ def select_target_set(
     the rule. The selection is the clauses' outputs in declaration order. A
     spec's level is read only when an active clause tests levels, so a
     closed level rule refuses only the specs that a selection places by
-    level.
+    level. The selection also counts the specs that the active clauses leave
+    out because of their level (``left_out_by_level``).
 
     Raises:
         KeyError: If ``clause_ids`` names a clause the declaration lacks.
@@ -676,8 +654,20 @@ def select_target_set(
             )
     # A level is read only when a clause tests levels, so a closed level rule
     # does not refuse a target that no active clause places by level.
+    left_out: Counter[tuple[str, str]] = Counter()
     if any(clause.levels is not None for clause in clauses):
         levels = [declaration.level_of(spec) for spec in specs]
+        for spec, level in zip(specs, levels, strict=True):
+            naming = [
+                clause
+                for clause in clauses
+                if clause.families is None or spec.family in clause.families
+            ]
+            if naming and all(
+                clause.levels is not None and level not in clause.levels
+                for clause in naming
+            ):
+                left_out[(str(spec.family), level)] += 1
     else:
         levels = [UNSPECIFIED_LEVEL] * len(specs)
     kept: list[Any] = []
@@ -706,6 +696,7 @@ def select_target_set(
         specs=tuple(kept),
         clause_counts=MappingProxyType(counts),
         rule_receipts=MappingProxyType(receipts),
+        left_out_by_level=MappingProxyType(dict(sorted(left_out.items()))),
     )
 
 
@@ -735,7 +726,7 @@ def _require_level_mode(declaration: TargetSetDeclaration) -> None:
 
     at = f"{declaration.product}/{declaration.mode}"
     rule = declaration.level_rule
-    if rule is None or rule.values is None:
+    if rule.values is None:
         raise TargetSetDeclarationError(
             f"{at}: selection by level needs a level_rule with a closed set of values."
         )
@@ -870,13 +861,11 @@ def clause_predicate(
 
 
 def target_set_census(
-    specs: Iterable[Any], level_keys: Sequence[str]
+    specs: Iterable[Any], level_rule: LevelRule
 ) -> dict[tuple[str, str], int]:
-    """Spec counts by (family, level), sorted."""
+    """Spec counts by (family, level), sorted; the rule gives each level."""
 
-    census = Counter(
-        (str(spec.family), target_level(spec, level_keys)) for spec in specs
-    )
+    census = Counter((str(spec.family), level_rule.level_of(spec)) for spec in specs)
     return dict(sorted(census.items()))
 
 
@@ -901,5 +890,5 @@ def undeclared_cells(
             for built in declaration.built
         )
 
-    census = target_set_census(specs, declaration.level_keys)
+    census = target_set_census(specs, declaration.level_rule)
     return {cell: n for cell, n in census.items() if not declared(*cell)}

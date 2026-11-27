@@ -15,7 +15,6 @@ from microcosm.calibrate.target_sets import (
     load_target_set_declarations,
     select_by_levels,
     select_target_set,
-    target_level,
     target_set_census,
     undeclared_cells,
 )
@@ -38,7 +37,12 @@ SPECS = (
 DECLARATIONS = {
     "version": 1,
     "country": "test",
-    "level_keys": ["level", "geo"],
+    "level_rule": {
+        "keys": ["level", "geo"],
+        "values": "*",
+        "conflict": "first",
+        "rationale": "r",
+    },
     "products": {
         "national": {
             "tool": "tools/national.py",
@@ -149,7 +153,7 @@ def test_declarations_load_from_a_file_and_name_products_and_modes(tmp_path) -> 
     declarations = load_target_set_declarations(path)
 
     assert declarations.country == "test"
-    assert declarations.level_keys == ("level", "geo")
+    assert declarations.level_rule.keys == ("level", "geo")
     assert tuple(declarations.products) == ("national", "local")
     local = declarations.product("local")
     assert local.option == "--mode"
@@ -198,7 +202,9 @@ def test_a_file_with_a_repeated_key_or_a_non_finite_number_is_refused(
         # True equals 1 in Python; a version is the integer.
         ({"version": True}, "version must be 1"),
         ({"extra": True}, "unknown keys"),
-        ({"level_keys": []}, "level_keys"),
+        ({"level_rule__keys": []}, "nonempty list of metadata keys"),
+        # The short form of the rule is gone: a country gives the rule in full.
+        ({"level_keys": ["level", "geo"]}, "unknown keys"),
         ({"products__local__default_mode": "county"}, "not a declared mode"),
         ({"products__local__modes__state__compiled": []}, "at least one clause"),
         (
@@ -247,11 +253,11 @@ def test_a_malformed_declaration_is_refused(changes, message) -> None:
 
 
 def test_a_level_is_the_first_truthy_level_key() -> None:
-    keys = ("level", "geo")
+    rule = _declarations().level_rule
 
-    assert target_level(_spec("a", "f", level="state", geo="district"), keys) == "state"
-    assert target_level(_spec("b", "f", level="", geo="district"), keys) == "district"
-    assert target_level(_spec("c", "f"), keys) == UNSPECIFIED_LEVEL
+    assert rule.level_of(_spec("a", "f", level="state", geo="district")) == "state"
+    assert rule.level_of(_spec("b", "f", level="", geo="district")) == "district"
+    assert rule.level_of(_spec("c", "f")) == UNSPECIFIED_LEVEL
 
 
 def test_wildcards_keep_every_spec_in_compile_order() -> None:
@@ -308,6 +314,52 @@ def test_clause_ids_turn_on_only_some_clauses() -> None:
     assert _names(selection.specs) == ["ca_tax_total", "ca_tax_file", "unlabelled"]
     with pytest.raises(KeyError, match="no compiled clause 'snap'"):
         select_target_set(declaration, SPECS, clause_ids=["tax", "snap"])
+
+
+def test_a_selection_counts_the_specs_it_leaves_out_by_level() -> None:
+    """A clause drops the rows of its family at a level it does not list; the
+    selection records them by family and level."""
+
+    declarations = _declarations()
+    state = declarations.declaration("local", "state")
+    county_benefit = _spec("county_benefit", "benefit", level="county", state="06")
+    specs = (*SPECS, county_benefit)
+
+    selection = select_target_set(state, specs)
+
+    assert "county_benefit" not in _names(selection.specs)
+    assert dict(selection.left_out_by_level) == {
+        ("benefit", "county"): 1,
+        ("tax", "country"): 1,
+        ("tax", "district"): 1,
+    }
+    assert list(selection.left_out_by_level) == sorted(selection.left_out_by_level)
+    # A row that fails another test at a kept level is not left out by level:
+    # ca_tax is a state row with the role "band".
+    assert "ca_tax" not in _names(selection.specs)
+
+    # Only the active clauses count.
+    only_tax = select_target_set(state, specs, clause_ids=["tax"])
+    assert dict(only_tax.left_out_by_level) == {
+        ("tax", "country"): 1,
+        ("tax", "district"): 1,
+    }
+    # A mode that lists no level reads no level and leaves none out.
+    everything = select_target_set(declarations.declaration("national", "all"), specs)
+    assert dict(everything.left_out_by_level) == {}
+
+    # With one clause for each level, a subset of the clauses leaves out the
+    # rows of the other levels, and every clause together leaves out none.
+    level_mode = _level_mode()
+    rows = (
+        _spec("a", "tax", level="country"),
+        _spec("b", "tax", level="la"),
+        _spec("c", "benefit", geo="la"),
+    )
+    subset = select_target_set(level_mode, rows, clause_ids=["country"])
+    assert _names(subset.specs) == ["a"]
+    assert dict(subset.left_out_by_level) == {("benefit", "la"): 1, ("tax", "la"): 1}
+    assert dict(select_target_set(level_mode, rows).left_out_by_level) == {}
 
 
 def test_a_rule_takes_its_clause_specs_and_returns_specs_and_a_receipt() -> None:
@@ -384,7 +436,7 @@ def test_census_and_undeclared_cells() -> None:
         _spec("pop_county", "population", geo="county"),
     )
 
-    census = target_set_census(specs, declaration.level_keys)
+    census = target_set_census(specs, declaration.level_rule)
 
     assert census[("tax", "state")] == 4
     assert census[("population", "district")] == 1
@@ -491,12 +543,19 @@ def test_an_open_rule_and_the_first_conflict_rule() -> None:
     assert open_rule.level_of(_spec("c", "tax", geo="nation")) == "nation"
     with pytest.raises(ValueError, match="contradictory"):
         open_rule.level_of(_spec("d", "tax", level="la", geo="region"))
-    # The level_keys form reads exactly as target_level does.
-    keys_form = _declarations().declaration("national", "all")
-    assert keys_form.level_rule.values is None
-    assert keys_form.level_rule.conflict == "first"
-    for spec in SPECS:
-        assert keys_form.level_of(spec) == target_level(spec, ("level", "geo"))
+    # An open rule with "first" reads the first key that has a value.
+    open_first = _declarations().declaration("national", "all")
+    assert open_first.level_rule.values is None
+    assert open_first.level_rule.conflict == "first"
+    assert [open_first.level_of(spec) for spec in SPECS] == [
+        "country",
+        "state",
+        "state",
+        "state",
+        "district",
+        "state",
+        "state",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -515,15 +574,15 @@ def test_a_malformed_level_rule_is_refused(rule, message) -> None:
         load_target_set_declarations(_level_declarations(**rule))
 
 
-def test_a_declaration_gives_exactly_one_level_form() -> None:
-    both = _level_declarations()
-    both["level_keys"] = ["level"]
-    with pytest.raises(TargetSetDeclarationError, match="exactly one of"):
-        load_target_set_declarations(both)
-    neither = _level_declarations()
-    del neither["level_rule"]
-    with pytest.raises(TargetSetDeclarationError, match="exactly one of"):
-        load_target_set_declarations(neither)
+def test_a_declaration_needs_a_level_rule() -> None:
+    short_form = _level_declarations()
+    short_form["level_keys"] = ["level"]
+    with pytest.raises(TargetSetDeclarationError, match="unknown keys"):
+        load_target_set_declarations(short_form)
+    no_rule = _level_declarations()
+    del no_rule["level_rule"]
+    with pytest.raises(TargetSetDeclarationError, match="missing keys"):
+        load_target_set_declarations(no_rule)
 
 
 def test_select_by_levels_keeps_compile_order_and_lists_every_target() -> None:

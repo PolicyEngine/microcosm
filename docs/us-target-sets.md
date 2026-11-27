@@ -56,11 +56,29 @@ Each mode states three things:
    `uk/local_target_reference_membership.json`) give a signed rationale for
    each exclusion.
 
-A target's family is its `TargetSpec.family`. Its level is its
-`ledger_geography_level`, else its `geography_level`. These are the labels
-that the shared target-loss rule reads (microcosm#1729), so a target has one
-family and one level everywhere. The US levels are `country`, `state`,
-`congressional_district` and `county`.
+A target's family is its `TargetSpec.family`. Its level comes from the level
+rule that the file declares, in the form the UK file uses:
+
+```json
+"level_rule": {
+  "keys": ["ledger_geography_level", "geography_level"],
+  "values": "*",
+  "conflict": "first"
+}
+```
+
+- The level is the first of the two keys that has a value. A compiled target
+  names its level in `ledger_geography_level`. A row that a tool builds from
+  the PUMA ladder or the county facts names it in `geography_level`.
+- The rule is open (`"values": "*"`): it accepts any level, and a target with
+  neither key has the level `unspecified`.
+
+The target-loss rows read the same rule
+(`us_runtime.target_loss_weights.target_geography_level`, microcosm#1729), so
+a target has one family and one level everywhere. The US levels are
+`country`, `state`, `congressional_district` and `county`. On the pinned feed
+every compiled target sets `ledger_geography_level` only, so the two keys of a
+compiled target cannot disagree; `test_us_target_sets.py` holds that.
 
 ## What the declarations select
 
@@ -133,6 +151,28 @@ Before the declarations, the local SNAP, Medicaid, `totals`, `full` and
 surface changes. On a feed with such rows at another level (for example county
 rows in the main feed), the declarations keep them out until a clause names
 the level.
+
+### Rows left out by level
+
+A clause that lists levels drops the rows of its families at every other
+level. The selection counts those rows by family and level
+(`TargetSetSelection.left_out_by_level`), and the local tool writes the counts
+in `materialize_rss.json`, under `target_levels_left_out`, beside the SOI
+receipt. So a row that a mode does not keep because of its level leaves a
+record. On the pinned feed:
+
+| Family | Level | Rows | Left out by |
+|---|---|---:|---|
+| `usda_snap` | `country` | 2 | every local mode |
+| `cms_medicaid` | `country` | 3 | every local mode |
+| `irs_soi` | `country` | 441 | every local mode |
+| `irs_soi` | `congressional_district` | 22,996 | `state` and `state_county` |
+
+`test_us_target_sets.py` pins these counts for each mode. After a feed re-pin,
+a row of one of the three families at a new level (for example a county SNAP
+row) is a new line in the record and a failure of that test, which runs with
+the pinned feed. The national modes list no level, so they leave no row out
+by level.
 
 The SOI clause of `state` and `state_county` reads a row's level as every
 clause does: `ledger_geography_level`, else `geography_level`. The filter it

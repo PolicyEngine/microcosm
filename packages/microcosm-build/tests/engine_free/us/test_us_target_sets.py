@@ -52,6 +52,27 @@ PINNED_LOCAL = {
     "state_cd": (26_425, "e0bb302e3add"),
     "state_county": (4_380, "0ee16ca42be5"),
 }
+#: The compiled targets of the local families that each local mode leaves out
+#: because of their level, on the pinned feed: (family, level) -> targets.
+#: No local mode keeps a country row. The ``state`` and ``state_county``
+#: modes also leave out every district row of IRS SOI: the district file's
+#: rows, and the 324 district rows of the Historic Table 2 record set.
+_COUNTRY_ROWS_LEFT_OUT = {
+    ("cms_medicaid", "country"): 3,
+    ("irs_soi", "country"): 441,
+    ("usda_snap", "country"): 2,
+}
+_STATE_ROWS_LEFT_OUT = {
+    **_COUNTRY_ROWS_LEFT_OUT,
+    ("irs_soi", "congressional_district"): 22_996,
+}
+PINNED_LOCAL_LEVELS_LEFT_OUT = {
+    "state": _STATE_ROWS_LEFT_OUT,
+    "totals": _COUNTRY_ROWS_LEFT_OUT,
+    "full": _COUNTRY_ROWS_LEFT_OUT,
+    "state_cd": _COUNTRY_ROWS_LEFT_OUT,
+    "state_county": _STATE_ROWS_LEFT_OUT,
+}
 #: The national_state surface by family and level: every compiled family's
 #: country and state rows; the district file's 49 country and 2,601 state
 #: rows and every district row are out.
@@ -167,7 +188,10 @@ def test_every_local_mode_declares_the_families_option_clauses(
 
 def test_the_declared_names_are_the_ones_the_code_uses(local_tool) -> None:
     declarations = us_target_set_declarations()
-    assert declarations.level_keys == ("ledger_geography_level", "geography_level")
+    assert declarations.level_rule.keys == (
+        "ledger_geography_level",
+        "geography_level",
+    )
     national_state = declarations.declaration(NATIONAL_PRODUCT, "national_state")
     assert national_state.compiled[0].exclude == (CONGRESSIONAL_DISTRICT_PREDICATE,)
     for mode in ("state", "state_county"):
@@ -196,7 +220,7 @@ def test_ladder_population_rows_have_the_declared_family_and_levels(
     local_tool,
 ) -> None:
     built = us_target_set_declaration(LOCAL_PRODUCT, "state").built_rows("population")
-    level_keys = us_target_set_declarations().level_keys
+    level_rule = us_target_set_declarations().level_rule
     populations = {"state": {6: 39_000_000.0}, "cd": {601: 760_000.0}}
 
     specs = local_tool.ladder_population_target_specs(populations, ["state", "cd"])
@@ -204,19 +228,56 @@ def test_ladder_population_rows_have_the_declared_family_and_levels(
         "pop_county_06001", 1_600_000.0, period=local_tool.PERIOD
     )
 
-    from microcosm.build.us_runtime.target_loss_weights import (
-        target_geography_level,
-    )
-    from microcosm.calibrate.target_sets import target_level
-
-    for spec in (*specs, county):
-        assert target_level(spec, level_keys) == target_geography_level(spec)
-    census = target_set_census((*specs, county), level_keys)
+    census = target_set_census((*specs, county), level_rule)
     assert census == {
         (built.family, built.levels["state"]): 1,
         (built.family, built.levels["cd"]): 1,
         (built.family, built.levels["county"]): 1,
     }
+
+
+def _target_geography_level_before_the_declared_rule(spec) -> str:
+    """``target_loss_weights.target_geography_level`` as it was in code, before
+    it read the level rule of ``us/target_sets.json`` (a verbatim copy)."""
+
+    metadata = spec.metadata
+    return str(
+        metadata.get("ledger_geography_level")
+        or metadata.get("geography_level")
+        or "unspecified"
+    )
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"ledger_geography_level": "state"},
+        {"geography_level": "county"},
+        {"ledger_geography_level": "state", "geography_level": "state"},
+        {"ledger_geography_level": "state", "geography_level": "county"},
+        {"ledger_geography_level": "", "geography_level": "county"},
+        {"ledger_geography_level": None, "geography_level": ""},
+        {"ledger_geography_level": "parish"},
+        {},
+    ],
+)
+def test_the_target_loss_rows_read_the_declared_level_rule(metadata) -> None:
+    """The declared rule reads a level as the target-loss code did."""
+
+    from types import SimpleNamespace
+
+    from microcosm.build.us_runtime.target_loss_weights import (
+        target_geography_level,
+    )
+    from microcosm.build.us_runtime.target_sets import us_target_level
+
+    spec = SimpleNamespace(name="row", family="irs_soi", metadata=metadata)
+
+    assert (
+        target_geography_level(spec)
+        == us_target_level(spec)
+        == _target_geography_level_before_the_declared_rule(spec)
+    )
 
 
 def test_the_soi_predicate_is_the_declared_clause(local_tool) -> None:
@@ -273,25 +334,33 @@ def pinned_compile(local_tool):
 
 def test_pinned_feed_levels_are_the_target_loss_levels(pinned_compile) -> None:
     """Every compiled target has the level the target-loss rows read
-    (``target_loss_weights.target_geography_level``, microcosm#1729)."""
+    (``target_loss_weights.target_geography_level``, microcosm#1729), and it
+    names that level in the Ledger's key alone, so the two level keys of a
+    compiled target cannot disagree."""
 
     from microcosm.build.us_runtime.target_loss_weights import (
         target_geography_level,
     )
-    from microcosm.calibrate.target_sets import target_level
 
     _feed, registry = pinned_compile
-    level_keys = us_target_set_declarations().level_keys
+    rule = us_target_set_declarations().level_rule
 
     assert all(
-        target_level(spec, level_keys) == target_geography_level(spec)
+        rule.level_of(spec)
+        == target_geography_level(spec)
+        == _target_geography_level_before_the_declared_rule(spec)
         for spec in registry.specs
     )
-    assert {target_level(spec, level_keys) for spec in registry.specs} == {
+    assert {rule.level_of(spec) for spec in registry.specs} == {
         "country",
         "state",
         "congressional_district",
     }
+    keys_held = {
+        tuple(bool(spec.metadata.get(key)) for key in rule.keys)
+        for spec in registry.specs
+    }
+    assert keys_held == {(True, False)}
 
 
 def test_pinned_feed_national_surfaces_are_unchanged(
@@ -308,9 +377,8 @@ def test_pinned_feed_national_surfaces_are_unchanged(
         ), mode
         assert receipt["calibrated_targets"] == count
         declaration = us_target_set_declaration(NATIONAL_PRODUCT, mode)
-        assert undeclared_cells(declaration, kept) == {}
         if mode == "national_state":
-            census = target_set_census(kept, declaration.level_keys)
+            census = target_set_census(kept, declaration.level_rule)
             assert census == PINNED_NATIONAL_STATE_CENSUS
             assert receipt["dropped_congressional_district_targets"] == (
                 len(registry.specs) - count
@@ -325,8 +393,15 @@ def test_pinned_feed_local_surfaces_are_unchanged(pinned_compile, local_tool) ->
         surface = local_tool.state_admin_surface(feed, families, soi_mode=mode)
         specs = surface.registry.specs
         assert (len(specs), surface.registry.version) == (count, version), mode
-        declaration = us_target_set_declaration(LOCAL_PRODUCT, mode)
-        assert undeclared_cells(declaration, specs) == {}, mode
+        # Every compiled row of the three families is kept or is in the
+        # record of the rows left out by level, with nothing else at a level
+        # the mode does not list.
+        left_out = {
+            (record["family"], record["geography_level"]): record["targets"]
+            for record in surface.levels_left_out
+        }
+        assert left_out == PINNED_LOCAL_LEVELS_LEFT_OUT[mode], mode
+        assert len(left_out) == len(surface.levels_left_out), mode
         assert surface.soi_receipt["soi_mode"] == mode
         if mode != "state_cd":
             soi = sum(spec.family == "irs_soi" for spec in specs)
