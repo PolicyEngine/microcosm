@@ -10,4 +10,4 @@ Only the result is compared with the identity recorded at load time. So a step t
 
 `complete` now computes the result's identity once, for both the check and the record. So each of these steps hashes the identity columns two fewer times; one hash took about 0.12 s on the synthetic frame with 174,895 persons.
 
-Checkpoints, run-context records and gate-shadow observations are byte-identical.
+Checkpoints, run-context records and the observation files of the shadow check run (the second evaluation of the `us/gates.json` validation checks beside the build's own) are byte-identical.

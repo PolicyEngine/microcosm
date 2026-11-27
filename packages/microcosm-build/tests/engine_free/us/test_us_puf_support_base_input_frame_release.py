@@ -34,7 +34,7 @@ _PASSING_GATE = SimpleNamespace(passed=True, failures=(), details={})
 
 # One step for each branch of _run_outer_stage that loads the previous
 # checkpoint and writes a frame of its own, plus a second post-QRF step that
-# evaluates signal gates. final_export is left out: it writes no frame.
+# runs signal checks. final_export is left out: it writes no frame.
 _FRAME_WRITING_STEPS = (
     "pre_clone_enrichment",
     "clone_feature_extraction",
@@ -183,7 +183,7 @@ def _patch_step(
 
     ``transform=None`` keeps the real step function where it runs without
     real inputs: the capital gain distribution split, and the post-QRF step
-    dispatch with its input function and signal gates replaced.
+    dispatch with its input function and signal checks replaced.
     """
 
     monkeypatch.setattr(builder, "_stage_run_config", lambda _args: {})
@@ -301,9 +301,11 @@ def test_each_step_frees_its_input_frame_before_its_checkpoint_write(
 ) -> None:
     """At the checkpoint write, nothing holds the frame the step was given.
 
-    The steps run their real ``_run_outer_stage`` branch with the gate
-    shadow on; the capital gain distribution split and the post-QRF step
-    dispatch also run their real step functions. Garbage collection is off
+    The steps run their real ``_run_outer_stage`` branch with the shadow
+    check run on (the second evaluation of the ``us/gates.json`` validation
+    checks, which the package conftest turns off for every test); the capital
+    gain distribution split and the post-QRF step dispatch also run their
+    real step functions. Garbage collection is off
     while the step runs, so only reference counting can free the input.
     Column arrays the result itself holds and weights the step passes
     through to its result stay alive with the result, as they should.
