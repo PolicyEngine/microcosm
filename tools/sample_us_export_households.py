@@ -67,7 +67,20 @@ Usage::
     .venv/bin/python tools/sample_us_export_households.py \\
         --export <populace_us_2024.h5> --fraction 0.05 --seed 0 --out <dir>
 
-writes ``<dir>/populace_us_2024.h5`` and ``<dir>/sample_receipt.json``.
+writes ``<dir>/populace_us_2024.h5`` and ``<dir>/sample_receipt.json``. The
+subsample takes the name of the ``--export`` path as given, so an export read
+through a link (a Hugging Face cache snapshot links each file to a blob named
+by its hash) is written under the snapshot's file name; a subsample that would
+replace that link, or the file it links to, is refused.
+
+``--drop-column NAME`` (repeatable) leaves a stored column out of the
+subsample. A published export can store a column that a later export contract
+refuses, such as one that has since become formula-owned; dropping it lets the
+current post-export stages run on that export's households. The tool refuses
+a name no table stores, the household weight, and the id and membership
+columns the households are built from; the post-write check expects exactly
+the dropped columns to be absent, and the receipt lists them under
+``output.dropped_columns``.
 """
 
 from __future__ import annotations
@@ -561,6 +574,38 @@ def membership_column(entity: str) -> str:
 PERSON_MEMBERSHIP_COLUMNS = tuple(
     membership_column(entity) for entity in US_GROUP_ENTITIES
 )
+
+
+def dropped_columns_by_table(
+    names: Iterable[str],
+    stored_columns: Mapping[str, Sequence[str]],
+    export_path: Path,
+) -> dict[str, list[str]]:
+    """Each table's columns among ``names``, sorted, after refusing a name no
+    table stores, the household weight, and an id or membership column."""
+    structural = {id_column(entity) for entity in US_ENTITIES} | set(
+        PERSON_MEMBERSHIP_COLUMNS
+    )
+    dropped: dict[str, set[str]] = {}
+    for name in dict.fromkeys(names):
+        if name == HOUSEHOLD_WEIGHT_COLUMN:
+            raise ValueError(
+                f"Cannot drop {name!r}: it is the household weight, which the "
+                "subsample's drawn weights are written to."
+            )
+        if name in structural:
+            raise ValueError(
+                f"Cannot drop {name!r}: it is an id or membership column, which "
+                "the subsample's whole households are selected by."
+            )
+        tables = [entity for entity in US_ENTITIES if name in stored_columns[entity]]
+        if not tables:
+            raise ValueError(
+                f"Cannot drop {name!r}: no table of {export_path} stores it."
+            )
+        for table in tables:
+            dropped.setdefault(table, set()).add(name)
+    return {table: sorted(dropped[table]) for table in sorted(dropped)}
 
 
 # ---------------------------------------------------------------------------
@@ -1311,8 +1356,13 @@ def sample_export(
     chunk_rows: int | None = None,
     dataset_filename: str | None = None,
     refuse_denied: bool = True,
+    drop_columns: Sequence[str] = (),
 ) -> dict[str, object]:
-    """Write the subsample H5 and its receipt; return the receipt."""
+    """Write the subsample H5 and its receipt; return the receipt.
+
+    The subsample is named ``dataset_filename``, or else the name of
+    ``export_path`` as given (not of a file it links to). ``drop_columns``
+    names stored columns left out of it."""
     from microcosm.frame import Frame, WeightKind, Weights
     from microcosm.frame.units import US_SCHEMA
 
@@ -1320,11 +1370,14 @@ def sample_export(
     seed = validate_seed(seed)
     if not (math.isfinite(float(certainty_threshold)) and certainty_threshold >= 0):
         raise ValueError("certainty_threshold must be finite and non-negative.")
+    given_name = Path(export_path).name
     export_path = Path(export_path).resolve()
     out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / (dataset_filename or export_path.name)
-    if out_path == export_path:
+    out_path = out_dir / (dataset_filename or given_name)
+    # resolve() follows a link at out_path, so writing over a link to the
+    # source is refused as writing over the source is.
+    if out_path == export_path or out_path.resolve() == export_path:
         raise ValueError("The subsample would overwrite its source export.")
     clock = _PhaseClock()
     write = write_dataset or _default_write_dataset
@@ -1406,6 +1459,9 @@ def sample_export(
     household = groups["household"]
     if HOUSEHOLD_WEIGHT_COLUMN not in household.columns:
         raise ValueError(f"{export_path} stores no {HOUSEHOLD_WEIGHT_COLUMN}.")
+    dropped_columns = dropped_columns_by_table(
+        drop_columns, source_columns, export_path
+    )
     unit_counts = assert_units_nest_in_households(person)
     household_ids = household[id_column("household")].to_numpy()
     source_weights = household[HOUSEHOLD_WEIGHT_COLUMN].to_numpy(dtype=np.float64)
@@ -1475,6 +1531,8 @@ def sample_export(
             }
 
     tables = clock.run("read_selected_rows", read_selected_rows)
+    for entity, columns in dropped_columns.items():
+        tables[entity] = tables[entity].drop(columns=columns)
     if refuse_denied:
         from microcosm.build.us_runtime.h5_io import assert_h5_unchanged
 
@@ -1514,6 +1572,7 @@ def sample_export(
             source_path=export_path,
             chunk_bytes=chunk_bytes,
             chunk_rows=chunk_rows,
+            dropped_columns=dropped_columns,
         ),
     )
     output_sha256 = sha256_file(out_path)
@@ -1595,6 +1654,7 @@ def sample_export(
             "path": str(out_path),
             "sha256": output_sha256,
             "size_bytes": out_path.stat().st_size,
+            "dropped_columns": dropped_columns,
         },
         "verification": verification,
         "timing": clock.phases,
@@ -1614,8 +1674,12 @@ def _verify_written_subsample(
     source_path: Path,
     chunk_bytes: int,
     chunk_rows: int | None = None,
+    dropped_columns: Mapping[str, Sequence[str]] | None = None,
 ) -> dict[str, object]:
-    """Re-read the written subsample and check it against the selection."""
+    """Re-read the written subsample and check it against the selection.
+
+    Its stored tables must hold the source's columns except
+    ``dropped_columns``, which must be absent."""
     from microcosm.data.stored_inputs import h5_stored_tables
 
     with pd.HDFStore(str(out_path), mode="r") as store:
@@ -1668,7 +1732,13 @@ def _verify_written_subsample(
     )
     if person_households != set(draw.selected_ids.tolist()):
         failures.append("written persons do not cover exactly the selected households")
-    source_tables = h5_stored_tables(source_path)
+    dropped_columns = dropped_columns or {}
+    source_tables = {
+        table: tuple(
+            column for column in columns if column not in dropped_columns.get(table, ())
+        )
+        for table, columns in h5_stored_tables(source_path).items()
+    }
     written_tables = h5_stored_tables(out_path)
     column_differences = {
         table: {
@@ -1746,7 +1816,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--dataset-filename",
         default=None,
-        help="output H5 name (default: the source's file name)",
+        help="output H5 name (default: the name of the --export path as given, "
+        "not of a file it links to)",
+    )
+    parser.add_argument(
+        "--drop-column",
+        action="append",
+        default=[],
+        dest="drop_columns",
+        metavar="NAME",
+        help="leave this stored column out of the subsample (repeatable); the "
+        "receipt records it under output.dropped_columns",
     )
     args = parser.parse_args(argv)
     receipt = sample_export(
@@ -1762,6 +1842,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         chunk_bytes=int(args.chunk_mib) * 2**20,
         chunk_rows=args.chunk_rows,
         dataset_filename=args.dataset_filename,
+        drop_columns=tuple(args.drop_columns),
     )
     selection = receipt["selection"]
     print(

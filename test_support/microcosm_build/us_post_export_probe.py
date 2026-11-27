@@ -124,13 +124,23 @@ def fixture_export_probe(
     batch_size: int | None = None,
     fail_on: str | None = None,
     census: bool = False,
+    scorer_options=None,
     **options,
 ):
     """An ``ExportProbe`` scoring with the float32 fake engine (not run);
     returns (probe, log). ``fail_on`` names a variable the fake engine
-    refuses to compute."""
+    refuses to compute. ``scorer_options`` replaces the fake engine the
+    serial scorer is given (the log then records nothing)."""
     log = _EngineLog()
     log.fail_on = fail_on
+    if scorer_options is None and options.get("post_export_pooling") is not None:
+        # The pool settings name the workers' engine.
+        scorer_options = {}
+    elif scorer_options is None:
+        scorer_options = {
+            "microsimulation_cls": float32_engine(log),
+            "dataset_from_frame": lambda batch_frame: batch_frame,
+        }
     probe = probe_tool.ExportProbe(
         export_path,
         out_dir,
@@ -141,10 +151,7 @@ def fixture_export_probe(
             "sample_us_export_households", "sample_us_export_households.py"
         ),
         batch_size=batch_size,
-        scorer_options={
-            "microsimulation_cls": float32_engine(log),
-            "dataset_from_frame": lambda batch_frame: batch_frame,
-        },
+        scorer_options=scorer_options,
         load_frame=load_table_h5,
         measure_entity=_native_entity,
         chunk_rows=7,

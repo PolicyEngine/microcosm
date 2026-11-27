@@ -492,18 +492,143 @@ one Microsimulation over the whole file.
 - `_record_post_export_request_descriptors` runs the same dry run and returns
   every request, baseline and reform, as a picklable `PostExportRequest`
   (`microcosm.build.us_runtime.post_export_requests`), which a process started
-  with `spawn` can unpickle; the release itself still takes only the baseline
-  plans and reform-pass counts. A `prefetch` of several keys of one reformed
-  simulation is one pass, and its keys follow in ascending period order, as
-  the scorer computes them. A reform request holds
+  with `spawn` can unpickle, and the reform passes the scorer runs for them.
+  A `prefetch` of several keys of one reformed simulation is one pass, and its
+  keys follow in ascending period order, as the scorer computes them. A reform request holds
   the description its stage builds the reform from: the smoke probe, the
   reform-validation spec, or a cumulative OBBBA state's parameter changes. The
   dry run builds no reform, and refuses a reform it cannot describe or pickle.
   It also refuses a key asked of a reformed simulation after its stage opened
   the next one: the scorer finishes a reformed simulation when the next opens
   and refuses it further keys, so the plan fails before the export instead.
-  Nothing records the descriptors; the guard sweep below rebuilds each reform
-  from its descriptor in the worker that scores it.
+  Nothing records the descriptors in a file; pooled scoring (next item) and
+  the guard sweep below rebuild each reform from its descriptor in the worker
+  that scores it.
+- Certification scores the reform passes in the shared worker pool by
+  default (`_PooledPostExportScorer`, `microcosm.build.worker_pool`), after
+  running the baseline passes itself, and the stages run afterwards in the
+  certifying process, over the results. The worker
+  settings are tracker decision 1.4 · 6's, until task 2.6 · 2's planner
+  replaces them (`plan_post_export_workers` in
+  `microcosm.build.us_runtime.post_export_pool`):
+  - `MICROCOSM_POST_EXPORT_WORKERS` unset, blank or `auto`: at most
+    min(usable cores − 1, ⌊(0.75 × memory − 3 GiB) ÷ 5 GiB⌋) workers, at
+    least one. Usable cores are the CPUs the process may run on, limited by a
+    cgroup CPU quota; memory is the machine's, limited by a cgroup memory
+    limit (`microcosm.build.host_resources`). 0.75 is decision 1.1 · 2's
+    budget, 3 GiB the certifying process's planned peak and 5 GiB one
+    worker's. On a machine under about 10.7 GiB that leaves no room for one
+    worker, and certification refuses before it places the build or loads
+    the H5.
+  - A positive whole number: that many workers (`1` is one worker, a process
+    of its own), whatever the formula gives; `serial`: every pass in the
+    certifying process, as before. Anything else stops certification at the
+    same point.
+  - Each worker is replaced after 2 units and capped at
+    max(5 GiB, (0.75 × memory − 3 GiB) ÷ workers) of memory footprint; a
+    worker over its cap is killed and its unit runs again in a fresh worker.
+    No more workers start than a pool run has units.
+  - Certification prints the plan: the workers, the planned peak beside the
+    budget and each worker's cap. `tools/probe_us_post_export.py` reads the
+    same setting the same way.
+  - Every baseline pass runs in the certifying process, with the serial
+    scorer's own code, when the first stage opens and before any worker
+    starts (Anthony's decision of 27 November). First the shared baseline
+    pass. If it raises (`MemoryError` included), every stage's own baseline
+    pass runs next, in the order the stages run, where the serial scorer runs
+    each one when its stage opens; a stage whose own pass raised gets that
+    error when it opens, with the original traceback as a note, and the
+    exceptions it was raised from or while handling, so the build's run
+    outcome still reads them (out of memory). A changed batch file, or an
+    error raised while the build is being interrupted or terminated, in the
+    shared pass or a stage's own, stops scoring at once. Each batch engine is released before
+    the next is built, so no baseline engine is held in the certifying
+    process while workers run.
+  - After a failed shared pass this differs from the serial scorer in time
+    and memory, not in values: every stage's own pass runs when the first
+    stage opens (the export probe's held-out reports' too, which it never
+    opens), so the build telemetry and the probe count them all under that
+    stage, and a stage whose own pass failed gets its error only after the
+    other stages' own passes have run. Every stage's own values are held
+    until that stage opens or the scorer closes; a key several stages plan
+    is held once per stage.
+  - The pool then runs one unit per reformed simulation, holding all of that
+    simulation's recorded passes over every batch, in the order the stages
+    run: a worker builds the reform's rules once per unit, as the serial
+    scorer builds them once per reformed simulation. A build whose stages
+    open no reform starts no pool.
+  - Why: the worker cap is sized for reform passes. In the pooled export
+    probe on a 5% sample of a published file (27 November), a baseline pass
+    over one batch of 2,000 households went over the 5.25 GiB cap on every
+    attempt, the shared pass at 5.37 and 5.38 GiB and the smoke's own pass
+    at 5.43 and 5.34 GiB, while the reform passes peaked at 1.35 to 2.00
+    GiB. Certification's batches are up to 5,000 households.
+  - A worker reads each batch from the scorer's batch file, refusing one that
+    changed, and scores it with the serial scorer's own code
+    (`_score_post_export_batches`): one engine per batch, keys in ascending
+    period order, the population-aggregate refusal in a pass over more than
+    one batch, and the baseline-branch refusal and the behavioral-response
+    check of a reform pass.
+  - A failure in a worker comes back with the unit's results. The certifying
+    process raises it when the stage asks for that pass, where the serial
+    scorer would have raised, as an error with the worker's exception's class
+    name and message, so a held-out report that records the error records the
+    same text. A changed batch file raises `PostExportBatchFileError`. A unit
+    that failed on every attempt (its worker ran out of memory, went over its
+    cap or died) raises `WorkerPoolUnitError` in the stage that asks for it,
+    even when it failed while workers were still running an earlier stage's
+    units, and the pool goes on with the other units in fresh workers. The
+    shared pool stops a run at such a failure, so the units then in flight,
+    the one due among them, start again in the fresh pool. When the pool's
+    workers cannot start, the first request that needs them raises the
+    pool's `WorkerPoolError` and every later one `PostExportPoolStoppedError`;
+    a stage's baseline values, scored in the certifying process, are still
+    served. When the pool cannot be built at all, the first stage's opening
+    raises that error and every later stage is refused with
+    `PostExportPoolStoppedError`, as after a changed batch file. Each of
+    these stops certification, the held-out reports included, where the
+    serial scorer, which has no memory cap, may have finished: the first
+    stage's error is the pool's or the batch file's own, and every later one
+    is a `WorkerPoolError`.
+  - Each stage then runs as in the serial path and builds its own reforms (the
+    smoke records each list edit's resolved lists from its own). Its baseline
+    is served its recorded plan, and each reformed simulation its recorded
+    passes in order. Each stage's own builders mark every reform they build
+    with the description they built it from, and each reformed simulation
+    must be opened with the reform the dry run recorded at that place. A
+    stage that asks for anything else is refused, so a stage whose requests
+    depended on the values it got back cannot be served values scored for a
+    different request or another reform. Each key's per-batch values are
+    joined in batch order, so every output, both manifests' consumer records
+    and the smoke's scoring record are byte-identical to the serial scorer's.
+  - Workers inherit the certifying process's environment, thread variables
+    included, unless the pool settings set others, and each is given the
+    process's policyengine-us lock-check record
+    (`MICROCOSM_ENGINE_ABI_LOCK_CHECK_RECORD`), so its import of the release
+    tool skips the lock-file check. A worker spawned from certification runs
+    certification's script again as `__mp_main__`, which imports the release
+    tool; that is the import the worker needs, so it runs once per worker
+    start. A worker refuses to start with a release tool whose bytes differ
+    from the certifying process's, so a tool file changed during a run cannot
+    mix two versions' results (the microcosm packages are not checked).
+  - The manifests' `post_export_scoring` block records how scoring ran under
+    `execution`: `{"mode": "serial"}`, or the pool's settings, how the worker
+    count was chosen, the plan's memory and core readings, the number of
+    reform units, each baseline pass run in the certifying process (its
+    label, keys, wall and CPU time, and error if it raised), that process's
+    memory footprint when the workers started, why the shared pass fell back
+    if it did, and the report of every pool the scorer ran
+    (worker starts, failed attempts, peak worker memory). That record is run
+    metadata, outside every output comparison (decision 1.1 · 1).
+  - The 5 GiB per worker comes from reform passes (1.4 · 6's one-batch check
+    peaked at about 3.5-4.7 GiB over two reform passes of 2,000 households).
+    The plan's 3 GiB for the certifying process applies while workers run,
+    after its baseline engines are released; its peak during the baseline
+    passes is the serial scorer's, with no worker running. Neither figure
+    has been measured at certification's 5,000-household batches, and freed
+    memory is not always returned to the system. The execution record
+    reports the process's footprint when the workers start, so a run shows
+    how it compares with the 3 GiB; nothing checks it or changes the plan.
 - Each batch engine keeps policyengine-us's projection of the release year to
   its last CPI-U year (2035), because the plans request keys in later years
   (reform validation reaches past 2025). The build's own simulations hold
@@ -590,10 +715,10 @@ counts and the scored H5 digest.
 Run this fixture sweep before R4's full-export timing steps, and repeat it
 after a probe, spec or engine-lock change before starting a release.
 R4's existing full-export rehearsal times the smoke and validation
-baseline plans plus three selected reform passes (`tools/probe_us_post_export.py`
-still scores each stage's baseline plan in a pass of its own, which the release
-no longer does); it does not cover every
-reform and does not replace this sweep.
+baseline plans plus three selected reform passes; it does not cover every
+reform and does not replace this sweep. `tools/probe_us_post_export.py`
+registers every stage's baseline plan and the two held-out reports', as
+certification does, so its baseline is certification's shared pass.
 
 `calibration_diagnostics.json` records the plan under `build.post_export_scoring`
 (method, batch size, batch count, each stage's baseline keys and periods), and

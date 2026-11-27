@@ -795,8 +795,11 @@ def test_calibration_diagnostics_carry_the_post_export_plan(
     builder._write_release_calibration_diagnostics(
         **common, post_export_scoring=plan.record()
     )
+    # Raised once, for the merged baseline sweeps and pooled scoring
+    # (decision 1.1 · 1).
+    assert builder.POST_EXPORT_SCORING_METHOD == "household_batched_written_h5_v2"
     assert captured["build"]["post_export_scoring"] == {
-        "method": "household_batched_written_h5",
+        "method": "household_batched_written_h5_v2",
         "maximum_batch_size": 3,
         "n_households": 7,
         "n_batches": 3,
@@ -851,10 +854,12 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
         ]
 
     # The scorer opens on the written H5 with the plan recorded before export,
-    # keeping its household batch files in a directory in the build's --out.
+    # keeping its household batch files in a directory in the build's --out,
+    # in the worker pool certification was given.
     assert [ast.unparse(call) for call in calls_to("_open_post_export_scorer")] == [
         "_open_post_export_scorer(post_export_scoring_plan, dataset_path, "
-        "batch_parent=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY)"
+        "batch_parent=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY, "
+        "pooling=post_export_pooling)"
     ]
     # It opens the file the build wrote, which the record pins by digest
     # (never a previous run's bytes at the same path, microcosm#443), and

@@ -53,6 +53,17 @@ from test_support.paths import paths_for
 _TEST_PATHS = paths_for("microcosm-build")
 
 
+@pytest.fixture(autouse=True)
+def _serial_post_export_scoring(monkeypatch):
+    """Certification here runs with the post-export scorer stood in for, or
+    with its body stubbed, so none of these tests sizes a worker pool from
+    the machine it runs on: certification refuses a machine with no room for
+    one worker unless MICROCOSM_POST_EXPORT_WORKERS names a count or serial,
+    and the stand-in scorer is the serial one (pooled scoring is the default,
+    tracker task 1.4 · 7)."""
+    monkeypatch.setenv("MICROCOSM_POST_EXPORT_WORKERS", "serial")
+
+
 def _load_builder_module():
     root = _TEST_PATHS.repository
     path = root / "tools" / "build_us_fiscal_refresh_release.py"
@@ -21101,7 +21112,7 @@ def test_certify_main_refuses_another_commit_and_a_certified_build(
     monkeypatch.setattr(
         builder,
         "_certify_us_build",
-        lambda record, *, certification, telemetry: certified.append(
+        lambda record, *, certification, telemetry, **options: certified.append(
             (record, certification, telemetry)
         ),
     )
@@ -21202,7 +21213,9 @@ def test_certification_chooses_the_tier_of_a_failed_build(
     monkeypatch.setattr(
         builder,
         "_certify_us_build",
-        lambda record, *, certification, telemetry: certified.append(certification),
+        lambda record, *, certification, telemetry, **options: certified.append(
+            certification
+        ),
     )
 
     with pytest.raises(
@@ -21293,7 +21306,9 @@ def test_an_evidence_certification_refuses_what_no_owner_can_ship(
     monkeypatch.setattr(
         builder,
         "_certify_us_build",
-        lambda record, *, certification, telemetry: certified.append(certification),
+        lambda record, *, certification, telemetry, **options: certified.append(
+            certification
+        ),
     )
     owners = tmp_path / "owners.json"
     owners.write_text(
@@ -21353,7 +21368,9 @@ def test_no_tier_certifies_a_written_h5_that_failed_its_own_checks(
     monkeypatch.setattr(
         builder,
         "_certify_us_build",
-        lambda record, *, certification, telemetry: certified.append(certification),
+        lambda record, *, certification, telemetry, **options: certified.append(
+            certification
+        ),
     )
     owners = tmp_path / "owners.json"
     owners.write_text(json.dumps({"Export audit failed:": "PolicyEngine/microcosm#1"}))
@@ -21390,7 +21407,7 @@ def test_certify_main_refuses_a_build_that_wrote_failed_weight_evidence(
     monkeypatch.setattr(
         builder,
         "_certify_us_build",
-        lambda record, *, certification, telemetry: certified.append(record),
+        lambda record, *, certification, telemetry, **options: certified.append(record),
     )
     build_dir = path.parent / builder.US_BUILD_FILES_DIRECTORY
     (build_dir / builder.FINAL_HOUSEHOLD_WEIGHTS_FILENAME).write_bytes(b"w")
@@ -21430,7 +21447,7 @@ def test_certify_main_marks_its_staging_run_failed(tmp_path: Path, monkeypatch) 
     seen = _stub_certify_telemetry(builder, monkeypatch)
     error = RuntimeError("Release gates failed: the smoke failed")
 
-    def failing_certification(record, *, certification, telemetry):
+    def failing_certification(record, *, certification, telemetry, **options):
         raise error
 
     monkeypatch.setattr(builder, "_certify_us_build", failing_certification)
@@ -21885,7 +21902,7 @@ def test_certify_main_refuses_packages_other_than_the_builds(
     monkeypatch.setattr(
         builder,
         "_certify_us_build",
-        lambda record, *, certification, telemetry: certified.append(record),
+        lambda record, *, certification, telemetry, **options: certified.append(record),
     )
     built_with = payload["runtime"]["policyengine-us"]
     monkeypatch.setattr(
@@ -22005,7 +22022,9 @@ def test_certification_and_the_build_refuse_another_checkouts_packages(
     monkeypatch.setattr(
         builder,
         "_certify_us_build",
-        lambda record, *, certification, telemetry: certified.append(certification),
+        lambda record, *, certification, telemetry, **options: certified.append(
+            certification
+        ),
     )
     with pytest.raises(SystemExit, match="Refusing to certify a build with packages"):
         builder.certify_main([str(path.parent)])

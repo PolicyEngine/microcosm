@@ -87,11 +87,24 @@ def test_probe_runs_every_stage_on_a_subsample(
         json.loads(line)
         for line in (tmp_path / "probe" / "passes.jsonl").read_text().splitlines()
     ]
-    assert {row["stage"] for row in passes} == {
+    # As in certification, every engine stage's baseline plan is registered,
+    # with the two held-out reports' (which the probe does not report): one
+    # merged pass, run when the smoke opens, serves them all, so demographics
+    # runs no pass of its own.
+    assert report["stages"]["open_scorer"]["registered_consumers"] == [
         "reform_coverage_smoke",
         "reform_validation",
         "demographics",
+        "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
+    ]
+    assert {row["stage"] for row in passes} == {
+        "reform_coverage_smoke",
+        "reform_validation",
     }
+    assert [(row["stage"], row["label"]) for row in passes if not row["reform"]] == [
+        ("reform_coverage_smoke", "merged baseline plan")
+    ]
     assert all(row["batches"] >= probe_tool.MINIMUM_BATCHES for row in passes)
 
     smoke = {
@@ -1237,3 +1250,328 @@ def test_the_timed_scorer_passes_every_scoring_argument_on(
     assert received == [{"label": "fixture reform", "outer": counter}]
     row = json.loads(passes.read_text())
     assert (row["label"], row["reform"], row["batches"]) == ("fixture reform", True, 3)
+
+
+def test_a_pooled_probe_writes_the_serial_probes_files_and_times_its_workers(
+    probe_tool, builder, chain, tmp_path, monkeypatch
+) -> None:
+    """Scored in the shared worker pool, the probe writes the serial probe's
+    stage files byte for byte and reaches the same verdicts; ``passes.jsonl``
+    then holds each pass a worker ran, with its time and memory, each stage
+    records the workers' CPU time, and the report holds the pool's record."""
+    import os
+
+    import microcosm.build.us_runtime.reform_coverage_smoke as smoke_module
+    import microcosm.build.us_runtime.reform_validation as reform_validation_module
+    from microcosm.build.worker_pool import WorkerPoolSettings
+    from test_support.microcosm_build.us_post_export_pool import (
+        Float32FakeMicrosimulation,
+        build_fake_parameter_reform,
+        build_fake_reform,
+        identity_dataset,
+    )
+
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    monkeypatch.setattr(smoke_module, "_build_reform", build_fake_reform)
+    monkeypatch.setattr(
+        reform_validation_module.ReformValidationSpec, "build_reform", build_fake_reform
+    )
+    monkeypatch.setattr(
+        reform_validation_module, "_build_parameter_reform", build_fake_parameter_reform
+    )
+    engine = {
+        "microsimulation_cls": Float32FakeMicrosimulation,
+        "dataset_from_frame": identity_dataset,
+    }
+    stages = ("reform_coverage_smoke", "reform_validation", "demographics")
+    serial, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "serial",
+        receipt=receipt,
+        stages=stages,
+        scorer_options=engine,
+    )
+    pooled, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "pooled",
+        receipt=receipt,
+        stages=stages,
+        scorer_options={},
+        post_export_pooling=builder._PostExportPooling(
+            WorkerPoolSettings(workers=2),
+            chosen_by="test",
+            reform_builder=build_fake_reform,
+            **engine,
+        ),
+    )
+    for report in (serial, pooled):
+        errors = {
+            name: record.get("traceback")
+            for name, record in report["stages"].items()
+            if record["status"] != "completed"
+        }
+        assert not errors, errors
+    for filename in (
+        "reform_coverage_smoke.json",
+        "reform_validation.json",
+        "demographics.json",
+    ):
+        assert (tmp_path / "pooled" / filename).read_bytes() == (
+            tmp_path / "serial" / filename
+        ).read_bytes(), filename
+    assert (
+        pooled["stages"]["reform_coverage_smoke"]["probes"]
+        == serial["stages"]["reform_coverage_smoke"]["probes"]
+    )
+    assert [row["verdict"] for row in pooled["verdicts"]] == [
+        row["verdict"] for row in serial["verdicts"]
+    ]
+    serial_block = dict(serial["post_export_scoring"])
+    pooled_block = dict(pooled["post_export_scoring"])
+    assert serial_block.pop("execution") == {"mode": "serial"}
+    execution = pooled_block.pop("execution")
+    assert pooled_block == serial_block
+    assert execution["mode"] == "pooled"
+    assert execution["report"]["failed_attempts"] == []
+    assert execution["report"]["peak_worker_memory_bytes"] is None or (
+        execution["report"]["peak_worker_memory_bytes"] > 0
+    )
+
+    def passes(directory):
+        return [
+            json.loads(line)
+            for line in (directory / "passes.jsonl").read_text().splitlines()
+        ]
+
+    serial_passes, pooled_passes = (
+        passes(tmp_path / "serial"),
+        passes(tmp_path / "pooled"),
+    )
+    assert {(row["stage"], row["label"]) for row in pooled_passes} == {
+        (row["stage"], row["label"]) for row in serial_passes
+    }
+    # The baseline passes ran in this process, as in the serial probe; the
+    # workers ran the reform passes.
+    assert all(row["process"] == "certifying process" for row in serial_passes)
+    assert all(row["failed"] is False for row in [*serial_passes, *pooled_passes])
+    in_workers = [row for row in pooled_passes if row["process"] == "pool worker"]
+    here = [row for row in pooled_passes if row["process"] == "certifying process"]
+    assert len(in_workers) + len(here) == len(pooled_passes)
+    assert here and not any(row["reform"] for row in here)
+    assert in_workers and all(row["reform"] for row in in_workers)
+    assert [(row["stage"], row["label"]) for row in here] == [
+        (row["stage"], row["label"]) for row in serial_passes if not row["reform"]
+    ]
+    assert os.getpid() not in {row["worker_pid"] for row in in_workers}
+    assert all(
+        row["cpu_seconds"] >= 0 and row["worker_peak_rss_gib"] > 0 for row in in_workers
+    )
+    smoke_timing = pooled["stages"]["reform_coverage_smoke"]["timing"]
+    assert smoke_timing["worker_passes"] == sum(
+        row["stage"] == "reform_coverage_smoke" for row in in_workers
+    )
+    assert smoke_timing["worker_cpu_seconds"] > 0
+    assert serial["stages"]["reform_coverage_smoke"]["timing"]["worker_passes"] == 0
+    assert pooled["stages"]["open_scorer"]["mode"] == "pooled"
+
+
+def test_the_row_map_reads_no_batch_until_it_maps_an_entity(probe_tool) -> None:
+    """The scorer's batches are files read one at a time; the row map holds
+    the sequence, not every batch at once, so the smoke stage's peak is the
+    one-batch-at-a-time peak certification has."""
+    from collections.abc import Sequence
+
+    class UnreadBatches(Sequence):
+        def __len__(self) -> int:
+            return 3
+
+        def __getitem__(self, position):
+            raise AssertionError(f"batch {position} was read")
+
+    probe_tool.HouseholdRowMap(UnreadBatches(), sampler=None)
+
+
+def test_a_stage_whose_dry_run_fails_fails_alone(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """The probe records every stage's plan before it opens the scorer; a
+    stage whose dry run raises is left out of it and fails with that error,
+    and the other stages still score."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+
+    def broken_consumer(self):
+        def consumer(simulate):
+            raise ValueError("fixture dry run refused")
+
+        return consumer
+
+    monkeypatch.setattr(probe_tool.ExportProbe, "_smoke_consumer", broken_consumer)
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        stages=("reform_coverage_smoke", "demographics"),
+    )
+    assert report["stages"]["open_scorer"]["registered_consumers"] == [
+        "demographics",
+        "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
+    ]
+    smoke = report["stages"]["reform_coverage_smoke"]
+    assert smoke["status"] == "error"
+    assert smoke["error"] == "ValueError: fixture dry run refused"
+    assert report["stages"]["demographics"]["status"] == "completed"
+
+
+def test_a_stage_the_stopped_pool_could_not_serve_is_the_probes_failure(
+    probe_tool, builder
+) -> None:
+    """Once a unit has failed on every attempt, later stages that need the
+    pool are not scored. That is not a release failure of theirs: the stage
+    records it as the probe's own, and only the stage that met the failed
+    unit records the release's."""
+    from types import SimpleNamespace
+
+    probe = SimpleNamespace(
+        builder=builder,
+        clock=probe_tool.StageClock(None),
+        report={"stages": {}},
+        verdicts=[],
+        _write_report=lambda: None,
+    )
+
+    def stopped():
+        raise builder.PostExportPoolStoppedError(
+            "Pooled post-export scoring stopped earlier; nothing more is served."
+        )
+
+    record = probe_tool.ExportProbe._stage(probe, "demographics", stopped, "raises")
+    assert record["status"] == "error"
+    (verdict,) = probe.verdicts
+    assert verdict["release_consequence"] == "probe integrity"
+    assert "could not run this step" in verdict["reason"]
+
+
+def test_the_row_map_counts_each_entitys_rows_once(probe_tool) -> None:
+    from collections.abc import Sequence
+    from types import SimpleNamespace
+
+    class CountedBatches(Sequence):
+        reads = 0
+
+        def __len__(self) -> int:
+            return 3
+
+        def __getitem__(self, position):
+            if not 0 <= position < 3:
+                raise IndexError(position)
+            CountedBatches.reads += 1
+            return SimpleNamespace(n=lambda entity: 2)
+
+    row_map = probe_tool.HouseholdRowMap(CountedBatches(), sampler=None)
+    assert [row_map.n_rows("person") for _ in range(4)] == [6, 6, 6, 6]
+    assert CountedBatches.reads == 3
+
+
+def test_engine_options_and_pool_settings_are_not_given_together(
+    probe_tool, builder, chain, tmp_path
+) -> None:
+    """With pooling the workers' engine is the pool settings'; an engine
+    given to the probe as well would be dropped without a word."""
+    from microcosm.build.worker_pool import WorkerPoolSettings
+
+    _, path, receipt, _ = chain
+    pooling = builder._PostExportPooling(
+        WorkerPoolSettings(workers=1), chosen_by="test"
+    )
+    with pytest.raises(ValueError, match="scorer_options"):
+        fixture_export_probe(
+            probe_tool,
+            builder,
+            path,
+            tmp_path / "probe",
+            receipt=receipt,
+            scorer_options={"microsimulation_cls": object},
+            post_export_pooling=pooling,
+        )
+    probe, _ = fixture_export_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        post_export_pooling=pooling,
+    )
+    assert probe.scorer_options == {}
+
+
+def test_the_probe_registers_the_held_out_reports_certification_registers(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """The probe takes the held-out reports from the release tool's
+    ``_post_export_holdout_consumers``, the list certification registers, so
+    its merged pass follows certification's when a report is added or
+    removed, and the probe names no held-out module itself."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    monkeypatch.setattr(
+        builder,
+        "_post_export_holdout_consumers",
+        lambda: {"medicare_irmaa_holdout": builder._medicare_irmaa_holdout_consumer},
+    )
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        stages=("demographics",),
+    )
+    record = report["stages"]["open_scorer"]
+    assert record["registered_consumers"] == ["demographics", "medicare_irmaa_holdout"]
+    assert record["unregistered_consumers"] == {}
+
+
+def test_a_held_out_report_whose_dry_run_fails_is_recorded(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """The held-out reports have no stage of their own in the probe; one whose
+    dry run fails leaves the probe's merged pass unlike certification's, which
+    the open_scorer stage records and a fidelity verdict names."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+
+    def broken(simulate):
+        raise ValueError("fixture held-out dry run refused")
+
+    monkeypatch.setattr(builder, "_ssi_social_security_holdout_consumer", broken)
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        stages=("demographics",),
+    )
+    record = report["stages"]["open_scorer"]
+    assert record["registered_consumers"] == ["demographics", "medicare_irmaa_holdout"]
+    assert record["unregistered_consumers"] == {
+        "ssi_social_security_holdout": "ValueError: fixture held-out dry run refused"
+    }
+    (verdict,) = [
+        row
+        for row in report["verdicts"]
+        if row["stage"] == "open_scorer"
+        and "ssi_social_security_holdout" in row["check"]
+    ]
+    assert verdict["verdict"] == "error"
+    assert verdict["release_consequence"] == "fidelity of this probe to the release"
+    assert report["stages"]["demographics"]["status"] == "completed"

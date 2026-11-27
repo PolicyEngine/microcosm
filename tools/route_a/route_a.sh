@@ -88,6 +88,8 @@ esac
 # value so the stages see what --resolve checked.
 [ -z "${MICROCOSM_TELEMETRY_REQUIRED+set}" ] || export MICROCOSM_TELEMETRY_REQUIRED
 [ -z "${MICROCOSM_EMITTER_COMMAND+set}" ] || export MICROCOSM_EMITTER_COMMAND
+# Certification reads its post-export scoring workers from its environment.
+[ -z "${MICROCOSM_POST_EXPORT_WORKERS+set}" ] || export MICROCOSM_POST_EXPORT_WORKERS
 
 # ---------------------------------------------------------------------------
 # Inputs, resolved and hashed on this machine on 2026-09-23 (see status.md).

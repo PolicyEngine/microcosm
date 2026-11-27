@@ -529,3 +529,101 @@ def test_batches_read_from_their_files_equal_the_written_h5s_batches(
             assert_same_batch(batches[number], selected)
     finally:
         scorer.close()
+
+
+@pytest.mark.slow
+def test_pooled_scoring_gives_the_serial_scorers_bytes_on_policyengine_us(
+    builder, tmp_path
+) -> None:
+    """On a written H5 of the guard households in three batches, the smoke
+    (a neutralization probe and a parameter-change probe) and demographics,
+    scored in spawned policyengine-us workers, give byte-identical outputs and
+    consumer records to the serial scorer at one and two workers. Each worker
+    rebuilds the probes' reforms from their descriptions."""
+    from microcosm.build.worker_pool import WorkerPoolSettings
+    from test_support.microcosm_build.worker_pool_identity import (
+        assert_identical_across_worker_counts,
+        canonical_result_bytes,
+    )
+
+    path = _write_engine_h5(builder, tmp_path / "h5", _GUARD_HOUSEHOLDS)
+    probes = (
+        _engine_probe(
+            "wages_income_tax_2024",
+            "income_tax",
+            2024,
+            neutralized_variable="employment_income_before_lsr",
+        ),
+        _engine_probe(
+            "zero_single_standard_deduction_2026",
+            "income_tax",
+            2026,
+            parameter_changes={
+                "gov.irs.deductions.standard.amount.SINGLE": {"2026-01-01": 0}
+            },
+        ),
+    )
+
+    def smoke(simulate):
+        return builder.us_reform_coverage_smoke_gate(
+            simulate=simulate, probes=probes, period=builder.PERIOD
+        )
+
+    consumers = {
+        "reform_coverage_smoke": smoke,
+        "demographics": builder._demographics_consumer,
+    }
+    plan = builder._post_export_scoring_plan(
+        n_households=len(_GUARD_HOUSEHOLDS),
+        maximum_microsim_batch_size=3,
+        consumers=consumers,
+    )
+
+    def score(scorer):
+        try:
+            outputs = {}
+            for name, consumer in consumers.items():
+                scoring = scorer.open_consumer(
+                    name,
+                    plan.baseline_plan(name),
+                    planned_reform_passes=plan.planned_reform_passes(name),
+                )
+                output = consumer(scoring.simulate)
+                record = scorer.finish_consumer(scoring)
+                outputs[name] = (
+                    (output.passed, list(output.failures), output.details)
+                    if name == "reform_coverage_smoke"
+                    else tuple(np.asarray(item) for item in output),
+                    record,
+                )
+            block = scorer.manifest_record()
+        finally:
+            scorer.close()
+        block.pop("execution")
+        return outputs, block
+
+    serial = score(
+        builder._HouseholdBatchedPostExportScorer(
+            path,
+            maximum_microsim_batch_size=3,
+            baseline_plans=plan.baseline_plans,
+        )
+    )
+    assert serial[1]["n_batches"] == 3
+
+    def pooled(workers):
+        return score(
+            builder._PooledPostExportScorer(
+                path,
+                maximum_microsim_batch_size=3,
+                consumer_requests=plan.consumer_requests,
+                pooling=builder._PostExportPooling(
+                    WorkerPoolSettings(workers=workers), chosen_by="test"
+                ),
+            )
+        )
+
+    result = assert_identical_across_worker_counts(pooled, worker_counts=(1, 2))
+    assert canonical_result_bytes(result) == canonical_result_bytes(serial)
+    gate = result[0]["reform_coverage_smoke"][0]
+    assert all(row["effect"] != 0.0 for row in gate[2]["results"].values())
