@@ -1358,13 +1358,16 @@ class UKFullHoldoutKernel(KernelBase):
     def implementation_hash(self) -> str:
         import microcosm.build.holdout as shared_holdout
         import microcosm.calibrate.target_loss_rules as calibrate_target_loss_rules
+        import microcosm.calibrate.target_sets as calibrate_target_sets
 
+        from .. import declared_registers
         from . import (
             dataset_size,
             graph_targets,
             local_doctrine,
             local_rowwise,
             national_doctrine,
+            target_sets,
             target_weights,
         )
         from .solve_scope import uk_solve_fingerprint
@@ -1386,6 +1389,14 @@ class UKFullHoldoutKernel(KernelBase):
                         # The folds and the held rows' estimates
                         # (fold_splits, held_estimates; microcosm#1759).
                         shared_holdout,
+                        # The holdout rebuilds the problem inputs
+                        # (graph_targets.reconstruct_uk_full_problem_inputs):
+                        # each row's level comes from the declared level rule
+                        # (calibrate.target_sets through the UK adapter), and
+                        # the support floor's window from the review core.
+                        calibrate_target_sets,
+                        target_sets,
+                        declared_registers,
                         dependencies=self.capabilities.dependencies,
                     ),
                     # The holdout repeats the solve: it keys on the solve

@@ -1602,3 +1602,67 @@ def test_the_dense_gates_refuse_references_of_two_builds() -> None:
         _require_one_reference(
             {"input_mass_reference": national, "reference_surface": national}
         )
+
+
+def _hashed_names(monkeypatch, module, kernel) -> set[str]:
+    """The names of the modules one kernel passes to ``source_hash``.
+
+    The real hash is not called: it needs every declared dependency
+    installed, and the hold-out kernel declares the engine.
+    """
+
+    hashed: set[str] = set()
+
+    def recording(*objects, **_options):
+        hashed.update(obj.__name__ for obj in objects)
+        return "recorded"
+
+    monkeypatch.setattr(module, "source_hash", recording)
+    kernel.implementation_hash()
+    return hashed
+
+
+def test_the_holdout_kernel_hashes_the_shared_code_it_runs(monkeypatch):
+    # The rotated holdout draws its folds and its held estimates in the
+    # shared hold-out module. It also rebuilds the problem inputs
+    # (graph_targets.reconstruct_uk_full_problem_inputs): each row's level
+    # comes from the declared level rule, and the support floor's window
+    # from the review core (microcosm#1759). The import-coverage test
+    # (test_uk_target_compile_modules) walks the target, problem and national
+    # kernels only, so this pins the hold-out kernel (the review of
+    # microcosm#1755).
+    from microcosm.build.uk_runtime import graph_terminal
+
+    hashed = _hashed_names(
+        monkeypatch, graph_terminal, graph_terminal.UKFullHoldoutKernel()
+    )
+    assert {
+        "microcosm.build.holdout",
+        "microcosm.calibrate.target_sets",
+        "microcosm.build.uk_runtime.target_sets",
+        "microcosm.build.declared_registers",
+        "microcosm.build.uk_runtime.graph_targets",
+        "microcosm.build.uk_runtime.local_rowwise",
+    } <= hashed
+
+
+def test_every_gate_kernel_hashes_the_review_core(monkeypatch):
+    # The gates read the reviewed exclusions with the shared strict reader
+    # and review windows (weighted_integrity, microcosm#1759), so an edit to
+    # the review core alone re-keys every gate node.
+    from microcosm.build.uk_runtime import graph_national, graph_terminal
+
+    core = "microcosm.build.declared_registers"
+    for kernel in (
+        graph_terminal.UKFullGateKernel,
+        graph_terminal.UKFullPreflightGateKernel,
+    ):
+        hashed = _hashed_names(
+            monkeypatch,
+            graph_terminal,
+            kernel(coverage_engine=object(), engine_identity="fixture"),
+        )
+        assert core in hashed, kernel.__name__
+    assert core in _hashed_names(
+        monkeypatch, graph_national, graph_national.UKNationalGateKernel()
+    )
