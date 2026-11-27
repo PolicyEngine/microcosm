@@ -363,6 +363,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "geography_ladder.py",
         "hours_worked.py",
         "h5_io.py",  # US artifact I/O; no population treatment.
+        # Household batches for the release's policyengine-us passes: the
+        # partition, the frame checks, the population-aggregate refusal and
+        # engine release; reads no spine or support-channel column and applies
+        # no population treatment.
+        "household_batches.py",
         "immigration.py",
         "input_mass.py",
         "l0_refit_export.py",

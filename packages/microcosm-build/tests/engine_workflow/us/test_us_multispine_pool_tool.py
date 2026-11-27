@@ -376,7 +376,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             # Importing torch inside the solve functions that use it, and the
             # QRF chain passing its workers a lock-file check record, move it
             # again.
-            "spec_sha256": "4c3c3beab01e381aadfea510f61ca28117670d35c6bed1e4bb0df2fa1be07b2e",
+            "spec_sha256": '7e282f7fd459c63a25f1ad8b57fc88cb118088c353e81dce26080ad87f266375',
         },
     }
 

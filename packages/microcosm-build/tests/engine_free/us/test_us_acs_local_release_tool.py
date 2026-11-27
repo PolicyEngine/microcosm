@@ -2699,10 +2699,19 @@ def _stub_ssi_medicaid_engine(module, monkeypatch, fixtures, calls, *, eligible=
     )
 
     def helper(column, name):
-        def evaluate(view, *, maximum_microsim_batch_size):
+        def evaluate(
+            view, *, maximum_microsim_batch_size, refuse_population_aggregates=None
+        ):
             # The engine sees the projected view, never a formula output.
             assert "invented_formula_output" not in view.table("person")
-            calls.append((name, view.n("household"), maximum_microsim_batch_size))
+            calls.append(
+                (
+                    name,
+                    view.n("household"),
+                    maximum_microsim_batch_size,
+                    refuse_population_aggregates,
+                )
+            )
             values = view.table("person")[column].to_numpy()
             return (
                 values if eligible is None or name != "eligible" else eligible(values)
@@ -2751,16 +2760,18 @@ def test_ssi_medicaid_stage_runs_both_engine_passes_in_household_chunks(
     assert calls == [
         ("project",),
         ("fill", summary),
-        ("uncapped", 40, 100),
+        # The donor and ACS views are each part of the population, so the
+        # population-aggregate refusal is on even for a view in one chunk.
+        ("uncapped", 40, 100, True),
         ("project",),
         ("fill", summary),
-        ("eligible", 40, 100),
+        ("eligible", 40, 100, True),
         ("project",),
         ("fill", summary),
-        ("uncapped", 600, 100),
+        ("uncapped", 600, 100, True),
         ("project",),
         ("fill", summary),
-        ("eligible", 600, 100),
+        ("eligible", 600, 100, True),
     ]
     assert receipt["gate"] == {
         "name": "acs_local_ssi_medicaid_take_up_signal",
@@ -3742,9 +3753,7 @@ def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
     # at-large districts (each copy repeated its state row).
     totals_soi = [spec for spec in totals_registry.specs if spec.family == "irs_soi"]
     assert len(totals_soi) == 102
-    assert {spec.metadata["ledger_geography_level"] for spec in totals_soi} == {
-        "state"
-    }
+    assert {spec.metadata["ledger_geography_level"] for spec in totals_soi} == {"state"}
     assert {spec.metadata["source_measure_id"] for spec in totals_soi} == {
         "premium_tax_credit_returns",
         "premium_tax_credit_amount",

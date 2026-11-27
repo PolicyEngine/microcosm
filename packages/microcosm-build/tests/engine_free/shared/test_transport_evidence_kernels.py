@@ -159,6 +159,9 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         # microcosm#1686: the five SIPP donor modules import the shared read
         # of the SIPP person file.
         "microcosm.build.us_runtime.sipp_december_person_rows",
+        # microcosm#1776: us_runtime.other_health_insurance runs its premium
+        # batches through us_runtime.household_batches.
+        "microcosm.build.us_runtime.household_batches",
         # microcosm#1405: the gate battery refuses a signing key the committed
         # registry does not let sign, so it imports
         # microcosm.data.gate_signing_keys, and with it the microcosm.data

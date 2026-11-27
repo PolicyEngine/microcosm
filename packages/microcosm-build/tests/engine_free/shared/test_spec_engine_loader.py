@@ -44,7 +44,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # Importing torch inside the solve functions that use it, and the QRF chain
     # passing its workers a lock-file check record, move it again.
     assert first.spec_sha256 == (
-        "55fe6aee2557efed00c0a4da13f1bac5d28b6c12a28608bc1016e346c9fbb952"
+        '86beda0ff2c9964a6feaf6eaa09ff6639fa8b89f32bd303b9d7d8d92e77245e8'
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")
