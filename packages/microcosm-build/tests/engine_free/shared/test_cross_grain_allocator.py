@@ -38,10 +38,27 @@ _TEST_PATHS = paths_for("microcosm-build")
 #: sha256 of ``cross_grain.py`` at ``e29843dc7``.
 REFERENCE_SHA256 = "f61f83dd4577f322cfbc5a1276c4454c36877b56b2d480480ac74155623cd7f3"
 
-#: What the hook changed or added in the module; everything else is the
-#: reference, source line for source line.
-CHANGED = {"CrossGrainRule", "_reconcile_cross_grain_surface_with_control_receipts"}
-ADDED = {"_allocation", "_allocator_name"}
+#: What this branch changed or added in the module; everything else is the
+#: reference, source line for source line. The allocator is the first two of
+#: each set. The rest is the general model (``test_cross_grain_model.py``):
+#: the bound of a bridge, the members of a leg and the bridge selector.
+CHANGED = {
+    "CrossGrainRule",
+    "_reconcile_cross_grain_surface_with_control_receipts",
+    "CrossGrainBridge",
+    "apply_cross_grain_reconciliation",
+    "_validate_rule",
+}
+ADDED = {
+    "_allocation",
+    "_allocator_name",
+    "CrossGrainBridgeSelector",
+    "expand_bridge_selectors",
+    "_selects",
+    "_input_factor",
+    "_median_input_factor",
+    "_assert_expected_members",
+}
 
 _LEGS = ("E", "W", "S", "N")
 
@@ -66,7 +83,7 @@ def _definitions(module) -> dict[str, str]:
     }
 
 
-def test_the_hook_touches_one_rule_field_and_one_function() -> None:
+def test_the_branch_touches_only_these_definitions() -> None:
     new, old = _definitions(cross_grain), _definitions(cross_grain_reference)
     assert set(new) - set(old) == ADDED
     assert set(old) - set(new) == set()
@@ -81,7 +98,7 @@ def _imports(module) -> list[str]:
     ]
 
 
-def test_the_hook_adds_no_import() -> None:
+def test_the_branch_adds_no_import() -> None:
     """The UK graph hashes the modules a target module imports by name."""
 
     assert _imports(cross_grain) == _imports(cross_grain_reference)
