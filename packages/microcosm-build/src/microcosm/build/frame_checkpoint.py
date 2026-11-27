@@ -73,8 +73,13 @@ _TAG_STRING = 7
 _TAG_BYTES = 8
 
 _STRING_TAG_BYTE = bytes([_TAG_STRING])
-# The value types whose bytes the per-value codec takes from ``str.encode``.
-_PLAIN_STRING_TYPES = frozenset({str, np.str_})
+# The identities of the value types whose bytes the per-value codec takes
+# from ``str.encode``. Types are compared by identity: a metaclass can make
+# another type hash like ``str`` and compare equal to it, or not hash at all.
+_PLAIN_STRING_TYPE_IDS = np.asarray([id(str), id(np.str_)], dtype=np.uintp)
+# How many Python strings are encoded at a time, which bounds the temporary
+# ``bytes`` objects and ``bytes.join``'s buffer table.
+_STRING_ENCODE_BATCH = 8_192
 
 _SUPPORTED_OBJECT_INFERRED_DTYPES = frozenset(
     {
@@ -840,25 +845,41 @@ def _encode_python_strings(values: np.ndarray) -> tuple[np.ndarray, np.ndarray] 
 
     Only exact ``str`` and ``np.str_`` values qualify. The per-value codec
     calls each value's own ``encode``, which a subclass can override; these
-    two types use ``str.encode`` and take no instance attributes. The values
-    are encoded with ``str.encode`` through ``map`` and joined with
-    ``bytes.join``, not converted by Arrow: Arrow reads a ``str`` with
-    CPython's ``PyUnicode_AsUTF8AndSize``, which keeps a UTF-8 copy inside
-    every non-ASCII string for the rest of that string's life.
+    two types use ``str.encode`` and take no instance attributes.
+
+    The values are encoded with ``str.encode`` through ``map``, a batch at a
+    time, and each batch is joined with ``bytes.join`` into one
+    ``bytearray``. Arrow is not used: it reads a ``str`` with CPython's
+    ``PyUnicode_AsUTF8AndSize``, which keeps a UTF-8 copy inside every
+    non-ASCII string for the rest of that string's life.
     """
 
-    if not set(map(type, values)) <= _PLAIN_STRING_TYPES:
+    value_count = len(values)
+    type_ids = np.fromiter(
+        map(id, map(type, values)), dtype=np.uintp, count=value_count
+    )
+    if not np.isin(type_ids, _PLAIN_STRING_TYPE_IDS).all():
         return None
+    del type_ids
+    # Each value's UTF-8 length goes to offsets[i + 1]; adding the tag byte
+    # to each and summing in place then gives the end of every value.
+    offsets = np.zeros(value_count + 1, dtype=np.int64)
+    payload = bytearray()
     try:
-        encoded = list(map(str.encode, values))
+        for start in range(0, value_count, _STRING_ENCODE_BATCH):
+            encoded = list(
+                map(str.encode, values[start : start + _STRING_ENCODE_BATCH])
+            )
+            offsets[start + 1 : start + 1 + len(encoded)] = np.fromiter(
+                map(len, encoded), dtype=np.int64, count=len(encoded)
+            )
+            # Joining after a leading empty value puts a tag before each value.
+            encoded.insert(0, b"")
+            payload += _STRING_TAG_BYTE.join(encoded)
     except UnicodeEncodeError:
         return None
-    lengths = np.fromiter(map(len, encoded), dtype=np.int64, count=len(encoded))
-    offsets = np.zeros(len(encoded) + 1, dtype=np.int64)
-    np.cumsum(lengths + 1, out=offsets[1:])
-    # Joining after a leading empty value puts the tag byte before each value.
-    encoded.insert(0, b"")
-    payload = _STRING_TAG_BYTE.join(encoded)
+    offsets[1:] += 1
+    np.cumsum(offsets, out=offsets)
     return offsets, np.frombuffer(payload, dtype=np.uint8)
 
 
@@ -898,7 +919,13 @@ def _decode_string_values(
     except pa.ArrowInvalid:
         return None
     if isinstance(restore_dtype, pd.StringDtype) and restore_dtype.storage == "pyarrow":
-        return pd.Series(pd.array(strings, dtype=restore_dtype), copy=False)
+        try:
+            restored = pd.array(strings, dtype=restore_dtype)
+        except pa.ArrowInvalid:
+            # pandas 2.2 casts one Arrow array to 32-bit offsets, which
+            # refuses 2**31 or more bytes of text.
+            return None
+        return pd.Series(restored, copy=False)
     return pd.Series(
         strings.to_numpy(zero_copy_only=False), dtype=restore_dtype, copy=False
     )

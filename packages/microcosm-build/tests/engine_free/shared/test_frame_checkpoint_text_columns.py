@@ -500,6 +500,19 @@ class _UnhashableTypeFloat(float, metaclass=_UnhashableTypeMeta):
     pass
 
 
+def _object_array(*values: object) -> np.ndarray:
+    """An object array holding ``values`` as given.
+
+    ``np.asarray`` keys a dict by each value's type, which fails for a type
+    that cannot be hashed.
+    """
+
+    array = np.empty(len(values), dtype=object)
+    for position, value in enumerate(values):
+        array[position] = value
+    return array
+
+
 _STRING_SUBCLASSES = {
     "overrides encode": _EncodeOverridingStr,
     "type compares equal to str": _StrLookalike,
@@ -515,7 +528,7 @@ def test_string_subclasses_go_through_the_per_value_loop(
     """The per-value loop calls each value's own ``encode``; keep its bytes."""
 
     string_type = _STRING_SUBCLASSES[subclass]
-    values = np.asarray(["plain", string_type("odd")], dtype=object)
+    values = _object_array("plain", string_type("odd"))
     series = pd.Series(values, dtype=TEXT_DTYPES[dtype_name])
     assert type(series.to_numpy(dtype=object)[1]) is string_type
     calls = _LoopCalls(monkeypatch)
@@ -596,9 +609,7 @@ _FALLBACK_COLUMNS: dict[str, Callable[[], pd.Series]] = {
     "object bytes": lambda: pd.Series([b"x", b"y"], dtype=object),
     "object booleans": lambda: pd.Series([True, False], dtype=object),
     "object floats whose type cannot be hashed": lambda: pd.Series(
-        np.asarray(
-            [_UnhashableTypeFloat(1.5), _UnhashableTypeFloat(2.0)], dtype=object
-        ),
+        _object_array(_UnhashableTypeFloat(1.5), _UnhashableTypeFloat(2.0)),
         dtype=object,
     ),
     **{
