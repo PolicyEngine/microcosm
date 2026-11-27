@@ -162,8 +162,8 @@ which age groups is the decision of PR #1531, not of this rule.
   county facts, the factor of each of the 51 legs is within 0.998 to 1.052
   of the median for adjusted gross income (median 1.1207), and within 0.9997
   to 1.0005 for the return count (median 1.0000). No leg is outside the band
-  of 0.8 to 1.25. Whether the county bridge declares the band is still to
-  rule.
+  of 0.8 to 1.25. **Ruled, 27 Nov 2026: the county bridge declares the
+  band**, as the district bridge does. It unbinds no leg on those inputs.
 - **Members.** A leg holds exactly its declared members: the district plan
   of the crosswalk, the counties of the ladder. A declared combined cell
   covers a county with no IRS row. An area with one district does not bind
@@ -236,6 +236,12 @@ ruled, with the recommended option.
    its district rows in the Historic Table 2 state row. District capital
    gains nest in the Historic Table 2 state row.
 10. **Decisions 4 and 7 go in their own PRs.**
+
+One more call came from the county factors that call 4 measured:
+
+11. **The county SOI bridge declares the band of the district bridge**
+    (+0.25 and -0.20 around the median, `unbind`). No leg is outside it on
+    the pinned county facts, so no county value changes.
 
 ## 5. How the rulings are declared: one general model
 

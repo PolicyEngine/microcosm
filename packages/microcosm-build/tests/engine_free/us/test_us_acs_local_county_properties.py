@@ -144,7 +144,10 @@ def test_county_soi_shares_sum_to_one_and_preserve_parent_household_measures(
                 dtype=np.float32,
             )
             rows.append(np.where(codes // 1000 == state, values, 0.0))
-    surface = county.state_county_soi_surface(parents, facts, populations)
+    # Random parents make random factors. The bound has its own test.
+    surface = county.state_county_soi_surface(
+        parents, facts, populations, factor_band=math.inf
+    )
     state_matrix = sparse.csr_array(np.stack(rows))
     matrix = county.split_state_rows(
         parents,

@@ -51,21 +51,24 @@ shared code runs it.
 | Measurement | Two targets with the same measurement at two levels are one quantity. Nothing else is declared | `same_measurement`: the ladder population of a state and of its counties |
 | Bridge | Two targets with different measurements that measure one quantity. A bridge names its sides by id, or by a selector that makes one bridge for each pair of targets | `bridge_selectors`: Historic Table 2 state rows over district-file rows; state SOI rows over county-file rows |
 | Derived control | A control that no source publishes as one row | `derived_controls`: a state's households are the sum of its county estimates |
-| Bound | The limits on the factor of a bridge, around one or around the median factor across the legs, and the action out of bound: `refuse` the pass or `unbind` the leg | The district selector: +0.25 and -0.20 around the median, `unbind` |
+| Bound | The limits on the factor of a bridge, around one or around the median factor across the legs, and the action out of bound: `refuse` the pass or `unbind` the leg | Both selectors: +0.25 and -0.20 around the median, `unbind` |
 | Members | The members that each leg must hold. A member can stand for two geographies | `members`: the districts of the current plan; the counties of the ladder, with one combined cell |
 | Not reconciled | A pair of levels that is not scaled, with a reason | `relations` (six `subset` pairs) and `local_routes` (three families with no higher control) |
 
 `bridges` (by id) and `partitions` are empty in the US file.
 
-### What the bound of the district bridge does
+### What the bound of a bridge does
+
+The district bridge and the county bridge declare the same bound.
 
 The factor of a leg is its control over the sum of its rows. A factor mixes a
 part that every state shares (coverage, aging) with a part of one state. The
 median across states takes the shared part out. A state whose factor is more
 than 1.25 times the median, or less than 0.8 times it, is one where the two
 publications disagree about that state. The operator unbinds that leg: its
-district rows leave the surface, and its Historic Table 2 state row stays. On
-the pinned feed that is four legs.
+district or county rows leave the surface, the receipt names the leg, and its
+state row stays. On the pinned inputs that is four district legs and no
+county leg.
 
 ## The four passes
 
@@ -112,7 +115,8 @@ These are US rules, with US texts.
 - **County SOI.** Each fact is an all-return fact of a tax year, finite and
   not negative, with the unit of its parent. Return count and adjusted gross
   income need a state parent in every state. A block needs a positive sum.
-  A combined cell joins two counties of one state.
+  A combined cell joins two counties of one state. A county that no row
+  covers is refused, unless its leg is unbound and the receipt names it.
 - **County households.** Every county of the ladder must carry an estimate,
   each state needs a Census name and a positive sum.
 
@@ -181,11 +185,11 @@ registries of their own date and are not changed.
 Receipts:
 
 - **The surface receipts** (`soi_surface` in `materialize_rss.json`, and
-  `county_surface.json`) keep their counts, drops and summaries. The district
-  receipt names the bridge and its bound under `bridge`, with the legs it
-  unbound; it lists the level bridges it distrusts under
-  `level_bridge_out_of_band`, and the factors under `factor_by_measure`. The
-  county receipts name their pass under `bridge`.
+  `county_surface.json`) keep their counts, drops and summaries. Each one
+  names its bridge under `bridge`, with the bound and the legs that the
+  bound unbound. The district receipt also lists the level bridges it
+  distrusts under `level_bridge_out_of_band`, and the factors under
+  `factor_by_measure`.
 - **The operator's receipt** goes to `target_nesting.json`, which the
   materialize stage writes beside its other files. It holds one entry for
   each pass: the pass id, the allocator, and the operator's receipt (each
@@ -214,7 +218,9 @@ On valid data the rows and their values are the same. These things differ.
    Historic Table 2 level is zero in every state keeps district rows of
    zero. The old code dropped them, because such a concept has no median
    factor.
-6. **Three cases that the oldest code computed are refused**, as since the
+6. **One rule is new for the county SOI rows:** the bound of the county
+   bridge. The code before had none. It unbinds no leg on the pinned inputs.
+7. **Three cases that the oldest code computed are refused**, as since the
    first move to the operator: a block whose rows sum to a value that is not
    zero but is below `1e-9` of its control, a county SOI block under a
    negative state row, and a control of `-0.0`. None occurs on the pinned
@@ -240,8 +246,9 @@ with the same value bits:
 
 The same test file pins the bytes of those rows.
 
-The county SOI bridge declares no bound. Its factors (the state row over the
-sum of the county facts) were measured on those inputs:
+The county SOI bridge declares the bound of the district bridge (ruled 27 Nov
+2026). Its factors (the state row over the sum of the county facts) were
+measured on those inputs:
 
 | Measure | Legs | Median factor | Lowest and highest, as a ratio to the median | Legs outside 0.8 to 1.25 |
 |---|---:|---:|---|---:|
@@ -251,8 +258,8 @@ sum of the county facts) were measured on those inputs:
 The median of 1.12 for adjusted gross income is a gap that every state has.
 It is consistent with the aging of an amount from tax year 2022 to the target
 year; a count is not aged. The states farthest from the median are Montana
-(1.052) and Wyoming (1.038). So the band of the district bridge would unbind
-no county leg today.
+(1.052) and Wyoming (1.038). So the bound unbinds no county leg on these
+inputs, and it changes no county value.
 
 ## The coverage test
 

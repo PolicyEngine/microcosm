@@ -313,9 +313,17 @@ class CountySoiNesting:
     """The declared choices of the state-to-county SOI pass."""
 
     required_measures: tuple[str, ...]
+    max_factor_shift: float
+    min_factor_shift: float
     #: Absent county -> host county, as five-digit integer codes.
     combined_cells: Mapping[int, int]
     combined_cell_basis: str
+
+    @property
+    def factor_band(self) -> float:
+        """The bound as a ratio to the median: one plus the highest shift."""
+
+        return 1.0 + self.max_factor_shift
 
 
 @functools.lru_cache(maxsize=1)
@@ -329,10 +337,13 @@ def us_county_soi_nesting() -> CountySoiNesting:
     bases = {str(cell["basis"]) for cell in combined}
     if len(bases) > 1:
         raise ValueError("US combined county cells of one pass must share a basis.")
+    selector = _selector_entry(COUNTY_SOI)
     return CountySoiNesting(
         required_measures=tuple(
-            str(measure) for measure in _selector_entry(COUNTY_SOI)["required_measures"]
+            str(measure) for measure in selector["required_measures"]
         ),
+        max_factor_shift=selector["max_factor_shift"],
+        min_factor_shift=selector["min_factor_shift"],
         combined_cells={int(cell["absent"]): int(cell["host"]) for cell in combined},
         combined_cell_basis=next(iter(bases), ""),
     )

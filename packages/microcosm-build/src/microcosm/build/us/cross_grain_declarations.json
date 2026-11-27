@@ -57,11 +57,15 @@
         "source_measure_id",
         "source_period"
       ],
+      "max_factor_shift": 0.25,
+      "min_factor_shift": -0.2,
+      "shift_around": "median",
+      "out_of_bound": "unbind",
       "required_measures": [
         "return_count",
         "adjusted_gross_income"
       ],
-      "reason": "The broad state row that exists on the state surface (all returns, no AGI class, no filing status) is the control. County SOI facts supply shares, never a second state level. Return count and adjusted gross income must have a state row in every state."
+      "reason": "The broad state row that exists on the state surface (all returns, no AGI class, no filing status) is the control. County SOI facts supply shares, never a second state level. Return count and adjusted gross income must have a state row in every state. The bound is the district bridge's: the state row and the county file differ by a gap that every state shares (the aging of an amount), which the median across states takes out, and a state whose factor is outside the bound around that median is one where the two publications disagree, so its county rows are unbound and its state row stays. On the pinned county facts the factors are within 0.998 to 1.052 of the median (adjusted gross income) and 0.9997 to 1.0005 (return count), so no leg is unbound (microcosm#1760, decision 6, ruled 27 Nov 2026)."
     }
   ],
   "derived_controls": [

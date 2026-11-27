@@ -29,6 +29,7 @@ import dataclasses
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import struct
 from pathlib import Path
@@ -140,7 +141,8 @@ def _receipt_image(receipt: dict, *, old: bool) -> str:
     """The receipt without what only one side writes.
 
     The old blocks hold ``share_sum``, the float sum of the shares (one, or
-    one bit from it). The new receipt names its declared pass under ``bridge``.
+    one bit from it). The new receipt names its declared bridge, its bound
+    and the legs it unbound under ``bridge``.
     """
 
     image = {key: value for key, value in receipt.items() if key != "bridge"}
@@ -161,7 +163,8 @@ def _assert_same_surface(new, old, pass_id: str, seed: int) -> None:
     assert _receipt_image(new.receipt, old=False) == _receipt_image(
         old.receipt, old=True
     ), seed
-    assert new.receipt["bridge"] == pass_id
+    assert new.receipt["bridge"]["bridge_id"] == pass_id
+    assert new.receipt["bridge"]["unbound"] == []
 
 
 def _assert_same_refusal(new: tuple, old: tuple, seed: int) -> bool:
@@ -440,7 +443,15 @@ def test_the_county_soi_surface_is_the_old_surface_on_random_blocks(county) -> N
     rows = combined = 0
     for seed in SEEDS:
         parents, facts, populations = _soi_inputs(seed)
-        new = _outcome(county.state_county_soi_surface, parents, facts, populations)
+        # The old code had no bound, and the draws make random factors: the
+        # bound is off here and has its own test below.
+        new = _outcome(
+            county.state_county_soi_surface,
+            parents,
+            facts,
+            populations,
+            factor_band=math.inf,
+        )
         old = _outcome(reference.state_county_soi_surface, parents, facts, populations)
         assert new[0] == old[0], (seed, new[1], old[1])
         outcomes[new[0]] += 1
@@ -477,6 +488,78 @@ def test_a_combined_cell_other_than_the_declared_one_is_the_old_refusal(county) 
             combined_cells=cells,
         )
         assert new == old and new[0] == "refused"
+
+
+def _banded_case(factors: dict[str, tuple[float, float]]):
+    """States with two counties each; a state's factors for the two measures."""
+
+    parents, facts, populations = [], [], {}
+    for state, by_measure in factors.items():
+        codes = [int(state) * 1000 + 1, int(state) * 1000 + 3]
+        populations.update(dict.fromkeys(codes, 50.0))
+        for measure, factor in zip(_SOI_MEASURES[:2], by_measure, strict=True):
+            parents.append(
+                _state_spec(measure, 100.0 * factor, state=state, with_hierarchy=False)
+            )
+            facts += [
+                _soi_fact(codes[0], measure, 30.0),
+                _soi_fact(codes[1], measure, 70.0),
+            ]
+    return parents, facts, dict(sorted(populations.items()))
+
+
+def test_a_state_off_the_median_factor_loses_its_county_rows(county) -> None:
+    """The bound of the county bridge is the district bridge's: 1.25, unbind."""
+
+    assert county.COUNTY_SOI_FACTOR_BAND == 1.25
+    # Every state is 1.12 times its county file, as an aged amount is. State
+    # 05 is 2.0 times it for adjusted gross income only.
+    factors = {state: (1.0, 1.12) for state in ("01", "02", "04", "05", "06")}
+    factors["05"] = (1.0, 2.0)
+    parents, facts, populations = _banded_case(factors)
+    surface = county.state_county_soi_surface(parents, facts, populations)
+    bridge = surface.receipt["bridge"]
+    assert bridge["bridge_id"] == declarations.COUNTY_SOI
+    assert (bridge["max_factor_shift"], bridge["min_factor_shift"]) == (0.25, -0.2)
+    assert (bridge["shift_around"], bridge["out_of_bound"]) == ("median", "unbind")
+    (unbound,) = bridge["unbound"]
+    assert unbound == {
+        "state_fips": "05",
+        "concept": "adjusted_gross_income",
+        "parent": "state.05.adjusted_gross_income",
+        "factor": pytest.approx(2.0),
+        "counties": 2,
+    }
+    # The leg's county rows are off the surface. Every other row is bound,
+    # and a shared factor of 1.12 is no shift at all.
+    by_parent: dict[str, list[float]] = {}
+    for spec in surface.specs:
+        by_parent.setdefault(spec.metadata[PARENT_KEY], []).append(spec.value)
+    assert "state.05.adjusted_gross_income" not in by_parent
+    assert len(by_parent) == 2 * 5 - 1 and len(surface.specs) == 2 * (2 * 5 - 1)
+    assert by_parent["state.05.return_count"] == pytest.approx([30.0, 70.0])
+    assert by_parent["state.06.adjusted_gross_income"] == pytest.approx([33.6, 78.4])
+    assert surface.receipt["county_targets"] == 18
+    assert len(surface.receipt["blocks"]) == 9
+
+    # A state that is off in both measures loses all its county rows. Its
+    # counties are named in the receipt, so the surface is not refused.
+    factors["05"] = (0.5, 2.0)
+    parents, facts, populations = _banded_case(factors)
+    surface = county.state_county_soi_surface(parents, facts, populations)
+    assert [
+        (row["state_fips"], row["concept"])
+        for row in surface.receipt["bridge"]["unbound"]
+    ] == [("05", "adjusted_gross_income"), ("05", "return_count")]
+    assert not [spec for spec in surface.specs if spec.metadata["state_fips"] == "05"]
+
+    # With the bound off, every leg is divided from its state row.
+    surface = county.state_county_soi_surface(
+        parents, facts, populations, factor_band=math.inf
+    )
+    assert surface.receipt["bridge"]["unbound"] == []
+    assert surface.receipt["bridge"]["max_factor_shift"] is None
+    assert len(surface.specs) == 2 * 2 * 5
 
 
 # ---------------------------------------------------------------------------
@@ -694,12 +777,12 @@ PINNED_COUNTY_ROWS: dict[str, object] = {
     "soi": {
         "rows": 6286,
         "rows_sha256": "dce48ac26c326d3c11c01908a7a9ad3aa6fc43b88acf87037fc85271b9ddaf46",
-        "receipt_sha256": "a77f6326b9921878e10aac4e39af65bc4c607f763bc4caf6023aceb152083cc5",
+        "receipt_sha256": "3f2e1ae71564973455aff2c882af482e2ae88ce3aa47eb653e0b434e2e439e45",
     },
     "households": {
         "rows": 3195,
         "rows_sha256": "ad642af8198354d8508e6d581a6028fc89c8beac6d9339021cdce9fee2df3430",
-        "receipt_sha256": "c06dc6f2a45724d3a7160cdd71c1b8f07be7c6bd5cd4d75351b3cc6edf3406bd",
+        "receipt_sha256": "8646315a07cb55789cb3a4d0c37fef0776d25d19f91096018a64fcc3fd73c01d",
     },
 }
 
@@ -777,6 +860,8 @@ def test_the_pinned_county_rows_are_the_old_rows(pinned_county) -> None:
         assert _population_image(new) == _population_image(old), column
     _assert_same_surface(*pinned_county.soi, declarations.COUNTY_SOI, 0)
     _assert_same_surface(*pinned_county.acs, declarations.COUNTY_ACS_HOUSEHOLDS, 0)
+    # The declared bound of the county bridge unbinds no leg on these inputs
+    # (``_assert_same_surface`` holds ``bridge.unbound`` empty).
     # Kalawao has no IRS row: one Maui cell stands for both counties in each
     # of the two measures, so the SOI rows are two fewer than two per county.
     soi, acs = pinned_county.soi[0], pinned_county.acs[0]

@@ -91,6 +91,10 @@ PUERTO_RICO_STATE = _target_nesting().PUERTO_RICO_STATE
 #: HI, into Maui). Any other absent county is refused unless declared.
 DECLARED_SOI_COMBINED_CELLS = dict(_COUNTY_SOI_NESTING.combined_cells)
 SOI_COMBINED_CELL_BASIS = _COUNTY_SOI_NESTING.combined_cell_basis
+#: How far a state's factor (its state SOI row over the sum of its county
+#: facts) may sit from its measure's median across states: the declared bound
+#: of the bridge, as a ratio to that median. It is the district bridge's.
+COUNTY_SOI_FACTOR_BAND = _COUNTY_SOI_NESTING.factor_band
 
 
 def _concatenate(parts, dtype):
@@ -304,6 +308,7 @@ def state_county_soi_surface(
     county_populations,
     *,
     combined_cells=DECLARED_SOI_COMBINED_CELLS,
+    factor_band: float = COUNTY_SOI_FACTOR_BAND,
 ):
     """Rebase complete county fact blocks onto existing broad state totals.
 
@@ -313,6 +318,11 @@ def state_county_soi_surface(
     it, with its host present: then one child row covers both counties, its
     share is the host's published value over the state's published sum, and
     ``cross_grain_members`` lists the member counties.
+
+    A state whose factor (its state row over the sum of its county facts) is
+    more than ``factor_band`` from its measure's median across states loses
+    its county rows of that measure; the receipt names it under
+    ``bridge.unbound``, and its state row stays.
 
     The work is in
     :func:`microcosm.build.us_runtime.target_nesting.county_soi_surface`: the
@@ -324,6 +334,7 @@ def state_county_soi_surface(
         facts,
         county_populations,
         combined_cells=combined_cells,
+        factor_band=factor_band,
         soi_mode=SOI_MODE,
     )
     return CountySurface(surface.specs, surface.receipt)

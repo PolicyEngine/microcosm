@@ -42,6 +42,7 @@ from microcosm.build.cross_grain import (
     MEMBERS_KEY,
     PARENT_KEY,
     CrossGrainBridge,
+    CrossGrainBridgeSelector,
     CrossGrainRule,
     cross_grain_metadata,
     expand_bridge_selectors,
@@ -142,6 +143,43 @@ def run_pass(
     )
     _record(pass_id, receipt)
     return outcomes, receipt
+
+
+def bounded_selector(pass_id: str, factor_band: float) -> CrossGrainBridgeSelector:
+    """The declared selector of a pass, with the bound that a caller asks for.
+
+    ``factor_band`` is the bound as a ratio to the median factor: a leg may
+    sit between ``1 / factor_band`` and ``factor_band`` of it. The declared
+    band gives the declared selector. An infinite band turns the bound off.
+    """
+
+    if math.isinf(factor_band):
+        return us_bridge_selector(pass_id, bounded=False)
+    declared = us_bridge_selector(pass_id)
+    if factor_band == 1.0 + declared.max_factor_shift:
+        return declared
+    return replace(
+        declared,
+        max_factor_shift=factor_band - 1.0,
+        min_factor_shift=1.0 / factor_band - 1.0,
+    )
+
+
+def bridge_receipt(
+    bridge_id: str,
+    bridge: CrossGrainBridge | CrossGrainBridgeSelector,
+    unbound: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
+    """What a surface receipt says of its bridge: the bound, and the legs it unbound."""
+
+    return {
+        "bridge_id": bridge_id,
+        "max_factor_shift": bridge.max_factor_shift,
+        "min_factor_shift": bridge.min_factor_shift,
+        "shift_around": bridge.shift_around,
+        "out_of_bound": bridge.out_of_bound,
+        "unbound": sorted(unbound, key=lambda row: (row["concept"], row["state_fips"])),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -461,13 +499,7 @@ def district_soi_surface(
             for district in target_districts.get(state, ())
         )
 
-    selector = us_bridge_selector(DISTRICT_SOI, bounded=not math.isinf(factor_band))
-    if not math.isinf(factor_band) and factor_band != nesting.factor_band:
-        selector = replace(
-            selector,
-            max_factor_shift=factor_band - 1.0,
-            min_factor_shift=1.0 / factor_band - 1.0,
-        )
+    selector = bounded_selector(DISTRICT_SOI, factor_band)
     bridges, _unpaired = expand_bridge_selectors([selector], targets)
     outcomes, operator_receipt = run_pass(
         DISTRICT_SOI,
@@ -575,16 +607,7 @@ def district_soi_surface(
         "unparented_cd_measures": dict(unparented),
         "excluded_cd_states": dict(excluded_states),
         "at_large_on_source_plan": at_large_source_states,
-        "bridge": {
-            "bridge_id": DISTRICT_SOI,
-            "max_factor_shift": selector.max_factor_shift,
-            "min_factor_shift": selector.min_factor_shift,
-            "shift_around": selector.shift_around,
-            "out_of_bound": selector.out_of_bound,
-            "unbound": sorted(
-                unbound, key=lambda row: (row["concept"], row["state_fips"])
-            ),
-        },
+        "bridge": bridge_receipt(DISTRICT_SOI, selector, unbound),
         "level_bridges": dict(level_bridges),
         "level_bridge_factor_by_measure": {
             measure: _factor_summary(values)
@@ -1043,6 +1066,7 @@ def county_soi_surface(
     county_populations: Mapping[int, float],
     *,
     combined_cells: Mapping[int, int],
+    factor_band: float,
     soi_mode: str,
 ) -> NestedSurface:
     """Divide the broad state SOI rows among the counties of the county facts.
@@ -1054,6 +1078,12 @@ def county_soi_surface(
     county absent from a block is refused unless ``combined_cells`` declares
     it with its host present: then the host's row stands for both counties,
     and ``cross_grain_members`` lists them.
+
+    ``factor_band`` is the bound of the bridge, as a ratio to the median
+    factor of a measure across states. A state whose factor is outside it is
+    one where the state row and the county file disagree: the operator
+    unbinds that leg, its county rows leave the surface, the receipt names
+    it, and its state row stays.
     """
 
     nesting = us_county_soi_nesting()
@@ -1152,7 +1182,6 @@ def county_soi_surface(
         members = {code: [code] for code in sorted(block)}
         for code, host in sorted(merged.items()):
             members[host].append(code)
-            merges[(host, code)].append(f"{measure}|{period}")
         codes = sorted(block)
         if codes and controls.sum_of_lower_rows(block[code][0] for code in codes) <= 0:
             raise ValueError(
@@ -1178,7 +1207,9 @@ def county_soi_surface(
         targets[lower_id] = {"source": COUNTY_FILE, "grain": county_level, **attributes}
         state_area = geography_id(state_level, f"{state:02d}")
         bound.append(higher_id)
-        checked.append((key, parent, counties, block, members, codes, len(rows)))
+        checked.append(
+            (key, parent, counties, block, members, merged, codes, len(rows))
+        )
         rows.append(SurfaceRow(state_level, state_area, higher_id, float(parent.value)))
         for code in codes:
             area = geography_id(county_level, f"{code:05d}")
@@ -1189,9 +1220,8 @@ def county_soi_surface(
             for code in counties - merged.keys()
         )
 
-    bridges, _unpaired = expand_bridge_selectors(
-        [us_bridge_selector(COUNTY_SOI)], targets
-    )
+    selector = bounded_selector(COUNTY_SOI, factor_band)
+    bridges, _unpaired = expand_bridge_selectors([selector], targets)
     outcomes, operator_receipt = run_pass(
         COUNTY_SOI,
         rows,
@@ -1201,18 +1231,37 @@ def county_soi_surface(
         expected_members=expected,
     )
     specs, receipts = [], []
-    for key, parent, counties, block, members, codes, start in checked:
+    unbound: list[dict] = []
+    unbound_counties: set[int] = set()
+    for key, parent, counties, block, members, merged, codes, start in checked:
         state, measure, period = key
         block_outcomes = outcomes[start + 1 : start + 1 + len(codes)]
+        statuses = {outcome.status for outcome in block_outcomes}
+        if statuses == {controls.UNBOUND}:
+            # The state row and the county file disagree about this state:
+            # its county rows of this measure leave the surface.
+            unbound.append(
+                {
+                    "state_fips": f"{state:02d}",
+                    "concept": measure,
+                    "parent": parent.name,
+                    "factor": block_outcomes[0].factor,
+                    "counties": len(counties),
+                }
+            )
+            unbound_counties |= counties
+            continue
+        if statuses != {controls.RECONCILED}:
+            raise ValueError(
+                f"The operator did not reconcile the county rows of {measure} "
+                f"under {parent.name}."
+            )
+        for code, host in sorted(merged.items()):
+            merges[(host, code)].append(f"{measure}|{period}")
         state_population = controls.sum_of_lower_rows(
             county_populations[code] for code in counties
         )
         for code, outcome in zip(codes, block_outcomes, strict=True):
-            if outcome.status != controls.RECONCILED:
-                raise ValueError(
-                    f"The operator did not reconcile county {code:05d} under "
-                    f"{parent.name}."
-                )
             raw, fact = block[code]
             county = f"{code:05d}"
             cell = sorted(members[code])
@@ -1269,16 +1318,17 @@ def county_soi_surface(
                 ),
             }
         )
-    # Counties without a state parent cannot silently disappear.
+    # Counties without a state parent cannot silently disappear. The counties
+    # of an unbound leg are named in the receipt.
     covered = {int(member) for spec in specs for member in cell_members(spec.metadata)}
-    missing = sorted(set(county_populations) - covered)
+    missing = sorted(set(county_populations) - covered - unbound_counties)
     if missing:
         raise ValueError(f"Counties have no materialized SOI state parent: {missing}.")
     receipt = {
         "soi_mode": soi_mode,
         "county_targets": len(specs),
         "concepts": sorted({key[1] for key in parents}),
-        "bridge": COUNTY_SOI,
+        "bridge": bridge_receipt(COUNTY_SOI, selector, unbound),
         "blocks": receipts,
         "combined_cells": [
             {
@@ -1451,7 +1501,7 @@ def county_acs_household_surface(
         "family": family,
         "source_measure_id": measure,
         "source": f"{tables} county B11001",
-        "bridge": COUNTY_ACS_HOUSEHOLDS,
+        "bridge": bridge_receipt(COUNTY_ACS_HOUSEHOLDS, bridge),
         "new_state_targets": len(receipts),
         "county_targets": len(specs) - len(receipts),
         "note": (

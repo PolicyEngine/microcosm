@@ -207,9 +207,15 @@ def test_a_selector_is_the_operators_selector() -> None:
     )
     assert unbounded.max_factor_shift is None and unbounded.out_of_bound == "refuse"
     assert (unbounded.higher, unbounded.lower) == (district.higher, district.lower)
+    # The county bridge has the bound of the district bridge.
     county = declarations.us_bridge_selector(declarations.COUNTY_SOI)
     assert county.pair_on == ("source_measure_id", "source_period")
-    assert county.max_factor_shift is None
+    assert (
+        county.max_factor_shift,
+        county.min_factor_shift,
+        county.shift_around,
+        county.out_of_bound,
+    ) == (0.25, -0.2, "median", "unbind")
     with pytest.raises(ValueError, match="Unknown US cross-grain bridge selector"):
         declarations.us_bridge_selector(declarations.COUNTY_POPULATION)
 
@@ -225,6 +231,7 @@ def test_the_typed_views_read_the_declaration() -> None:
         declared["until_the_feed_repin"]["level_bridges"]["siblings"]
     )
     county = declarations.us_county_soi_nesting()
+    assert county.factor_band == district.factor_band == 1.25
     assert county.required_measures == ("return_count", "adjusted_gross_income")
     assert county.combined_cells == {15005: 15009}
     assert "fewer than 20 returns" in county.combined_cell_basis

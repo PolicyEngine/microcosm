@@ -89,6 +89,13 @@ to USD in the county facts file; the county rung does not apply another scale fa
 duplicate facts, negative or nonfinite shares, zero share denominators,
 incomplete county inventories, incompatible boundaries, and missing or
 ambiguous state parents. No unsupported concept receives a new engine measure.
+A state whose factor (its state target over the sum of its county source
+values) is more than 1.25 times its measure's median across states, or less
+than 0.8 times it, loses its county rows of that measure: the receipt names
+it under `bridge.unbound`, and its state target stays. This is the declared
+bound of the county bridge in `us/cross_grain_declarations.json`, the same as
+the district bridge's (see [US target nesting](us-target-nesting.md)). On the
+pinned county facts no state is outside it.
 Full runs also require the ladder to declare all 3,144 county-equivalents;
 matching omissions from both ladder and SOI cannot pass as a complete release.
 An ACS county family can later provide child targets with the same state-parent
