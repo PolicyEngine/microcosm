@@ -13,6 +13,7 @@ from microcosm.build.outer_stage_runtime import (
     StagePipeline,
     StageRuntime,
     assert_clone_expansion,
+    assert_expected_identity,
     assert_unchanged_identity,
     frame_identity,
 )
@@ -380,3 +381,85 @@ def test_load_restores_frame_metadata_from_the_stage_record(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="no mapping under"):
         resumed.load("source", frame_metadata_key="missing_key")
+
+
+def _reordered_people(frame: Frame) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    order = [1, 0, 2]
+    tables["person"] = tables["person"].iloc[order].reset_index(drop=True)
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata.iloc[order].reset_index(drop=True),
+        mass_log=frame.mass_log,
+    )
+
+
+def test_expected_identity_check_needs_only_the_recorded_identity() -> None:
+    original = _source_frame()
+    recorded = frame_identity(original)
+    changed_values = _with_income(original, [100.0, 200.0, 300.0])
+
+    assert (
+        assert_expected_identity(recorded, changed_values, stage="value_only")
+        == recorded
+    )
+    with pytest.raises(
+        AssertionError,
+        match=r"stage 'value_only' changed Frame identity or row order: "
+        rf"{recorded.sha256} -> [0-9a-f]{{64}}",
+    ):
+        assert_expected_identity(
+            recorded, _reordered_people(original), stage="value_only"
+        )
+
+
+def test_expected_identity_check_finds_input_ids_rewritten_in_place() -> None:
+    """A step that rewrites its input's IDs in place passes the two-frame check.
+
+    ``assert_unchanged_identity`` hashes the input again after the step, so it
+    hashes the rewritten IDs; the identity recorded before the step does not
+    change with them.
+    """
+
+    original = _source_frame()
+    recorded = frame_identity(original)
+    original.table("person")["source_row_id"] = np.array([5, 6, 7], dtype=np.int32)
+    result = _with_income(original, [1.0, 2.0, 3.0])
+
+    assert_unchanged_identity(original, result, stage="in_place")
+    with pytest.raises(AssertionError, match="stage 'in_place' changed"):
+        assert_expected_identity(recorded, result, stage="in_place")
+
+
+def test_complete_refuses_a_frame_unlike_the_expected_identity_before_writing(
+    tmp_path: Path,
+) -> None:
+    source = _source_frame()
+    runtime = StageRuntime(tmp_path / "checked", _pipeline())
+    runtime.complete("source", source)
+    recorded = runtime.load("source").identity
+
+    with pytest.raises(AssertionError, match="stage 'enrich' changed"):
+        runtime.complete(
+            "enrich",
+            _reordered_people(source),
+            expected_identity=recorded,
+        )
+    assert runtime.context.completed == ("source",)
+    assert not (tmp_path / "checked" / "001_enrich.frame.h5").exists()
+
+    enriched = _with_income(source, [100.0, 200.0, 300.0])
+    checked = runtime.complete(
+        "enrich", enriched, metadata={"step": 1}, expected_identity=recorded
+    )
+    unchecked_runtime = StageRuntime(tmp_path / "unchecked", _pipeline())
+    unchecked_runtime.complete("source", source)
+    unchecked = unchecked_runtime.complete("enrich", enriched, metadata={"step": 1})
+
+    assert checked.identity == recorded
+    assert checked.path.read_bytes() == unchecked.path.read_bytes()
+    assert (tmp_path / "checked" / "stage_run_context.json").read_bytes() == (
+        tmp_path / "unchecked" / "stage_run_context.json"
+    ).read_bytes()
