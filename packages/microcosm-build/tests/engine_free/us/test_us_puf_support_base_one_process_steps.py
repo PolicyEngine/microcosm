@@ -934,6 +934,139 @@ def test_the_child_keeps_the_report_pipe_from_processes_it_starts(
         reported()
 
 
+def _with_numpy_scalar(frame: Frame, where: str, value: object) -> Frame:
+    """``frame`` with NumPy scalars of ``value``'s type in a new person object
+    column, a table's index or the strata, as a step's own code might leave
+    them. Every value there has that type, as the checkpoint writer refuses
+    an object column that mixes value families."""
+
+    scalar_type = type(value)
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    strata = frame.strata
+    if where == "column":
+        person = tables["person"]
+        person["numpy_scalars"] = pd.Series(
+            [value] * len(person), index=person.index, dtype=object
+        )
+    elif where == "index":
+        household = tables["household"]
+        household.index = pd.Index(
+            [scalar_type(position) for position in range(len(household))],
+            dtype=object,
+        )
+    else:
+        strata = pd.Series(
+            [scalar_type(stratum) for stratum in strata],
+            index=strata.index,
+            name=strata.name,
+            dtype=object,
+        )
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+@pytest.mark.parametrize(
+    ("where", "value", "type_name"),
+    (
+        ("column", np.float32(0.5), "numpy.float32"),
+        ("column", np.int64(3), "numpy.int64"),
+        ("column", np.str_("HEAD"), "numpy.str_"),
+        ("column", np.bool_(True), "numpy.bool"),
+        ("index", np.int64(0), "numpy.int64"),
+        ("strata", np.str_("asec_2024"), "numpy.str_"),
+    ),
+)
+def test_the_child_stops_before_handing_over_values_a_checkpoint_read_changes(
+    builder: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    where: str,
+    value: object,
+    type_name: str,
+) -> None:
+    # Reading a checkpoint turns NumPy scalars in object columns, an object
+    # index or object strata into Python values. A frame handed over in
+    # memory keeps them, so the next step would compute on other values
+    # than in a run with one process per step. The child stops instead, once
+    # the step that left them has completed: a resume reads its checkpoint.
+    monkeypatch.setattr(builder, "_stage_run_config", lambda _args: {})
+    monkeypatch.setattr(
+        builder, "profile_stage", lambda *_args, **_kwargs: nullcontext()
+    )
+    checkpoint_dir = tmp_path / "checkpoints"
+    _complete_steps_before_the_16(builder, checkpoint_dir)
+    _StandInSteps(builder, monkeypatch, record=False)
+    tail_transfer = builder._capital_gains_tail_transfer_stage
+
+    def tail_leaving_numpy_scalars(args, frame):
+        result, metadata = tail_transfer(args, frame)
+        return _with_numpy_scalar(result, where, value), metadata
+
+    monkeypatch.setattr(
+        builder, "_capital_gains_tail_transfer_stage", tail_leaving_numpy_scalars
+    )
+    completed_before = _completed_steps(builder, checkpoint_dir)
+    location = {
+        "column": r"person column 'numpy_scalars'",
+        "index": r"household index",
+        "strata": r"strata",
+    }[where]
+
+    with _report_pipe(builder, monkeypatch) as reported:
+        with pytest.raises(
+            RuntimeError,
+            match=rf"'capital_gains_tail_transfer' left {type_name} values in the {location}",
+        ):
+            builder._run_outer_stage(
+                _step_args(builder, checkpoint_dir, _ONE_PROCESS_STEPS[0])
+            )
+        assert reported() == list(_ONE_PROCESS_STEPS[:2])
+
+    assert _completed_steps(builder, checkpoint_dir) == (
+        *completed_before,
+        _ONE_PROCESS_STEPS[0],
+    )
+
+
+def test_the_last_of_the_16_may_leave_numpy_scalars(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Its frame is not handed over: the next step's process reads its
+    # checkpoint, as with one process per step.
+    monkeypatch.setattr(builder, "_stage_run_config", lambda _args: {})
+    monkeypatch.setattr(
+        builder, "profile_stage", lambda *_args, **_kwargs: nullcontext()
+    )
+    checkpoint_dir = tmp_path / "checkpoints"
+    _complete_steps_before_the_16(builder, checkpoint_dir)
+    _StandInSteps(builder, monkeypatch, record=False)
+    post_qrf_step = builder._post_qrf_frame_stage
+
+    def last_step_leaving_numpy_scalars(stage, args, frame, stage_metadata):
+        result, metadata = post_qrf_step(stage, args, frame, stage_metadata)
+        if stage == _ONE_PROCESS_STEPS[-1]:
+            result = _with_numpy_scalar(result, "column", np.float32(0.5))
+        return result, metadata
+
+    monkeypatch.setattr(
+        builder, "_post_qrf_frame_stage", last_step_leaving_numpy_scalars
+    )
+
+    with _report_pipe(builder, monkeypatch) as reported:
+        builder._run_outer_stage(
+            _step_args(builder, checkpoint_dir, _ONE_PROCESS_STEPS[0])
+        )
+        assert reported() == list(_ONE_PROCESS_STEPS)
+
+    assert _completed_steps(builder, checkpoint_dir)[-1] == _ONE_PROCESS_STEPS[-1]
+
+
 @pytest.mark.parametrize("descriptor", ("a file", "a closed descriptor"))
 def test_a_report_variable_that_names_no_pipe_stops_the_step_process(
     builder: ModuleType,
