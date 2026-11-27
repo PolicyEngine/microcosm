@@ -21,6 +21,7 @@ from microcosm.frame import (
     EntitySchema,
     Frame,
     MassChangeRecord,
+    SharedColumnChangedError,
     WeightKind,
     Weights,
 )
@@ -473,3 +474,34 @@ def test_complete_refuses_a_frame_unlike_the_expected_identity_before_writing(
     assert (tmp_path / "checked" / "stage_run_context.json").read_bytes() == (
         tmp_path / "unchecked" / "stage_run_context.json"
     ).read_bytes()
+
+
+def test_complete_names_a_shared_column_written_raw_before_the_identity_check(
+    tmp_path: Path,
+) -> None:
+    """A raw write into memory the result shares is reported as before.
+
+    The result is built with ``with_columns``, so it shares the input's
+    ``person_id`` memory, and the step then writes into that memory directly.
+    The checkpoint writer's shared-column check names the column; the
+    identity comparison, which now runs first, must not hide that error.
+    """
+
+    runtime = StageRuntime(tmp_path, _pipeline())
+    runtime.complete("source", _source_frame())
+    loaded = runtime.load("source")
+    result = loaded.frame.with_columns(
+        "person", income=np.array([7.0, 8.0, 9.0], dtype=np.float64)
+    )
+    input_ids = loaded.frame.table("person")["person_id"].to_numpy()
+    owner = input_ids
+    while isinstance(owner.base, np.ndarray):
+        owner = owner.base
+    assert np.shares_memory(owner, result.table("person")["person_id"].to_numpy())
+    assert owner.flags.writeable
+    owner += 1_000
+
+    with pytest.raises(SharedColumnChangedError, match="person_id"):
+        runtime.complete("enrich", result, expected_identity=loaded.identity)
+    assert runtime.context.completed == ("source",)
+    assert not (tmp_path / "001_enrich.frame.h5").exists()
