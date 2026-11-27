@@ -413,3 +413,12 @@ def test_columns_only_mode_adds_shares_and_leaves_scored_columns_alone():
     )
     with pytest.raises(ValueError, match="already"):
         add_uk_firm_vat_composition_columns(out, _shares())
+
+
+def test_input_ratio_bounds_follow_the_generator_clamp():
+    from microcosm.build.uk_runtime import firm_generation
+
+    assert UK_FIRM_INPUT_RATIO_BOUNDS == (
+        firm_generation.INPUT_RATIO_LOWER,
+        firm_generation.INPUT_RATIO_UPPER,
+    )

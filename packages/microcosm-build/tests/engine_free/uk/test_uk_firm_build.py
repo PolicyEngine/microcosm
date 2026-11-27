@@ -854,6 +854,7 @@ def test_labour_link_sources_need_their_prerequisites(tmp_path: Path) -> None:
         ("bpe_dir", "firm_bpe_2025"),
         ("consumption_dir", "firm_supply_use_2024"),
         ("paybill_anchor_dir", "firm_paybill_anchor_2024"),
+        ("vat_composition_dir", "firm_vat_composition_2024"),
         ("rd_tax_credits_dir", "firm_rd_tax_credits_2024_25"),
         ("employment_allowance_takeup_dir", "firm_employment_allowance_takeup_2024_25"),
         ("public_sector_dir", "firm_public_sector_2025"),

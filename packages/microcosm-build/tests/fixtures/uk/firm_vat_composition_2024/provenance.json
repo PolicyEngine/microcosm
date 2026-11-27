@@ -4,7 +4,7 @@
   "describes": "tax year 2024-25 VAT treatment applied to calendar-year 2024 Supply and Use Tables",
   "accessed": "2026-11-26",
   "status": "assumed",
-  "method": "vat_product_treatment.csv is written by hand from the VAT Act 1994 schedules (provisions as at 1 October 2026, read for their 2024-25 effect): each of the 103 SUT products' domestic sales are split into standard, reduced, zero and exempt shares, by buyer where the law differs (households, other domestic buyers, exports) for households. Rows marked statute have one treatment by law; rows marked assumed carry a share set by judgement and are never tuned to a receipt or relief figure. The four other CSVs are extracted by tools/extract_uk_firm_vat_composition_tables.py from the three files below; none is typed by hand.",
+  "method": "vat_product_treatment.csv is written by hand from the VAT Act 1994 schedules (provisions as at 1 October 2026, read for their 2024-25 effect): each of the 103 SUT products' sales are split into standard, reduced, zero and exempt shares, by buyer where the law differs (households, other domestic buyers, exports; exports with no row are zero-rated). Rows marked statute have one treatment by law; rows marked assumed carry a share set by judgement and are never tuned to a receipt or relief figure. The four other CSVs are extracted by tools/extract_uk_firm_vat_composition_tables.py from the three files below; none is typed by hand.",
   "sources": {
     "sut": {
       "publisher": "Office for National Statistics",

@@ -92,7 +92,10 @@ prescription drugs at dispensing is not modelled.
 
 **Checks, never targets** (:func:`uk_firm_vat_relief_checks`): the modelled
 household base of eight zero- or reduced-rated reliefs against HMRC's 2024-25
-cost over the rate replaced. All eight ratios are pinned in the tests,
+cost over the rate replaced. HMRC's 2024-25 figures for new dwellings and
+prescription drugs (first forecast year 2023-24) and water and sewerage
+(2024-25) are projections, not outturns; ``hmrc_vat_relief_costs.csv``
+carries each relief's first forecast year. All eight ratios are pinned in the tests,
 including the poor ones (printed matter, domestic passenger transport) and
 prescription drugs at 0 (not modelled).
 """
@@ -142,7 +145,8 @@ UK_FIRM_VAT_REDUCED_RATE = 0.05
 #: Share of construction's dwellings GFCF that is new build (Sch 8 Group 5), assumed.
 UK_FIRM_NEW_DWELLING_FRACTION = 0.6
 #: The clamp the generator puts on the input ratio
-#: (``firm_generation.INPUT_RATIO_LOWER`` / ``INPUT_RATIO_UPPER``).
+#: (``firm_generation.INPUT_RATIO_LOWER`` / ``INPUT_RATIO_UPPER``; not imported,
+#: because firm_generation imports firm_table, which imports this module).
 UK_FIRM_INPUT_RATIO_BOUNDS = (0.10, 0.95)
 #: Microcosm-only columns the columns-only mode adds (not policyengine-uk inputs).
 UK_FIRM_VAT_COMPOSITION_SHARE_COLUMNS = {
@@ -471,7 +475,8 @@ def uk_firm_vat_section_shares(source: UKFirmVATCompositionSource) -> pd.DataFra
     lo, hi = UK_FIRM_INPUT_RATIO_BOUNDS
     frame["input_ratio_target"] = frame["input_ratio_target"].clip(lo, hi)
     shares = list(UK_FIRM_VAT_TREATMENTS)
-    frame[shares] = frame[shares].div(frame[shares].sum(axis=1), axis=0)
+    if not np.allclose(frame[shares].sum(axis=1), 1.0, atol=1e-9):
+        raise ValueError("VAT composition section shares do not sum to 1.")
     frame.index.name = "sic_section"
     return frame
 
