@@ -516,10 +516,9 @@ def _sample_written_export(sampler, source: Path, out_dir: Path, **options) -> d
         fraction=0.5,
         seed=0,
         probes=fixture_sampler_probes(),
-        write_dataset=write_table_h5,
         refuse_denied=False,
         size_certainty_multiplier=0.0,
-        **options,
+        **{"write_dataset": write_table_h5, **options},
     )
 
 
