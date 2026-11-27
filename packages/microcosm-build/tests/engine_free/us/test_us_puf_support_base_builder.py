@@ -1703,8 +1703,12 @@ def test_main_checkpointed_all_dispatches_fresh_process_supervisor(
         builder,
         "_run_staged_all",
         # The parent's telemetry run comes along; its own tests are in
-        # test_us_modal_build_programs_telemetry.py.
-        lambda actual_args, telemetry: calls.append(actual_args),
+        # test_us_modal_build_programs_telemetry.py. So do the ASEC digests
+        # the pin check computed (none here); their tests are in
+        # test_us_puf_support_base_parent_digests.py.
+        lambda actual_args, telemetry, *, verified_asec_sha256: calls.append(
+            actual_args
+        ),
     )
 
     builder.main([])
