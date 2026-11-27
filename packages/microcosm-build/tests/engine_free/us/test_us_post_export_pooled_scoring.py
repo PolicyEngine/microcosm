@@ -22,7 +22,10 @@ through it on the scoring tests' fake engine, in spawned workers, and require:
 # ruff: noqa: F401, F811
 from __future__ import annotations
 
+import argparse
+import dataclasses
 import json
+import multiprocessing
 import os
 import sys
 import types
@@ -51,6 +54,7 @@ from test_support.microcosm_build.us_post_export_pool import (
     MEMORY_ON_HOUSEHOLDS,
     SLOW,
     WAIT_FOR,
+    WAIT_FOR_OTHER_REFORMS,
     FakeMicrosimulation,
     build_fake_parameter_reform,
     build_fake_reform,
@@ -95,6 +99,7 @@ def pooled_reforms(monkeypatch, builder):
         MEMORY_KEYS,
         SLOW,
         WAIT_FOR,
+        WAIT_FOR_OTHER_REFORMS,
         FAIL_ON_HOUSEHOLDS,
         MEMORY_ON_HOUSEHOLDS,
     ):
@@ -1314,3 +1319,314 @@ def test_a_stage_own_baseline_raises_its_first_problem_in_batch_order(
     assert serial["second"] == "RuntimeError: fixture engine refuses snap"
     monkeypatch.setenv(MEMORY_ON_HOUSEHOLDS, json.dumps({"snap": [7]}))
     assert run(_pooled_scorer(builder, plan, tmp_path / "pooled", 2)) == serial
+
+
+# ---------------------------------------------------------------------------
+# Certification stops the pool when scoring stops it (tracker task 1.4 · 8)
+# ---------------------------------------------------------------------------
+
+
+class _ScoringFinishedError(Exception):
+    """Raised in place of the population-structure holdout, which certification
+    writes after it has closed the scorer, so a test ends there."""
+
+
+def _use_probes(monkeypatch, *, passing: bool):
+    """Three of the shipped reform-coverage probes, each made to pass or to
+    fail on the fake engine, in place of the shipped set: the plan's dry run,
+    the check in the certifying process and the workers' units all use them."""
+    probes = tuple(
+        dataclasses.replace(
+            probe,
+            expected_sign="either",
+            min_abs_effect=1e-6 if passing else 1e18,
+        )
+        for probe in smoke_module.us_release_reform_coverage_probes()[:3]
+    )
+    monkeypatch.setattr(
+        smoke_module, "us_release_reform_coverage_probes", lambda: probes
+    )
+    return probes
+
+
+def _record_for_certification(builder, plan, fit, tmp_path: Path, **settings):
+    """What ``_certify_us_build`` reads of a build record, for the fixture plan.
+
+    The record's options are the build's: every stage on, the fixture's
+    batching, and ``settings`` on top. Everything the manifests alone read is
+    empty, since these tests end before the manifests.
+    """
+    artifact_root = tmp_path / "build" / "artifacts"
+    artifact_root.mkdir(parents=True)
+    options = {name: False for name in builder.US_BUILD_RECORD_SETTINGS}
+    options.update(maximum_microsim_batch_size=BATCH_SIZE, **settings)
+
+    def empty():
+        return defaultdict(lambda: None)
+
+    return types.SimpleNamespace(
+        certify_args=lambda *, evidence_release: argparse.Namespace(
+            **options, evidence_release=evidence_release
+        ),
+        artifact_root=artifact_root,
+        release_root=tmp_path / "build",
+        dataset_key=builder.DATASET_KEY,
+        dataset_filename=builder.DATASET_FILENAME,
+        calibration_key=builder.CALIBRATION_KEY,
+        calibration_filename=builder.CALIBRATION_FILENAME,
+        terminal_gate_failures=(),
+        timing={},
+        calibration_result=lambda: fit,
+        registry_summary=lambda: TargetRegistry((), country="us"),
+        post_export_scoring_plan=lambda args, *, result: plan,
+        manifest_inputs=defaultdict(lambda: None, release_gate_failures=[]),
+        gates=empty,
+        diagnostics_outcome=lambda release_dir: None,
+        source_coverage=empty(),
+        take_up=empty(),
+    )
+
+
+def _certification(builder, tmp_path: Path, *, evidence_release: bool, owners=()):
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+    return builder._Certification(
+        evidence_release=evidence_release,
+        owner_patterns=owners,
+        owners_file=None,
+        owners_file_sha256=None,
+        release_dir=release_dir,
+        build="fixture-release",
+        commit="c" * 40,
+        changed_since_build=(),
+    )
+
+
+def _certify_with(builder, monkeypatch, scorer, record, certification) -> None:
+    """Run ``_certify_us_build`` on ``scorer`` (which holds the fixture frame)."""
+    monkeypatch.setattr(
+        builder, "_open_post_export_scorer", lambda *args, **options: scorer
+    )
+    builder._certify_us_build(record, certification=certification, telemetry=None)
+
+
+def _live_workers(events) -> list[int]:
+    """The processes in the engine log that are still running."""
+    logged = {event["pid"] for event in events}
+    return [
+        process.pid
+        for process in multiprocessing.active_children()
+        if process.pid in logged
+    ]
+
+
+@pytest.mark.parametrize(
+    ("evidence_release", "refusal"),
+    [
+        (False, "Release gates failed: Reform coverage smoke failed"),
+        (True, "Evidence release refused"),
+    ],
+    ids=["certified", "evidence_unowned"],
+)
+def test_a_failed_check_that_stops_certification_stops_the_pools_workers(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+    evidence_release,
+    refusal,
+) -> None:
+    """The reform-coverage check's reform units are the first reform units the
+    pool runs, after the merged baseline pass. When the check fails and that
+    stops certification (the certified tier, or a failure no evidence owner
+    matches), certification closes the scorer before its refusal leaves
+    ``_certify_us_build``: the reform-validation unit a worker had already
+    started is killed, not left to run until the process exits, and the
+    scorer's batch files are removed."""
+    probes = _use_probes(monkeypatch, passing=False)
+    plan, fit = _release_plan(builder)
+    log = tmp_path / "engine-log"
+    log.mkdir()
+    monkeypatch.setenv(ENGINE_LOG, str(log))
+    # Every reform other than the check's waits for a file nobody writes.
+    monkeypatch.setenv(
+        WAIT_FOR_OTHER_REFORMS,
+        json.dumps(
+            {
+                "file": str(tmp_path / "never-written"),
+                "except": [probe.id for probe in probes],
+            }
+        ),
+    )
+    scorer = _pooled_scorer(builder, plan, tmp_path / "scoring", 1)
+    try:
+        with pytest.raises(RuntimeError, match=refusal):
+            _certify_with(
+                builder,
+                monkeypatch,
+                scorer,
+                _record_for_certification(builder, plan, fit, tmp_path),
+                _certification(builder, tmp_path, evidence_release=evidence_release),
+            )
+        events = engine_log(log)
+        assert _live_workers(events) == []
+        assert not scorer.batch_directory.exists()
+
+        # One worker ran every unit, in the order the pool handed them out.
+        assert len({event["pid"] for event in events}) == 1
+        reforms = [
+            event["reform"]
+            for event in events
+            if event["event"] == "construct" and event["reform"] is not None
+        ]
+        started = [
+            reform
+            for index, reform in enumerate(reforms)
+            if index == 0 or reforms[index - 1] != reform
+        ]
+        assert started[: len(probes)] == [probe.id for probe in probes]
+        # One reformed simulation of reform validation had started, and never
+        # finished.
+        assert len(started) == len(probes) + 1
+        execution = scorer.execution_record()
+        assert execution["report"]["units_completed"] == (
+            execution["units"]["baseline"] + len(probes)
+        )
+        release_dir = tmp_path / "release"
+        assert (release_dir / "reform_coverage_smoke.json").exists()
+        assert not (release_dir / "reform_validation.json").exists()
+    finally:
+        builder._close_post_export_scorer(scorer)
+
+
+@pytest.mark.parametrize("pooled", [True, False], ids=["pooled", "serial"])
+def test_any_error_during_scoring_closes_the_scorer(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+    pooled,
+) -> None:
+    """An error in any post-export stage, not only the check's refusal, stops
+    certification with the scorer closed: no worker is left running and the
+    batch files are removed. The serial scorer is closed the same way."""
+    _use_probes(monkeypatch, passing=True)
+    plan, fit = _release_plan(builder)
+    log = tmp_path / "engine-log"
+    log.mkdir()
+    monkeypatch.setenv(ENGINE_LOG, str(log))
+    scorer = (
+        _pooled_scorer(builder, plan, tmp_path / "scoring", 1)
+        if pooled
+        else _serial_scorer(builder, plan, tmp_path / "scoring")
+    )
+
+    def broken_demographics(**arguments):
+        raise RuntimeError("the demographics writer broke")
+
+    monkeypatch.setattr(builder, "_write_demographics", broken_demographics)
+    try:
+        with pytest.raises(RuntimeError, match="the demographics writer broke"):
+            _certify_with(
+                builder,
+                monkeypatch,
+                scorer,
+                _record_for_certification(builder, plan, fit, tmp_path),
+                _certification(builder, tmp_path, evidence_release=False),
+            )
+        assert (tmp_path / "release" / "reform_validation.json").exists()
+        assert not scorer.batch_directory.exists()
+        if pooled:
+            assert _live_workers(engine_log(log)) == []
+    finally:
+        builder._close_post_export_scorer(scorer)
+
+
+def test_an_error_closing_the_scorer_does_not_replace_the_one_that_stopped_it(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    """If closing the scorer after an error raises too, certification prints
+    that second error and raises the first, the check's refusal."""
+    _use_probes(monkeypatch, passing=False)
+    plan, fit = _release_plan(builder)
+    scorer = _serial_scorer(builder, plan, tmp_path / "scoring")
+
+    def failing_close():
+        raise OSError("the batch directory is gone")
+
+    monkeypatch.setattr(scorer, "close", failing_close)
+    try:
+        with pytest.raises(RuntimeError, match="Release gates failed"):
+            _certify_with(
+                builder,
+                monkeypatch,
+                scorer,
+                _record_for_certification(builder, plan, fit, tmp_path),
+                _certification(builder, tmp_path, evidence_release=False),
+            )
+        assert "OSError: the batch directory is gone" in capsys.readouterr().err
+    finally:
+        type(scorer).close(scorer)
+
+
+@pytest.mark.parametrize(
+    ("evidence_release", "settings", "owners"),
+    [
+        (False, {"allow_reform_coverage_smoke_failures": True}, ()),
+        (True, {}, (("Reform coverage smoke failed", "PolicyEngine/microcosm#368"),)),
+    ],
+    ids=["allowed", "evidence_owned"],
+)
+def test_a_failed_check_that_does_not_stop_certification_cancels_nothing(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+    evidence_release,
+    settings,
+    owners,
+) -> None:
+    """A failed check that certification goes on past (the allow option, or an
+    evidence-tier failure with an owner) cancels nothing: every later stage
+    is scored in the pool and writes its file."""
+    _use_probes(monkeypatch, passing=False)
+    plan, fit = _release_plan(builder)
+    scorer = _pooled_scorer(builder, plan, tmp_path / "scoring", 1)
+
+    def finished(**arguments):
+        raise _ScoringFinishedError
+
+    monkeypatch.setattr(builder, "_write_population_structure_holdout", finished)
+    try:
+        with pytest.raises(_ScoringFinishedError):
+            _certify_with(
+                builder,
+                monkeypatch,
+                scorer,
+                _record_for_certification(builder, plan, fit, tmp_path, **settings),
+                _certification(
+                    builder,
+                    tmp_path,
+                    evidence_release=evidence_release,
+                    owners=owners,
+                ),
+            )
+        release_dir = tmp_path / "release"
+        assert {path.name for path in release_dir.iterdir()} == {
+            "demographics.json",
+            "reform_coverage_smoke.json",
+            "reform_validation.json",
+            "us_medicare_irmaa_holdout.json",
+            "us_ssi_social_security_holdout.json",
+        }
+        smoke = json.loads((release_dir / "reform_coverage_smoke.json").read_text())
+        assert smoke["reform_coverage_smoke"]["passed"] is False
+        assert smoke["enforced"] is not settings.get(
+            "allow_reform_coverage_smoke_failures", False
+        )
+    finally:
+        builder._close_post_export_scorer(scorer)

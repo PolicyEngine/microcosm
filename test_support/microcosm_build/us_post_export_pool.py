@@ -23,6 +23,10 @@ environment, which spawned workers inherit:
   before it computes that variable;
 - :data:`WAIT_FOR`: JSON mapping a variable to a file each engine waits for
   (two minutes at most) before it computes that variable;
+- :data:`WAIT_FOR_OTHER_REFORMS`: JSON ``{"file": path, "except": [labels]}``;
+  an engine whose reform's label is not listed waits for the file (two minutes
+  at most) before it computes anything, so a test can keep one stage's
+  reformed simulations running while another stage's finish;
 - :data:`FAIL_ON_HOUSEHOLDS` and :data:`MEMORY_ON_HOUSEHOLDS`: JSON mapping a
   variable to household ids; an engine whose batch holds one of them raises
   ``RuntimeError`` or ``MemoryError`` for that variable.
@@ -63,6 +67,7 @@ ENGINE_LOG = "MICROCOSM_TEST_POST_EXPORT_ENGINE_LOG"
 MEMORY_KEYS = "MICROCOSM_TEST_POST_EXPORT_MEMORY_KEYS"
 SLOW = "MICROCOSM_TEST_POST_EXPORT_SLOW"
 WAIT_FOR = "MICROCOSM_TEST_POST_EXPORT_WAIT_FOR"
+WAIT_FOR_OTHER_REFORMS = "MICROCOSM_TEST_POST_EXPORT_WAIT_FOR_OTHER_REFORMS"
 FAIL_ON_HOUSEHOLDS = "MICROCOSM_TEST_POST_EXPORT_FAIL_ON_HOUSEHOLDS"
 MEMORY_ON_HOUSEHOLDS = "MICROCOSM_TEST_POST_EXPORT_MEMORY_ON_HOUSEHOLDS"
 
@@ -133,6 +138,13 @@ class _FakeHolder:
 
     def get_known_periods(self):
         return sorted(self._periods)
+
+
+def _wait_for_file(path: str) -> None:
+    """Wait until ``path`` exists, two minutes at most."""
+    deadline = time.monotonic() + 120
+    while not Path(path).exists() and time.monotonic() < deadline:
+        time.sleep(0.1)
 
 
 #: This process's engines, to count those not yet released at a construction.
@@ -207,9 +219,11 @@ class FakeMicrosimulation:
             time.sleep(float(delay))
         awaited = json.loads(os.environ.get(WAIT_FOR) or "{}").get(variable)
         if awaited:
-            deadline = time.monotonic() + 120
-            while not Path(awaited).exists() and time.monotonic() < deadline:
-                time.sleep(0.1)
+            _wait_for_file(awaited)
+        held = json.loads(os.environ.get(WAIT_FOR_OTHER_REFORMS) or "{}")
+        reform = self.policy_reform
+        if held and reform is not None and reform.label not in held["except"]:
+            _wait_for_file(held["file"])
         households = set(
             int(value) for value in frame.table("household")["household_id"]
         )
@@ -221,7 +235,6 @@ class FakeMicrosimulation:
         for computed in (variable, *computes.get(variable, ())):
             self.known.setdefault(computed, set()).add(period)
         native = _native_entity(variable)
-        reform = self.policy_reform
         delta = 0.0 if reform is None else reform.delta
         values = _native_values(frame, variable, period, delta)
         target = map_to or native
