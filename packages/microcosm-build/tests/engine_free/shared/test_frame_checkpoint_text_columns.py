@@ -567,7 +567,11 @@ def _long_strings(count: int, length: int) -> list[str]:
     ]
 
 
-# Values for the memory comparisons, built fresh for each test.
+# Values for the memory comparisons, built fresh for each test. Each case is
+# large against the fixed temporaries of one encoding batch or one step of
+# placing tag bytes (about 1 MiB); the memory tests take one dtype for each
+# conversion path, since str and string storage share one.
+_MEMORY_DTYPES = ["pyarrow_str", "python_str", "object"]
 _MEMORY_CASES: dict[str, Callable[[], list[str | None]]] = {
     "300,000 short strings": lambda: _short_strings(300_000),
     "1,000 strings of 16 KiB": lambda: _long_strings(1_000, 8_192),
@@ -575,7 +579,7 @@ _MEMORY_CASES: dict[str, Callable[[], list[str | None]]] = {
 }
 
 
-@pytest.mark.parametrize("dtype_name", ["python_str", "python_string", "object"])
+@pytest.mark.parametrize("dtype_name", ["python_str", "object"])
 @pytest.mark.parametrize("case", list(_MEMORY_CASES))
 def test_writing_python_strings_needs_no_more_memory_than_the_per_value_loop(
     case: str, dtype_name: str
@@ -626,7 +630,7 @@ _READ_PEAK_RATIO = 1.02
 
 
 @pytest.mark.parametrize("missing_value", [False, True], ids=["complete", "missing"])
-@pytest.mark.parametrize("dtype_name", list(TEXT_DTYPES))
+@pytest.mark.parametrize("dtype_name", _MEMORY_DTYPES)
 @pytest.mark.parametrize("case", list(_MEMORY_CASES))
 def test_reading_text_needs_no_more_memory_than_before(
     tmp_path: Path, case: str, dtype_name: str, missing_value: bool
@@ -934,10 +938,14 @@ def test_text_payload_over_two_gibibytes_keeps_the_per_value_loop_bytes(
         path=Path("large.h5"),
         label="column",
     )
+    # The reader rewrites the arrays HDF5 fills in place; the encoder's
+    # payload can be read-only, so pass writable copies as HDF5 would.
+    stored_offsets, stored_payload = offsets.copy(), payload.copy()
+    del offsets, payload
     restored = frame_checkpoint_module._decode_string_values(
-        offsets, payload, restore_dtype
+        stored_offsets, stored_payload, restore_dtype
     )
-    del payload
+    del stored_payload
     assert restored is not None
     assert restored.dtype == series.dtype
     assert restored.equals(series)
