@@ -103,10 +103,12 @@ Every stage records wall time, CPU time and peak resident memory (sampled
 every 0.5 s with psutil, else the process peak); every batch-outer scoring
 pass is one line of ``passes.jsonl``, naming the process that ran it. With
 pooled scoring the baseline passes run in this process, before the pool
-starts, and are written as in the serial path; a reform pass is one pass a
-pool worker ran, with the worker's process ID, its wall and CPU time, and the
-worker's memory footprint and peak resident memory. Each stage records the
-CPU time of the worker passes whose results reached it
+starts, and are written as in the serial path; after a failed merged pass,
+though, every registered stage's own pass runs then (the held-out reports'
+too, which the probe never opens), all under the first stage. A reform pass
+is one pass a pool worker ran, with the worker's process ID, its wall and CPU
+time, and the worker's memory footprint and peak resident memory. Each stage
+records the CPU time of the worker passes whose results reached it
 (``worker_cpu_seconds``), and the report's ``post_export_scoring.execution``
 holds the pool's settings and report (worker starts, failed attempts, peak
 worker memory) and each baseline pass run here. A worker's line is written

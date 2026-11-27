@@ -536,9 +536,18 @@ one Microsimulation over the whole file.
     pass. If it raises (`MemoryError` included), every stage's own baseline
     pass runs next, in the order the stages run, where the serial scorer runs
     each one when its stage opens; a stage whose own pass raised gets that
-    error when it opens. A changed batch file stops scoring at once. Each
-    batch engine is released before the next is built, so no baseline engine
-    is held in the certifying process while workers run.
+    error when it opens, with the original traceback as a note. A changed
+    batch file stops scoring at once. Each batch engine is released before
+    the next is built, so no baseline engine is held in the certifying
+    process while workers run.
+  - After a failed shared pass this differs from the serial scorer in time
+    and memory, not in values: every stage's own pass runs when the first
+    stage opens (the export probe's held-out reports' too, which it never
+    opens), so the build telemetry and the probe count them all under that
+    stage, and a stage whose own pass failed gets its error only after the
+    other stages' own passes have run. Every stage's own values are held
+    until that stage opens or the scorer closes; a key several stages plan
+    is held once per stage.
   - The pool then runs one unit per reformed simulation, holding all of that
     simulation's recorded passes over every batch, in the order the stages
     run: a worker builds the reform's rules once per unit, as the serial
@@ -566,12 +575,16 @@ one Microsimulation over the whole file.
     even when it failed while workers were still running an earlier stage's
     units, and the pool goes on with the other units in fresh workers. The
     shared pool stops a run at such a failure, so the units then in flight,
-    the one due among them, start again in the fresh pool. A pool whose
-    workers cannot start refuses every request that needs it
-    (`PostExportPoolStoppedError`); a stage's baseline values, scored in the
-    certifying process, are still served. Each of these is a
-    `WorkerPoolError` and stops certification, the held-out reports included,
-    where the serial scorer, which has no memory cap, may have finished.
+    the one due among them, start again in the fresh pool. When the pool's
+    workers cannot start, the first request that needs them raises the
+    pool's `WorkerPoolError` and every later one `PostExportPoolStoppedError`;
+    a stage's baseline values, scored in the certifying process, are still
+    served. When the pool cannot be built at all, the first stage's opening
+    raises that error and every later stage is refused with
+    `PostExportPoolStoppedError`, as after a changed batch file. Each of
+    these is a `WorkerPoolError` and stops certification, the held-out
+    reports included, where the serial scorer, which has no memory cap, may
+    have finished.
   - Each stage then runs as in the serial path and builds its own reforms (the
     smoke records each list edit's resolved lists from its own). Its baseline
     is served its recorded plan, and each reformed simulation its recorded
@@ -597,8 +610,9 @@ one Microsimulation over the whole file.
     `execution`: `{"mode": "serial"}`, or the pool's settings, how the worker
     count was chosen, the plan's memory and core readings, the number of
     reform units, each baseline pass run in the certifying process (its
-    label, keys, wall and CPU time, and error if it raised), why the shared
-    pass fell back if it did, and the report of every pool the scorer ran
+    label, keys, wall and CPU time, and error if it raised), that process's
+    memory footprint when the workers started, why the shared pass fell back
+    if it did, and the report of every pool the scorer ran
     (worker starts, failed attempts, peak worker memory). That record is run
     metadata, outside every output comparison (decision 1.1 · 1).
   - The 5 GiB per worker comes from reform passes (1.4 · 6's one-batch check
@@ -606,7 +620,9 @@ one Microsimulation over the whole file.
     The plan's 3 GiB for the certifying process applies while workers run,
     after its baseline engines are released; its peak during the baseline
     passes is the serial scorer's, with no worker running. Neither figure
-    has been measured at certification's 5,000-household batches.
+    has been measured at certification's 5,000-household batches, and freed
+    memory is not always returned to the system, so the footprint recorded
+    when the workers start is the check on the 3 GiB.
 - Each batch engine keeps policyengine-us's projection of the release year to
   its last CPI-U year (2035), because the plans request keys in later years
   (reform validation reaches past 2025). The build's own simulations hold

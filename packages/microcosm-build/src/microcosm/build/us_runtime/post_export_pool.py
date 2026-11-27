@@ -1,18 +1,18 @@
 """The units, results and worker entry points of pooled US post-export scoring.
 
 The release tool (``tools/build_us_fiscal_refresh_release.py``) scores the
-written release H5 in household batches. With pooled scoring it sends the
-scoring to worker processes of the shared pool
-(:mod:`microcosm.build.worker_pool`) and runs each post-export consumer again
-in its own process over the results:
+written release H5 in household batches. With pooled scoring it runs every
+baseline pass in its own process, then sends the reform passes to worker
+processes of the shared pool (:mod:`microcosm.build.worker_pool`) and runs
+each post-export consumer again in its own process over the results:
 
 - the engine-free dry run records every request each consumer makes
   (:mod:`microcosm.build.us_runtime.post_export_requests`), and which of a
   reformed simulation's requests the serial scorer scores together in one
   pass;
-- each :class:`PostExportUnit` is a run of one or more such passes over a range
-  of the H5's household batches: the merged baseline plan over a range of
-  batches, or every pass of one reformed simulation over all of them;
+- each :class:`PostExportUnit` is every pass of one reformed simulation over
+  the H5's household batches (a baseline unit is refused: each worker's
+  memory cap is sized for reform passes);
 - a worker reads each batch from the file the release tool's scorer wrote it
   to, builds one engine per batch, scores the pass's keys on it in ascending
   period order, applies the same refusals as the serial scorer, and returns
@@ -110,8 +110,7 @@ class PostExportPass:
 
     Attributes:
         label: The pass's name in errors and progress, as the serial scorer
-            names it (``"merged baseline plan"``, ``"<consumer> baseline
-            plan"``, ``"<consumer> reform <variable>@<period>, ..."``).
+            names it (``"<consumer> reform <variable>@<period>, ..."``).
         keys: Unique keys in ascending period order.
     """
 
@@ -140,16 +139,19 @@ class PostExportPass:
 
 @dataclass(frozen=True)
 class PostExportUnit:
-    """Passes a worker runs over the household batches ``[batch_start, batch_stop)``.
+    """A reformed simulation's passes, which a worker runs over the household
+    batches ``[batch_start, batch_stop)``.
+
+    Baseline passes run in the certifying process, never in a worker (a
+    worker's memory cap is sized for reform passes; in the 5% export probe a
+    baseline pass over one 2,000-household batch went over it), so a unit
+    without a reform is refused.
 
     Attributes:
-        consumer: The consumer whose passes these are, or ``None`` for the
-            merged baseline plan of every consumer.
-        reformed_simulation: For a reform unit, which of the consumer's
-            ``simulate(reform)`` calls made the simulation, numbered from 0;
-            ``None`` for a baseline unit.
-        reform: ``None`` for a baseline unit; otherwise the description the
-            worker rebuilds the reform from
+        consumer: The consumer whose passes these are.
+        reformed_simulation: Which of the consumer's ``simulate(reform)``
+            calls made the simulation, numbered from 0.
+        reform: The description the worker rebuilds the reform from
             (:func:`~microcosm.build.us_runtime.post_export_requests.build_post_export_reform`).
             The worker builds the reform's rules once and scores every pass
             with them, as the serial scorer does for one reformed simulation.
@@ -161,9 +163,9 @@ class PostExportUnit:
             simulation, whatever part of the H5 this unit scores.
     """
 
-    consumer: str | None
-    reformed_simulation: int | None
-    reform: PostExportReform | None
+    consumer: str
+    reformed_simulation: int
+    reform: PostExportReform
     passes: tuple[PostExportPass, ...]
     batch_start: int
     batch_stop: int
@@ -190,11 +192,12 @@ class PostExportUnit:
         if self.consumer is not None and (
             not isinstance(self.consumer, str) or not self.consumer
         ):
-            raise ValueError("PostExportUnit.consumer must be a name or None.")
+            raise ValueError("PostExportUnit.consumer must be a name.")
         if self.reform is None:
-            if self.reformed_simulation is not None:
-                raise ValueError("A baseline unit names no reformed simulation.")
-            return
+            raise ValueError(
+                "A post-export pool unit needs a reform: baseline passes run in "
+                "the certifying process, never in a worker."
+            )
         check_post_export_reform(self.reform)
         if self.consumer is None:
             raise ValueError("A reform unit names the consumer that asked for it.")
@@ -212,8 +215,6 @@ class PostExportUnit:
             batches = (
                 f"batches {self.batch_start + 1}-{self.batch_stop} of {self.n_batches}"
             )
-        if self.reform is None:
-            return f"post-export {self.passes[0].label}, {batches}"
         return (
             f"post-export {self.consumer} reformed simulation "
             f"{self.reformed_simulation} ({len(self.passes)} pass(es), first "
@@ -441,9 +442,14 @@ POST_EXPORT_WORKERS_VARIABLE = "MICROCOSM_POST_EXPORT_WORKERS"
 #: The share of the machine's memory a build may plan to use (decision 1.1 · 2).
 MEMORY_BUDGET_FRACTION = 0.75
 
-#: The certifying process's planned peak while workers score: the release
-#: tool's imports (about 1.1-1.2 GiB) and the baseline arrays it holds (up to
-#: about 1.1 GiB at national size).
+#: The certifying process's planned peak while workers score, after its
+#: baseline passes: the release tool's imports (about 1.1-1.2 GiB) and the
+#: merged baseline arrays it holds (up to about 1.1 GiB at national size).
+#: Not measured: what its baseline passes leave resident (freed memory is not
+#: always returned to the system), and, after a failed merged pass, every
+#: stage's own baseline arrays, held at once (a key several stages plan is
+#: held once per stage). The execution record reports the process's footprint
+#: when the workers start.
 PARENT_PEAK_BYTES = 3 * _GIB
 
 #: One worker's planned peak over its replacement interval (1.4 · 6's one-batch

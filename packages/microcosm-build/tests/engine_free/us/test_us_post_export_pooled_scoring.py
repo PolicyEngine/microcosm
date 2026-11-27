@@ -322,6 +322,7 @@ def test_pooled_scoring_writes_the_serial_scorers_bytes_at_any_worker_count(
             ("merged baseline plan", merged_keys, None)
         ]
         del execution["baseline_passes"]
+        assert execution.pop("certifying_process_footprint_bytes_at_pool_start") > 0
         assert execution == {
             "mode": "pooled",
             "chosen_by": "test",
@@ -599,8 +600,9 @@ def test_a_changed_batch_file_stops_pooled_scoring(
                 "reform_coverage_smoke", plan.baseline_plan("reform_coverage_smoke")
             )
         # Nothing more is served, and no consumer falls back to its own pass:
-        # a pool that could not start refuses every later consumer with a
-        # WorkerPoolError, which the held-out reports pass on.
+        # scoring that could not start (here its merged baseline pass, run in
+        # this process) refuses every later consumer with a WorkerPoolError,
+        # which the held-out reports pass on.
         with pytest.raises(builder.PostExportPoolStoppedError, match="could not start"):
             scorer.open_consumer(
                 "reform_validation", plan.baseline_plan("reform_validation")

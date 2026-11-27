@@ -6451,23 +6451,15 @@ def _post_export_error_text(error: BaseException) -> str:
 
 
 def _without_traceback_frames(error: BaseException, *, note: str) -> BaseException:
-    """``error``, kept to raise later: its formatted traceback is added as a
-    note after ``note``, and its frames, with those of every exception it was
-    raised from or while handling, are dropped, so it holds no failed pass's
-    per-batch values."""
+    """``error``, kept to raise later, holding no frames: its formatted
+    traceback, with those of the exceptions it was raised from or while
+    handling, is added as a note after ``note``; then its traceback and its
+    links to those exceptions are dropped (each of them is left unchanged), so
+    it holds no failed pass's per-batch values and no caller's exception."""
     error.add_note(note + "\n" + "".join(traceback.format_exception(error)))
-    pending, seen = [error], set()
-    while pending:
-        linked = pending.pop()
-        if id(linked) in seen:
-            continue
-        seen.add(id(linked))
-        linked.__traceback__ = None
-        pending.extend(
-            chained
-            for chained in (linked.__cause__, linked.__context__)
-            if chained is not None
-        )
+    error.__traceback__ = None
+    error.__cause__ = None
+    error.__context__ = None
     return error
 
 
@@ -6916,8 +6908,15 @@ def _post_export_unit_failure(
 
 
 class PostExportPoolStoppedError(WorkerPoolError):
-    """Pooled post-export scoring stopped earlier, so this request, which
-    needs its workers, is not served. The error it stopped on is the cause.
+    """Pooled post-export scoring stopped earlier, so this request is not
+    served. The error it stopped on is the cause.
+
+    Either scoring could not start, and every later stage is refused: a
+    baseline pass in the certifying process stopped (a changed batch file,
+    an interrupt) or the pool could not be built. Or the pool's workers
+    stopped serving (none could start, or the scorer closed), and every later
+    request that needs them is refused; baseline values scored in the
+    certifying process are still served.
 
     A ``WorkerPoolError``, so the held-out reports stop certification on it,
     as on the pool failure itself, instead of recording a measurement as
@@ -7260,9 +7259,13 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         self._stream: Iterator[PostExportUnitResult] | None = None
         self._stream_units: tuple[PostExportUnit, ...] = ()
         self._next_unit = 0
-        # Why the pool could not start, or stopped serving its second run.
+        # Why scoring could not start (a baseline pass here, or building the
+        # pool), or why the pool's workers stopped serving.
         self._start_failure: BaseException | None = None
         self._stopped: BaseException | None = None
+        # This process's memory footprint when the pool started, after its
+        # baseline passes (None until then).
+        self._footprint_at_pool_start: int | None = None
         # The settings the pool was started with, and the reports of the pools
         # replaced since (a pool closes when a unit fails on every attempt).
         self._pool_settings: WorkerPoolSettings | None = None
@@ -7444,6 +7447,7 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
         if not reform_units:
             return
         self._workers = min(self._pooling.settings.workers, len(reform_units))
+        self._footprint_at_pool_start = process_memory_bytes(os.getpid())
         self._pool = self._new_pool()
         self._stream_units = reform_units
         self._stream_positions = list(range(len(reform_units)))
@@ -7808,8 +7812,12 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
                 (started or settings).worker_environment or ()
             ),
             "units": dict(self._units),
-            # The baseline passes run in this process, before the pool.
+            # The baseline passes run in this process, before the pool, and
+            # this process's footprint once they had run and the pool started.
             "baseline_passes": [dict(record) for record in self._baseline_passes],
+            "certifying_process_footprint_bytes_at_pool_start": (
+                self._footprint_at_pool_start
+            ),
             "resources": self._pooling.resources,
             # Why the merged baseline pass fell back to each consumer's own
             # pass, if it did.
@@ -7826,6 +7834,8 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
     def close(self) -> None:
         stream, self._stream = self._stream, None
         self._serving = None
+        # The baselines of stages that never opened.
+        self._own_baselines.clear()
         try:
             if stream is not None:
                 # An unfinished run closes the pool, stopping its workers.
