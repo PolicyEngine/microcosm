@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import sys
+import tracemalloc
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -395,6 +396,8 @@ def _sliced_chunk_pyarrow_series() -> pd.Series:
 
 
 def _narrow_offset_pyarrow_series() -> pd.Series:
+    """Chunks given with 32-bit offsets; pandas stores them widened to 64-bit."""
+
     chunks = pa.chunked_array(
         [pa.array(["thirty", "two"], pa.string()), pa.array(["bit"], pa.string())]
     )
@@ -468,21 +471,93 @@ class _EncodeOverridingStr(str):
         return b"OVERRIDDEN"
 
 
+class _EqualToStrMeta(type):
+    """Makes a class hash like ``str`` and compare equal to it."""
+
+    def __eq__(cls, other: object) -> bool:
+        return other is str or other is cls
+
+    def __hash__(cls) -> int:
+        return hash(str)
+
+
+class _StrLookalike(str, metaclass=_EqualToStrMeta):
+    def encode(self, *_arguments: object, **_keywords: object) -> bytes:
+        return b"OVERRIDDEN"
+
+
+class _UnhashableTypeMeta(type):
+    """Makes a class that cannot be hashed, so it cannot go into a set."""
+
+    __hash__ = None  # type: ignore[assignment]
+
+
+class _UnhashableTypeStr(str, metaclass=_UnhashableTypeMeta):
+    pass
+
+
+class _UnhashableTypeFloat(float, metaclass=_UnhashableTypeMeta):
+    pass
+
+
+_STRING_SUBCLASSES = {
+    "overrides encode": _EncodeOverridingStr,
+    "type compares equal to str": _StrLookalike,
+    "type cannot be hashed": _UnhashableTypeStr,
+}
+
+
 @pytest.mark.parametrize("dtype_name", ["python_str", "python_string", "object"])
+@pytest.mark.parametrize("subclass", list(_STRING_SUBCLASSES))
 def test_string_subclasses_go_through_the_per_value_loop(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype_name: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, subclass: str, dtype_name: str
 ) -> None:
     """The per-value loop calls each value's own ``encode``; keep its bytes."""
 
-    values = np.asarray(["plain", _EncodeOverridingStr("odd")], dtype=object)
+    string_type = _STRING_SUBCLASSES[subclass]
+    values = np.asarray(["plain", string_type("odd")], dtype=object)
     series = pd.Series(values, dtype=TEXT_DTYPES[dtype_name])
-    assert type(series.to_numpy(dtype=object)[1]) is _EncodeOverridingStr
+    assert type(series.to_numpy(dtype=object)[1]) is string_type
     calls = _LoopCalls(monkeypatch)
 
-    restored = _assert_matches_loop(tmp_path / "column.h5", series)
+    _assert_matches_loop(tmp_path / "column.h5", series)
 
     assert calls.encoded == [2]
-    assert restored.tolist() == ["plain", "OVERRIDDEN"]
+
+
+@pytest.mark.parametrize("dtype_name", ["python_str", "python_string", "object"])
+def test_writing_python_strings_needs_no_more_memory_than_the_per_value_loop(
+    dtype_name: str,
+) -> None:
+    """Peak traced memory of encoding short strings, against the loop's.
+
+    The loop holds the offsets, a growing ``bytearray`` and its final
+    ``bytes`` copy. Encoding every value at once would also hold one
+    ``bytes`` object per value and ``bytes.join``'s buffer table, about six
+    times the loop's peak for short strings.
+    """
+
+    values = np.asarray(
+        ["".join(["v", str(position % 1_000).zfill(6)]) for position in range(300_000)],
+        dtype=object,
+    )
+    series = pd.Series(values, dtype=TEXT_DTYPES[dtype_name], copy=False)
+    stored_values = series.to_numpy(dtype=object, copy=False)
+
+    def traced_peak(encode: Callable[[], object]) -> int:
+        tracemalloc.start()
+        try:
+            encode()
+            return tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+
+    loop_peak = traced_peak(lambda: PER_VALUE_ENCODE(stored_values))
+    converted_peak = traced_peak(
+        lambda: frame_checkpoint_module._encode_string_values(series)
+    )
+
+    assert converted_peak <= loop_peak
 
 
 @pytest.mark.parametrize("dtype_name", ["python_str", "python_string", "object"])
@@ -520,6 +595,12 @@ _FALLBACK_COLUMNS: dict[str, Callable[[], pd.Series]] = {
     "object floats": lambda: pd.Series([1.5, np.nan], dtype=object),
     "object bytes": lambda: pd.Series([b"x", b"y"], dtype=object),
     "object booleans": lambda: pd.Series([True, False], dtype=object),
+    "object floats whose type cannot be hashed": lambda: pd.Series(
+        np.asarray(
+            [_UnhashableTypeFloat(1.5), _UnhashableTypeFloat(2.0)], dtype=object
+        ),
+        dtype=object,
+    ),
     **{
         f"{dtype_name} with a missing value": (
             lambda dtype=dtype: pd.Series(["a", None, "c"], dtype=dtype)
@@ -667,6 +748,34 @@ def test_wrapping_offsets_raise_the_per_value_loop_error(
     actual = _read_error(path, dtype_name, _WRAPPING_OFFSETS, payload)
 
     assert actual == expected
+
+
+@pytest.mark.parametrize("dtype_name", ["pyarrow_str", "pyarrow_string"])
+def test_reading_falls_back_when_pandas_refuses_the_arrow_array(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype_name: str
+) -> None:
+    """A pandas that casts one Arrow array to 32-bit offsets refuses 2 GiB.
+
+    pandas 2.2's ``ArrowStringArray._from_sequence`` casts an Arrow array to
+    ``pa.string()``, which refuses 2**31 or more bytes of text, while the
+    per-value loop's object values are split into chunks. The reader then
+    uses the loop.
+    """
+
+    series = pd.Series(["a", "é", ""], dtype=TEXT_DTYPES[dtype_name])
+    original_array = pd.array
+
+    def refusing_array(data: object, *arguments: object, **keywords: object):
+        if isinstance(data, pa.Array):
+            raise pa.ArrowInvalid("input array too large")
+        return original_array(data, *arguments, **keywords)
+
+    monkeypatch.setattr(pd, "array", refusing_array)
+    calls = _LoopCalls(monkeypatch)
+
+    _assert_matches_loop(tmp_path / "column.h5", series)
+
+    assert calls.decoded == [3]
 
 
 def test_object_tags_other_than_string_go_through_the_per_value_loop(
