@@ -31,7 +31,7 @@ target values only, never loss weights.
 | Part | Where | What it holds |
 |---|---|---|
 | The operator | `microcosm.build.cross_grain` | Grouping, the control of each leg, bridges and bridge selectors, the bound of a bridge, the members of a leg, the division, the sum check, the receipt, and the metadata keys of a reconciled row. Shared with the UK |
-| The row-level pass | `microcosm.build.cross_grain_controls` | `reconcile_rows` runs the operator on target rows and says what it did with each row. `sum_of_lower_rows` is the arithmetic of a derived control. The three allocators stay until the feed re-pin. No country in it |
+| The row-level pass | `microcosm.build.cross_grain_controls` | `reconcile_rows` runs the operator on target rows and says what it did with each row. It refuses two shapes for which that answer would be wrong: a row under two controls, and a leg id that holds `+`. `sum_of_lower_rows` is the arithmetic of a derived control. The three allocators stay until the feed re-pin. No country in it |
 | The US declaration | `us/cross_grain_declarations.json` | The US choices, under the key names of `uk/cross_grain_declarations.json` |
 | The reader | `us_runtime/cross_grain_declarations.py` | Typed views of the declaration, and the coverage check |
 | The US adapter | `us_runtime/target_nesting.py` | Which specs or facts are the rows of each pass, the checks that are US rules, and the specs made from the operator's answer |
@@ -43,8 +43,10 @@ controls.
 
 ## The model
 
-The model has six things. Each one is general: a country declares it, and the
-shared code runs it.
+The model has six things, and each one is general: no construct is for one
+country only. The shared operator runs the first five. The sixth, the pairs
+that are not reconciled, is read only by the coverage check (a test and a
+receipt); no build acts on it.
 
 | Thing | What it is | In the US declaration |
 |---|---|---|
@@ -53,7 +55,7 @@ shared code runs it.
 | Derived control | A control that no source publishes as one row | `derived_controls`: a state's households are the sum of its county estimates |
 | Bound | The limits on the factor of a bridge, around one or around the median factor across the legs, and the action out of bound: `refuse` the pass or `unbind` the leg | Both selectors: +0.25 and -0.20 around the median, `unbind` |
 | Members | The members that each leg must hold. A member can stand for two geographies | `members`: the districts of the current plan; the counties of the ladder, with one combined cell |
-| Not reconciled | A pair of levels that is not scaled, with a reason | `relations` (six `subset` pairs) and `local_routes` (three families with no higher control) |
+| Not reconciled | A pair of levels that is not scaled, with a reason | `relations` (eight `subset` pairs) and `local_routes` (three families with no higher control) |
 
 `bridges` (by id) and `partitions` are empty in the US file.
 
@@ -89,11 +91,13 @@ stage than the district rows.
 
 ### What the operator checks
 
-- **Members.** A leg must hold exactly its declared members: the districts of
-  the current plan, or the counties of the ladder (less a county that a
-  combined cell covers). A declared leg with no row is refused in the same
-  way.
-- **The bound** of the district bridge, as above.
+- **Members.** A leg must hold each of its declared members one time: the
+  districts of the current plan, or the counties of the ladder (less a county
+  that a combined cell covers). A member that is absent, a row of another
+  area, and a member that two rows hold are refused. A declared leg with no
+  row is refused in the same way.
+- **The bound** of a bridge, as above. A band of 2.0 or more cannot be
+  declared: the highest shift of a bound is below one.
 - **Arithmetic.** A total that is not finite, a lower sum below `1e-9` of the
   control, a control and rows of opposite sign, and rows that do not sum to
   the control within `1e-9` are refused.
@@ -108,6 +112,12 @@ These are US rules, with US texts.
   - A state with one district on the source plan has no district rows.
   - The rows of a block and their parent must materialize in the same way.
   - A concept takes its state parent from one source in every state.
+  - A block that leaves the surface before the pass (the level bridge of its
+    state is distrusted) must hold its members all the same. The adapter
+    checks it with the operator's rule.
+  - A district-file target that the selector pairs with no Historic Table 2
+    target, and that no state row of its own measurement controls, is
+    refused.
   - The surface is checked again after the pass: each district block must add
     up to a bound state parent (`closure_rtol`).
 - **County population.** The operator refuses a county with no state and a
@@ -208,9 +218,16 @@ On valid data the rows and their values are the same. These things differ.
    text: a leg that does not hold its members, a sum of zero under a control,
    opposite signs, a county with no state.
 3. **One check is gone:** that the district file's own state row is the sum
-   of its district rows within `1e-6`. Row 4 of the compile makes that sum
-   hold before this pass runs, and the district file's state row is not a
-   control of a concept that Historic Table 2 holds.
+   of its district rows within `1e-6`. Row 4 of the compile scales the
+   district rows to that state row before this pass runs, so the sum holds.
+   What this leaves open: for the six concepts that only the district file
+   has, the district file's state row is the control (2,562 district rows on
+   the pinned feed). This pass does not check that row 4 ran. If it did not,
+   district rows that do not sum to their state row would be divided from it
+   without a refusal. On the pinned feed 22,236 district-file district rows
+   carry row 4's marker; the 436 that do not are a measure that is never
+   bound. After the feed re-pin those six concepts take a Historic Table 2
+   parent, and the bound of the bridge then guards them.
 4. **One refusal is new:** a concept that takes its state parent from
    Historic Table 2 in some states and from the district file in others. The
    old code accepted that. It does not occur on the pinned feed.
@@ -225,6 +242,46 @@ On valid data the rows and their values are the same. These things differ.
    zero but is below `1e-9` of its control, a county SOI block under a
    negative state row, and a control of `-0.0`. None occurs on the pinned
    feed.
+8. **A band of 2.0 or more is refused.** The old code accepted any band.
+   No command-line flag sets the band, so only a test or a direct caller can
+   meet this.
+
+Two refusals of the old code were lost when the passes moved, and are back
+with the operator's text: a district block that lacks a district while its
+level bridge is distrusted, and a district row that appears two times.
+
+## A run that is resumed across this change
+
+A materialize stage of older code wrote targets with the old keys. A later
+stage of this code would read no parent, no value before and no factor from
+them, without an error. So a later stage refuses such files and names the
+cure: run `--stage materialize` again.
+
+- The checkpoint loader refuses a `target_registry.json` or a
+  `target_roles.json` that holds a key with the prefix `state_cd_` or
+  `state_county_`.
+- The finalize stage refuses a district receipt in `materialize_rss.json`
+  that holds `rebase_factor_by_measure`, `factor_band` or
+  `internal_consistency`.
+
+## What runs in CI, and what does not
+
+CI has no feed, no ladder and no county facts file. So these proofs run only
+on a machine where `MICROCOSM_US_CHRONICLE_FACTS`,
+`MICROCOSM_US_PUMA_LADDER_ARTIFACT` and `MICROCOSM_US_CHRONICLE_COUNTY_FACTS`
+name the pinned files, and they skip in CI:
+
+- the pinned bytes of the four surfaces (`test_us_acs_local_surface_bytes.py`);
+- the district rows of the pinned feed against the old code
+  (`test_us_target_nesting_district.py`);
+- the county rows of the pinned inputs against the old code, and their pins
+  (`test_us_target_nesting_county.py`);
+- the coverage of the pinned feed's compiled registry
+  (`test_us_cross_grain_coverage.py`).
+
+A commit that breaks one of them keeps CI green. Run these four files with
+the three variables set before a merge. CI does run the old code against the
+new code on seeded random inputs, and the bit-for-bit tests of the operator.
 
 ## The county rows on the pinned inputs
 
@@ -264,12 +321,27 @@ inputs, and it changes no county value.
 ## The coverage test
 
 `test_us_cross_grain_coverage.py` reads the declaration. With the pinned feed
-it compiles the registry and checks that each family at a level below
-`country` is covered by a selector, a derived control, a same-measurement
-entry, a relation, a local route, a compile rule or a known gap; that no
-declaration names rows that are gone; that each compile rule's marker is on
-rows of its family and levels; and that no `subset` part is larger than its
-whole beyond the declared `max_excess`.
+it compiles the registry and checks these things:
+
+- each family at a level below `country` is covered by a selector, a derived
+  control, a same-measurement entry, a relation, a local route, a compile
+  rule or a known gap;
+- each role that the top level and a lower level both hold is named: by a
+  relation of its own, or by a compile rule or a known gap that lists the
+  role. A family is covered as a whole, so without this a new role in a
+  covered family would pass unseen. On the pinned feed ten roles are at two
+  levels: eight have a relation (SNAP, Medicaid, CHIP, TANF and the two
+  premium tax credit roles of Historic Table 2), and two are listed by a
+  known gap (the general SOI role and the Census age rows);
+- no declaration names rows that are gone;
+- each compile rule's marker is on a row of its family and levels;
+- no `subset` part is larger than its whole beyond the declared
+  `max_excess`, and each whole is one positive row.
+
+What it does not prove: that a compile rule marks every row it should (it
+asks for one marked row), and anything about a row with no ledger level in
+its metadata. The rows that a pass makes are such rows, and their pass
+declares them.
 
 It is a test of the declaration. It refuses nothing in a build and it is not
 a release gate.

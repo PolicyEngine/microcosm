@@ -182,8 +182,10 @@ every state concept has one vintage. The rule is
 `us_acs_local_cd_surface.state_cd_soi_surface`. Since microcosm#1760 that
 function calls `us_runtime.target_nesting.district_soi_surface`: the shared
 cross-grain operator divides each state row among its district rows, with the
-choices below declared in `us/cross_grain_declarations.json`. The surface has
-the bytes it had. See [US target nesting](us-target-nesting.md).
+choices below declared in `us/cross_grain_declarations.json`. Each row has the
+value it had. The metadata keys and the receipt changed with microcosm#1760,
+so the bytes of the surface moved. See
+[US target nesting](us-target-nesting.md).
 
 ### One vintage per state concept
 

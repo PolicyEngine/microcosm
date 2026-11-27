@@ -13,8 +13,9 @@ Since microcosm#1760 the three share mechanisms of the rung (county
 population, county SOI shares, county households) run on the shared
 cross-grain operator, through `us_runtime.target_nesting`, with their choices
 declared in `us/cross_grain_declarations.json`. The tool functions keep their
-names, and every row, metadata key and receipt is as it was. See
-[US target nesting](us-target-nesting.md).
+names, and every row has the value it had. The metadata keys and the receipts
+changed with microcosm#1760: the rows carry the operator's `cross_grain_*`
+keys. See [US target nesting](us-target-nesting.md).
 
 ## Plan and invariants
 
