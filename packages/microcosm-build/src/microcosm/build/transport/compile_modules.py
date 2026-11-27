@@ -68,6 +68,12 @@ EXCLUDED_DIRECT_IMPORTS: Mapping[str, str] = MappingProxyType(
         "microcosm.build.spec_engine.schemas": _COUNTRY_SPEC_LOADER,
         "microcosm.build.spec_engine.take_up_semantics": _COUNTRY_SPEC_LOADER,
         "microcosm.build.spec_engine.yaml12": _COUNTRY_SPEC_LOADER,
+        "microcosm.calibrate.target_sets": (
+            "country_spec's loader checks a bundle's declared target sets with "
+            "this shared reader (_checked_target_sets, microcosm#1728); the "
+            "reference validators target compilation calls do not read it, and "
+            "a target set selects among the targets after the compile"
+        ),
         "microcosm.build.reference_intervals": (
             "reference_profiles reaches it only when given an interval "
             "document; compile_target_surface calls validate_reference_resolution "
