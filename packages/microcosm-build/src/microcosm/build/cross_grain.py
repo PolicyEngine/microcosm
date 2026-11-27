@@ -78,6 +78,42 @@ class CrossGrainBridge:
 SHIFT_REFERENCES = ("one", "median")
 OUT_OF_BOUND_ACTIONS = ("refuse", "unbind")
 
+#: The metadata that a reconciled target row keeps. Target metadata is text,
+#: so the numbers are exact ``repr`` strings.
+VALUE_BEFORE_KEY = "cross_grain_value_before"
+FACTOR_KEY = "cross_grain_factor"
+#: What reconciled the row: a bridge id, a partition id, or
+#: :data:`EXACT_SIGNATURE_CONTROL`.
+CONTROL_KEY = "cross_grain_control"
+EXACT_SIGNATURE_CONTROL = "exact_signature"
+#: The name of the control row, when the control is one row.
+PARENT_KEY = "cross_grain_parent"
+#: The geographies a row stands for, when it stands for more than its own.
+MEMBERS_KEY = "cross_grain_members"
+
+
+def cross_grain_metadata(
+    *,
+    value_before: float,
+    factor: float,
+    control: str,
+    parent: str | None = None,
+    members: Iterable[str] = (),
+) -> dict[str, str]:
+    """The metadata of one reconciled row, in a fixed key order."""
+
+    metadata = {
+        VALUE_BEFORE_KEY: repr(float(value_before)),
+        FACTOR_KEY: repr(float(factor)),
+        CONTROL_KEY: str(control),
+    }
+    if parent is not None:
+        metadata[PARENT_KEY] = str(parent)
+    members = tuple(str(member) for member in members)
+    if members:
+        metadata[MEMBERS_KEY] = ",".join(members)
+    return metadata
+
 
 @dataclass(frozen=True)
 class CrossGrainBridgeSelector:
@@ -1013,8 +1049,9 @@ def apply_cross_grain_reconciliation(
     ``expected_members`` maps a lower target to the geographies that each of
     its legs must hold. A leg that holds other rows than those is refused:
     rescaling a set that is not complete would move the missing members'
-    mass onto the present ones. A leg with no row at all is left to the
-    empty-leg licences.
+    mass onto the present ones. A declared leg with no row is refused in the
+    same way. A leg that declares no member holds no row, and the empty-leg
+    licences decide it.
     """
 
     _assert_expected_members(local_frame, rule, expected_members)
@@ -1690,7 +1727,11 @@ def _assert_expected_members(
     rule: CrossGrainRule,
     expected_members: Mapping[str, Mapping[str, frozenset[str]]] | None,
 ) -> None:
-    """Refuse a leg of a target that holds other rows than its members."""
+    """Refuse a leg of a target that does not hold exactly its members.
+
+    The check reads every declared leg, with or without rows, so a leg whose
+    members are all absent is refused like a leg that lacks one member.
+    """
 
     if not expected_members:
         return
@@ -1710,7 +1751,13 @@ def _assert_expected_members(
             continue
         for leg in _row_legs(str(area), rule):
             held.setdefault((target_id, leg), set()).add(str(area))
-    for (target_id, leg), present in sorted(held.items()):
+    declared = {
+        (target_id, str(leg))
+        for target_id, by_leg in expected.items()
+        for leg in by_leg
+    }
+    for target_id, leg in sorted(declared | held.keys()):
+        present = held.get((target_id, leg), set())
         members = expected[target_id].get(leg)
         if members is None:
             raise ValueError(

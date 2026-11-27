@@ -58,6 +58,8 @@ ADDED = {
     "_input_factor",
     "_median_input_factor",
     "_assert_expected_members",
+    # The metadata of a reconciled row, for a caller that holds target rows.
+    "cross_grain_metadata",
 }
 
 _LEGS = ("E", "W", "S", "N")

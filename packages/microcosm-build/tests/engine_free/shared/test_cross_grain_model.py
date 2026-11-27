@@ -266,22 +266,47 @@ def test_expected_members_refuse_a_leg_that_is_not_complete() -> None:
         )
 
 
-def test_a_leg_with_no_row_is_left_to_the_licences() -> None:
+def test_a_declared_leg_holds_its_members_with_or_without_rows() -> None:
     surface = _surface({"A": 1.1, "B": 1.1})
-    surface = surface[~surface["geography_id"].isin(["B1", "B2"])].reset_index(
+    without_b = surface[~surface["geography_id"].isin(["B1", "B2"])].reset_index(
         drop=True
     )
     members = _members(A=["A1", "A2"], B=["B1", "B2"])
+    with pytest.raises(ValueError, match=r"leg 'B': missing \['B1', 'B2'\]"):
+        apply_cross_grain_reconciliation(
+            without_b,
+            ("total",),
+            _SIGNATURES,
+            _rule(_bridge()),
+            expected_members=members,
+        )
+    # A target with no row at all forms no group. Its declared legs are still
+    # read, so the pass cannot leave the totals as they are without a word.
+    totals_only = surface[surface["target_id"] == "total"].reset_index(drop=True)
+    with pytest.raises(ValueError, match=r"leg 'A': missing \['A1', 'A2'\]"):
+        apply_cross_grain_reconciliation(
+            totals_only,
+            ("total",),
+            _SIGNATURES,
+            _rule(_bridge()),
+            expected_members=members,
+        )
+    # A leg that declares no member holds no row. The licences decide it.
+    empty_b = _members(A=["A1", "A2"], B=[])
     with pytest.raises(ValueError, match="lacks a licence"):
         apply_cross_grain_reconciliation(
-            surface, ("total",), _SIGNATURES, _rule(_bridge()), expected_members=members
+            without_b,
+            ("total",),
+            _SIGNATURES,
+            _rule(_bridge()),
+            expected_members=empty_b,
         )
     _reconciled, receipt = apply_cross_grain_reconciliation(
-        surface,
+        without_b,
         ("total",),
         _SIGNATURES,
         _rule(_bridge()),
-        expected_members=members,
+        expected_members=empty_b,
         licensed_empty_legs={"parts": frozenset({"B"})},
     )
     assert [entry["leg"] for entry in receipt["empty_legs_licensed"]] == ["B"]
