@@ -1,9 +1,11 @@
 # Building a UK national cut without the original builder's machine
 
 Any team member or agent session with the credentials below can build, sign
-and publish a Microcosm UK national cut, then open its policyengine.py
-certification pull request. Each input comes from Hugging Face and is checked
-against the pins the build itself enforces.
+and publish a Microcosm UK national cut. Its policyengine.py certification
+pull request waits for the certification tool to read builds published into
+their own folders (see [Certifying into policyengine.py](#certifying-into-policyenginepy)).
+Each input comes from Hugging Face and is checked against the pins the build
+itself enforces.
 
 This is the short path. The step-by-step reference behind it stays in
 [uk-national-release-assembly-runbook-806.md](uk-national-release-assembly-runbook-806.md).
@@ -33,7 +35,7 @@ export HF_TOKEN=…
 # The key goes to this one command, never to the whole shell:
 MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY="$(security find-generic-password -a "$USER" -s microcosm-uk-gate-signing-key -w)" \
   uv run --no-sync python tools/run_uk_cut.py all --label sat24              # build, certify, assemble
-# add --publish to publish for inspection
+# add --publish to publish the build without making it current
 ```
 
 The runner passes the key on only to the steps that sign (spine, national
@@ -94,7 +96,7 @@ derive from licensed data:
 | `cuts/<label>-<sha9>/national/` | the calibration run |
 | `cuts/<label>-<sha9>/release/` | the assembled release |
 | `cuts/<label>-<sha9>/logs/` | one log per step |
-| `cuts/<label>-<sha9>/cut_receipt.json` | commit, engine, the signing key's fingerprint (from the signed reports), input pins, step timings, tag |
+| `cuts/<label>-<sha9>/cut_receipt.json` | commit, engine, the signing key's fingerprint (from the signed reports), input pins, step timings, build |
 
 If the machine runs a disk cleaner, keep it away from the work directory for
 the length of a run. On a host booked through a reservation tool, pass
@@ -104,16 +106,18 @@ missing. Without them no reservation is checked.
 
 ### What it will not do
 
-- **It never moves a default.** `--publish` always passes `--no-latest
-  --tag-only`, so `populace-uk-private`'s main branch, its root files and
-  `latest-*.json` stay where they are.
-- **It never promotes.** Promotion (`--promote-line national`) is a separate,
-  reviewed call. The runner prints the command for it.
+- **It never moves a default.** `--publish` publishes the build into its own
+  folder through the emitter (`microcosm-publish-release-build`, run as
+  `python -m microcosm.build.release_publication`), which lists it in
+  `populace-uk-private`'s `releases.json` without making it the release's
+  current build. A rerun publishes nothing once `releases.json` lists it.
+- **It never promotes.** Promotion (`microcosm-publish-release-build
+  --promote`) is a separate, reviewed call. The runner prints the command for
+  it.
 - **It never publishes to the public Orrery.** No build uploads its graph:
   the national build's staged bundle submits the graph's inputs to the
   collector, which keeps a licensed build's graph private
-  ([orrery-publication.md](orrery-publication.md)). The national step still
-  passes `--no-publish-orrery`, which builds accept and ignore.
+  ([orrery-publication.md](orrery-publication.md)).
 - **It never certifies into policyengine.py.** That is a pull request in
   another repository; see [Certifying into policyengine.py](#certifying-into-policyenginepy).
 - **It builds only from main.** It refuses a commit that is not on
@@ -234,6 +238,14 @@ the private repositories, is attached only with
 `MICROCOSM_UK_CHRONICLE_MODAL_UPLOAD=1`. It then goes to Modal as an
 ephemeral secret for that run; no named workspace secret keeps it. A rebuild
 without `--upload` sends no credential at all.
+
+As the US Modal image does, the rebuild's image stops trusting emSign ECC Root
+CA - G3, the eMudhra root that certifi and Debian distrust over eMudhra's
+disclosed intermediate keys, before it downloads anything else. It upgrades
+`ca-certificates`, replaces the base's pip with a hash-pinned pip 26.2.2, and
+installs uv 0.13.4 and certifi 2026.10.19 or later beside `huggingface_hub`.
+uv 0.13.4 installs Python 3.14.8, where the app's earlier uv 0.11.7 installed
+3.14.4; the receipt records the one used.
 
 ### The reference build
 
@@ -385,6 +397,11 @@ A public-key scheme (Ed25519) would let the registry hold public keys and
 anyone verify; that is tracked in microcosm#1406.
 
 ## Certifying into policyengine.py
+
+`tools/certify_uk_cut_in_policyengine_py.py` still reads a national build by
+its tag (`--national-tag`, the manifests at that revision), and builds
+published into their own folders carry no tag, so it cannot yet certify a
+build `run_uk_cut.py` publishes. The command it takes:
 
 ```bash
 uv run --no-sync python tools/certify_uk_cut_in_policyengine_py.py \

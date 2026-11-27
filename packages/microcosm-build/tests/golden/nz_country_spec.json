@@ -1,6 +1,6 @@
 {
   "country": "nz",
-  "fingerprint": "ec42d6b38abd2915b476675d80e02425b27a9c5757618280045e6035a1d8a72c",
+  "fingerprint": "eb62d5a3ba12cbd5dcb1488661403aabf34f0e784b8a6eb41b7505a9f35aa0f4",
   "gate_ids": [
     "calibration_per_family_fit",
     "demography_per_family_fit",
@@ -74,7 +74,7 @@
     "msd_pre_activation_reconciliation.json": "c2cec585b5714ab7ab5505581e890aa6393d7750668802386bef6a4e5d58682c",
     "precal_references.json": "ace08337205f64437d9dce0524d52689eeb0310ad6b7c4d2896e9bfa0536284b",
     "precalibration_stages.json": "2df4184f859ffd1a767ff5e3fe41d015d11b13bcfe92b6d5f10d3b8a9dbf10f5",
-    "receipt_contract.json": "a8a7f863e76ec97d3660d5aa1cdcc9e538f70ffb210409a847097db9dc27858b",
+    "receipt_contract.json": "74e493dabffc7af4be22e23d2e383baae7121a1162b9e2a74c97c95faa601374",
     "reference_aging.json": "a461670df81ea212062037dd39f634df35e6fd26eb359eef0a37423e7af66e7f",
     "reference_intervals.json": "a8bb6aa33948fb892f50fd8aa635805f59c28a982d46f4583886eff27074b75b",
     "reference_inventory.json": "f0078d9dd42dcc3088459c3e4e1278a8da5fe1506ba903f119cfe5be157c13b8",

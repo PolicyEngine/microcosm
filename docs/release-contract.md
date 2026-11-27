@@ -1132,11 +1132,11 @@ work.
     [retire list](#retire-list-as-of-2026-10-15). Their removal waits on the
     refusal of a new country's tagged publish. Loading a tagged build that
     never moved into a folder stays.
-  - *The UK cut runner.* `tools/run_uk_cut.py` still builds the tagged
-    publisher's arguments for the UK national release, and
-    `docs/uk-cut-anyone.md` still describes them; `prepare_release` refuses
-    that release. Moving the runner to `microcosm-publish-release-build` falls
-    to the UK cut's owner.
+  - *The policyengine.py certification tool.*
+    `tools/certify_uk_cut_in_policyengine_py.py` still reads a national
+    build's manifests at its tag (`--national-tag`), so it cannot certify a
+    build published into its own folder, such as one `tools/run_uk_cut.py`
+    publishes through `microcosm-publish-release-build`.
   - *policyengine.py's pins.* Its bundle, read on 2026-11-11 at 5b6d7901c,
     pins builds by tag; version 1 pins each by release and build in its
     folder.
@@ -1437,7 +1437,7 @@ fixtures:
   roles or retired fields;
 - the emitter interface's `add_build`, `make_current` or
   `ReleasesRecord.serialize` (the repository requires
-  `microcosm-emitter-interface>=0.16.0,<1`);
+  `microcosm-emitter-interface>=0.18.0,<1`);
 - the registry;
 - the generator's `WRITERS` table, or one of its synthetic inputs, such as a
   build name, the fixture instant or a runtime version. A change of that kind

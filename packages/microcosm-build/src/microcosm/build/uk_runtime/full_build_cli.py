@@ -902,37 +902,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     add_staging_arguments(parser, repository=UK_STAGING_REPOSITORY)
     add_staged_dataset_arguments(parser, repository=UK_STAGED_DATASET_REPOSITORY)
-    graph_publication = parser.add_mutually_exclusive_group()
-    graph_publication.add_argument(
-        "--publish-orrery",
-        dest="publish_orrery",
-        action="store_true",
-        help=(
-            "Accepted for older launchers; it only prints a warning. Builds no "
-            "longer upload the graph to the runs application: the staged "
-            "dataset bundle hands the graph's inputs to the emitter for the "
-            "collector, which builds the Orrery graph files."
-        ),
-    )
-    graph_publication.add_argument(
-        "--no-publish-orrery",
-        dest="publish_orrery",
-        action="store_false",
-        help=("Accepted for older launchers; builds upload no graph either way."),
-    )
-    parser.set_defaults(publish_orrery=None)
     args = parser.parse_args(argv)
-    if args.publish_orrery is True:
-        print(
-            "warning: --publish-orrery no longer uploads the graph to the runs "
-            "application. The staged dataset bundle hands the graph's inputs to "
-            "the emitter, which submits them to the collector with or without "
-            "the flag; the collector builds the Orrery graph files and keeps a "
-            "licensed build's private. With local-only or no "
-            "staging nothing is handed over.",
-            file=sys.stderr,
-            flush=True,
-        )
     validate_staging_arguments(parser, args)
     validate_staged_dataset_arguments(parser, args)
     if args.input_h5 is None and any(

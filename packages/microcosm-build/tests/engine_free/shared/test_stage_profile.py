@@ -1,6 +1,8 @@
+import itertools
 import json
 import math
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,24 +16,137 @@ def _load_profile(checkpoint_dir: Path) -> dict:
     return json.loads((checkpoint_dir / "stage_profile.json").read_text())
 
 
+def _with_readable_procfs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the profiler find current RSS in /proc, as on Linux."""
+
+    monkeypatch.setattr(stage_profile, "_read_procfs_current_rss_bytes", lambda: 4096)
+
+
+def _with_procfs_samples(
+    monkeypatch: pytest.MonkeyPatch,
+    background_reading,
+) -> None:
+    """Make /proc readable to the main thread, and let background reads vary.
+
+    The main thread's read decides that /proc can be sampled. Reads from any
+    other thread return ``background_reading()``.
+    """
+
+    def fake_read_procfs_current_rss_bytes() -> int | None:
+        if threading.current_thread() is threading.main_thread():
+            return 4096
+        return background_reading()
+
+    monkeypatch.setattr(
+        stage_profile,
+        "_read_procfs_current_rss_bytes",
+        fake_read_procfs_current_rss_bytes,
+    )
+
+
+def _main_thread_rss_readings(values: tuple[int, ...]):
+    """Return a fake ``_current_rss_bytes`` for the entry and exit readings.
+
+    Background samples must read /proc themselves, so a call from any other
+    thread fails.
+    """
+
+    remaining_values = iter(values)
+
+    def fake_current_rss_bytes() -> int:
+        assert threading.current_thread() is threading.main_thread(), (
+            "background samples must read /proc, not current_rss_bytes"
+        )
+        return next(remaining_values)
+
+    return fake_current_rss_bytes
+
+
+def _without_procfs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the profiler find no /proc, as on macOS."""
+
+    monkeypatch.setattr(stage_profile, "_read_procfs_current_rss_bytes", lambda: None)
+
+
+def _with_operating_system(monkeypatch: pytest.MonkeyPatch, sysname: str) -> None:
+    monkeypatch.setattr(
+        stage_profile.os,
+        "uname",
+        lambda: SimpleNamespace(sysname=sysname),
+    )
+
+
+def _with_lifetime_peaks(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_lifetime_peaks: tuple[int, ...],
+) -> list[int]:
+    """Make getrusage report these ru_maxrss values, one per call, in order.
+
+    Calls after the last value repeat it. Returns the list of values handed out
+    so far.
+    """
+
+    remaining_peaks = itertools.chain(
+        raw_lifetime_peaks, itertools.repeat(raw_lifetime_peaks[-1])
+    )
+    handed_out: list[int] = []
+
+    def fake_getrusage(who: int) -> SimpleNamespace:
+        assert who == stage_profile.resource.RUSAGE_SELF
+        raw_peak = next(remaining_peaks)
+        handed_out.append(raw_peak)
+        return SimpleNamespace(ru_maxrss=raw_peak)
+
+    monkeypatch.setattr(stage_profile.resource, "getrusage", fake_getrusage)
+    return handed_out
+
+
+def _with_ps_reports_kib(
+    monkeypatch: pytest.MonkeyPatch,
+    rss_kib_per_call: tuple[int, ...],
+) -> list[list[str]]:
+    """Make ``ps -o rss=`` report these KiB values, one per call, in order.
+
+    Calls after the last value repeat it. Returns the list of ps command lines
+    run so far.
+    """
+
+    remaining_reports = itertools.chain(
+        rss_kib_per_call, itertools.repeat(rss_kib_per_call[-1])
+    )
+    ps_commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        ps_commands.append(list(command))
+        return SimpleNamespace(stdout=f"{next(remaining_reports)}\n")
+
+    monkeypatch.setattr(stage_profile.shutil, "which", lambda _name: "/bin/ps")
+    monkeypatch.setattr(stage_profile.subprocess, "run", fake_run)
+    return ps_commands
+
+
+def _profiler_threads_alive(stage_name: str) -> list[threading.Thread]:
+    return [
+        thread
+        for thread in threading.enumerate()
+        if thread.name == f"microcosm-stage-profile-{stage_name}" and thread.is_alive()
+    ]
+
+
 def test__given_successful_stage__then_sampled_peak_and_status_are_recorded(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     # Given
-    main_thread_values = iter((100, 200))
     background_sampled = threading.Event()
 
-    def fake_current_rss_bytes() -> int:
-        if threading.current_thread() is threading.main_thread():
-            return next(main_thread_values)
+    def background_procfs_reading() -> int:
         background_sampled.set()
         return 500
 
+    _with_procfs_samples(monkeypatch, background_procfs_reading)
     monkeypatch.setattr(
-        stage_profile,
-        "_current_rss_bytes",
-        fake_current_rss_bytes,
+        stage_profile, "_current_rss_bytes", _main_thread_rss_readings((100, 200))
     )
 
     # When
@@ -45,6 +160,7 @@ def test__given_successful_stage__then_sampled_peak_and_status_are_recorded(
     assert record["entry_rss_bytes"] == 100
     assert record["peak_rss_bytes"] == 500
     assert record["exit_rss_bytes"] == 200
+    assert record["peak_rss_source"] == "sampled_current_rss"
     assert record["rss_sample_count"] >= 1
     assert math.isfinite(record["wall_seconds"])
     assert record["wall_seconds"] >= 0.0
@@ -52,11 +168,312 @@ def test__given_successful_stage__then_sampled_peak_and_status_are_recorded(
     assert record["error"] is None
 
 
+@pytest.mark.parametrize(
+    ("sysname", "raw_lifetime_peaks", "expected_peak_rss_bytes"),
+    [
+        # Darwin reports ru_maxrss in bytes.
+        ("Darwin", (2_000_000, 9_000_000), 9_000_000),
+        # Linux reports ru_maxrss in KiB.
+        ("Linux", (2_000, 9_000), 9_000 * 1024),
+    ],
+)
+def test__given_no_procfs__then_no_ps_runs_during_stage_and_peak_is_lifetime_peak(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    sysname: str,
+    raw_lifetime_peaks: tuple[int, int],
+    expected_peak_rss_bytes: int,
+) -> None:
+    # Given
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, sysname)
+    lifetime_peaks_read = _with_lifetime_peaks(monkeypatch, raw_lifetime_peaks)
+    # One ps report for the entry RSS and one for the exit RSS, nothing more.
+    ps_commands = _with_ps_reports_kib(monkeypatch, (1_000, 1_200))
+
+    # When
+    with profile_stage("macos", tmp_path, sample_interval_seconds=0.001):
+        ps_commands_at_stage_start = len(ps_commands)
+        threads_during_stage = _profiler_threads_alive("macos")
+        # Long enough for a 0.001 s sampler to run ps many times.
+        time.sleep(0.05)
+        ps_commands_at_stage_end = len(ps_commands)
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["macos"]
+    assert threads_during_stage == []
+    assert ps_commands_at_stage_start == ps_commands_at_stage_end == 1
+    assert len(ps_commands) == 2
+    assert lifetime_peaks_read == list(raw_lifetime_peaks)
+    assert record["entry_rss_bytes"] == 1_000 * 1024
+    assert record["exit_rss_bytes"] == 1_200 * 1024
+    assert record["peak_rss_bytes"] == expected_peak_rss_bytes
+    assert record["peak_rss_source"] == "process_peak_rss_reached_during_stage"
+    assert record["rss_sample_count"] == 0
+    assert record["sampling_error"] is None
+    assert record["status"] == "succeeded"
+
+
+def test__given_no_procfs_and_lifetime_peak_set_before_stage__then_record_says_so(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given: the process reached its lifetime peak before the stage began, for
+    # example during imports or in an earlier profiled stage.
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, "Darwin")
+    _with_lifetime_peaks(monkeypatch, (9_000_000, 9_000_000))
+    _with_ps_reports_kib(monkeypatch, (1_000, 1_200))
+
+    # When
+    with profile_stage("after_imports", tmp_path, sample_interval_seconds=0.001):
+        pass
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["after_imports"]
+    assert record["peak_rss_bytes"] == 9_000_000
+    assert record["peak_rss_source"] == "process_peak_rss_reached_before_stage"
+    assert record["sampling_error"] is None
+
+
+def test__given_no_procfs_and_lifetime_peak_below_exit_rss__then_peak_is_exit_rss(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given: readers require peak >= entry and peak >= exit, even when ps and
+    # getrusage disagree.
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, "Darwin")
+    _with_lifetime_peaks(monkeypatch, (500_000, 600_000))
+    _with_ps_reports_kib(monkeypatch, (1_000, 1_200))
+
+    # When
+    with profile_stage("disagree", tmp_path, sample_interval_seconds=0.001):
+        pass
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["disagree"]
+    assert record["peak_rss_bytes"] == 1_200 * 1024
+    assert record["peak_rss_bytes"] >= record["entry_rss_bytes"]
+    assert record["peak_rss_bytes"] >= record["exit_rss_bytes"]
+    # The label describes the two ru_maxrss readings, which rose.
+    assert record["peak_rss_source"] == "process_peak_rss_reached_during_stage"
+
+
+def test__given_no_procfs__then_lifetime_peak_is_read_after_each_ps_reading(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given: reading ru_maxrss after ps keeps the entry and exit readings at
+    # or below the lifetime peak read next to them.
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, "Darwin")
+    events: list[str] = []
+
+    def fake_run(_command: list[str], **_kwargs: object) -> SimpleNamespace:
+        events.append("ps")
+        return SimpleNamespace(stdout="1000\n")
+
+    def fake_getrusage(_who: int) -> SimpleNamespace:
+        events.append("getrusage")
+        return SimpleNamespace(ru_maxrss=2_000_000)
+
+    monkeypatch.setattr(stage_profile.shutil, "which", lambda _name: "/bin/ps")
+    monkeypatch.setattr(stage_profile.subprocess, "run", fake_run)
+    monkeypatch.setattr(stage_profile.resource, "getrusage", fake_getrusage)
+
+    # When
+    with profile_stage("order", tmp_path, sample_interval_seconds=0.001):
+        events.append("stage")
+
+    # Then
+    assert events == ["ps", "getrusage", "stage", "ps", "getrusage"]
+
+
+def test__given_procfs_and_stage_shorter_than_interval__then_peak_is_entry_and_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given
+    _with_readable_procfs(monkeypatch)
+    main_thread_values = iter((100, 200))
+    monkeypatch.setattr(
+        stage_profile, "_current_rss_bytes", lambda: next(main_thread_values)
+    )
+
+    # When
+    with profile_stage("short", tmp_path, sample_interval_seconds=60.0):
+        pass
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["short"]
+    assert record["rss_sample_count"] == 0
+    assert record["peak_rss_bytes"] == 200
+    assert record["peak_rss_source"] == "entry_and_exit_rss"
+    assert record["sampling_error"] is None
+
+
+def test__given_procfs_and_first_sample_fails__then_peak_is_entry_and_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given
+    sample_failed = threading.Event()
+
+    def background_procfs_reading() -> None:
+        sample_failed.set()
+        return None
+
+    _with_procfs_samples(monkeypatch, background_procfs_reading)
+    monkeypatch.setattr(
+        stage_profile, "_current_rss_bytes", _main_thread_rss_readings((100, 200))
+    )
+
+    # When
+    with profile_stage("first_sample_fails", tmp_path, sample_interval_seconds=0.001):
+        assert sample_failed.wait(timeout=1.0)
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["first_sample_fails"]
+    assert record["rss_sample_count"] == 0
+    assert record["peak_rss_bytes"] == 200
+    assert record["peak_rss_source"] == "entry_and_exit_rss"
+    assert record["sampling_error"] == {
+        "message": "/proc/self/statm did not report current RSS",
+        "type": "builtins.RuntimeError",
+    }
+
+
+def test__given_procfs_lost_mid_stage_and_no_ps__then_no_lifetime_peak_is_sampled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given: /proc reports current RSS when the stage starts and ends, but not
+    # to the background thread, and the image has no ps. A sample must not
+    # fall back to ru_maxrss, which on Linux can be the parent's peak.
+    sample_attempted = threading.Event()
+
+    def background_procfs_reading() -> None:
+        sample_attempted.set()
+        return None
+
+    _with_procfs_samples(monkeypatch, background_procfs_reading)
+    _with_operating_system(monkeypatch, "Linux")
+    _with_lifetime_peaks(monkeypatch, (4 * 1024 * 1024,))
+    monkeypatch.setattr(stage_profile.shutil, "which", lambda _name: None)
+
+    # When
+    with profile_stage("procfs_lost", tmp_path, sample_interval_seconds=0.001):
+        assert sample_attempted.wait(timeout=1.0)
+        time.sleep(0.05)
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["procfs_lost"]
+    assert record["entry_rss_bytes"] == 4096
+    assert record["exit_rss_bytes"] == 4096
+    assert record["peak_rss_bytes"] == 4096
+    assert record["rss_sample_count"] == 0
+    assert record["peak_rss_source"] == "entry_and_exit_rss"
+    assert record["sampling_error"]["type"] == "builtins.RuntimeError"
+
+
+def test__given_no_procfs_and_unreadable_lifetime_peak__then_error_is_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, "Darwin")
+    _with_lifetime_peaks(monkeypatch, (0, 0))
+    _with_ps_reports_kib(monkeypatch, (1_000, 1_200))
+
+    # When
+    with profile_stage("no_rusage", tmp_path, sample_interval_seconds=0.001):
+        pass
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["no_rusage"]
+    assert record["peak_rss_bytes"] == 1_200 * 1024
+    assert record["peak_rss_source"] == "entry_and_exit_rss"
+    assert record["sampling_error"] == {
+        "message": "resource reported non-positive peak RSS: 0",
+        "type": "builtins.RuntimeError",
+    }
+    assert record["status"] == "succeeded"
+
+
+def test__given_no_procfs_and_failing_stage__then_failure_is_recorded_and_reraised(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, "Darwin")
+    _with_lifetime_peaks(monkeypatch, (2_000_000, 3_000_000))
+    _with_ps_reports_kib(monkeypatch, (1_000, 1_200))
+
+    # When
+    with pytest.raises(ValueError, match="stage exploded"):
+        with profile_stage("macos_failure", tmp_path, sample_interval_seconds=0.001):
+            raise ValueError("stage exploded")
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["macos_failure"]
+    assert record["status"] == "failed"
+    assert record["error"] == {
+        "message": "stage exploded",
+        "type": "builtins.ValueError",
+    }
+    assert record["peak_rss_bytes"] == 3_000_000
+    assert record["peak_rss_source"] == "process_peak_rss_reached_during_stage"
+
+
+def test__given_version_1_profile_from_earlier_run__then_new_record_is_merged(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given: a resumed run's checkpoint directory already holds a profile
+    # written before records carried peak_rss_source.
+    earlier_record = {
+        "entry_rss_bytes": 100,
+        "error": None,
+        "exit_rss_bytes": 200,
+        "peak_rss_bytes": 500,
+        "rss_sample_count": 3,
+        "sampling_error": None,
+        "stage": "source_construction",
+        "status": "succeeded",
+        "wall_seconds": 1.5,
+    }
+    (tmp_path / "stage_profile.json").write_text(
+        json.dumps(
+            {"schema_version": 1, "stages": {"source_construction": earlier_record}}
+        )
+    )
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, "Darwin")
+    _with_lifetime_peaks(monkeypatch, (2_000_000, 3_000_000))
+    _with_ps_reports_kib(monkeypatch, (1_000, 1_200))
+
+    # When
+    with profile_stage("pre_clone_enrichment", tmp_path, sample_interval_seconds=0.001):
+        pass
+
+    # Then
+    payload = _load_profile(tmp_path)
+    assert payload["schema_version"] == 1
+    assert payload["stages"]["source_construction"] == earlier_record
+    new_record = payload["stages"]["pre_clone_enrichment"]
+    assert new_record["peak_rss_bytes"] == 3_000_000
+    assert new_record["peak_rss_source"] == "process_peak_rss_reached_during_stage"
+
+
 def test__given_failing_stage__then_failure_is_recorded_and_reraised(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     # Given
+    _with_readable_procfs(monkeypatch)
     monkeypatch.setattr(stage_profile, "_current_rss_bytes", lambda: 300)
 
     # When
@@ -71,10 +488,7 @@ def test__given_failing_stage__then_failure_is_recorded_and_reraised(
         "message": "stage exploded",
         "type": "builtins.ValueError",
     }
-    assert not any(
-        thread.name == "microcosm-stage-profile-b" and thread.is_alive()
-        for thread in threading.enumerate()
-    )
+    assert _profiler_threads_alive("b") == []
 
 
 def test__given_separate_stage_invocations__then_profile_is_merged_deterministically(
@@ -82,6 +496,7 @@ def test__given_separate_stage_invocations__then_profile_is_merged_deterministic
     tmp_path: Path,
 ) -> None:
     # Given
+    _with_readable_procfs(monkeypatch)
     monkeypatch.setattr(stage_profile, "_current_rss_bytes", lambda: 400)
 
     # When
@@ -109,6 +524,7 @@ def test__given_atomic_replace_failure__then_previous_profile_is_preserved(
     tmp_path: Path,
 ) -> None:
     # Given
+    _with_readable_procfs(monkeypatch)
     monkeypatch.setattr(stage_profile, "_current_rss_bytes", lambda: 500)
     with profile_stage("a", tmp_path, sample_interval_seconds=0.001):
         pass
@@ -134,11 +550,7 @@ def test__given_unavailable_procfs__then_ps_current_rss_is_returned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Given
-    monkeypatch.setattr(
-        stage_profile,
-        "_read_procfs_current_rss_bytes",
-        lambda: None,
-    )
+    _without_procfs(monkeypatch)
     monkeypatch.setattr(stage_profile.shutil, "which", lambda _name: "/bin/ps")
     monkeypatch.setattr(
         stage_profile.subprocess,
@@ -153,11 +565,100 @@ def test__given_unavailable_procfs__then_ps_current_rss_is_returned(
     assert current_rss_bytes == 123 * 1024
 
 
+def _ps_output(stdout: str):
+    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(stdout=stdout)
+
+    return fake_run
+
+
+def _ps_undecodable_output(*_args: object, **kwargs: object) -> SimpleNamespace:
+    """Decode a byte that is not UTF-8 the way ``subprocess.run`` would."""
+
+    errors = kwargs.get("errors") or "strict"
+    return SimpleNamespace(stdout=b"\xff\n".decode("utf-8", errors=errors))
+
+
+def _ps_raises(error: BaseException):
+    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        raise error
+
+    return fake_run
+
+
+@pytest.mark.parametrize(
+    ("ps_path", "fake_run"),
+    [
+        pytest.param(None, _ps_output("123\n"), id="no_ps_on_path"),
+        pytest.param("/bin/ps", _ps_output(""), id="empty_output"),
+        pytest.param("/bin/ps", _ps_output("busybox ps\n"), id="unparsable_output"),
+        pytest.param("/bin/ps", _ps_output("0\n"), id="zero_rss"),
+        pytest.param("/bin/ps", _ps_output("-5\n"), id="negative_rss"),
+        pytest.param("/bin/ps", _ps_undecodable_output, id="undecodable_output"),
+        pytest.param(
+            "/bin/ps",
+            _ps_raises(stage_profile.subprocess.TimeoutExpired(["ps"], 5.0)),
+            id="timeout",
+        ),
+        pytest.param("/bin/ps", _ps_raises(PermissionError("denied")), id="denied"),
+        pytest.param(
+            "/bin/ps",
+            _ps_raises(stage_profile.subprocess.CalledProcessError(1, ["ps"])),
+            id="non_zero_exit",
+        ),
+    ],
+)
+def test__given_unavailable_procfs_and_unusable_ps__then_lifetime_peak_is_returned(
+    monkeypatch: pytest.MonkeyPatch,
+    ps_path: str | None,
+    fake_run: object,
+) -> None:
+    # Given
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, "Darwin")
+    _with_lifetime_peaks(monkeypatch, (7_000_000,))
+    monkeypatch.setattr(stage_profile.shutil, "which", lambda _name: ps_path)
+    monkeypatch.setattr(stage_profile.subprocess, "run", fake_run)
+
+    # When
+    current_rss_bytes = stage_profile.current_rss_bytes()
+
+    # Then
+    assert current_rss_bytes == 7_000_000
+
+
+def test__given_no_procfs_and_no_ps_on_path__then_stage_runs_and_is_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Given: each ru_maxrss value serves, in order, the entry reading, the
+    # lifetime peak read after it, the exit reading and the peak read after it.
+    _without_procfs(monkeypatch)
+    _with_operating_system(monkeypatch, "Darwin")
+    _with_lifetime_peaks(monkeypatch, (5_000_000, 5_000_000, 8_000_000, 8_000_000))
+    monkeypatch.setattr(stage_profile.shutil, "which", lambda _name: None)
+    stage_ran = False
+
+    # When
+    with profile_stage("no_ps", tmp_path, sample_interval_seconds=0.001):
+        stage_ran = True
+
+    # Then
+    record = _load_profile(tmp_path)["stages"]["no_ps"]
+    assert stage_ran
+    assert record["status"] == "succeeded"
+    assert record["entry_rss_bytes"] == 5_000_000
+    assert record["exit_rss_bytes"] == 8_000_000
+    assert record["peak_rss_bytes"] == 8_000_000
+    assert record["peak_rss_source"] == "process_peak_rss_reached_during_stage"
+
+
 def test__given_exit_rss_failure__then_sampler_thread_is_still_cleaned_up(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     # Given
+    _with_readable_procfs(monkeypatch)
     main_thread_calls = 0
 
     def fail_on_exit_rss() -> int:
@@ -177,10 +678,7 @@ def test__given_exit_rss_failure__then_sampler_thread_is_still_cleaned_up(
             pass
 
     # Then
-    assert not any(
-        thread.name == "microcosm-stage-profile-c" and thread.is_alive()
-        for thread in threading.enumerate()
-    )
+    assert _profiler_threads_alive("c") == []
 
 
 @pytest.mark.parametrize("sample_interval_seconds", [0.0, -1.0, math.nan])

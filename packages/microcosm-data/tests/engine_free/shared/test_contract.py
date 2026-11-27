@@ -213,13 +213,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "e16b3c080588e96f1b1a54f3fb15aa88ae9234f22377a1144a9f20788b203f02"
+    "763db010a4f44a1fec0437ad37a47a6e4b1c7c8e61f8021689c879dae51de631"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a21e594a1016b36201db954dd2444ea281c046fe35bdf20efa3173605b2e2ef8"
+    "5a9bb7ba492a2ca320769b4122d6fb71efddcc3d2c5c281ca43eafdc9cec604d"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "52451f8f793d739bf816b78214f5a32bb6855dcc80a33bff593e6162e6c99029"
+    "5554179e4f7dfc5c13ca90b3a3e0ab09db3bc73af496f574cc3507d22f07ae7c"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "7906286f9ca7eacea56276d2f63f37746031866c6edd8e5c29adbd3749e90e52"
@@ -230,7 +230,12 @@ UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = "7" * 64
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 #: microcosm#1240: the two report-only high-value homes gates.
 UK_DIAGNOSTIC_ENTRY_IDS = frozenset(
-    {"uk_high_value_homes_benchmarks", "uk_high_value_homes_support"}
+    {
+        "uk_high_value_homes_benchmarks",
+        "uk_high_value_homes_support",
+        # microcosm#1717: the report-only decile fit of the LCFS spending.
+        "uk_stage_lcfs_consumption_decile_fit",
+    }
 )
 UK_GATE_BATTERY_ENTRIES = {
     "uk_release_input_coverage_manifest_current": (
@@ -279,6 +284,7 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_lcfs_consumption_basis": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_decile_fit": ("stage_health", "transferred", None),
     "uk_stage_nts_bus_travel_support": ("stage_health", "transferred", None),
     "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
@@ -1447,6 +1453,7 @@ def _gate_battery_payload(
         "uk_stage_lcfs_consumption_excise_quantities": "lcfs_consumption",
         "uk_stage_lcfs_consumption_gambling_participation": "lcfs_consumption",
         "uk_stage_lcfs_consumption_basis": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_decile_fit": "lcfs_consumption",
         "uk_stage_nts_bus_travel_support": "nts_bus_travel",
         "uk_stage_nts_bus_travel_facts": "nts_bus_travel",
         "uk_stage_etb_vat_support": "etb_vat",
@@ -1528,9 +1535,10 @@ def _gate_battery_payload(
             }
         elif entry_id.startswith("uk_local_") or entry_id in UK_DIAGNOSTIC_ENTRY_IDS:
             # Local candidate gates are explicitly excluded from national
-            # certification, and the microcosm#1240 high-value homes gates are
-            # report-only; this full-report fixture needs only their
-            # authenticated envelope, not candidate-only evidence details.
+            # certification, and the microcosm#1240 high-value homes gates and
+            # the microcosm#1717 decile fit are report-only; this full-report
+            # fixture needs only their authenticated envelope, not
+            # candidate-only evidence details.
             details = {}
         elif gate == "stage_health":
             details = {
@@ -1543,8 +1551,8 @@ def _gate_battery_payload(
             "gate": gate,
             "phase": phase,
             # PR #870 review: every entry is release-blocking, the local fit and
-            # weight gates included; the two microcosm#1240 diagnostics are the
-            # only report-only entries.
+            # weight gates included; the microcosm#1240 diagnostics and the
+            # microcosm#1717 decile fit are the only report-only entries.
             "criticality": (
                 "diagnostic"
                 if entry_id in UK_DIAGNOSTIC_ENTRY_IDS

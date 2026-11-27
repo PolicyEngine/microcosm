@@ -26,7 +26,6 @@ CROSS_FITTED_OPERATIONS = frozenset(
         ("etb_services", "fit_weighted_qrf_chain"),
         ("hmrc_spi_income_spine", "fit_weighted_qrf_stage1"),
         ("hmrc_spi_income_spine", "fit_weighted_qrf_stage2"),
-        ("lcfs_consumption", "fit_weighted_qrf_chain"),
         ("lcfs_consumption", "impute_prepayment_meter"),
         ("lcfs_consumption", "redraw_zero_road_fuel"),
         ("nts_bus_travel", "impute_bus_use_band"),

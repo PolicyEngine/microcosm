@@ -11815,6 +11815,8 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     simulations = []
     reform_systems = []
     formula_owned_assertions: list[int] = []
+    behavioral_response_checks: list[tuple[object, object, int]] = []
+    shared_baseline_system = SimpleNamespace(name="shared baseline system")
 
     class FakeVariable:
         entity = SimpleNamespace(key="tax_unit")
@@ -11831,6 +11833,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
 
     class FakeMicrosimulation:
         default_tax_benefit_system = FakeSystem
+        default_tax_benefit_system_instance = shared_baseline_system
 
         def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
             self.dataset = dataset
@@ -11844,7 +11847,9 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
             tax_unit_ids = (
                 self.dataset["frame"].table("tax_unit")["tax_unit_id"].to_numpy()
             )
-            if self.reform is not None:
+            # A reform engine computes under the reform its system was built
+            # with, as policyengine-us does when given that system alone.
+            if getattr(self.tax_benefit_system, "reform", None) is not None:
                 assert variable == "income_tax"
                 assert kwargs == {}
                 reform_income_tax_by_id = {10: 90.0, 20: 25.0, 30: 40.0}
@@ -11897,6 +11902,12 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     def fake_assert_no_formula_owned_columns(frame_arg):
         formula_owned_assertions.append(frame_arg.n("household"))
 
+    def fake_moved_behavioral_response_parameters(
+        reform_system, baseline_system, period
+    ):
+        behavioral_response_checks.append((reform_system, baseline_system, period))
+        return []
+
     monkeypatch.setitem(
         sys.modules,
         "policyengine_us",
@@ -11913,6 +11924,11 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
     monkeypatch.setattr(
         builder, "_make_zero_variable_reform", fake_make_zero_variable_reform
+    )
+    monkeypatch.setattr(
+        builder,
+        "_moved_behavioral_response_parameters",
+        fake_moved_behavioral_response_parameters,
     )
     monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", (reform_spec,))
     monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
@@ -11979,6 +11995,12 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         reform_systems[1],
         reform_systems[1],
     ]
+    # Each reform batch engine gets the family system alone, not ``reform=``
+    # as well, which would make policyengine-us clone that system per batch.
+    assert [simulation.reform for simulation in simulations] == [None] * 4
+    assert behavioral_response_checks == [
+        (reform_systems[1], shared_baseline_system, builder.PERIOD)
+    ]
     # Each simulation was released (dataset reference severed), not merely
     # cache-invalidated.
     assert [simulation.dataset for simulation in simulations] == [None] * 4
@@ -12027,6 +12049,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         True,
         False,
     ]
+    assert len(behavioral_response_checks) == 1
     assert [simulation.dataset for simulation in simulations] == [None] * 6
     assert [simulation.cache_invalidations for simulation in simulations] == [0] * 6
     assert (
@@ -16494,6 +16517,9 @@ def _install_multi_reform_fakes(
 
     class FakeMicrosimulation:
         default_tax_benefit_system = FakeSystem
+        default_tax_benefit_system_instance = SimpleNamespace(
+            name="shared baseline system"
+        )
 
         def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
             self.dataset = dataset
@@ -16506,9 +16532,12 @@ def _install_multi_reform_fakes(
             tax_unit_ids = (
                 self.dataset["frame"].table("tax_unit")["tax_unit_id"].to_numpy()
             )
-            if self.reform is not None:
+            # A reform engine computes under the reform its system was built
+            # with, as policyengine-us does when given that system alone.
+            policy_reform = getattr(self.tax_benefit_system, "reform", None)
+            if policy_reform is not None:
                 assert variable == "income_tax"
-                lookup = reform_income_tax_by_id[self.reform]
+                lookup = reform_income_tax_by_id[policy_reform]
                 return np.asarray([lookup[id_] for id_ in tax_unit_ids])
             arrays_by_id = {
                 "income_tax": base_income_tax_by_id,
@@ -16558,6 +16587,12 @@ def _install_multi_reform_fakes(
     monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
     monkeypatch.setattr(
         builder, "_make_zero_variable_reform", fake_make_zero_variable_reform
+    )
+    # No fake reform moves a behavioral-response parameter.
+    monkeypatch.setattr(
+        builder,
+        "_moved_behavioral_response_parameters",
+        lambda reform_system, baseline_system, period: [],
     )
     monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", reform_specs)
     monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})

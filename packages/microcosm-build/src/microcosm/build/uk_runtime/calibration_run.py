@@ -124,6 +124,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_lcfs_consumption_excise_quantities",
     "uk_stage_lcfs_consumption_gambling_participation",
     "uk_stage_lcfs_consumption_basis",
+    "uk_stage_lcfs_consumption_decile_fit",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
     "uk_stage_etb_services_support_pricing",
