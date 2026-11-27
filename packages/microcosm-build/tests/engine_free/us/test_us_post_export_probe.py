@@ -1358,6 +1358,7 @@ def test_a_pooled_probe_writes_the_serial_probes_files_and_times_its_workers(
     # The baseline passes ran in this process, as in the serial probe; the
     # workers ran the reform passes.
     assert all(row["process"] == "certifying process" for row in serial_passes)
+    assert all(row["failed"] is False for row in [*serial_passes, *pooled_passes])
     in_workers = [row for row in pooled_passes if row["process"] == "pool worker"]
     here = [row for row in pooled_passes if row["process"] == "certifying process"]
     assert len(in_workers) + len(here) == len(pooled_passes)

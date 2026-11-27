@@ -1489,10 +1489,10 @@ def test_a_kept_baseline_error_leaves_the_callers_exception_alone(
     tmp_path,
     monkeypatch,
 ) -> None:
-    """A stage's own baseline error is kept until that stage opens. It is cut
-    from the exceptions it was raised from or while handling, whose text stays
-    in its note, so it holds none of them and changes none of them: here the
-    first stage opens while its caller handles an exception of its own."""
+    """A stage's own baseline error is kept until that stage opens, with its
+    traceback as a note. The tracebacks raised inside its pass are dropped; a
+    caller's own exception, which it was raised while handling, keeps its
+    traceback: here the first stage opens while its caller handles one."""
     monkeypatch.setenv(FAIL_ON_HOUSEHOLDS, json.dumps({"snap": [1]}))
     consumers = {
         "first": _baseline_consumer("age"),
@@ -1508,17 +1508,169 @@ def test_a_kept_baseline_error_leaves_the_callers_exception_alone(
         try:
             raise LookupError("the caller's own exception")
         except LookupError as handled:
+            callers_exception = handled
             scorer.open_consumer("first", plan.baseline_plan("first"))
-            assert handled.__traceback__ is not None
         kept = scorer._own_baselines["second"]
-        assert (kept.__traceback__, kept.__context__, kept.__cause__) == (
-            None,
-            None,
-            None,
-        )
+        assert kept.__traceback__ is None
+        assert kept.__context__ is callers_exception
+        assert callers_exception.__traceback__ is not None
         (note,) = kept.__notes__
         assert "Traceback" in note and "fixture engine refuses snap" in note
         with pytest.raises(RuntimeError, match="fixture engine refuses snap"):
             scorer.open_consumer("second", plan.baseline_plan("second"))
+    finally:
+        scorer.close()
+
+
+# ---------------------------------------------------------------------------
+# Baseline passes in the certifying process: review round 2
+# ---------------------------------------------------------------------------
+
+
+def _three_baseline_consumers(builder):
+    consumers = {
+        "first": _baseline_consumer("age"),
+        "second": _baseline_consumer("age", "snap"),
+        "third": _baseline_consumer("age", "income_tax"),
+    }
+    plan = builder._post_export_scoring_plan(
+        n_households=N_HOUSEHOLDS,
+        maximum_microsim_batch_size=BATCH_SIZE,
+        consumers=consumers,
+    )
+    return consumers, plan
+
+
+def _failing_passes(monkeypatch, builder, failures):
+    """Make ``_score_post_export_batches`` raise for some pass labels:
+    ``failures`` maps a label to a function that raises. Returns every label
+    scored, in order."""
+    original = builder._score_post_export_batches
+    labels: list[str] = []
+
+    def scoring(*arguments, label, **options):
+        labels.append(label)
+        if label in failures:
+            failures[label]()
+        return original(*arguments, label=label, **options)
+
+    monkeypatch.setattr(builder, "_score_post_export_batches", scoring)
+    return labels
+
+
+def _raise_merged_out_of_memory():
+    raise MemoryError("fixture merged pass out of memory")
+
+
+def test_a_kept_baseline_error_keeps_what_the_run_outcome_reads(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """The build's run outcome reads an error's cause chain: a failure raised
+    while a MemoryError unwinds is out of memory. A kept own-baseline error
+    keeps that chain, without its tracebacks, as the serial scorer raises it."""
+    from microcosm.build.run_outcome import classify_failure
+
+    def raise_during_out_of_memory():
+        try:
+            raise MemoryError("fixture batch engine out of memory")
+        except MemoryError:
+            # Raised while handling it, so the MemoryError is its context.
+            raise RuntimeError("fixture release after the engine failed")  # noqa: B904
+
+    consumers, plan = _three_baseline_consumers(builder)
+    _failing_passes(
+        monkeypatch,
+        builder,
+        {
+            "merged baseline plan": _raise_merged_out_of_memory,
+            "second baseline plan": raise_during_out_of_memory,
+        },
+    )
+    scorer = _pooled_scorer(builder, plan, tmp_path, 1)
+    try:
+        scorer.open_consumer("first", plan.baseline_plan("first"))
+        kept = scorer._own_baselines["second"]
+        assert isinstance(kept.__context__, MemoryError)
+        assert (kept.__traceback__, kept.__context__.__traceback__) == (None, None)
+        assert classify_failure(kept).error_code == "OUT_OF_MEMORY"
+        with pytest.raises(RuntimeError, match="fixture release") as raised:
+            scorer.open_consumer("second", plan.baseline_plan("second"))
+        assert classify_failure(raised.value).error_code == "OUT_OF_MEMORY"
+    finally:
+        scorer.close()
+
+
+def test_a_baseline_pass_stopped_by_a_termination_stops_scoring_at_once(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """An error raised while SIGTERM (``BuildTerminatedError``) or an
+    interrupt unwinds is not kept for its stage: it stops scoring at once,
+    before any later stage's own pass runs, as the build must stop."""
+    from microcosm.build.run_outcome import classify_failure
+    from microcosm.build.termination import BuildTerminatedError
+
+    def raise_while_terminated():
+        try:
+            raise BuildTerminatedError()
+        except BuildTerminatedError:
+            # Raised while handling it, so the termination is its context.
+            raise RuntimeError("fixture cleanup failed while stopping")  # noqa: B904
+
+    consumers, plan = _three_baseline_consumers(builder)
+    labels = _failing_passes(
+        monkeypatch,
+        builder,
+        {
+            "merged baseline plan": _raise_merged_out_of_memory,
+            "second baseline plan": raise_while_terminated,
+        },
+    )
+    scorer = _pooled_scorer(builder, plan, tmp_path, 1)
+    try:
+        with pytest.raises(RuntimeError, match="fixture cleanup") as raised:
+            scorer.open_consumer("first", plan.baseline_plan("first"))
+        assert classify_failure(raised.value).error_code == "TERMINATED"
+        assert labels == [
+            "merged baseline plan",
+            "first baseline plan",
+            "second baseline plan",
+        ]
+    finally:
+        scorer.close()
+
+
+def test_a_kept_baseline_error_whose_traceback_cannot_be_formatted_is_kept(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Formatting the kept error's traceback can itself run out of memory;
+    the error is then kept with a note that says so, and its stage gets it
+    as the serial scorer raises it, instead of every stage being refused."""
+    import traceback
+
+    monkeypatch.setenv(FAIL_ON_HOUSEHOLDS, json.dumps({"snap": [1]}))
+    consumers, plan = _three_baseline_consumers(builder)
+
+    def out_of_memory(*arguments, **options):
+        raise MemoryError("fixture formatting out of memory")
+
+    scorer = _pooled_scorer(builder, plan, tmp_path, 1)
+    try:
+        monkeypatch.setattr(traceback, "format_exception", out_of_memory)
+        scorer.open_consumer("first", plan.baseline_plan("first"))
+        monkeypatch.undo()
+        (note,) = scorer._own_baselines["second"].__notes__
+        assert "could not be formatted" in note
+        with pytest.raises(RuntimeError, match="fixture engine refuses snap"):
+            scorer.open_consumer("second", plan.baseline_plan("second"))
+        scorer.open_consumer("third", plan.baseline_plan("third"))
     finally:
         scorer.close()
