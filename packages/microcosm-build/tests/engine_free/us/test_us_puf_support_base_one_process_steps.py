@@ -17,21 +17,24 @@ runs one step, as before.
 
 The child-side tests call ``_run_outer_stage`` in this process, with the
 real checkpoint runtime and writer. Step functions that need real inputs are
-replaced with deterministic ones that read every numeric and text value, the
-dtypes, the frame metadata and the weights, so a frame passed in memory that
-differed from the one a checkpoint read gives would write different bytes.
+replaced with deterministic ones that read every table's numeric and text
+values, every column's dtype, the strata, the weights and the frame
+metadata, so a frame passed in memory that differed from the one a
+checkpoint read gives would write different bytes.
 ``capital_gain_distributions`` runs its real code. The parent-side tests
 replace ``subprocess.run`` and ``subprocess.Popen``; one starts a real child.
 """
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import importlib.util
 import json
 import os
 import shutil
 import sys
+import weakref
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
@@ -41,6 +44,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build import outer_stage_runtime
 from microcosm.build.frame_checkpoint import load_frame_checkpoint
 from microcosm.build.outer_stage_runtime import (
     OUTER_STAGE_CONTEXT_FILENAME,
@@ -175,33 +179,52 @@ def _with_person_columns(frame: Frame, columns: dict[str, object]) -> Frame:
     )
 
 
-def _value_read_from_everything(frame: Frame, extra: float) -> np.ndarray:
-    """One float per person, read from every value a step could depend on."""
+def _row_values(table: pd.DataFrame) -> np.ndarray:
+    """Per row, the sum of its numeric values plus the length of each text
+    value (-1 for a value that is not a string)."""
 
-    person = frame.table("person")
-    numeric_sum = person.select_dtypes("number").sum(axis=1).to_numpy(np.float64)
-    text_lengths = np.zeros(len(person))
-    for name in person.columns:
-        if not pd.api.types.is_numeric_dtype(person[name].dtype):
-            text_lengths += np.asarray(
-                [
-                    len(value) if isinstance(value, str) else -1
-                    for value in person[name]
-                ],
+    values = table.select_dtypes("number").sum(axis=1).to_numpy(np.float64)
+    for name in table.columns:
+        if not pd.api.types.is_numeric_dtype(table[name].dtype):
+            values = values + np.asarray(
+                [len(value) if isinstance(value, str) else -1 for value in table[name]],
                 dtype=np.float64,
             )
-    dtype_text = "|".join(f"{name}:{dtype}" for name, dtype in person.dtypes.items())
-    dtype_fingerprint = int(hashlib.sha256(dtype_text.encode()).hexdigest()[:6], 16)
-    filing_status_lengths = sum(
-        len(value) for value in frame.table("tax_unit")["filing_status_input"]
+    return values
+
+
+def _value_read_from_everything(frame: Frame, extra: float) -> np.ndarray:
+    """One float per person, read from every value a step could depend on:
+    each table's numeric and text values, each column's dtype, the strata,
+    the weights and the frame metadata."""
+
+    tables = {
+        **{entity: frame.table(entity) for entity in frame.entities},
+        **{link: frame.link(link) for link in frame.links},
+    }
+    other_tables = sum(
+        float(_row_values(table).sum())
+        for name, table in tables.items()
+        if name != "person"
     )
+    dtype_text = "|".join(
+        f"{name}.{column}:{dtype}"
+        for name, table in tables.items()
+        for column, dtype in table.dtypes.items()
+    )
+    dtype_fingerprint = int(hashlib.sha256(dtype_text.encode()).hexdigest()[:6], 16)
+    weights = sum(
+        float(frame.weights_for(entity).values.sum())
+        for entity in frame.weighted_entities
+    )
+    strata_lengths = sum(len(str(value)) for value in frame.strata)
     return (
-        numeric_sum * 1.000001
-        + text_lengths
+        _row_values(tables["person"]) * 1.000001
+        + other_tables / 1e3
         + dtype_fingerprint
         + 7.0 * len(frame.metadata or {})
-        + frame.weights_for("household").values.sum() / 1e6
-        + filing_status_lengths
+        + weights / 1e6
+        + strata_lengths
         + extra
     )
 
@@ -209,14 +232,22 @@ def _value_read_from_everything(frame: Frame, extra: float) -> np.ndarray:
 class _StandInSteps:
     """Deterministic stand-ins for the step functions that need real inputs.
 
-    Each records the frame it was given, by step, and adds one person
-    column computed from every value in it.
+    Each adds one person column computed from every value in the frame it
+    was given. With ``record``, each also keeps the frames it was given and
+    returned, by step.
     """
 
-    def __init__(self, builder: ModuleType, monkeypatch: pytest.MonkeyPatch):
+    def __init__(
+        self,
+        builder: ModuleType,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        record: bool = True,
+    ):
         self.inputs: dict[str, Frame] = {}
         self.outputs: dict[str, Frame] = {}
         self.fail_at: str | None = None
+        self.record = record
 
         def tail_transfer(_args, frame):
             self._record_input(builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME, frame)
@@ -232,7 +263,7 @@ class _StandInSteps:
                     ),
                 },
             )
-            self.outputs[builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME] = result
+            self._record_output(builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME, result)
             return result, {"note": "tail"}
 
         def post_qrf_step(stage, _args, frame, stage_metadata):
@@ -245,7 +276,7 @@ class _StandInSteps:
                     )
                 },
             )
-            self.outputs[stage] = result
+            self._record_output(stage, result)
             return result, {"signals": {"stage": stage}}
 
         distributions = builder._capital_gain_distributions_stage
@@ -253,7 +284,9 @@ class _StandInSteps:
         def recorded_distributions(args, frame):
             self._record_input(builder.CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME, frame)
             result = distributions(args, frame)
-            self.outputs[builder.CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME] = result[0]
+            self._record_output(
+                builder.CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME, result[0]
+            )
             return result
 
         monkeypatch.setattr(
@@ -267,7 +300,12 @@ class _StandInSteps:
     def _record_input(self, stage: str, frame: Frame) -> None:
         if stage == self.fail_at:
             raise RuntimeError(f"stand-in failure in {stage}")
-        self.inputs[stage] = frame
+        if self.record:
+            self.inputs[stage] = frame
+
+    def _record_output(self, stage: str, frame: Frame) -> None:
+        if self.record:
+            self.outputs[stage] = frame
 
 
 def _step_args(builder: ModuleType, checkpoint_dir: Path, stage: str):
@@ -314,6 +352,8 @@ def _report_pipe(
     """
 
     read_fd, write_fd = os.pipe()
+    # As pass_fds leaves it in a step process.
+    os.set_inheritable(write_fd, True)
     open_fds = {read_fd, write_fd}
     with monkeypatch.context() as child:
         child.setenv(
@@ -331,6 +371,7 @@ def _report_pipe(
                 open_fds.discard(read_fd)
                 return reports.read().decode("utf-8").splitlines()
 
+        reported.write_fd = write_fd  # type: ignore[attr-defined]
         try:
             yield reported
         finally:
@@ -589,6 +630,192 @@ def test_a_step_without_its_parent_s_report_pipe_runs_one_step(
     with os.fdopen(read_fd, "rb") as reports:
         assert reports.read() == b""
     assert _completed_steps(builder, checkpoint_dir) == (*completed_before, stage)
+
+
+@pytest.mark.parametrize("sources", ("unchanged", "changed after three steps"))
+def test_the_child_compares_the_run_config_with_the_locked_one_before_each_step(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sources: str
+) -> None:
+    # As each step process does when it starts: a change to the builder's
+    # source files (a git pull during the run, say), its dependencies or its
+    # thread settings after the run started stops the run before the next
+    # step, which is the step the parent records the failure against.
+    monkeypatch.setattr(
+        builder, "profile_stage", lambda *_args, **_kwargs: nullcontext()
+    )
+    checkpoint_dir = tmp_path / "checkpoints"
+    _complete_steps_before_the_16(builder, checkpoint_dir)
+    _StandInSteps(builder, monkeypatch, record=False)
+    completed_before = _completed_steps(builder, checkpoint_dir)
+    computed_for: list[str] = []
+
+    def run_config(step_args) -> dict[str, object]:
+        computed_for.append(step_args.stage)
+        if sources == "changed after three steps" and len(computed_for) > 3:
+            return {"builder_code_identity": {"source_sha256": "e" * 64}}
+        return {}
+
+    monkeypatch.setattr(builder, "_stage_run_config", run_config)
+    first = _step_args(builder, checkpoint_dir, _ONE_PROCESS_STEPS[0])
+
+    with _report_pipe(builder, monkeypatch) as reported:
+        if sources == "unchanged":
+            builder._run_outer_stage(first)
+            ran = _ONE_PROCESS_STEPS
+        else:
+            with pytest.raises(ValueError, match="run_config differs"):
+                builder._run_outer_stage(first)
+            ran = _ONE_PROCESS_STEPS[:3]
+        started = _ONE_PROCESS_STEPS[: len(computed_for)]
+        assert reported() == list(started)
+
+    assert computed_for == list(_ONE_PROCESS_STEPS[: len(ran) + (len(ran) < 16)])
+    assert _completed_steps(builder, checkpoint_dir) == (*completed_before, *ran)
+
+
+def _stored_objects(frame: Frame) -> list[object]:
+    """The tables and strata ``frame`` stores. ``Frame`` has no
+    ``__weakref__`` slot, so these stand for it: once they are gone, so is
+    the frame."""
+
+    return [
+        *(frame.table(entity) for entity in frame.entities),
+        *(frame.link(name) for name in frame.links),
+        frame.strata,
+    ]
+
+
+def _column_buffers(frame: Frame) -> list[np.ndarray]:
+    """The NumPy arrays that own the memory of ``frame``'s NumPy-typed columns."""
+
+    buffers: list[np.ndarray] = []
+    for table in (
+        *(frame.table(entity) for entity in frame.entities),
+        *(frame.link(name) for name in frame.links),
+    ):
+        for column in table.columns:
+            series = table[column]
+            if not isinstance(series.dtype, np.dtype):
+                continue
+            owner = series.to_numpy()
+            while isinstance(owner.base, np.ndarray):
+                owner = owner.base
+            buffers.append(owner)
+    return buffers
+
+
+def test_each_step_frees_the_frame_it_was_handed_before_its_checkpoint_write(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The frame a step takes from the step before it is freed before the
+    # step writes its own checkpoint, as a frame read from disk is (1.5 · 5).
+    # Garbage collection is off while the steps run, so only reference
+    # counting can free it; the shadow check run is on.
+    arm_us_tool_gate_shadows(monkeypatch)
+    monkeypatch.setattr(builder, "_stage_run_config", lambda _args: {})
+    monkeypatch.setattr(
+        builder, "profile_stage", lambda *_args, **_kwargs: nullcontext()
+    )
+    checkpoint_dir = tmp_path / "checkpoints"
+    _complete_steps_before_the_16(builder, checkpoint_dir)
+    _StandInSteps(builder, monkeypatch, record=False)
+    inputs: dict[str, tuple[list[weakref.ref], list[weakref.ref]]] = {}
+    predecessor_checkpoint = builder._predecessor_checkpoint
+
+    def recording_predecessor(step_args, runtime, carried):
+        checkpoint = predecessor_checkpoint(step_args, runtime, carried)
+        inputs[step_args.stage] = (
+            [weakref.ref(item) for item in _stored_objects(checkpoint.frame)],
+            [weakref.ref(buffer) for buffer in _column_buffers(checkpoint.frame)],
+        )
+        return checkpoint
+
+    alive_at_write: dict[str, tuple[int, int]] = {}
+    write_frame_checkpoint = outer_stage_runtime.write_frame_checkpoint
+
+    def recording_write(path, frame, **kwargs):
+        stage = kwargs["metadata"]["stage"]
+        objects, buffers = inputs[stage]
+        result_buffers = {id(buffer) for buffer in _column_buffers(frame)}
+        live_buffers = [reference() for reference in buffers]
+        alive_at_write[stage] = (
+            sum(reference() is not None for reference in objects),
+            sum(
+                buffer is not None and id(buffer) not in result_buffers
+                for buffer in live_buffers
+            ),
+        )
+        del live_buffers
+        return write_frame_checkpoint(path, frame, **kwargs)
+
+    monkeypatch.setattr(builder, "_predecessor_checkpoint", recording_predecessor)
+    monkeypatch.setattr(outer_stage_runtime, "write_frame_checkpoint", recording_write)
+
+    collection_was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        with _report_pipe(builder, monkeypatch) as reported:
+            builder._run_outer_stage(
+                _step_args(builder, checkpoint_dir, _ONE_PROCESS_STEPS[0])
+            )
+            reported()
+    finally:
+        if collection_was_enabled:
+            gc.enable()
+
+    # Stored objects alive, and column arrays alive that the result does not
+    # hold, at each step's checkpoint write: none.
+    assert alive_at_write == {stage: (0, 0) for stage in _ONE_PROCESS_STEPS}
+
+
+def test_the_child_keeps_the_report_pipe_from_processes_it_starts(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A process the child started that inherited the write end, and outlived
+    # the child, would keep the parent waiting for the end of the reports.
+    monkeypatch.setattr(builder, "_stage_run_config", lambda _args: {})
+    monkeypatch.setattr(
+        builder, "profile_stage", lambda *_args, **_kwargs: nullcontext()
+    )
+    checkpoint_dir = tmp_path / "checkpoints"
+    _complete_steps_before_the_16(builder, checkpoint_dir)
+    _StandInSteps(builder, monkeypatch, record=False)
+
+    with _report_pipe(builder, monkeypatch) as reported:
+        assert os.get_inheritable(reported.write_fd)
+        builder._run_outer_stage(
+            _step_args(builder, checkpoint_dir, _ONE_PROCESS_STEPS[0])
+        )
+        assert not os.get_inheritable(reported.write_fd)
+        reported()
+
+
+@pytest.mark.parametrize("descriptor", ("a file", "a closed descriptor"))
+def test_a_report_variable_that_names_no_pipe_stops_the_step_process(
+    builder: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    descriptor: str,
+) -> None:
+    # A variable copied into a process whose parent happens to have the
+    # recorded process ID (process IDs repeat in fresh containers) must not
+    # make it write step names into an unrelated file.
+    monkeypatch.setattr(os, "getppid", os.getpid)
+    with open(tmp_path / "not-a-pipe", "wb") as not_a_pipe:
+        fd = not_a_pipe.fileno()
+        if descriptor == "a file":
+            monkeypatch.setenv(
+                _REPORT_VARIABLE, builder._step_report_environment(fd)[_REPORT_VARIABLE]
+            )
+            with pytest.raises(SystemExit, match=rf"{_REPORT_VARIABLE} .*not a pipe"):
+                builder._step_report_fd(_ONE_PROCESS_STEPS[0])
+    if descriptor == "a closed descriptor":
+        monkeypatch.setenv(
+            _REPORT_VARIABLE, builder._step_report_environment(fd)[_REPORT_VARIABLE]
+        )
+        with pytest.raises(SystemExit, match=rf"{_REPORT_VARIABLE} .*not open"):
+            builder._step_report_fd(_ONE_PROCESS_STEPS[0])
+    assert (tmp_path / "not-a-pipe").read_bytes() == b""
 
 
 @pytest.mark.parametrize(
@@ -884,6 +1111,24 @@ def test_a_child_that_exits_cleanly_before_its_last_step_is_refused(
         builder._run_staged_all(SimpleNamespace(checkpoint_dir=tmp_path), _Telemetry())
 
     # No later step's process starts.
+    assert processes.first_steps() == [_ONE_PROCESS_STEPS[0]]
+
+
+def test_a_child_that_reports_no_step_is_refused(
+    builder: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A child that found no report pipe runs one step and reports nothing.
+    steps = builder.PIPELINE_STEPS
+    _stand_in_parent(builder, monkeypatch, steps[: steps.index(_ONE_PROCESS_STEPS[0])])
+    processes = _ChildProcesses(builder, monkeypatch)
+    processes.reports = []
+
+    with pytest.raises(
+        RuntimeError,
+        match=rf"exited cleanly without reporting any step.*{_REPORT_VARIABLE}",
+    ):
+        builder._run_staged_all(SimpleNamespace(checkpoint_dir=tmp_path), _Telemetry())
+
     assert processes.first_steps() == [_ONE_PROCESS_STEPS[0]]
 
 
