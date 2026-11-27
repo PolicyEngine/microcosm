@@ -31,7 +31,7 @@ from microcosm.data.contract import (
     ReleaseContractError,
     validate_release_dir,
 )
-from microcosm.data.publish_cli import publication_refusal
+from microcosm.data.release import publication_refusal
 from test_support.microcosm_build.emitter import FakeEmitterClient
 from test_support.microcosm_build.spec_release import (
     BUILD_COMMIT,

@@ -431,7 +431,7 @@ def reform_validation_payload(*, country: str, period: int) -> dict[str, object]
     ``out_of_sample_simulated`` is true, as the US writer records it when
     there is no out-of-sample reform: no reform was left unsimulated. The
     publisher refuses a false flag, which means out-of-sample reforms were
-    skipped (``microcosm.data.publish_cli.publication_refusal``).
+    skipped (``microcosm.data.release.publication_refusal``).
     """
     return {
         "schema_version": REFORM_VALIDATION_SCHEMA_VERSION,
