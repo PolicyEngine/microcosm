@@ -1562,6 +1562,16 @@ def _raise_merged_out_of_memory():
     raise MemoryError("fixture merged pass out of memory")
 
 
+def _raise_while_terminated():
+    from microcosm.build.termination import BuildTerminatedError
+
+    try:
+        raise BuildTerminatedError()
+    except BuildTerminatedError:
+        # Raised while handling it, so the termination is its context.
+        raise RuntimeError("fixture cleanup failed while stopping")  # noqa: B904
+
+
 def test_a_kept_baseline_error_keeps_what_the_run_outcome_reads(
     builder,
     pooled_reforms,
@@ -1613,14 +1623,6 @@ def test_a_baseline_pass_stopped_by_a_termination_stops_scoring_at_once(
     interrupt unwinds is not kept for its stage: it stops scoring at once,
     before any later stage's own pass runs, as the build must stop."""
     from microcosm.build.run_outcome import classify_failure
-    from microcosm.build.termination import BuildTerminatedError
-
-    def raise_while_terminated():
-        try:
-            raise BuildTerminatedError()
-        except BuildTerminatedError:
-            # Raised while handling it, so the termination is its context.
-            raise RuntimeError("fixture cleanup failed while stopping")  # noqa: B904
 
     consumers, plan = _three_baseline_consumers(builder)
     labels = _failing_passes(
@@ -1628,7 +1630,7 @@ def test_a_baseline_pass_stopped_by_a_termination_stops_scoring_at_once(
         builder,
         {
             "merged baseline plan": _raise_merged_out_of_memory,
-            "second baseline plan": raise_while_terminated,
+            "second baseline plan": _raise_while_terminated,
         },
     )
     scorer = _pooled_scorer(builder, plan, tmp_path, 1)
@@ -1672,5 +1674,42 @@ def test_a_kept_baseline_error_whose_traceback_cannot_be_formatted_is_kept(
         with pytest.raises(RuntimeError, match="fixture engine refuses snap"):
             scorer.open_consumer("second", plan.baseline_plan("second"))
         scorer.open_consumer("third", plan.baseline_plan("third"))
+    finally:
+        scorer.close()
+
+
+# ---------------------------------------------------------------------------
+# Baseline passes in the certifying process: review round 3
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("mode", ["serial", "pooled"])
+def test_a_merged_pass_stopped_by_a_termination_stops_scoring_at_once(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+    mode,
+) -> None:
+    """An error raised while SIGTERM unwinds the merged baseline pass is not a
+    failed merged pass to fall back from: in either scorer it stops scoring
+    at once, and the run outcome reads it as a termination."""
+    from microcosm.build.run_outcome import classify_failure
+
+    consumers, plan = _three_baseline_consumers(builder)
+    labels = _failing_passes(
+        monkeypatch, builder, {"merged baseline plan": _raise_while_terminated}
+    )
+    scorer = (
+        _serial_scorer(builder, plan, tmp_path)
+        if mode == "serial"
+        else _pooled_scorer(builder, plan, tmp_path, 1)
+    )
+    try:
+        with pytest.raises(RuntimeError, match="fixture cleanup") as raised:
+            scorer.open_consumer("first", plan.baseline_plan("first"))
+        assert classify_failure(raised.value).error_code == "TERMINATED"
+        assert labels == ["merged baseline plan"]
+        assert not scorer._merged_baseline_failed
     finally:
         scorer.close()
