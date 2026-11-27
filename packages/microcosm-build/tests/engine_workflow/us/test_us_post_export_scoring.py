@@ -272,7 +272,8 @@ def test_additivity_guards_fire_on_the_installed_engine(builder, tmp_path) -> No
 def test_shipped_baseline_plans_match_whole_file_policyengine_us(
     builder, tmp_path
 ) -> None:
-    """The smoke, validation and demographics baseline values match in 3 batches.
+    """The smoke, validation and demographics baseline values, served from
+    one merged pass in 3 batches, match a whole-file engine.
 
     The complete reform sweep runs separately through
     ``tools/sweep_us_post_export_scoring.py`` in bounded worker processes.
@@ -287,13 +288,92 @@ def test_shipped_baseline_plans_match_whole_file_policyengine_us(
         "demographics": 1,
     }
     scorer = builder._HouseholdBatchedPostExportScorer(
-        path, maximum_microsim_batch_size=3
+        path, maximum_microsim_batch_size=3, baseline_plans=plans
     )
     assert scorer.n_batches == 3
+    passes = _record_pass_labels(scorer)
     try:
         sweep._score_baselines(builder, scorer, path, plans)
+        # One merged pass, not a fallback to one pass per plan.
+        assert passes == ["merged baseline plan"]
     finally:
         scorer.close()
+
+
+@pytest.mark.slow
+def test_merged_baseline_and_shared_pre_obbba_pass_are_byte_identical(
+    builder, tmp_path
+) -> None:
+    """On policyengine-us, in 3 household batches: the one merged baseline
+    pass serves every planned consumer the same bytes (values, weights and
+    dtypes) as that consumer's own pass, and the pre-OBBBA state scored once
+    for both OBBBA groups gives each group's total the bytes of a pass of its
+    own (microcosm#1595). One person holds a taxable estate, so the estate
+    tax, which the shared pass computes after the income tax, is nonzero."""
+    people = sum(len(members) for _, _, members in _GUARD_HOUSEHOLDS)
+    path = _write_engine_h5(
+        builder,
+        tmp_path,
+        _GUARD_HOUSEHOLDS,
+        person_inputs={"taxable_estate_value": [30_000_000.0] + [0.0] * (people - 1)},
+    )
+    fit = _full_in_sample_fit(builder.PERIOD)
+    plan = builder._record_post_export_scoring_plan(
+        _plan_args(),
+        n_households=len(_GUARD_HOUSEHOLDS),
+        result=fit,
+        release_id="fixture-release",
+    )
+    assert plan.error is None and len(plan.baseline_plans) == 5
+    separate = builder._HouseholdBatchedPostExportScorer(
+        path, maximum_microsim_batch_size=3
+    )
+    merged = builder._HouseholdBatchedPostExportScorer(
+        path, maximum_microsim_batch_size=3, baseline_plans=plan.baseline_plans
+    )
+    assert merged.n_batches == separate.n_batches == 3
+    merged_passes = _record_pass_labels(merged)
+    try:
+        for name in plan.baseline_plans:
+            expected = separate.open_consumer(name, plan.baseline_plan(name))
+            observed = merged.open_consumer(name, plan.baseline_plan(name))
+            for key in plan.baseline_plan(name):
+                assert _same_bytes(observed._baseline[key], expected._baseline[key]), (
+                    name,
+                    key,
+                )
+            del expected, observed
+        # One merged pass, not a fallback to one pass per consumer.
+        assert merged_passes == ["merged baseline plan"]
+        assert not merged._merged_baseline
+
+        specs = reform_validation_module.load_default_reform_specs(
+            period=builder.PERIOD
+        )
+        obbba = [
+            spec for spec in specs if reform_validation_module._is_obbba_spec(spec)
+        ]
+        reform = reform_validation_module._build_parameter_reform(
+            reform_validation_module._merged_parameter_changes(obbba)
+        )
+        requests = tuple(
+            dict.fromkeys((spec.budget_measure, spec.period) for spec in obbba)
+        )
+        assert len(requests) == 2
+        consumer = separate.open_consumer("pre-OBBBA state", ())
+        shared = consumer.simulate(reform)
+        shared.prefetch(requests)
+        # Read the shared pass's values first: opening the next reform
+        # finishes this one, which then refuses further keys.
+        shared_values = {request: shared.calculate(*request) for request in requests}
+        for request in requests:
+            alone = consumer.simulate(reform).calculate(*request)
+            assert _same_bytes(shared_values[request], alone), request
+            assert alone.sum() != 0.0, request
+        assert consumer.record()["reform_passes"] == 1 + len(requests)
+    finally:
+        separate.close()
+        merged.close()
 
 
 @pytest.mark.slow
@@ -362,3 +442,32 @@ def test_reform_passes_leave_no_rule_modules_behind_and_score_the_same(
     kept_before, kept_after, kept = score()
     assert len(kept_after - kept_before) >= 2 * 1_000
     assert released == kept
+
+
+def test_batches_read_from_their_files_equal_the_written_h5s_batches(
+    builder, tmp_path
+) -> None:
+    """Each batch the scorer reads back from its file holds exactly
+    the rows, columns, dtypes, values and weights of that household batch of a
+    fixture H5 written by the engine's own writer, as the scorer selected it
+    in memory before it kept batches in files."""
+    from test_support.microcosm_build.us_post_export_batch_files import (
+        assert_same_batch,
+    )
+
+    path = _write_engine_h5(builder, tmp_path, _GUARD_HOUSEHOLDS)
+    written = builder._load_frame(path, expected_sha256=builder._sha256(path))
+    expected = [
+        builder._select_households_by_position(written, positions)
+        for positions in builder._household_position_batches(written.n("household"), 3)
+    ]
+    scorer = builder._HouseholdBatchedPostExportScorer(
+        path, maximum_microsim_batch_size=3
+    )
+    try:
+        batches = scorer._batches()
+        assert len(batches) == len(expected) == scorer.n_batches >= 2
+        for number, selected in enumerate(expected):
+            assert_same_batch(batches[number], selected)
+    finally:
+        scorer.close()

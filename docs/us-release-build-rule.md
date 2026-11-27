@@ -436,6 +436,19 @@ one Microsimulation over the whole file.
 
 - The scorer loads the written H5 once, binds its SHA-256, and refuses to let
   the release manifest pin different bytes.
+- It then writes each household batch to its own file, recording the SHA-256
+  of the bytes written, and frees the frames. Each pass reads every batch back
+  from its file, frees it before reading the next, and refuses a file that
+  changed or cannot be read, so the process that scores holds no frame of the
+  written H5 between batches. A batch read back has the same tables, dtypes,
+  values and weights, so scored values are unchanged. A refused batch file
+  stops certification in every stage, the held-out reports included.
+- Certification's scorer keeps the files in a directory of its own inside
+  `post_export_batches/` in the build's `--out`: about as much disk as the
+  export H5 itself, until the scorer closes. Placing a build for
+  certification removes the scorer directories a killed attempt left there
+  and keeps anything else, so two certifications of one `--out` must not run
+  at once.
 - It refuses a file whose group units do not each nest in one household, or
   whose batches do not partition every entity, before any engine exists.
 - Batches hold at most `--maximum-microsim-batch-size` households (default
@@ -443,17 +456,43 @@ one Microsimulation over the whole file.
   (`US_RELEASE_SPM_SELECTION`, county geography) and is released before the
   next batch builds.
 - Each stage's baseline requests are learned before export by an engine-free
-  dry run and scored in one pass over the batches, in ascending period order.
+  dry run. The scorer computes every stage's recorded keys together in one
+  pass over the batches, in ascending period order, and gives each stage only
+  the keys it recorded (microcosm#1595). Before, each of the five stages (the
+  smoke, reform validation, demographics and the two held-out reports) ran a
+  pass of its own: five passes over 177 batches on a national export. If the
+  shared pass raises, every stage runs its own pass as before, so a key that
+  only one held-out report asks for still fails that report alone. Each
+  stage's recorded `baseline_passes` stays 1: the one pass its baseline came
+  from, shared unless the shared pass failed. Only the build log tells the two
+  apart: it prints `Post-export merged baseline plan failed` on a fallback,
+  and the summary that reform validation, demographics and the held-out
+  reports print says `baseline served from the merged pass` when the stage was
+  served from the shared one.
   One engine refuses a period earlier than one it has already computed.
   The real-engine test probes the MD CCS request-order premise by requesting
   2025 state taxes after 2027 keys. It checks for the
   `md.msde.ccs.payment.informal.rates` error and warns if that error is absent;
   it does not require the upstream bug to persist.
+  - The shared pass holds every stage's baseline arrays at once, from the
+    first stage's start until each stage has been served. On the
+    eight-household fixture that is 12,027 bytes, against 8,418 for reform
+    validation's plan, the largest one held before (about 1.4 times). Each of
+    its batch engines also computes every stage's keys (97 on the fixture,
+    against at most 75 before), so it caches more intermediate values.
+  - The shared pass runs when the first stage starts: the smoke, unless
+    `--skip-reform-coverage-smoke` is set. The build telemetry's time for that
+    stage now includes every stage's baseline work, and the later stages'
+    times include none.
+  - A shared pass that fails costs the time it ran in addition to every
+    stage's own pass.
 - `_record_post_export_request_descriptors` runs the same dry run and returns
   every request, baseline and reform, as a picklable `PostExportRequest`
   (`microcosm.build.us_runtime.post_export_requests`), which a process started
   with `spawn` can unpickle; the release itself still takes only the baseline
-  plans and reform-pass counts. A reform request holds
+  plans and reform-pass counts. A `prefetch` of several keys of one reformed
+  simulation is one pass, and its keys follow in ascending period order, as
+  the scorer computes them. A reform request holds
   the description its stage builds the reform from: the smoke probe, the
   reform-validation spec, or a cumulative OBBBA state's parameter changes. The
   dry run builds no reform, and refuses a reform it cannot describe or pickle.
@@ -470,9 +509,14 @@ one Microsimulation over the whole file.
   `_dataset_from_frame(..., period_only=True)`. By default it keeps the
   projection, so a new caller that reads a later year gets the engine's own
   projected inputs.
-- Each reform builds one tax-benefit system and scores its measure batch by
-  batch. Each batch engine gets that system alone, without `reform=`: given
-  both, policyengine-us creates a baseline branch, which clones the system.
+- Each reform builds one tax-benefit system and scores its measures batch by
+  batch: one pass per measure, or one pass for the measures a stage asks for
+  together (`prefetch`). Reform validation asks the pre-OBBBA state (every
+  OBBBA provision reverted) for both OBBBA groups' starting totals, income tax
+  and estate tax in 2026, together, so that state costs one pass instead of
+  two (microcosm#1595). Each batch engine gets that system alone, without
+  `reform=`: given both, policyengine-us creates a baseline branch, which
+  clones the system.
 - Every statistic reads full-length values with their engine weights.
 
 The totals equal a whole-file simulation's up to floating-point summation order
@@ -497,8 +541,11 @@ known violations at run time:
 
 Tests pin the watched lists against the installed engine's formula sources,
 exercise each guard on a real engine, and compare the shipped baseline plans
-(18 smoke keys, 75 validation keys and 1 demographics key) against whole-file
-values on a small written H5 in three batches.
+(20 smoke keys, 75 validation keys and 1 demographics key), served from the
+shared pass, against whole-file values on a small written H5 in three
+batches. On the same H5 another test checks that the shared baseline pass and
+the shared pre-OBBBA pass give the same bytes (values, weights and dtypes) as
+separate passes.
 
 On 2026-09-24, the sweep below completed on a written fixture containing eight
 households across five states, with Medicaid enrollees, under policyengine-us
@@ -522,13 +569,20 @@ records the shipped consumers' requests, including every out-of-sample
 validation reform and the OBBBA pre-baseline and stacked states. It also
 exercises the fallback simulations used when an in-sample estimate is absent.
 It scores at most four reform passes per worker, serially, and compares all
-baseline values and four reform passes with whole-file engines. Workers stop
+baseline values and four reform passes with whole-file engines. Its baseline
+worker serves its three plans (the smoke, reform validation recorded without a
+calibration fit, and demographics) from one shared pass; the release's shared
+pass also holds the two held-out reports' keys. Its reform workers score each
+recorded request in a pass of its own, so the pre-OBBBA state's two requests
+are two passes there. Workers stop
 at a sampled 7 GiB RSS threshold and report their peak RSS, elapsed time,
 counts and the scored H5 digest.
 Run this fixture sweep before R4's full-export timing steps, and repeat it
 after a probe, spec or engine-lock change before starting a release.
 R4's existing full-export rehearsal times the smoke and validation
-baseline plans plus three selected reform passes; it does not cover every
+baseline plans plus three selected reform passes (`tools/probe_us_post_export.py`
+still scores each stage's baseline plan in a pass of its own, which the release
+no longer does); it does not cover every
 reform and does not replace this sweep.
 
 `calibration_diagnostics.json` records the plan under `build.post_export_scoring`

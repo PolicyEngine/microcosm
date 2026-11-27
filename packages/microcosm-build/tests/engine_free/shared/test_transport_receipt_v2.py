@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import sys
 from fractions import Fraction
 
 import numpy as np
@@ -1299,3 +1300,1166 @@ def test_v2_numpy_real_targets_are_accepted(target):
 def test_v2_boolean_targets_refuse(target):
     with pytest.raises(ValueError, match="target must be finite"):
         _assign(_people((20,)), targets={"alpha_total": target})
+
+
+# Literal audits from main, pinned before the target-above-mass rule lands.
+
+
+def _check(expected_mass):
+    return {
+        "passed": True,
+        "relative_tolerance": 1e-12,
+        "expected_mass": expected_mass,
+    }
+
+
+def _row(name, target, filter_name, mass, before, before_ratio, ratio, rate):
+    return {
+        "target_name": name,
+        "target": target,
+        "filter": filter_name,
+        "eligible_mass": mass,
+        "eligible_mass_before_exclusions": before,
+        "target_to_eligible_mass_before_exclusions": before_ratio,
+        "target_to_remaining_eligible_mass": ratio,
+        "rate": rate,
+    }
+
+
+def _done(row, realized, count, expected):
+    return {
+        **row,
+        "realized_mass": realized,
+        "n_receipts": count,
+        "numerical_check": _check(expected),
+    }
+
+
+def _program_audit(name, target, before, mass, before_ratio, ratio, strata, outside):
+    return {
+        "program": name,
+        "target": target,
+        "eligible_mass_before_exclusions": before,
+        "eligible_mass": mass,
+        "target_to_eligible_mass_before_exclusions": before_ratio,
+        "target_to_remaining_eligible_mass": ratio,
+        "strata": strata,
+        "outside_strata": {"n_eligible": outside[0], "eligible_mass": outside[1]},
+    }
+
+
+def _finished(program_audit, realized, count):
+    return {**program_audit, "realized_mass": realized, "n_receipts": count}
+
+
+def _audit(programs, groups=(), status="completed"):
+    return {
+        "assignment_profile": "central",
+        "exclusion_order": "declared",
+        "status": status,
+        "programs": programs,
+        "exclusion_groups": list(groups),
+    }
+
+
+def _pinned(case):
+    """Literal audits traced from main, without the mass rule.
+
+    Returns person, contract, weights, targets, flags, audit and the refusal
+    message (None when the run completes). Fix a literal only from a run of
+    the unchanged base, never from the changed code.
+    """
+    if case == "completed":
+        young = _row("alpha_young", 2.0, "young", 2.0, 2.0, 1.0, 1.0, 1.0)
+        older = _row("alpha_older", 3.0, "older", 3.0, 3.0, 1.0, 1.0, 1.0)
+        program_audit = _program_audit(
+            "alpha",
+            5.0,
+            5.0,
+            5.0,
+            1.0,
+            1.0,
+            [_done(young, 2.0, 1, 2.0), _done(older, 3.0, 1, 3.0)],
+            (1, 5.0),
+        )
+        return (
+            _people((20, 40, 70)),
+            _contract(_program(stratified=True)),
+            [2, 3, 5],
+            {"alpha_young": 2, "alpha_older": 3},
+            {"receives_alpha": [True, True, False]},
+            _audit({"receives_alpha": _finished(program_audit, 5.0, 2)}),
+            None,
+        )
+    if case == "refused":
+        row = _row("alpha_total", 3.0, None, 2.0, 2.0, 1.5, 1.5, 1.5)
+        program_audit = _program_audit(
+            "alpha", 3.0, 2.0, 2.0, 1.5, 1.5, [row], (0, 0.0)
+        )
+        return (
+            _people((20, 21)),
+            _contract(),
+            [1, 1],
+            {"alpha_total": 3},
+            None,
+            _audit({"receives_alpha": program_audit}, status="refused"),
+            "Receipt target 'alpha_total' exceeds eligible weighted mass in declared order.",
+        )
+    if case not in ("group", "group_refused"):
+        raise AssertionError(f"unknown case {case!r}")
+    order = ["receives_alpha", "receives_beta"]
+    alpha = _row("alpha_total", 2.0, None, 2.0, 2.0, 1.0, 1.0, 1.0)
+    programs = {
+        "receives_alpha": _finished(
+            _program_audit(
+                "alpha", 2.0, 2.0, 2.0, 1.0, 1.0, [_done(alpha, 2.0, 2, 2.0)], (0, 0.0)
+            ),
+            2.0,
+            2,
+        ),
+    }
+    overlaps = [
+        {
+            "programs": pair,
+            "filter": None,
+            "n_eligible": 2,
+            "eligible_mass": 2.0,
+        }
+        for pair in (order, order[::-1])
+    ]
+    if case == "group_refused":
+        # Alpha takes beta's whole pool, so beta's remaining ratio is None and
+        # beta refuses. Targets of 3.0 over a mass of 2.0 fail the Hall check.
+        beta = _row("beta_total", 1.0, None, 0.0, 2.0, 0.5, None, None)
+        programs["receives_beta"] = _program_audit(
+            "beta", 1.0, 2.0, 0.0, 0.5, None, [beta], (0, 0.0)
+        )
+        violation = {
+            "programs": order,
+            "filter": None,
+            "filters": [None, None],
+            "target": 3.0,
+            "eligible_mass": 2.0,
+        }
+        group = {
+            "order": order,
+            "status": "refused",
+            "overlaps": overlaps,
+            "feasibility": {
+                "violations": [violation],
+                "feasible": False,
+                "relative_tolerance": 1e-12,
+            },
+        }
+        return (
+            _people((20, 21)),
+            _contract(_program("alpha"), _program("beta"), groups=[order]),
+            [1, 1],
+            {"alpha_total": 2, "beta_total": 1},
+            None,
+            _audit(programs, [group], status="refused"),
+            "Receipt target 'beta_total' exceeds eligible weighted mass in declared order.",
+        )
+    # A zero target over zero remaining mass gives the integer ratio 0.
+    beta = _row("beta_total", 0.0, None, 0.0, 2.0, 0.0, 0, 0)
+    programs["receives_beta"] = _finished(
+        _program_audit(
+            "beta", 0.0, 2.0, 0.0, 0.0, 0, [_done(beta, 0.0, 0, 0.0)], (0, 0.0)
+        ),
+        0.0,
+        0,
+    )
+    group = {
+        "order": order,
+        "status": "completed",
+        "overlaps": overlaps,
+        "feasibility": {
+            "violations": [],
+            "feasible": True,
+            "relative_tolerance": 1e-12,
+        },
+    }
+    return (
+        _people((20, 21)),
+        _contract(_program("alpha"), _program("beta"), groups=[order]),
+        [1, 1],
+        {"alpha_total": 2, "beta_total": 0},
+        {"receives_alpha": [True, True], "receives_beta": [False, False]},
+        _audit(programs, [group]),
+        None,
+    )
+
+
+@pytest.mark.parametrize("case", ["completed", "refused", "group", "group_refused"])
+def test_v2_audit_bytes_without_the_mass_rule_are_pinned(case):
+    person, contract, weights, targets, flags, audit, message = _pinned(case)
+    if message is not None:
+        with pytest.raises(ReceiptAssignmentRefused) as refused:
+            _assign(person, contract, weights=weights, targets=targets)
+        assert str(refused.value) == message
+        assert json.dumps(refused.value.audit) == json.dumps(audit)
+        return
+    out, result = _assign(person, contract, weights=weights, targets=targets)
+    assert list(out.columns) == ["person_id", *flags]
+    assert {name: out[name].tolist() for name in flags} == flags
+    assert json.dumps(result) == json.dumps(audit)
+
+
+# Opt-in rule for targets above eligible weighted mass.
+
+
+def _declared(contract):
+    contract["target_exceeds_eligible_mass"] = "assign_all_eligible"
+    return contract
+
+
+class _Text(str):
+    """Equal to the literal, but not the exact str the validator requires."""
+
+
+def test_mass_rule_assigns_the_whole_pool_and_records_the_shortfall():
+    person, contract, weights, targets, *_ = _pinned("refused")
+    out, audit = _assign(person, _declared(contract), weights=weights, targets=targets)
+    assert out["receives_alpha"].tolist() == [True, True]
+    row = {**_row("alpha_total", 3.0, None, 2.0, 2.0, 1.5, 1.5, 1.0), "shortfall": 1.0}
+    program_audit = _program_audit(
+        "alpha", 3.0, 2.0, 2.0, 1.5, 1.5, [_done(row, 2.0, 2, 2.0)], (0, 0.0)
+    )
+    expected = _audit({"receives_alpha": _finished(program_audit, 2.0, 2)})
+    assert json.dumps(audit) == json.dumps(expected)
+
+
+@pytest.mark.parametrize("case", ["completed", "group", "draws"])
+def test_mass_rule_changes_nothing_until_a_target_exceeds_its_mass(case):
+    if case == "draws":
+        person, contract = _people(tuple(range(20, 40))), _contract()
+        weights, targets = None, {"alpha_total": 10}
+    else:
+        person, contract, weights, targets, *_ = _pinned(case)
+    plain, plain_audit = _assign(
+        person, copy.deepcopy(contract), weights=weights, targets=targets
+    )
+    out, audit = _assign(person, _declared(contract), weights=weights, targets=targets)
+    assert (
+        out.to_records(index=False).tobytes() == plain.to_records(index=False).tobytes()
+    )
+    assert json.dumps(audit) == json.dumps(plain_audit)
+
+
+def test_v2_mass_rule_is_one_optional_literal_and_keeps_the_validator_shape():
+    plain = validate_receipt_contract(_contract())
+    assert len(plain) == 3
+    assert validate_receipt_contract(_declared(_contract())) == plain
+    assert receipt_module.validate_receipt_v2(_declared(_contract())) == plain
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "refuse",
+        "assign_all",
+        "ASSIGN_ALL_ELIGIBLE",
+        "",
+        None,
+        True,
+        1,
+        ["assign_all_eligible"],
+        {"assign_all_eligible": True},
+        np.array(["assign_all_eligible"]),
+        _Text("assign_all_eligible"),
+    ],
+)
+def test_v2_mass_rule_refuses_any_other_value(value):
+    contract = _contract()
+    contract["target_exceeds_eligible_mass"] = value
+    with pytest.raises(
+        ValueError,
+        match=r"^Receipt target_exceeds_eligible_mass must be declared as assign_all_eligible\.$",
+    ):
+        validate_receipt_contract(contract)
+
+
+@pytest.mark.parametrize("location", ["program", "stratum", "profile", "v1"])
+def test_mass_rule_is_read_only_at_the_v2_contract_top_level(location):
+    contract = _contract(_program(stratified=True))
+    match = "missing or unknown fields"
+    if location == "v1":
+        contract = {
+            "seed_column": "take_up_seed",
+            "programs": [
+                {
+                    "program": "toy.alpha",
+                    "output": "receives_alpha",
+                    "judgment_column": "eligible",
+                    "rate": 0.5,
+                }
+            ],
+            "exclusion_groups": [],
+        }
+        destination = contract
+        match = (
+            r"^Receipt contract declares seed_column, programs and exclusion_groups\.$"
+        )
+    else:
+        destination = {
+            "program": contract["programs"][0],
+            "stratum": contract["programs"][0]["strata"][0],
+            "profile": contract["assignment_profiles"]["central"],
+        }[location]
+    destination["target_exceeds_eligible_mass"] = "assign_all_eligible"
+    with pytest.raises(ValueError, match=match):
+        validate_receipt_contract(contract)
+
+
+@pytest.mark.parametrize("case", ["screened", "weightless", "zero_target"])
+def test_mass_rule_at_zero_eligible_mass(case):
+    person = _people((20, 21))
+    weights, targets = [1, 1], {"alpha_total": 0 if case == "zero_target" else 1}
+    if case == "screened":
+        person["payment"] = [0.0, 0.0]
+    else:
+        weights = [0, 0]
+    out, audit = _assign(
+        person, _declared(_contract()), weights=weights, targets=targets
+    )
+    assert audit["status"] == "completed"
+    program_audit = audit["programs"]["receives_alpha"]
+    (row,) = program_audit["strata"]
+    if case == "zero_target":
+        # Not capped: the integer rate 0 assigns nobody, exactly as before.
+        _, plain_audit = _assign(person, _contract(), weights=weights, targets=targets)
+        assert json.dumps(audit) == json.dumps(plain_audit)
+        assert out["receives_alpha"].tolist() == [False, False]
+        assert "shortfall" not in row
+        assert row["rate"] == 0
+        return
+    with pytest.raises(
+        ReceiptAssignmentRefused, match="exceeds eligible weighted mass"
+    ):
+        _assign(person, _contract(), weights=weights, targets=targets)
+    # Every pool member receives, the zero-weight people included.
+    flags = [case == "weightless"] * 2
+    assert out["receives_alpha"].tolist() == flags
+    capped = {
+        **_row("alpha_total", 1.0, None, 0.0, 0.0, None, None, 1.0),
+        "shortfall": 1.0,
+    }
+    assert json.dumps(row) == json.dumps(_done(capped, 0.0, sum(flags), 0.0))
+    assert (program_audit["realized_mass"], program_audit["n_receipts"]) == (
+        0.0,
+        sum(flags),
+    )
+
+
+def test_mass_rule_caps_each_stratum_on_its_own():
+    person = _people((20, 21, 40, 41))
+    weights = [2, 2, 1, 1]
+    contract = _contract(_program(stratified=True))
+    targets = {"alpha_young": 5, "alpha_older": 1}
+    with pytest.raises(
+        ReceiptAssignmentRefused, match="'alpha_young' exceeds eligible weighted mass"
+    ):
+        _assign(person, copy.deepcopy(contract), weights=weights, targets=targets)
+    out, audit = _assign(
+        person, _declared(copy.deepcopy(contract)), weights=weights, targets=targets
+    )
+    # Capping a stratum with mass assigns as a target equal to that mass would.
+    plain, plain_audit = _assign(
+        person, contract, weights=weights, targets={"alpha_young": 4, "alpha_older": 1}
+    )
+    draws = derive_take_up_draws(
+        person["take_up_seed"].to_numpy(), receipt_draw_key("alpha", "")
+    )
+    assert out["receives_alpha"].tolist() == [True, True, *(draws[2:] < 0.5).tolist()]
+    assert (
+        out.to_records(index=False).tobytes() == plain.to_records(index=False).tobytes()
+    )
+    young, older = audit["programs"]["receives_alpha"]["strata"]
+    plain_young, plain_older = plain_audit["programs"]["receives_alpha"]["strata"]
+    assert list(young) == [*list(plain_young)[:8], "shortfall", *list(plain_young)[8:]]
+    assert young == {
+        **plain_young,
+        "target": 5.0,
+        "target_to_eligible_mass_before_exclusions": 1.25,
+        "target_to_remaining_eligible_mass": 1.25,
+        "shortfall": 1.0,
+    }
+    assert json.dumps(older) == json.dumps(plain_older)
+
+
+@pytest.mark.parametrize(
+    ("ages", "weights", "targets", "flags", "rates", "shortfalls", "program_values"),
+    [
+        (
+            (20, 40),
+            [1, 1],
+            {"alpha_young": 2, "alpha_older": 0},
+            [True, False],
+            [1.0, 0.0],
+            [1.0, None],
+            (2.0, 2.0, 1.0, 1.0, 1, {"n_eligible": 0, "eligible_mass": 0.0}),
+        ),
+        (
+            (20, 40, 70),
+            [2, 3, 5],
+            {"alpha_young": 4, "alpha_older": 3},
+            [True, True, False],
+            [1.0, 1.0],
+            [2.0, None],
+            (7.0, 5.0, 1.4, 5.0, 2, {"n_eligible": 1, "eligible_mass": 5.0}),
+        ),
+    ],
+    ids=["sibling", "outside"],
+)
+def test_mass_rule_never_moves_a_shortfall_to_a_sibling_or_outside_strata(
+    ages, weights, targets, flags, rates, shortfalls, program_values
+):
+    out, audit = _assign(
+        _people(ages),
+        _declared(_contract(_program(stratified=True))),
+        weights=weights,
+        targets=targets,
+    )
+    assert out["receives_alpha"].tolist() == flags
+    result = audit["programs"]["receives_alpha"]
+    assert [row["rate"] for row in result["strata"]] == rates
+    assert [row.get("shortfall") for row in result["strata"]] == shortfalls
+    assert (
+        result["target"],
+        result["eligible_mass"],
+        result["target_to_remaining_eligible_mass"],
+        result["realized_mass"],
+        result["n_receipts"],
+        result["outside_strata"],
+    ) == program_values
+    assert "shortfall" not in result
+
+
+@pytest.mark.parametrize("profile", ["central", "reversed"])
+def test_mass_rule_follows_the_profile_exclusion_order(profile):
+    contract = _contract(
+        _program("alpha"),
+        _program("beta"),
+        groups=[["receives_alpha", "receives_beta"]],
+    )
+    targets = {"alpha_total": 3, "beta_total": 2}
+    with pytest.raises(
+        ReceiptAssignmentRefused, match="exceeds eligible weighted mass"
+    ):
+        _assign(
+            _people((20, 21)), copy.deepcopy(contract), targets=targets, profile=profile
+        )
+    out, audit = _assign(
+        _people((20, 21)), _declared(contract), targets=targets, profile=profile
+    )
+    first, second = ("alpha", "beta") if profile == "central" else ("beta", "alpha")
+    assert out[f"receives_{first}"].tolist() == [True, True]
+    assert out[f"receives_{second}"].tolist() == [False, False]
+    rows = {
+        name: audit["programs"][f"receives_{name}"]["strata"][0]
+        for name in ("alpha", "beta")
+    }
+    assert {name: row.get("shortfall") for name, row in rows.items()} == {
+        "central": {"alpha": 1.0, "beta": 2.0},
+        "reversed": {"alpha": 3.0, "beta": None},
+    }[profile]
+    assert all(row["rate"] == 1.0 for row in rows.values())
+    assert rows[second]["eligible_mass"] == 0.0
+    assert rows[second]["eligible_mass_before_exclusions"] == 2.0
+    assert rows[second]["target_to_remaining_eligible_mass"] is None
+    assert rows[second]["numerical_check"] == _check(0.0)
+    (group,) = audit["exclusion_groups"]
+    assert audit["status"] == group["status"] == "completed"
+    assert group["order"] == [f"receives_{first}", f"receives_{second}"]
+    assert group["feasibility"]["feasible"] is False
+    (violation,) = group["feasibility"]["violations"]
+    assert violation["programs"] == group["order"]
+    assert (violation["target"], violation["eligible_mass"]) == (5.0, 2.0)
+
+
+@pytest.mark.parametrize(
+    ("profile", "targets", "short"),
+    [
+        ("central", {"alpha_total": 2, "beta_total": 1}, "beta"),
+        ("reversed", {"alpha_total": 1, "beta_total": 2}, "alpha"),
+    ],
+)
+def test_mass_rule_completes_where_the_hall_diagnostic_fails(profile, targets, short):
+    contract = _contract(
+        _program("alpha"),
+        _program("beta"),
+        groups=[["receives_alpha", "receives_beta"]],
+    )
+    out, audit = _assign(
+        _people((20, 21)), _declared(contract), targets=targets, profile=profile
+    )
+    full = "alpha" if short == "beta" else "beta"
+    assert out[f"receives_{full}"].tolist() == [True, True]
+    assert out[f"receives_{short}"].tolist() == [False, False]
+    assert "shortfall" not in audit["programs"][f"receives_{full}"]["strata"][0]
+    row = audit["programs"][f"receives_{short}"]["strata"][0]
+    capped = {
+        **_row(f"{short}_total", 1.0, None, 0.0, 2.0, 0.5, None, 1.0),
+        "shortfall": 1.0,
+    }
+    assert json.dumps(row) == json.dumps(_done(capped, 0.0, 0, 0.0))
+    (group,) = audit["exclusion_groups"]
+    assert audit["status"] == group["status"] == "completed"
+    assert group["feasibility"]["feasible"] is False
+    (violation,) = group["feasibility"]["violations"]
+    assert violation["programs"] == group["order"]
+    assert (violation["target"], violation["eligible_mass"]) == (3.0, 2.0)
+
+
+def test_mass_rule_keeps_the_numerical_check_on_strata_within_their_mass():
+    with pytest.raises(
+        ReceiptAssignmentRefused, match="numerical expected-mass check"
+    ) as refused:
+        _assign(
+            _people((20, 21, 22)),
+            _declared(_contract()),
+            weights=[1e200] * 3,
+            targets={"alpha_total": 1e-200},
+        )
+    audit = refused.value.audit
+    assert audit["status"] == "refused"
+    detail = audit["programs"]["receives_alpha"]["strata"][0]
+    assert "shortfall" not in detail
+    assert detail["numerical_check"]["passed"] is False
+    assert detail["numerical_check"]["expected_mass"] == 0
+
+
+def test_mass_rule_keeps_an_earlier_shortfall_when_a_later_check_refuses():
+    with pytest.raises(
+        ReceiptAssignmentRefused,
+        match="'alpha_older' failed the numerical expected-mass check",
+    ) as refused:
+        _assign(
+            _people((20, 21, 40, 41)),
+            _declared(_contract(_program(stratified=True))),
+            weights=[1, 1, 1e200, 1e200],
+            # The young target exceeds its mass of 2; the older rate, 1e-200
+            # over 2e200, underflows to 0.0.
+            targets={"alpha_young": 3, "alpha_older": 1e-200},
+        )
+    audit = refused.value.audit
+    assert audit["status"] == "refused"
+    young, older = audit["programs"]["receives_alpha"]["strata"]
+    assert (young["rate"], young["shortfall"]) == (1.0, 1.0)
+    assert young["numerical_check"] == _check(2.0)
+    assert (older["rate"], older["numerical_check"]["passed"]) == (0.0, False)
+    assert "shortfall" not in older
+
+
+def test_mass_rule_caps_a_pool_that_exclude_columns_shrank():
+    person = _people((20, 21))
+    person["excluded"] = np.array([True, False])
+    program = _program()
+    program["exclude_columns"] = ["excluded"]
+    contract = _contract(program)
+    targets = {"alpha_total": 2}
+    with pytest.raises(
+        ReceiptAssignmentRefused, match="exceeds eligible weighted mass"
+    ):
+        _assign(person, copy.deepcopy(contract), weights=[1, 1], targets=targets)
+    out, audit = _assign(person, _declared(contract), weights=[1, 1], targets=targets)
+    assert out["receives_alpha"].tolist() == [False, True]
+    (row,) = audit["programs"]["receives_alpha"]["strata"]
+    assert (
+        row["eligible_mass"],
+        row["eligible_mass_before_exclusions"],
+        row["rate"],
+        row["shortfall"],
+        row["realized_mass"],
+        row["n_receipts"],
+    ) == (1.0, 2.0, 1.0, 1.0, 1.0, 1)
+
+
+def test_mass_rule_assigns_the_capped_pool_even_when_every_draw_is_nan(monkeypatch):
+    keys = []
+
+    def nan_draws(seeds, key):
+        keys.append(key)
+        return np.full(len(seeds), np.nan)
+
+    monkeypatch.setattr(receipt_module, "derive_take_up_draws", nan_draws)
+    out, audit = _assign(
+        _people((20, 21, 22)), _declared(_contract()), targets={"alpha_total": 4}
+    )
+    # NaN < rate is False, so a pool chosen by its draws would assign nobody.
+    assert out["receives_alpha"].tolist() == [True, True, True]
+    assert keys == [receipt_draw_key("alpha", "")]
+    (row,) = audit["programs"]["receives_alpha"]["strata"]
+    assert (row["rate"], row["shortfall"], row["n_receipts"]) == (1.0, 1.0, 3)
+
+
+@pytest.mark.parametrize("profile", ["central", "variant"])
+def test_mass_rule_assigns_the_capped_pool_and_leaves_other_programs_draws(profile):
+    person = _people(tuple(range(20, 40)))
+    contract = _declared(_contract(_program("alpha"), _program("beta")))
+    suffix = "" if profile == "central" else "variant"
+    seeds = person["take_up_seed"].to_numpy()
+
+    def drawn(program):
+        draws = derive_take_up_draws(seeds, receipt_draw_key(program, suffix))
+        return (draws < 0.5).tolist()
+
+    capped, audit = _assign(
+        person, contract, targets={"alpha_total": 25, "beta_total": 10}, profile=profile
+    )
+    plain, _ = _assign(
+        person, contract, targets={"alpha_total": 10, "beta_total": 10}, profile=profile
+    )
+    assert capped["receives_alpha"].all()
+    assert audit["programs"]["receives_alpha"]["strata"][0]["shortfall"] == 5.0
+    assert plain["receives_alpha"].tolist() == drawn("alpha")
+    assert capped["receives_beta"].tolist() == plain["receives_beta"].tolist()
+    assert capped["receives_beta"].tolist() == drawn("beta")
+
+
+MASS_RULE_PROPERTY = settings(
+    max_examples=40,
+    deadline=None,
+    database=None,
+    derandomize=True,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+
+
+@MASS_RULE_PROPERTY
+@given(
+    st.lists(st.integers(min_value=0, max_value=90), min_size=1, max_size=12),
+    st.sampled_from(["central", "variant"]),
+    st.data(),
+)
+def test_property_mass_rule_changes_only_strata_whose_target_exceeds_mass(
+    ages, profile, data
+):
+    count = len(ages)
+    weights = data.draw(st.lists(st.integers(0, 100), min_size=count, max_size=count))
+    eligible = np.asarray(
+        data.draw(st.lists(st.booleans(), min_size=count, max_size=count)), dtype=bool
+    )
+    eighths = data.draw(st.lists(st.integers(0, 16), min_size=2, max_size=2))
+    person = _people(tuple(ages))
+    person["eligible"] = np.where(eligible, 1, -1)
+    age = np.asarray(ages)
+    pools = {
+        "alpha_young": eligible & (age >= 18) & (age < 30),
+        "alpha_older": eligible & (age >= 30) & (age < 65),
+    }
+    values = np.asarray(weights, dtype=np.float64)
+    masses = {name: math.fsum(values[pool].tolist()) for name, pool in pools.items()}
+    # Eighths keep rate * mass exact; a zero mass still gets a positive target.
+    targets = {
+        name: (masses[name] or 1.0) * share / 8
+        for name, share in zip(masses, eighths, strict=True)
+    }
+    exceeded = {name for name in targets if targets[name] > masses[name]}
+    contract = _contract(_program(stratified=True))
+    out, audit = _assign(
+        person,
+        _declared(copy.deepcopy(contract)),
+        weights=weights,
+        targets=targets,
+        profile=profile,
+    )
+    assert audit["status"] == "completed"
+    json.dumps(audit, allow_nan=False)
+    if exceeded:
+        with pytest.raises(
+            ReceiptAssignmentRefused, match="exceeds eligible weighted mass"
+        ):
+            _assign(person, contract, weights=weights, targets=targets, profile=profile)
+    else:
+        plain, plain_audit = _assign(
+            person, contract, weights=weights, targets=targets, profile=profile
+        )
+        assert (
+            out.to_records(index=False).tobytes()
+            == plain.to_records(index=False).tobytes()
+        )
+        assert json.dumps(audit) == json.dumps(plain_audit)
+    flags = out["receives_alpha"].to_numpy()
+    for row in audit["programs"]["receives_alpha"]["strata"]:
+        name = row["target_name"]
+        assert row["eligible_mass"] == masses[name]
+        assert 0 <= row["rate"] <= 1
+        assert row["numerical_check"]["passed"] is True
+        if name in exceeded:
+            assert flags[pools[name]].all()
+            assert row["n_receipts"] == int(pools[name].sum())
+            assert row["rate"] == 1.0
+            assert row["realized_mass"] == masses[name]
+            assert row["numerical_check"]["expected_mass"] == masses[name]
+            assert row["shortfall"] == targets[name] - masses[name] > 0
+        else:
+            assert "shortfall" not in row
+
+
+@MASS_RULE_PROPERTY
+@given(
+    st.integers(1, 15),
+    st.integers(0, 12),
+    st.integers(0, 12),
+    st.sampled_from(["central", "reversed"]),
+)
+@example(count=2, alpha=12, beta=8, profile="central")
+def test_property_mass_rule_group_never_refuses_or_assigns_two_flags(
+    count, alpha, beta, profile
+):
+    contract = _declared(
+        _contract(
+            _program("alpha"),
+            _program("beta"),
+            groups=[["receives_alpha", "receives_beta"]],
+        )
+    )
+    out, audit = _assign(
+        _people(tuple(range(20, 20 + count))),
+        contract,
+        targets={"alpha_total": count * alpha / 8, "beta_total": count * beta / 8},
+        profile=profile,
+    )
+    assert audit["status"] == audit["exclusion_groups"][0]["status"] == "completed"
+    json.dumps(audit, allow_nan=False)
+    assert (out[["receives_alpha", "receives_beta"]].sum(axis=1) <= 1).all()
+    first, second = ("alpha", "beta") if profile == "central" else ("beta", "alpha")
+    if {"alpha": alpha, "beta": beta}[first] > 8:
+        assert out[f"receives_{first}"].all()
+        assert not out[f"receives_{second}"].any()
+    for name in ("alpha", "beta"):
+        row = audit["programs"][f"receives_{name}"]["strata"][0]
+        assert row["realized_mass"] <= row["eligible_mass"]
+        assert ("shortfall" in row) == (row["target"] > row["eligible_mass"])
+        if "shortfall" in row:
+            assert row["n_receipts"] == row["eligible_mass"]
+
+
+# A target over a tiny mass overflows its ratio to infinity, which canonical
+# JSON refuses. Each case gives ages, exclusions, weights, the masses before
+# and after exclusions, the flags under the rule, then (before, remaining)
+# ratios without the rule and with it.
+_TINY = 5e-324
+_OVERFLOW = {
+    # One tiny pool overflows both ratios.
+    "tiny": (
+        (20,),
+        [False],
+        [_TINY],
+        _TINY,
+        _TINY,
+        [True],
+        (math.inf, math.inf),
+        (None, None),
+    ),
+    # The exclusion empties the pool, so its zero mass gives no remaining
+    # ratio and only the ratio before exclusions overflows.
+    "excluded": (
+        (20,),
+        [True],
+        [_TINY],
+        _TINY,
+        0.0,
+        [False],
+        (math.inf, None),
+        (None, None),
+    ),
+    # The exclusion leaves a tiny pool, so only the remaining ratio overflows.
+    "remaining": (
+        (20, 21),
+        [True, False],
+        [1.0, _TINY],
+        1.0,
+        _TINY,
+        [False, True],
+        (1.0, math.inf),
+        (1.0, None),
+    ),
+}
+
+
+def _overflow_inputs(ages, excluded):
+    person = _people(ages)
+    person["excluded"] = np.array(excluded)
+    program = _program()
+    program["exclude_columns"] = ["excluded"]
+    return person, _contract(program)
+
+
+@pytest.mark.parametrize("case", list(_OVERFLOW))
+def test_mass_rule_records_an_overflowing_ratio_as_none(case):
+    ages, excluded, weights, before, mass, flags, _, ratios = _OVERFLOW[case]
+    person, contract = _overflow_inputs(ages, excluded)
+    out, audit = _assign(
+        person, _declared(contract), weights=weights, targets={"alpha_total": 1.0}
+    )
+    assert out["receives_alpha"].tolist() == flags
+    row = {
+        **_row("alpha_total", 1.0, None, mass, before, *ratios, 1.0),
+        "shortfall": 1.0,
+    }
+    program_audit = _program_audit(
+        "alpha",
+        1.0,
+        before,
+        mass,
+        *ratios,
+        [_done(row, mass, sum(flags), mass)],
+        (0, 0.0),
+    )
+    expected = _audit({"receives_alpha": _finished(program_audit, mass, sum(flags))})
+    assert json.dumps(audit, allow_nan=False) == json.dumps(expected)
+
+
+@pytest.mark.parametrize("case", list(_OVERFLOW))
+def test_overflowing_ratios_without_the_mass_rule_refuse_as_before(case):
+    ages, excluded, weights, before, mass, _, ratios, _ = _OVERFLOW[case]
+    person, contract = _overflow_inputs(ages, excluded)
+    with pytest.raises(ReceiptAssignmentRefused) as refused:
+        _assign(person, contract, weights=weights, targets={"alpha_total": 1.0})
+    assert str(refused.value) == (
+        "Receipt target 'alpha_total' exceeds eligible weighted mass in declared order."
+    )
+    # Traced from a run of base 9189f745: the refusal audit keeps its infinities.
+    row = _row("alpha_total", 1.0, None, mass, before, *ratios, ratios[1])
+    program_audit = _program_audit("alpha", 1.0, before, mass, *ratios, [row], (0, 0.0))
+    expected = _audit({"receives_alpha": program_audit}, status="refused")
+    assert json.dumps(refused.value.audit) == json.dumps(expected)
+
+
+# Each target is finite, but two of them sum past the largest float. Under the
+# rule the audit records such a total as None; without it the OverflowError
+# propagates, as on base 9189f745.
+_HUGE = 1e308
+_HUGE_ORDER = ["receives_alpha", "receives_beta"]
+
+
+def _huge_inputs(case):
+    if case == "strata":
+        # One program whose two strata each hold one unit-weight adult.
+        targets = {"alpha_young": _HUGE, "alpha_older": _HUGE}
+        return _people((20, 40)), _contract(_program(stratified=True)), targets
+    # Two programs in one exclusion group, both eligible for both adults.
+    contract = _contract(_program("alpha"), _program("beta"), groups=[_HUGE_ORDER])
+    targets = {"alpha_total": _HUGE, "beta_total": _HUGE}
+    return _people((20, 21)), contract, targets
+
+
+def _huge_expected(case):
+    if case == "strata":
+        strata = [
+            _done(
+                {
+                    **_row(name, _HUGE, filter_name, 1.0, 1.0, _HUGE, _HUGE, 1.0),
+                    "shortfall": _HUGE - 1.0,
+                },
+                1.0,
+                1,
+                1.0,
+            )
+            for name, filter_name in (
+                ("alpha_young", "young"),
+                ("alpha_older", "older"),
+            )
+        ]
+        # The program total overflows, so it and both of its ratios are None.
+        program = _program_audit("alpha", None, 2.0, 2.0, None, None, strata, (0, 0.0))
+        flags = {"receives_alpha": [True, True]}
+        return flags, _audit({"receives_alpha": _finished(program, 2.0, 2)})
+    alpha = {
+        **_row("alpha_total", _HUGE, None, 2.0, 2.0, _HUGE / 2, _HUGE / 2, 1.0),
+        "shortfall": _HUGE - 2.0,
+    }
+    beta = {
+        **_row("beta_total", _HUGE, None, 0.0, 2.0, _HUGE / 2, None, 1.0),
+        "shortfall": _HUGE,
+    }
+    programs = {
+        "receives_alpha": _finished(
+            _program_audit(
+                "alpha",
+                _HUGE,
+                2.0,
+                2.0,
+                _HUGE / 2,
+                _HUGE / 2,
+                [_done(alpha, 2.0, 2, 2.0)],
+                (0, 0.0),
+            ),
+            2.0,
+            2,
+        ),
+        "receives_beta": _finished(
+            _program_audit(
+                "beta",
+                _HUGE,
+                2.0,
+                0.0,
+                _HUGE / 2,
+                None,
+                [_done(beta, 0.0, 0, 0.0)],
+                (0, 0.0),
+            ),
+            0.0,
+            0,
+        ),
+    }
+    # The pair's exact target overflows, so the Hall violation records None.
+    group = {
+        "order": _HUGE_ORDER,
+        "status": "completed",
+        "overlaps": [
+            {"programs": pair, "filter": None, "n_eligible": 2, "eligible_mass": 2.0}
+            for pair in (_HUGE_ORDER, _HUGE_ORDER[::-1])
+        ],
+        "feasibility": {
+            "violations": [
+                {
+                    "programs": _HUGE_ORDER,
+                    "filter": None,
+                    "filters": [None, None],
+                    "target": None,
+                    "eligible_mass": 2.0,
+                }
+            ],
+            "feasible": False,
+            "relative_tolerance": 1e-12,
+        },
+    }
+    flags = {"receives_alpha": [True, True], "receives_beta": [False, False]}
+    return flags, _audit(programs, [group])
+
+
+_HUGE_ERRORS = {
+    "strata": "intermediate overflow in fsum",
+    "group": "integer division result too large for a float",
+}
+
+
+@pytest.mark.parametrize("case", list(_HUGE_ERRORS))
+def test_mass_rule_records_a_target_total_too_large_for_a_float_as_none(case):
+    person, contract, targets = _huge_inputs(case)
+    out, audit = _assign(person, _declared(contract), targets=targets)
+    flags, expected = _huge_expected(case)
+    assert {name: out[name].tolist() for name in flags} == flags
+    assert json.dumps(audit, allow_nan=False) == json.dumps(expected)
+
+
+@pytest.mark.parametrize("case", list(_HUGE_ERRORS))
+def test_target_total_too_large_for_a_float_raises_without_the_mass_rule(case):
+    person, contract, targets = _huge_inputs(case)
+    with pytest.raises(OverflowError, match=_HUGE_ERRORS[case]):
+        _assign(person, contract, targets=targets)
+
+
+def test_hall_overflowing_target_raises_unless_recorded_as_none():
+    demands = [(name, None, _HUGE, np.ones(2, dtype=bool)) for name in _HUGE_ORDER]
+    weights = np.ones(2)
+    with pytest.raises(OverflowError, match=_HUGE_ERRORS["group"]):
+        receipt_module.hall_diagnostics(demands, weights)
+    with pytest.raises(TypeError):
+        receipt_module.hall_diagnostics(demands, weights, True)
+    assert receipt_module.hall_diagnostics(demands, weights, overflow_as_none=True) == {
+        "violations": [
+            {
+                "programs": _HUGE_ORDER,
+                "filter": None,
+                "filters": [None, None],
+                "target": None,
+                "eligible_mass": 2.0,
+            }
+        ],
+        "feasible": False,
+        "relative_tolerance": receipt_module.RECEIPT_RELATIVE_TOLERANCE,
+    }
+    # A total a float can hold reports the same either way.
+    demands = [(name, None, _HUGE / 4, np.ones(2, dtype=bool)) for name in _HUGE_ORDER]
+    plain = receipt_module.hall_diagnostics(demands, weights)
+    assert plain["violations"][0]["target"] == _HUGE / 2
+    assert (
+        receipt_module.hall_diagnostics(demands, weights, overflow_as_none=True)
+        == plain
+    )
+
+
+# fsum raises on these four finite targets although their exact sum, rounded,
+# is the largest float.
+_NEAR_MAX_TARGETS = [
+    float.fromhex(value)
+    for value in (
+        "0x1.fffffffffffe8p+1020",
+        "0x1.0000000000002p+1023",
+        "0x1.fffffffffffffp+1020",
+        "0x1.0000000000001p+1022",
+    )
+]
+
+
+def test_target_total_falls_back_to_the_exact_sum_under_the_mass_rule():
+    exact = float(sum(map(Fraction, _NEAR_MAX_TARGETS), Fraction()))
+    assert math.isfinite(exact)
+    for assign_all in (False, True):
+        assert receipt_module._target_total([1.0, 2.5], assign_all) == 3.5
+    with pytest.raises(OverflowError, match="intermediate overflow in fsum"):
+        receipt_module._target_total(_NEAR_MAX_TARGETS, False)
+    assert receipt_module._target_total(_NEAR_MAX_TARGETS, True) == exact
+    with pytest.raises(OverflowError, match="intermediate overflow in fsum"):
+        receipt_module._target_total([_HUGE, _HUGE], False)
+    assert receipt_module._target_total([_HUGE, _HUGE], True) is None
+
+
+# Eight weights from an independent review: fsum of all eight is the largest
+# float. The seven adults' exact sum, 0.36 ULP above it, rounds to it too, yet
+# fsum raises on the adults: a partial sum overflows on the way.
+_NEAR_MAX_WEIGHTS = np.array(
+    [
+        float.fromhex(value)
+        for value in (
+            "0x1.5b6b7a2f4dddbp+997",
+            "0x1.1455647cb7a32p+984",
+            "0x1.7f841fa0aca2ep+984",
+            "0x1.c8aa803d47c02p+1005",
+            "0x1.85fa197ec05e2p+1018",
+            "0x1.9e7572c2e19f0p+1023",
+            "0x1.69226dbae147bp+961",
+            "0x1.556927bea121dp+1021",
+        )
+    ]
+)
+_ADULTS = np.array([True] * 6 + [False, True])
+_LARGEST = sys.float_info.max
+
+
+def _exact_or_none(values):
+    """The exact sum rounded to a float, or None when it rounds past them all."""
+    try:
+        return float(sum(map(Fraction, values), Fraction()))
+    except OverflowError:
+        return None
+
+
+def test_mass_falls_back_to_the_exact_sum_only_under_the_mass_rule():
+    weights = _NEAR_MAX_WEIGHTS
+    assert math.fsum(weights.tolist()) == _LARGEST
+    assert _exact_or_none(weights[_ADULTS].tolist()) == _LARGEST
+    with pytest.raises(OverflowError) as raised:
+        receipt_module._mass(weights, _ADULTS, assign_all=False)
+    assert str(raised.value) == "intermediate overflow in fsum"
+    assert receipt_module._mass(weights, _ADULTS, assign_all=True) == _LARGEST
+    # A sum fsum holds is the same either way.
+    for assign_all in (False, True):
+        assert (
+            receipt_module._mass(weights, ~_ADULTS, assign_all=assign_all)
+            == (weights[6])
+        )
+    # The rule must be named at every call.
+    with pytest.raises(TypeError):
+        receipt_module._mass(weights, _ADULTS)
+    with pytest.raises(TypeError):
+        receipt_module._mass(weights, _ADULTS, True)
+
+
+def test_weight_total_falls_back_to_the_exact_sum_only_under_the_mass_rule():
+    # The adults alone: fsum raises, but their exact sum rounds to a float.
+    weights = _NEAR_MAX_WEIGHTS[_ADULTS]
+    person = _people(tuple(range(20, 20 + len(weights))))
+    with pytest.raises(ValueError) as refused:
+        _assign(person, weights=weights)
+    assert str(refused.value) == "Receipt weights must have a finite sum."
+    assert type(refused.value.__cause__) is OverflowError
+    assert str(refused.value.__cause__) == "intermediate overflow in fsum"
+    out, audit = _assign(person, _declared(_contract()), weights=weights)
+    assert not out["receives_alpha"].any()
+    program = audit["programs"]["receives_alpha"]
+    assert program["eligible_mass"] == program["eligible_mass_before_exclusions"]
+    assert program["eligible_mass"] == _LARGEST
+    # An exact sum past the largest float still refuses under the rule.
+    with pytest.raises(ValueError) as refused:
+        _assign(_people((20, 21, 22)), _declared(_contract()), weights=[1e308] * 3)
+    assert str(refused.value) == "Receipt weights must have a finite sum."
+    assert str(refused.value.__cause__) == (
+        "integer division result too large for a float"
+    )
+
+
+def test_outside_strata_mass_falls_back_to_the_exact_sum_only_under_the_mass_rule():
+    # The seven people at _ADULTS, aged 70, sit outside both strata: fsum
+    # raises on their mass. The small weight is the one young person.
+    weights, small = _NEAR_MAX_WEIGHTS, float(_NEAR_MAX_WEIGHTS[6])
+    person = _people(tuple(np.where(_ADULTS, 70, 20).tolist()))
+    contract = _contract(_program(stratified=True))
+    targets = {"alpha_young": 1.0, "alpha_older": 1.0}
+    # Without the rule, the OverflowError base 9189f745 raises, from the mass
+    # outside the strata.
+    with pytest.raises(OverflowError) as raised:
+        _assign(person, copy.deepcopy(contract), weights=weights, targets=targets)
+    assert str(raised.value) == "intermediate overflow in fsum"
+    out, audit = _assign(person, _declared(contract), weights=weights, targets=targets)
+    assert not out["receives_alpha"].any()
+    program = audit["programs"]["receives_alpha"]
+    assert program["outside_strata"] == {"n_eligible": 7, "eligible_mass": _LARGEST}
+    rate = 1.0 / small
+    young = _row("alpha_young", 1.0, "young", small, small, rate, rate, rate)
+    older = {
+        **_row("alpha_older", 1.0, "older", 0.0, 0.0, None, None, 1.0),
+        "shortfall": 1.0,
+    }
+    program_audit = _program_audit(
+        "alpha",
+        2.0,
+        small,
+        small,
+        2.0 / small,
+        2.0 / small,
+        [_done(young, 0.0, 0, rate * small), _done(older, 0.0, 0, 0.0)],
+        (7, _LARGEST),
+    )
+    expected = _audit({"receives_alpha": _finished(program_audit, 0.0, 0)})
+    assert json.dumps(audit, allow_nan=False) == json.dumps(expected)
+
+
+# Finite, non-negative weights, often near the largest float.
+_PROPERTY_WEIGHT = st.one_of(
+    st.floats(min_value=0, max_value=_LARGEST),
+    st.floats(min_value=2.0**1020, max_value=_LARGEST),
+    st.sampled_from(_NEAR_MAX_WEIGHTS.tolist()),
+)
+
+
+@MASS_RULE_PROPERTY
+@given(st.lists(st.tuples(_PROPERTY_WEIGHT, st.booleans()), min_size=1, max_size=10))
+@example(rows=list(zip(_NEAR_MAX_WEIGHTS.tolist(), _ADULTS.tolist(), strict=True)))
+@example(rows=[(weight, True) for weight in _NEAR_MAX_WEIGHTS[_ADULTS].tolist()])
+# The largest float plus half a ULP ties and rounds past it; just under rounds
+# to it.
+@example(rows=[(_LARGEST, True), (2.0**970, True)])
+@example(rows=[(_LARGEST, True), (2.0**970 - 2.0**917, True), (2.0**916, False)])
+def test_property_mass_is_the_exact_sum_rounded_under_the_mass_rule(rows):
+    weights = np.array([weight for weight, _ in rows])
+    mask = np.array([chosen for _, chosen in rows])
+    total = _exact_or_none(weights.tolist())
+    masked = _exact_or_none(weights[mask].tolist())
+    # Without the rule, _mass is fsum: the exact sum rounded when it returns,
+    # else fsum's own OverflowError.
+    try:
+        expected = math.fsum(weights[mask].tolist())
+    except OverflowError as error:
+        with pytest.raises(OverflowError) as raised:
+            receipt_module._mass(weights, mask, assign_all=False)
+        assert str(raised.value) == str(error)
+    else:
+        assert receipt_module._mass(weights, mask, assign_all=False) == expected
+        assert expected == masked
+    # Under the rule, the weights pass validation exactly when their exact
+    # total rounds to a float, and then every mass is its exact sum rounded.
+    person = _people(tuple(range(20, 20 + len(rows))))
+    contract = _declared(_contract())
+    if total is None:
+        with pytest.raises(ValueError, match="finite sum"):
+            _assign(person, contract, weights=weights)
+        return
+    _, audit = _assign(person, contract, weights=weights)
+    assert audit["programs"]["receives_alpha"]["eligible_mass"] == total
+    assert receipt_module._mass(weights, mask, assign_all=True) == masked
+    assert masked is not None

@@ -237,7 +237,6 @@ from .rowwise_posture import (
 )
 from .rowwise_staging import (
     STAGED_DATASET_PHASES,
-    STAGING_UPLOAD_INTERVAL_SECONDS,
     block_staging_run_bundle,
     create_staging_run_bundle,
     emit_calibration_progress,
@@ -901,11 +900,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Validate the request and print the compiled operation inventory without fitting or writing files.",
     )
-    add_staging_arguments(
-        parser,
-        repository=UK_STAGING_REPOSITORY,
-        default_upload_interval_seconds=STAGING_UPLOAD_INTERVAL_SECONDS,
-    )
+    add_staging_arguments(parser, repository=UK_STAGING_REPOSITORY)
     add_staged_dataset_arguments(parser, repository=UK_STAGED_DATASET_REPOSITORY)
     graph_publication = parser.add_mutually_exclusive_group()
     graph_publication.add_argument(
