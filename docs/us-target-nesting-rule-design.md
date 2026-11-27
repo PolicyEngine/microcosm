@@ -199,6 +199,37 @@ At the re-pin the bytes of the registry move anyway.
 
 **Recommended: yes to all three, in the re-pin PR.**
 
+**Ruled later on 27 Nov 2026: no allocator.** After the re-pin the US divides
+a control with the operator's own rule, as the UK does (section 5.2).
+
+### Rulings of 27 Nov 2026 on the steps
+
+Ten calls came up when steps 1 and 2 of section 5.5 were written. Each is
+ruled, with the recommended option.
+
+1. **No allocator after the re-pin.** Decision 9 narrows from one allocator
+   to none. Before the allocators go, check that no reader needs rows that
+   sum exactly to their control.
+2. **A concept takes its state parent from one source in every state.** A
+   concept with a Historic Table 2 parent in some states and a district-file
+   parent in others is refused. A concept that Historic Table 2 lacks in
+   every state keeps its district-file parent.
+3. **The check that the district file agrees with itself stays out.** The
+   compile holds that sum before the pass, and after Chronicle PR #451 the
+   file has no state row to compare.
+4. **The county rows are compared and pinned on the pinned county facts
+   file now**, not at step 3.
+5. **Merge timing.** This branch does not merge while a UK release is between
+   its first build and its sign-off, because the UK graph re-keys.
+6. **PR #1755 merges first.** This branch then takes its changes.
+7. **The rulings are posted on microcosm#1760**, after the text is approved.
+8. **Medicaid stays a `subset`** with an allowed excess of 1%, and Medicaid
+   with CHIP 0.1%.
+9. **Two readings of the first ruling, for step 3.** The `full` surface nests
+   its district rows in the Historic Table 2 state row. District capital
+   gains nest in the Historic Table 2 state row.
+10. **Decisions 4 and 7 go in their own PRs.**
+
 ## 5. How the rulings are declared: one general model
 
 **The principle (ruled 27 Nov 2026).** Clean country-agnostic code comes
@@ -232,7 +263,7 @@ one joint surface of all the bound rows, and it writes one receipt and the
 
 | What | Why it goes |
 |---|---|
-| The allocator hook and the three allocators | Every country uses the operator's one rule: the row times the control over the sum of the rows. Stage A needs the allocators only to prove the move with the old bytes. They go at the re-pin. District and county values then move in the last bits. This narrows decision 9 from one allocator to none |
+| The allocator hook and the three allocators | Every country uses the operator's one rule: the row times the control over the sum of the rows. Stage A needs the allocators only to prove the move with the old bytes. They go at the re-pin. District and county values then move in the last bits. This narrows decision 9 from one allocator to none (ruled 27 Nov 2026) |
 | The US keys `mechanisms` and `inventory` | The US file has the UK's keys only |
 | The US checks before the operator (factor band, completeness, self-consistency) | They are things 4 and 5 of the model |
 | The sibling-ratio bridge | After the re-pin, Historic Table 2 holds the six parents |
