@@ -463,6 +463,31 @@
       "notes": "Stage-time check that every household spend column lcfs_consumption emits is at calendar-2024 prices as households paid them (microcosm#1113): the H5's year, which policyengine-uk projects every column from with calendar-year growth and the calibration uprates to the calendar-2025 window, so no column needs a basis of its own. The donor uprating must end at 2024 and carry every diary spend column from the April-to-March diary year, placed on the calendar-year index at three quarters and one quarter: the 2024-25 diary sits a quarter past calendar 2024 and steps back to it (microcosm#1164), and a plain ratio of calendar years would leave it at about fiscal 2024-25 prices. The QEP energy prices and the DESNZ volume level must be for calendar 2024, bus fares must be re-priced to 2024 by the fares indices, and the road-fuel level must be ONS 07.2.2 for calendar 2024; a step whose receipt is absent fails. A population fact check: the synthetic smoke records it without blocking."
     },
     {
+      "id": "uk_stage_lcfs_consumption_decile_fit",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "diagnostic",
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "decile_fit",
+        "deciles": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "shape_reference": "reweighted_donor",
+        "maximum_shape_deviation": 0.1
+      },
+      "notes": "Report-only stage-time check on the lcfs decile_fit receipt (microcosm#1717). Each survey is ranked on its own equivalised predictor income (the HBAI net income the draw conditions on, over the modified OECD scale from the adult and child counts) and cut into tenths of its weighted households, the frame at the stage's design weights and the donor at its own. The frame is held to the donor reweighted, within each decile, to the frame's household mix of adults, children, cars and tenure. A decile's shape is the frame's total spending per household over that reweighted donor's, over the same ratio pooled over deciles 4 to 7, so neither the level nor the two surveys' household mixes move it: it is the draw's own. The receipt also gives each shape against the donor as surveyed. A decile 1 to 9 whose shape leaves 1 by more than the tolerance, or that is withheld, warns; decile 10, whose incomes reach beyond the donor's, is reported only. Diagnostic: it blocks no release."
+    },
+    {
       "id": "uk_stage_etb_vat_support",
       "gate": "stage_health",
       "phase": "transferred",

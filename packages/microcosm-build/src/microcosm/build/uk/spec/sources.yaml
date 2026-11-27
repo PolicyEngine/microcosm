@@ -4007,6 +4007,10 @@ stages:
     resource: ons_household_expenditure_facts.json
     kind: public_aggregate_reference
     format: json
+  - role: ons_family_spending_income_deciles
+    resource: ons_family_spending_income_decile_facts.json
+    kind: public_aggregate_reference
+    format: json
   - role: desnz_road_fuel_by_vehicle
     resource: desnz_road_fuel_by_vehicle.json
     kind: public_aggregate_reference
@@ -4263,7 +4267,7 @@ stages:
     - maintenance_expenses
     - external_child_payments
     - LVT
-  - kind: fit_weighted_qrf_chain
+  - kind: draw_budget_and_mix
     predictors:
     - household_adult_count
     - household_child_count
@@ -4275,6 +4279,19 @@ stages:
     - tenure_type
     - accommodation_type
     - num_vehicles
+    budget:
+    - food_and_non_alcoholic_beverages_consumption
+    - alcohol_and_tobacco_consumption
+    - clothing_and_footwear_consumption
+    - housing_water_and_electricity_consumption
+    - household_furnishings_consumption
+    - health_consumption
+    - transport_consumption
+    - communication_consumption
+    - recreation_consumption
+    - education_consumption
+    - restaurants_and_hotels_consumption
+    - miscellaneous_consumption
     targets:
     - food_and_non_alcoholic_beverages_consumption
     - alcohol_and_tobacco_consumption
@@ -4308,7 +4325,6 @@ stages:
     weights: explicit
     seed: 0
     n_estimators: 100
-    gate_calibration: cross_fitted
   - kind: support_clip
     range: donor_realized
     exempt:
