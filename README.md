@@ -155,8 +155,10 @@ make their own attempt ID (see
 [the Modal stage runbook](docs/us-modal-stage-runbook.md#how-a-run-works),
 item 6).
 
-US fiscal refresh builds also write pre-release staging run files **by
-default**. The build hands its run files to the emitter, which commits them
+US fiscal refresh builds, exact-count builds among them, and their
+certifications also write pre-release staging run files **by default**, in the
+same version 2 format as UK builds (microcosm#1135). The build hands its run
+files to the emitter, which commits them
 to `policyengine/populace-us-staging` when the run starts, when each result
 file is produced and when the run ends; the build's hosted telemetry carries
 its progress in between. Before the build reports how it ended, the emitter
@@ -166,16 +168,29 @@ whose details name the check `staging_final_commit` (best-effort: no
 emitter, a missing token, a failed commit or a failed read-back never fails
 the build), so every candidate shows up on the staging dashboard before it is
 published. A SIGTERM during the build closes the staging run as failed and
-the build exits 143; one that arrives during that final check only ends the
-check. Disable these files with `--no-staging`, or point them
-elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An *empty*
-`POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and staging with
-no destination at all is an argparse error. `--no-staging` does not disable
-the local telemetry emitter service.
+the build exits 143; one that arrives while a failing build closes its run, or
+during that final check, only ends that step, and the build keeps its own exit
+status. A build whose release checks fail once its record is written (exit 3)
+closes its run as `blocked`. Disable these files with `--no-staging`, or point
+them elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An
+*empty* `POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and
+staging with no destination at all is an argparse error. `--staging-dir` is
+the local root (`<out>/staging` by default): the run's files go to
+`<dir>/runs/<run_id>/`, and without a repository the run is local-only.
+`--no-staging` does not disable the local telemetry emitter service, and a
+staging error only warns: it never stops the build or its hosted telemetry.
 
-The build manifest records what staging did: the run id, the destination, and
-how many files actually reached it, or an explicit `enabled: false` for a
-declared opt-out. `microcosm-publish-release-build` **refuses** a build that
+Each result file the build attaches is one the US build reviewed against
+version 2's content rules (`US_STAGING_RESULT_FILES`): it is staged at
+`runs/<run_id>/artifacts/<name>.json`, and those that hold rows of aggregates
+(per state, age band, program, reform or target) may, within their own size
+limit, up to the emitter's 32 MiB for `calibration_diagnostics`. A file the
+checks refuse stays in the build directory, with a warning.
+
+The build manifest records the run's version 2 delivery summary: the run id,
+the destination, how many files the emitter attempted and committed, and the
+last error, or a disabled summary with its reason for a declared opt-out.
+`microcosm-publish-release-build` **refuses** a build that
 meant to stage and delivered nothing (`--allow-missing-staging` overrides); a
 declared `--no-staging` build publishes without the flag:
 
@@ -185,8 +200,9 @@ python tools/build_us_fiscal_refresh_release.py \
   --out /tmp/microcosm-build
 ```
 
-This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
-final candidate diagnostics under `runs/<run_id>/` in the staging repository.
+This writes `run_manifest.json`, `progress.json`, `events.ndjson`,
+`calibration_progress.json` and the candidate's result files under
+`runs/<run_id>/` in the staging repository.
 The build stops once its H5 and its own gates' verdicts are written, at
 `<out>/build_record.json`, so it can be evaluated first; nothing it writes is
 publishable. To publish it, certify it with
@@ -926,8 +942,9 @@ which writes the build's own files to `<out>/build/`, and records in
 directory certification places it in, `<out>/releases/microcosm-us-2024-national/`,
 the command that certifies it, `publish_command`, `promote_command` and
 `promotion`, a sentence saying that promoting makes the build the US default. The launcher runs
-neither command (`automatic_publish: false`, `makes_current: false`), and it
-forces `--no-staging`, so the build sends no staging run files.
+neither command (`automatic_publish: false`, `makes_current: false`). The
+build and its certification stage like any other US build, under the build's
+ID; the launcher's `--no-staging` passes the opt-out on.
 `publish_command` lists the build in the national release without making it
 current; until `promote_command` makes it current, it loads only by name,
 with `microcosm.data.load("us", build="<build>")`.

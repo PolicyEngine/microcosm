@@ -442,7 +442,10 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
         lambda node: (
             isinstance(node, ast.If)
             and ast.unparse(node.test) == "terminal_gate_failures"
-            and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
+            # The refusal carries its failures and writes the "Release gates
+            # failed: " message itself (microcosm#1135).
+            and "_BuildFailedReleaseGatesError(terminal_gate_failures)"
+            in (ast.get_source_segment(source, node) or "")
         ),
         "batched pre-export raise",
     )
