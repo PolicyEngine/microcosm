@@ -545,8 +545,10 @@ def test_a_changed_batch_file_stops_pooled_scoring(
             scorer.open_consumer(
                 "reform_coverage_smoke", plan.baseline_plan("reform_coverage_smoke")
             )
-        # Nothing more is served, and no consumer falls back to its own pass.
-        with pytest.raises(RuntimeError, match="stopped earlier"):
+        # Nothing more is served, and no consumer falls back to its own pass:
+        # a pool that could not start refuses every later consumer with a
+        # WorkerPoolError, which the held-out reports pass on.
+        with pytest.raises(builder.PostExportPoolStoppedError, match="could not start"):
             scorer.open_consumer(
                 "reform_validation", plan.baseline_plan("reform_validation")
             )
