@@ -1000,9 +1000,11 @@ repository that has no `releases.json`.
   been removed, with `tools/publish_release.sh`. Each pointer is a schema-1
   JSON document at the repository root; `latest.json` holds `schema_version`,
   `release_id`, `updated_at`, and `paths` to the contract files. The payload
-  builders (`latest_pointer_payload`, `line_pointer_payload` and
-  `latest_evidence_pointer_payload`) remain, and only tests call them. Three
-  readers of pointer files remain. The
+  builders remain: the readers (through `_read_pointer`) and
+  `_current_evidence_build` call `latest_pointer_payload` to name the files a
+  pointer or an evidence build holds, and only tests call
+  `line_pointer_payload` and `latest_evidence_pointer_payload`. Three readers
+  of pointer files remain. The
   loader follows `latest.json` (`latest_release`) or `latest-<line>.json`
   (`latest_line_release`) only for an entry whose repository has no
   `releases.json`. `latest_evidence_release` returns the evidence release's
@@ -1095,10 +1097,10 @@ work.
   request that authorizes its first publication. The gaps on 2026-11-12, with
   what has changed since:
   - *A new country's tagged publish.* On 2026-11-12 nothing refused it: the
-    tagged publisher accepted any release outside `publishes_to_build_folder`,
-    except a UK local-area name that the registry does not name, into a
-    repository without `releases.json`. Since #1796 removed the tagged
-    publisher, no command publishes such a release.
+    tagged publisher accepted any release outside `publishes_to_build_folder`
+    into a repository without `releases.json` (from 2026-11-14, microcosm#1586,
+    except a UK local-area name that the registry does not name). Since #1796
+    removed the tagged publisher, no command publishes such a release.
   - *The NZ and AM declarations.* Each country's `release_contract.json`
     (under `packages/microcosm-build/src/microcosm/build/`) names
     `latest.json` in its boundary. Each country's owner changes its file
