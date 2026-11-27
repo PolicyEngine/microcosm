@@ -11,6 +11,7 @@ kept identity before the step is recorded.
 
 from __future__ import annotations
 
+import gc
 import importlib.util
 import weakref
 from collections.abc import Callable
@@ -23,14 +24,17 @@ import pandas as pd
 import pytest
 
 from microcosm.build import outer_stage_runtime
+from microcosm.build.us_runtime.gate_shadow import current_gate_shadow
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from test_support.microcosm_build.us_gate_shadow import arm_us_tool_gate_shadows
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
 _PASSING_GATE = SimpleNamespace(passed=True, failures=(), details={})
 
-# Every step that loads the previous checkpoint and writes a frame of its own.
-# final_export is left out: it passes its input through as its result.
+# One step for each branch of _run_outer_stage that loads the previous
+# checkpoint and writes a frame of its own, plus a second post-QRF step that
+# evaluates signal gates. final_export is left out: its result is its input.
 _FRAME_WRITING_STEPS = (
     "pre_clone_enrichment",
     "clone_feature_extraction",
@@ -260,6 +264,32 @@ def _stored_objects(frame: Frame) -> list[object]:
     ]
 
 
+def _column_buffers(frame: Frame) -> list[np.ndarray]:
+    """The NumPy arrays that own the memory of ``frame``'s NumPy-typed columns.
+
+    A new DataFrame or Series over the same columns (a shallow copy, a column
+    selection) would keep these arrays alive after the frame's own tables
+    are gone. Text columns are left out: their buffers are immutable, and a
+    deep copy of the table shares them with the step's result.
+    """
+
+    buffers: list[np.ndarray] = []
+    tables = (
+        *(frame.table(entity) for entity in frame.entities),
+        *(frame.link(name) for name in frame.links),
+    )
+    for table in tables:
+        for column in table.columns:
+            series = table[column]
+            if not isinstance(series.dtype, np.dtype):
+                continue
+            owner = series.to_numpy()
+            while isinstance(owner.base, np.ndarray):
+                owner = owner.base
+            buffers.append(owner)
+    return buffers
+
+
 @pytest.mark.parametrize("stage", _FRAME_WRITING_STEPS)
 def test_each_step_frees_its_input_frame_before_its_checkpoint_write(
     builder,
@@ -271,7 +301,9 @@ def test_each_step_frees_its_input_frame_before_its_checkpoint_write(
 
     The steps run their real ``_run_outer_stage`` branch with the gate
     shadow on; the capital gain distribution split and the post-QRF step
-    dispatch also run their real step functions. Weights the step passes
+    dispatch also run their real step functions. Garbage collection is off
+    while the step runs, so only reference counting can free the input.
+    Column arrays the result itself holds and weights the step passes
     through to its result stay alive with the result, as they should.
     """
 
@@ -287,8 +319,10 @@ def test_each_step_frees_its_input_frame_before_its_checkpoint_write(
     else:
         transform = lambda frame: _with_person_column(frame, stage)  # noqa: E731
     _patch_step(monkeypatch, builder, stage, transform)
+    arm_us_tool_gate_shadows(monkeypatch)
 
     input_objects: list[weakref.ref] = []
+    input_buffers: list[weakref.ref] = []
     load_predecessor = builder.StageRuntime.load_predecessor
 
     def recording_load_predecessor(runtime, stage_name, **kwargs):
@@ -296,15 +330,31 @@ def test_each_step_frees_its_input_frame_before_its_checkpoint_write(
         input_objects.extend(
             weakref.ref(item) for item in _stored_objects(loaded.frame)
         )
+        input_buffers.extend(
+            weakref.ref(buffer) for buffer in _column_buffers(loaded.frame)
+        )
         return loaded
 
-    written: list[tuple[Path, list[bool]]] = []
+    written: list[dict[str, object]] = []
     write_frame_checkpoint = outer_stage_runtime.write_frame_checkpoint
 
     def recording_write(path, frame, **kwargs):
+        result_buffers = {id(buffer) for buffer in _column_buffers(frame)}
+        live_buffers = [reference() for reference in input_buffers]
         written.append(
-            (Path(path), [reference() is not None for reference in input_objects])
+            {
+                "path": Path(path),
+                "live_objects": sum(
+                    reference() is not None for reference in input_objects
+                ),
+                "live_buffers_not_in_result": sum(
+                    buffer is not None and id(buffer) not in result_buffers
+                    for buffer in live_buffers
+                ),
+                "shadow_active": current_gate_shadow() is not None,
+            }
         )
+        del live_buffers
         return write_frame_checkpoint(path, frame, **kwargs)
 
     monkeypatch.setattr(
@@ -312,16 +362,29 @@ def test_each_step_frees_its_input_frame_before_its_checkpoint_write(
     )
     monkeypatch.setattr(outer_stage_runtime, "write_frame_checkpoint", recording_write)
 
-    builder._run_outer_stage(_stage_args(builder, tmp_path, stage))
+    args = _stage_args(builder, tmp_path, stage)
+    collection_was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        builder._run_outer_stage(args)
+    finally:
+        if collection_was_enabled:
+            gc.enable()
 
-    assert input_objects, "the step loaded no input frame"
-    assert [path for path, _alive in written] == [checkpoint_path]
-    (_path, alive_at_write) = written[0]
-    assert not any(alive_at_write), (
-        f"{stage}: {sum(alive_at_write)} of the input frame's "
-        f"{len(alive_at_write)} stored objects were still alive at the "
-        "checkpoint write"
+    assert input_objects and input_buffers, "the step loaded no input frame"
+    assert [record["path"] for record in written] == [checkpoint_path]
+    (record,) = written
+    assert record["live_objects"] == 0, (
+        f"{stage}: {record['live_objects']} of the input frame's "
+        f"{len(input_objects)} stored objects were alive at the checkpoint write"
     )
+    assert record["live_buffers_not_in_result"] == 0, (
+        f"{stage}: {record['live_buffers_not_in_result']} of the input frame's "
+        f"{len(input_buffers)} column arrays were alive at the checkpoint write "
+        "without being part of the result"
+    )
+    assert record["shadow_active"]
+    assert builder._stage_gate_shadow_observations(args, stage).is_file()
     assert _completed_steps(builder, tmp_path, stage)[-1] == stage
 
 
@@ -369,6 +432,27 @@ def test_a_step_that_changes_identity_is_still_refused_before_it_is_recorded(
 
     assert stage not in _completed_steps(builder, tmp_path, stage)
     assert not checkpoint_path.exists()
+
+
+def test_the_capital_gains_tail_step_still_has_no_identity_comparison(
+    builder,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The tail transfer had no identity check before this change and gains none.
+
+    This records today's behaviour; adding a check to this step is a separate
+    decision.
+    """
+
+    stage = builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME
+    checkpoint_path = _prime_predecessors(builder, tmp_path, stage)
+    _patch_step(monkeypatch, builder, stage, _with_person_ids_offset)
+
+    builder._run_outer_stage(_stage_args(builder, tmp_path, stage))
+
+    assert _completed_steps(builder, tmp_path, stage)[-1] == stage
+    assert checkpoint_path.exists()
 
 
 def test_clone_feature_extraction_still_checks_the_clone_against_its_input(
