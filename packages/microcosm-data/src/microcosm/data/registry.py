@@ -15,7 +15,7 @@ actually needs one — country engines are optional extras (``microcosm-data[us]
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 __all__ = ["DEFAULT_VARIANT", "DatasetSpec", "REGISTRY", "register"]
 
@@ -70,8 +70,10 @@ class DatasetSpec:
     engine_module: str
     engine_class: str
     engine_package: str
-    release: str
     variant: str = DEFAULT_VARIANT
+    # Keyword-only, so the fields after the required ones keep their
+    # positions now that every entry must name its release.
+    release: str = field(kw_only=True)
     build_folder_filename: str | None = None
 
     @property
@@ -88,7 +90,12 @@ class DatasetSpec:
 
     @property
     def hf_url(self) -> str:
-        """The ``hf://`` URL of the published artifact."""
+        """``filename``'s ``hf://`` URL at the repository's root.
+
+        It names the entry in messages such as :func:`register`'s. No
+        repository holds a dataset file at its root any more; each build's
+        file is in ``releases/<release>/<build>/``.
+        """
         return f"hf://{self.hf_repo}/{self.filename}"
 
 

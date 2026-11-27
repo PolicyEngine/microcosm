@@ -1235,7 +1235,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--base-h5",
         type=Path,
-        help="Existing Microcosm US H5 to recalibrate. Defaults to HF latest.",
+        help=(
+            "Existing Microcosm US H5 to recalibrate. Defaults to the current "
+            "build of microcosm-us-2024-national in releases.json."
+        ),
     )
     parser.add_argument(
         "--pool-manifest",

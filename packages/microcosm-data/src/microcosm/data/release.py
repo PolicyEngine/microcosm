@@ -10,8 +10,8 @@ own folder, ``releases/<release>/<build>/``, through the emitter's
 build is current. :func:`prepare_build_folder_release` checks such a build
 and lists its files with their roles; :func:`prepare_release` and
 :func:`publish_release` refuse it. :func:`publish_release` also refuses any
-repository that records its builds in ``releases.json``, as the UK and US
-repositories do after their switches, so the June 2023 UK release and
+repository that records its builds in ``releases.json``, as every release
+repository does after its switch, so the June 2023 UK release and
 ``populace-uk-<year>-<tier>-k<N>`` releases take no new builds. Everything
 below describes the tagged layout, which builds that keep only their tag
 still have.
