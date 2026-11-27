@@ -29,7 +29,7 @@ import pandas as pd
 from microcosm.fit import categorical as fit_categorical
 from microcosm.fit import donors as fit_donors
 from microcosm.fit import held_out as fit_held_out
-from microcosm.frame import Frame, MassChangeRecord, WeightKind
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, table_copies
 from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 from microcosm.frame.table_copies import copy_series, copy_table
 from microcosm.graph import (
@@ -196,8 +196,9 @@ _STAGE_HELPER_MODULES = {
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
     # The energy level and prices are energy_pricing's (microcosm#1418): a
     # code-only change to them must re-key the stage (the independent review
-    # of microcosm#1420, finding 5).
-    "lcfs_consumption": (uk_engine_adapter, energy_pricing),
+    # of microcosm#1420, finding 5). The spending draws through microcosm.fit's
+    # forest neighbourhoods and keyed donors (microcosm#1717).
+    "lcfs_consumption": (uk_engine_adapter, energy_pricing, fit_donors),
     "etb_vat": (uk_engine_adapter,),
     "etb_services": (uk_engine_adapter,),
     "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
@@ -433,6 +434,8 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
         type(kernel),
         stage_evidence,
         graph_evidence,
+        # _minimal_frame copies the stage's inputs with copy_table.
+        table_copies,
         _stage_artifacts,
         _mass_log_payload,
         _stage_module(stage),

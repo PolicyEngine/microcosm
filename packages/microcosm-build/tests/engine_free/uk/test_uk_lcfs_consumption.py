@@ -89,8 +89,9 @@ def _person() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "case": [1, 1, 3],
-            "b303p": [10.0, 5.0, 7.0],
-            "b3262p": [1.0, 2.0, 3.0],
+            "p008p": [10.0, 5.0, 7.0],
+            "p047p": [1.0, 2.0, 3.0],
+            "p037p": [0.5, 0.0, 0.25],
             "p049p": [4.0, 5.0, 6.0],
         }
     )
@@ -121,6 +122,30 @@ def test_lcfs_donor_cleaning_arithmetic_and_lossy_maps() -> None:
     )
     assert donor.loc[1, "employment_income"] == 0.0
     assert np.isclose(donor.loc[0, "bus_fare_spending"], 3.0 * (365.25 / 7))
+
+
+def test_lcfs_donor_income_predictors_read_gross_pay_and_all_self_employment() -> None:
+    """Gross pay is p008p; self-employment sums main and subsidiary (microcosm#1717).
+
+    The frame's predictors are gross employment income and self-employment
+    profit: b303p (pay last time paid) and b3262p (the first subsidiary job's
+    profit alone) put a donor's incomes on other concepts.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import PERSON_LCFS_INCOME_CODES
+
+    assert PERSON_LCFS_INCOME_CODES == {
+        "employment_income": ("p008p",),
+        "self_employment_income": ("p047p", "p037p"),
+        "private_pension_income": ("p049p",),
+    }
+    weeks = 365.25 / 7
+    donor = clean_lcfs_consumption_table(_person(), _household())
+    assert np.isclose(donor.loc[0, "self_employment_income"], (1.0 + 2.0 + 0.5) * weeks)
+    assert np.isclose(donor.loc[2, "self_employment_income"], (3.0 + 0.25) * weeks)
+    assert np.isclose(donor.loc[2, "employment_income"], 7.0 * weeks)
+    with pytest.raises(ValueError, match="p037p"):
+        clean_lcfs_consumption_table(_person().drop(columns="p037p"), _household())
 
 
 @pytest.mark.parametrize(
@@ -300,15 +325,15 @@ def test_stage_draws_the_declared_excise_shares_after_its_spend_targets() -> Non
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
         UK_LCFS_EXCISE_SHARES,
-        lcfs_chain_targets,
         lcfs_donor_shares,
+        lcfs_draw_targets,
     )
 
     stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
     shares = lcfs_donor_shares(stage)
 
     assert shares == dict(UK_LCFS_EXCISE_SHARES)
-    assert lcfs_chain_targets(stage, shares) == (
+    assert lcfs_draw_targets(stage, shares) == (
         *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
         TOBACCO_SHARE,
         ON_TRADE_SHARE,
@@ -373,22 +398,23 @@ def test_excise_share_declaration_is_held_to_the_module(change) -> None:
         lcfs_donor_shares(_with_operation(stage, "derive", shares=declared))
 
 
-def test_chain_draws_the_spend_targets_before_the_shares() -> None:
+def test_draw_takes_the_spend_targets_before_the_shares() -> None:
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
-        lcfs_chain_targets,
+        UK_LCFS_DRAW_OPERATION,
         lcfs_donor_shares,
+        lcfs_draw_targets,
     )
 
     stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
     shares = lcfs_donor_shares(stage)
     reordered = _with_operation(
         stage,
-        "fit_weighted_qrf_chain",
+        UK_LCFS_DRAW_OPERATION,
         targets=[*UK_LCFS_CONSUMPTION_TARGET_COLUMNS, ON_TRADE_SHARE, TOBACCO_SHARE],
     )
     with pytest.raises(ValueError, match="followed by the declared shares"):
-        lcfs_chain_targets(reordered, shares)
+        lcfs_draw_targets(reordered, shares)
     with pytest.raises(ValueError, match="spend targets first"):
         impute_lcfs_consumption(
             pd.DataFrame(),
@@ -400,8 +426,35 @@ def test_chain_draws_the_spend_targets_before_the_shares() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        ({"budget": ["food_and_non_alcoholic_beverages_consumption"]}, "budget"),
+        ({"n_estimators": 0}, "n_estimators"),
+        ({"n_estimators": True}, "n_estimators"),
+    ],
+)
+def test_draw_declaration_is_held_to_the_module(change, match) -> None:
+    """The budget is the twelve COICOP divisions, and each forest has trees."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_DRAW_OPERATION,
+        _draw_n_estimators,
+        lcfs_donor_shares,
+        lcfs_draw_targets,
+    )
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    changed = _with_operation(stage, UK_LCFS_DRAW_OPERATION, **change)
+    with pytest.raises(ValueError, match=match):
+        lcfs_draw_targets(changed, lcfs_donor_shares(stage))
+        _draw_n_estimators(changed)
+    assert _draw_n_estimators(stage) == 100
+
+
 def test_appending_the_excise_shares_moves_no_spend_draw() -> None:
-    """The chain with the shares draws the spend targets the chain without them did."""
+    """The draw with the shares draws the spend targets the draw without them did."""
 
     from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_EXCISE_SHARES
 
@@ -428,65 +481,536 @@ def test_appending_the_excise_shares_moves_no_spend_draw() -> None:
     pd.testing.assert_frame_equal(
         after.draws[list(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)], before.draws
     )
-    assert (
-        after.fit_weight_records[: len(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)]
-        == before.fit_weight_records
-    )
+    assert after.fit_weight_records == before.fit_weight_records
     shares = after.draws[list(UK_LCFS_EXCISE_SHARES)].to_numpy()
     assert ((shares >= 0.0) & (shares <= 1.0)).all()
 
 
-def test_the_chain_fits_the_gate_calibration_it_declares(monkeypatch) -> None:
-    """The committed chain cross-fits its gates; an undeclared one stays in sample."""
+def test_draw_scales_one_donors_spending_to_the_households_budget() -> None:
+    """Every household takes one donor's mix, parts and shares, at its own budget.
 
-    import dataclasses
+    The divisions keep the donor's shares of its total and sum to the budget,
+    each fuel, fare and energy part keeps the donor's share, and the excise
+    shares are the donor's own (microcosm#1717).
+    """
 
-    import microcosm.fit
-    from microcosm.build.country_spec import load_country_spec
-    from microcosm.build.uk_runtime.lcfs_consumption import _qrf_gate_calibration
-
-    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
-    assert _qrf_gate_calibration(stage) == "cross_fitted"
-    undeclared = {
-        key: value
-        for key, value in next(
-            operation.parameters
-            for operation in stage.operations
-            if operation.kind == "fit_weighted_qrf_chain"
-        ).items()
-        if key != "gate_calibration"
-    }
-    plain = dataclasses.replace(
-        stage,
-        operations=tuple(
-            dataclasses.replace(operation, parameters=undeclared)
-            if operation.kind == "fit_weighted_qrf_chain"
-            else operation
-            for operation in stage.operations
-        ),
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        UK_LCFS_EXCISE_SHARES,
     )
-    assert _qrf_gate_calibration(plain) == "in_sample"
 
-    built = []
-    real = microcosm.fit.RegimeGatedQRF
-
-    def recording(**kwargs):
-        built.append(kwargs.get("gate_calibration"))
-        return real(**kwargs)
-
-    monkeypatch.setattr(microcosm.fit, "RegimeGatedQRF", recording)
-    person, household = _synthetic_lcfs_donor()
-    donor = clean_lcfs_consumption_table(person, household)
-    recipient = donor.iloc[:20].loc[:, list(UK_LCFS_CONSUMPTION_PREDICTORS)]
-    impute_lcfs_consumption(
+    donor = clean_lcfs_consumption_table(
+        *_synthetic_lcfs_donor(), shares=UK_LCFS_EXCISE_SHARES
+    )
+    recipient = donor.iloc[:30].loc[:, list(UK_LCFS_CONSUMPTION_PREDICTORS)]
+    targets = (*UK_LCFS_CONSUMPTION_TARGET_COLUMNS, *UK_LCFS_EXCISE_SHARES)
+    result = impute_lcfs_consumption(
         donor,
         recipient,
         seed=0,
-        n_estimators=2,
-        record_ids=np.arange(1, 21),
-        gate_calibration=_qrf_gate_calibration(stage),
+        n_estimators=8,
+        record_ids=np.arange(1, 31),
+        targets=targets,
     )
-    assert built == ["cross_fitted"]
+    divisions = list(UK_LCFS_COICOP_DIVISION_COLUMNS)
+    donor_spend = donor.loc[:, list(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)].to_numpy()
+    donor_total = donor.loc[:, divisions].to_numpy().sum(axis=1)
+    for _, drawn in result.draws.iterrows():
+        budget = float(drawn[divisions].sum())
+        assert donor_total.min() <= budget <= donor_total.max()
+        scaled = donor_spend * (budget / donor_total)[:, None]
+        matches = np.flatnonzero(
+            np.isclose(
+                scaled, drawn[list(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)].to_numpy()
+            ).all(axis=1)
+        )
+        assert len(matches) >= 1
+        mix_donor = donor.iloc[matches[0]]
+        for share in UK_LCFS_EXCISE_SHARES:
+            assert drawn[share] == pytest.approx(mix_donor[share])
+    assert [record.fit_name for record in result.fit_weight_records] == [
+        "uk_lcfs_2024_25_consumption:budget",
+        "uk_lcfs_2024_25_consumption:mix",
+    ]
+    assert {record.weight_kind for record in result.fit_weight_records} == {"explicit"}
+
+
+def test_draw_budgets_fall_between_the_donors_totals() -> None:
+    """A budget is read between neighbouring donors' totals, so baskets differ.
+
+    Households that share a mix donor still differ in level: few budgets equal
+    a donor's own total (only those in a neighbourhood's half-weight tails),
+    and few households share a basket, even three copies of every household,
+    which share their neighbourhoods exactly.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+    )
+
+    donor = clean_lcfs_consumption_table(*_synthetic_lcfs_donor())
+    recipient = pd.concat(
+        [donor.loc[:, list(UK_LCFS_CONSUMPTION_PREDICTORS)]] * 3, ignore_index=True
+    )
+    drawn = impute_lcfs_consumption(
+        donor,
+        recipient,
+        seed=0,
+        n_estimators=20,
+        record_ids=np.arange(1, len(recipient) + 1),
+    ).draws
+    divisions = list(UK_LCFS_COICOP_DIVISION_COLUMNS)
+    budgets = drawn[divisions].sum(axis=1).to_numpy()
+    donor_totals = donor.loc[:, divisions].to_numpy().sum(axis=1)
+    on_a_donor_total = np.isin(np.round(budgets, 6), np.round(donor_totals, 6))
+    assert on_a_donor_total.mean() < 0.15
+    assert drawn.duplicated(keep=False).mean() < 0.05
+
+
+def test_draw_keeps_every_basket_inside_the_donors_range() -> None:
+    """The support clip after the draw has nothing to clip.
+
+    Scaling a donor's basket to a household's budget can take a spend target
+    past the donor survey's range. Those households are redrawn from the
+    neighbours whose basket fits, nearly all at their own budget, and every
+    household whose first basket fitted keeps it (microcosm#1717).
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT,
+        support_clip_to_donor,
+    )
+
+    donor = clean_lcfs_consumption_table(*_synthetic_lcfs_donor())
+    recipient = pd.concat(
+        [donor.loc[:, list(UK_LCFS_CONSUMPTION_PREDICTORS)]] * 3, ignore_index=True
+    )
+    ids = np.arange(1, len(recipient) + 1)
+    spend = list(UK_LCFS_CONSUMPTION_TARGET_COLUMNS)
+
+    def draw(**kwargs):
+        return impute_lcfs_consumption(
+            donor, recipient, seed=0, n_estimators=8, record_ids=ids, **kwargs
+        )
+
+    unbounded, result = draw(support_exempt=set(spend)).draws, draw()
+    kept = result.draws
+    # The result names the households the range step touched, and no others.
+    touched = ~(kept[spend] == unbounded[spend]).all(axis=1).to_numpy()
+    assert result.redrawn.any()
+    assert np.array_equal(touched, result.redrawn | result.moved_budget)
+    assert result.mix_donors.shape == (len(recipient),)
+    bounded = [c for c in spend if c not in UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT]
+    lower, upper = donor[bounded].min(), donor[bounded].max()
+
+    def outside(drawn: pd.DataFrame) -> pd.Series:
+        return ((drawn[bounded] < lower) | (drawn[bounded] > upper)).any(axis=1)
+
+    assert outside(unbounded).any()
+    assert not outside(kept).any()
+    receipt = support_clip_to_donor(
+        kept, donor, exempt=set(UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT)
+    ).receipt
+    for column in bounded:
+        assert receipt.columns[column]["clipped_low_rows"] == 0
+        assert receipt.columns[column]["clipped_high_rows"] == 0
+    unchanged = (kept == unbounded).all(axis=1)
+    assert unchanged[~outside(unbounded)].all()
+    divisions = list(UK_LCFS_COICOP_DIVISION_COLUMNS)
+    same_budget = np.isclose(
+        kept[divisions].sum(axis=1), unbounded[divisions].sum(axis=1), rtol=1e-12
+    )
+    assert same_budget[~unchanged].mean() > 0.9
+
+
+def test_support_step_redraws_among_the_neighbours_that_fit() -> None:
+    """A basket that leaves the range is redrawn among the neighbours that fit.
+
+    Two bounded targets, ranged over four donors: food 10 to 90, clothing 10
+    to 160. The first household's food-heavy donor at 150 takes food to 135,
+    so it is redrawn and takes the clothing-heavy neighbour at its own budget.
+    The second household's only neighbour fits no budget above 150, which it
+    takes. The third household's basket fits and is kept.
+    """
+
+    from scipy import sparse
+
+    from microcosm.build.uk_runtime.lcfs_consumption import _keep_baskets_in_support
+
+    spend = np.array([[90.0, 10.0], [10.0, 90.0], [40.0, 160.0], [60.0, 40.0]])
+    total = np.array([100.0, 100.0, 200.0, 100.0])
+    neighbourhoods = sparse.csr_matrix(
+        (
+            [0.5, 0.5, 1.0, 1.0],
+            ([0, 0, 1, 2], [0, 1, 3, 0]),
+        ),
+        shape=(3, 4),
+    )
+    chosen, budget = _keep_baskets_in_support(
+        neighbourhoods,
+        np.array([0, 3, 0]),
+        np.array([150.0, 200.0, 100.0]),
+        donor_spend=spend,
+        donor_total=total,
+        lower=spend.min(axis=0),
+        upper=spend.max(axis=0),
+        uniforms=np.array([0.1, 0.5, 0.9]),
+    )
+    assert chosen.tolist() == [1, 3, 0]
+    assert budget == pytest.approx([150.0, 150.0, 100.0])
+
+
+def test_decile_fit_sets_the_frames_spending_beside_the_donors_by_income() -> None:
+    """Each survey ranked on its own equivalised income, shaped on deciles 4-7.
+
+    The receipt of microcosm#1717: a frame equal to the donor sits at one in
+    every decile, against the donor as surveyed and reweighted to the frame's
+    mix alike; doubling the bottom decile's spending doubles its ratio and
+    shape and moves no other decile; a frame resting on two source households
+    is withheld everywhere.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        _modified_oecd_scale,
+        decile_fit,
+        income_tenths,
+    )
+
+    donor = clean_lcfs_consumption_table(*_synthetic_lcfs_donor())
+    weights = donor["household_weight"].to_numpy(dtype=float)
+    same = decile_fit(donor, donor, weights=weights, donor=donor, sources=None)
+    assert [row["decile"] for row in same["deciles"]] == list(range(1, 11))
+    assert same["reference_deciles"] == [4, 5, 6, 7]
+    assert same["reweighting"]["margins"] == {
+        "household_adult_count": "1, 2, 3+",
+        "household_child_count": "0, 1, 2+",
+        "num_vehicles": "0, 1, 2+",
+        "tenure_type": "categories",
+    }
+    for row in [*same["deciles"], same["all"]]:
+        assert "withheld" not in row
+        assert row["total"]["ratio"] == pytest.approx(1.0)
+        assert row["total"]["shape"] == pytest.approx(1.0)
+        assert row["total"]["reweighted_ratio"] == pytest.approx(1.0)
+        assert row["total"]["reweighted_shape"] == pytest.approx(1.0)
+    assert all(row["reweighted_mix_met"] for row in same["deciles"])
+    assert "reweighted_mix_met" not in same["all"]
+
+    rank = income_tenths(
+        donor["hbai_household_net_income"], _modified_oecd_scale(donor), weights
+    )
+    divisions = list(UK_LCFS_COICOP_DIVISION_COLUMNS)
+    frame = donor.copy()
+    frame.loc[rank == 1, divisions] *= 2.0
+    doubled = decile_fit(frame, frame, weights=weights, donor=donor, sources=None)
+    bottom = doubled["deciles"][0]
+    assert bottom["total"]["shape"] == pytest.approx(2.0)
+    assert bottom["total"]["reweighted_shape"] == pytest.approx(2.0)
+    assert bottom["divisions"][divisions[0]]["ratio"] == pytest.approx(2.0)
+    assert bottom["divisions"][divisions[0]]["reweighted_ratio"] == pytest.approx(2.0)
+    for row in doubled["deciles"][1:]:
+        assert row["total"]["shape"] == pytest.approx(1.0)
+        assert row["total"]["reweighted_shape"] == pytest.approx(1.0)
+
+    # The effective number of donors behind the mixes: one donor for the whole
+    # bottom decile is withheld; elsewhere each household has its own.
+    assert "effective_mix_donors" not in same["deciles"][1]
+    assert "effective_mix_donors_by_region" not in same
+    mixed = decile_fit(
+        donor,
+        donor,
+        weights=weights,
+        donor=donor,
+        sources=None,
+        mix_donors=np.where(rank == 1, 0, np.arange(len(donor))),
+    )
+    assert mixed["deciles"][0]["effective_mix_donors"] == "<3"
+    second = weights[rank == 2]
+    assert mixed["deciles"][1]["effective_mix_donors"] == pytest.approx(
+        second.sum() ** 2 / np.square(second).sum()
+    )
+    regions = mixed["effective_mix_donors_by_region"]
+    assert set(regions) == set(donor["region"].astype(str))
+    for cells in regions.values():
+        assert [cell["decile"] for cell in cells] == list(range(1, 11))
+        for cell in cells:
+            assert ("effective_mix_donors" in cell) == (
+                cell["frame_support"] not in (0, "<3")
+            )
+
+    thin = decile_fit(
+        frame.iloc[:40],
+        frame.iloc[:40],
+        weights=weights[:40],
+        donor=donor,
+        sources=np.repeat([1, 2], 20),
+    )
+    for row in [*thin["deciles"], thin["all"]]:
+        assert row.get("withheld") is True
+        assert "total" not in row
+
+
+def test_decile_fit_sets_family_spending_beside_both_surveys() -> None:
+    """Each survey's own decile profile over the published shape (microcosm#1717).
+
+    A published table rising by £100 a week a decile has deciles 4 to 7 at a
+    mean of £550, so decile 1's shape is 100/550; each survey's profile is its
+    decile mean over its own deciles 4 to 7. A suppressed cell (Education)
+    reads None throughout, and a table that is unavailable is carried as its
+    reason with no per-decile figures.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        UK_LCFS_DIVISION_COICOP,
+        _modified_oecd_scale,
+        decile_fit,
+        income_tenths,
+    )
+
+    donor = clean_lcfs_consumption_table(*_synthetic_lcfs_donor())
+    weights = donor["household_weight"].to_numpy(dtype=float)
+    groups = [
+        "coicop_01_to_12",
+        *(f"coicop_{code}" for code in UK_LCFS_DIVISION_COICOP.values()),
+    ]
+
+    def published_row(scale: float) -> dict[str, float | None]:
+        row: dict[str, float | None] = dict.fromkeys(groups, 10.0 * scale)
+        row["coicop_01_to_12"] = 100.0 * scale
+        row["coicop_10"] = None
+        return row
+
+    table = {str(decile): published_row(decile) for decile in range(1, 11)}
+    table["all"] = {**published_row(5.5), "coicop_10": 4.0}
+    published = {"resource": "family.json", "unit": "gbp_per_week", "deciles": table}
+    fit = decile_fit(
+        donor, donor, weights=weights, donor=donor, sources=None, published=published
+    )
+    assert fit["published"] == {"resource": "family.json", "unit": "gbp_per_week"}
+
+    rank = income_tenths(
+        donor["hbai_household_net_income"], _modified_oecd_scale(donor), weights
+    )
+    totals = donor[list(UK_LCFS_COICOP_DIVISION_COLUMNS)].sum(axis=1).to_numpy()
+    middle = np.isin(rank, (4, 5, 6, 7))
+    profile = np.average(totals[rank == 1], weights=weights[rank == 1]) / np.average(
+        totals[middle], weights=weights[middle]
+    )
+    bottom = fit["deciles"][0]["published"]
+    assert bottom["total"]["weekly_mean"] == 100.0
+    assert bottom["total"]["shape"] == pytest.approx(100.0 / 550.0)
+    assert bottom["total"]["frame_over_published"] == pytest.approx(
+        profile / (100.0 / 550.0)
+    )
+    assert bottom["total"]["donor_over_published"] == pytest.approx(
+        profile / (100.0 / 550.0)
+    )
+    education = "education_consumption"
+    assert bottom["divisions"][education] == {
+        "weekly_mean": None,
+        "shape": None,
+        "frame_over_published": None,
+        "donor_over_published": None,
+    }
+    assert fit["all"]["published"]["divisions"][education]["weekly_mean"] == 4.0
+    assert fit["all"]["published"]["divisions"][education]["shape"] is None
+
+    unavailable = {"resource": "family.json", "available": False, "reason": "no rows"}
+    without = decile_fit(
+        donor, donor, weights=weights, donor=donor, sources=None, published=unavailable
+    )
+    assert without["published"] == unavailable
+    assert all("published" not in row for row in [*without["deciles"], without["all"]])
+
+
+def test_family_spending_by_decile_reads_the_vendored_table() -> None:
+    """The vendored Table 3.1E rows, ten deciles and all households (#1717).
+
+    Education is suppressed in every decile, so it reads None there and has a
+    figure for all households; every decile has the twelve divisions' total.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL,
+        family_spending_by_decile,
+    )
+
+    published = family_spending_by_decile()
+    assert published["unit"] == "gbp_per_week"
+    assert (published["period_type"], published["period_value"]) == (
+        "fiscal_year",
+        2024,
+    )
+    assert published["equivalence_scale"] == "updated_oecd_modified_2_adult_reference"
+    deciles = published["deciles"]
+    assert list(deciles) == [*(str(decile) for decile in range(1, 11)), "all"]
+    totals = [
+        deciles[str(d)][UK_ONS_FAMILY_SPENDING_DIVISIONS_TOTAL] for d in range(1, 11)
+    ]
+    assert all(total > 0 for total in totals)
+    assert totals[-1] > totals[0]
+    assert all(deciles[str(d)]["coicop_10"] is None for d in range(1, 11))
+    assert deciles["all"]["coicop_10"] is not None
+
+
+def test_budget_and_mix_receipt_reports_the_range_step() -> None:
+    """The range step's two paths, each with its support band (microcosm#1717).
+
+    Five households take a new donor and two another budget. The redrawn
+    share is floored to the hundredth and given at the design weights; the
+    two moved households' shares are withheld.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UKLCFSConsumptionImputationResult,
+        budget_and_mix_receipt,
+    )
+
+    redrawn = np.zeros(100, dtype=bool)
+    redrawn[:5] = True
+    moved = np.zeros(100, dtype=bool)
+    moved[50:52] = True
+    weights = np.ones(100)
+    weights[:5] = 3.0
+    imputation = UKLCFSConsumptionImputationResult(
+        pd.DataFrame(),
+        (),
+        mix_donors=np.arange(100),
+        redrawn=redrawn,
+        moved_budget=moved,
+    )
+    step = budget_and_mix_receipt(imputation, weights=weights, sources=None)[
+        "range_step"
+    ]
+    assert step["redrawn"]["support"] == "3-9"
+    assert step["redrawn"]["share"] == 0.05
+    assert step["redrawn"]["weighted_share"] == pytest.approx(15.0 / 110.0)
+    assert step["moved_budget"] == {
+        "support": "<3",
+        "share": "<3",
+        "weighted_share": "<3",
+    }
+    assert (
+        budget_and_mix_receipt(
+            UKLCFSConsumptionImputationResult(pd.DataFrame(), ()),
+            weights=weights,
+            sources=None,
+        )
+        is None
+    )
+
+
+def test_decile_fit_reweights_the_donor_to_the_frames_household_mix() -> None:
+    """The reweighted shape sees the draw, not the two surveys' mixes.
+
+    Households come in pairs that share an income, a composition and a
+    tenure: one without a car, one with a car spending half as much again.
+    The frame is the donor with the bottom decile's car households weighted
+    up (each pair's weight kept, so no household changes decile). Its spending
+    is what the donor's households like its own spend, so the bottom decile
+    runs 12% over the donor as surveyed and sits on the reweighted donor.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_COICOP_DIVISION_COLUMNS,
+        _modified_oecd_scale,
+        decile_fit,
+        income_tenths,
+    )
+
+    rng = np.random.default_rng(1717)
+    pairs = 400
+    income = np.repeat(rng.lognormal(10.0, 0.5, pairs), 2)
+    table = pd.DataFrame(
+        {
+            "hbai_household_net_income": income,
+            "household_adult_count": np.repeat(rng.integers(1, 4, pairs), 2),
+            "household_child_count": np.repeat(rng.integers(0, 3, pairs), 2),
+            "tenure_type": np.repeat(
+                rng.choice(
+                    ["OWNED_OUTRIGHT", "OWNED_WITH_MORTGAGE", "RENT_PRIVATELY"], pairs
+                ),
+                2,
+            ),
+            "num_vehicles": np.tile([0, 1], pairs),
+            "household_weight": np.repeat(rng.uniform(50.0, 150.0, pairs), 2),
+        }
+    )
+    spend = 0.6 * income * np.where(table["num_vehicles"] == 1, 1.5, 1.0)
+    for column in UK_LCFS_COICOP_DIVISION_COLUMNS:
+        table[column] = spend / len(UK_LCFS_COICOP_DIVISION_COLUMNS)
+    donor_weights = table["household_weight"].to_numpy(dtype=float)
+    rank = income_tenths(income, _modified_oecd_scale(table), donor_weights)
+    car = table["num_vehicles"].to_numpy() == 1
+    frame_weights = donor_weights * np.where(rank == 1, np.where(car, 1.6, 0.4), 1.0)
+
+    fit = decile_fit(table, table, weights=frame_weights, donor=table, sources=None)
+    bottom = fit["deciles"][0]
+    assert bottom["total"]["ratio"] == pytest.approx(1.12)
+    assert bottom["total"]["shape"] == pytest.approx(1.12)
+    assert bottom["total"]["reweighted_ratio"] == pytest.approx(1.0)
+    assert bottom["total"]["reweighted_shape"] == pytest.approx(1.0)
+    assert bottom["reweighted_mix_met"] is True
+    for row in fit["deciles"][1:]:
+        assert row["total"]["shape"] == pytest.approx(1.0)
+        assert row["total"]["reweighted_shape"] == pytest.approx(1.0)
+    assert fit["all"]["total"]["ratio"] > 1.0
+    assert fit["all"]["total"]["reweighted_ratio"] == pytest.approx(1.0)
+
+
+def test_reweighting_to_the_frames_mix_joins_sparse_categories_and_bounds_factors() -> (
+    None
+):
+    """The reweighting's three guards (microcosm#1717).
+
+    A donor category the frame lacks gets no weight; a category under three
+    donor households joins the band below it, so no reweighted figure turns
+    on one or two households; and no factor leaves a fifth to five, so a mix
+    the donor cannot reach is reported as not met.
+    """
+
+    from microcosm.build.uk_runtime.lcfs_consumption import reweighted_to_frame_mix
+
+    def mix(size: int, **columns: list) -> dict[str, np.ndarray]:
+        return {
+            "household_adult_count": np.ones(size, dtype=int),
+            "household_child_count": np.zeros(size, dtype=int),
+            "num_vehicles": np.zeros(size, dtype=int),
+            "tenure_type": np.array(["OWNED_OUTRIGHT"] * size),
+            **{name: np.asarray(values) for name, values in columns.items()},
+        }
+
+    absent, met = reweighted_to_frame_mix(
+        mix(10, tenure_type=["OWNED_OUTRIGHT"] * 5 + ["RENT_PRIVATELY"] * 5),
+        np.ones(10),
+        mix(4),
+        np.ones(4),
+    )
+    assert met is True
+    assert absent.tolist() == pytest.approx([2.0] * 5 + [0.0] * 5)
+
+    adults = np.array([1] * 5 + [2] * 5 + [3] * 2)
+    joined, met = reweighted_to_frame_mix(
+        mix(12, household_adult_count=adults),
+        np.ones(12),
+        mix(8, household_adult_count=[1] * 2 + [3] * 6),
+        np.ones(8),
+    )
+    assert met is True
+    assert joined[adults == 1] == pytest.approx([0.6] * 5)
+    assert joined[adults > 1] == pytest.approx([9.0 / 7.0] * 7)
+
+    bounded, met = reweighted_to_frame_mix(
+        mix(20, tenure_type=["OWNED_OUTRIGHT"] * 10 + ["RENT_PRIVATELY"] * 10),
+        np.ones(20),
+        mix(100, tenure_type=["OWNED_OUTRIGHT"] + ["RENT_PRIVATELY"] * 99),
+        np.ones(100),
+    )
+    assert met is False
+    assert bool(np.all((bounded >= 0.2 - 1e-12) & (bounded <= 5.0 + 1e-12)))
 
 
 def test_excise_spending_splits_each_drawn_total() -> None:
@@ -1566,8 +2090,9 @@ def _synthetic_lcfs_donor(
     person = pd.DataFrame(
         {
             "case": rows + 1,
-            "b303p": rng.uniform(0.0, 900.0, n),
-            "b3262p": rng.uniform(0.0, 100.0, n),
+            "p008p": rng.uniform(0.0, 900.0, n),
+            "p047p": rng.uniform(0.0, 100.0, n),
+            "p037p": np.where(rows % 7 == 0, 15.0, 0.0),
             "p049p": rng.uniform(0.0, 200.0, n),
         }
     )
@@ -1607,7 +2132,7 @@ def _synthetic_lcfs_stage(household_columns=None, *, excise=True, gambling=True)
                 kind=operation.kind,
                 parameters={**operation.parameters, "n_estimators": 4},
             )
-        if operation.kind == "fit_weighted_qrf_chain":
+        if operation.kind == "draw_budget_and_mix":
             operation = SourceOperationSpec(
                 kind=operation.kind,
                 parameters={**operation.parameters, "n_estimators": 4},
@@ -1774,25 +2299,16 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     assert set(UK_LCFS_CONSUMPTION_PERSON_OUTPUT_COLUMNS) <= set(
         result.table("person").columns
     )
-    # The 20 chain targets (the heating fuels after the spend targets,
-    # pe-uk#2572) and the five excise shares (microcosm#1359), the road-fuel
-    # redraw's total and petrol share, the prepayment-meter flag
-    # (microcosm#1110), the gas-payer classifier and amount model the
-    # connection walk reads (microcosm#1164), then each gambling key's
-    # propensity and stake model the participation walk reads (microcosm#1359).
-    assert len(transform.fit_weight_records) == 34
+    # The draw's budget and mix forests, which give every spend target and
+    # excise share (microcosm#1717), the road-fuel redraw's total and petrol
+    # share, the prepayment-meter flag (microcosm#1110), the gas-payer
+    # classifier and amount model the connection walk reads (microcosm#1164),
+    # then each gambling key's propensity and stake model the participation
+    # walk reads (microcosm#1359).
+    assert len(transform.fit_weight_records) == 11
     assert [
-        record.fit_name.rsplit(":", 1)[1]
-        for record in transform.fit_weight_records[18:25]
-    ] == [
-        "liquid_fuel_consumption",
-        "solid_fuel_consumption",
-        "tobacco_share_of_alcohol_and_tobacco",
-        "on_trade_alcohol_share_of_restaurants_and_hotels",
-        "gambling_stakes_share_of_recreation",
-        "national_lottery_share_of_gambling_stakes",
-        "betting_and_gaming_share_of_other_gambling_stakes",
-    ]
+        record.fit_name.rsplit(":", 1)[1] for record in transform.fit_weight_records[:2]
+    ] == ["budget", "mix"]
     assert [
         record.fit_name.rsplit(":", 1)[1]
         for record in transform.fit_weight_records[-8:]
@@ -1831,7 +2347,13 @@ def test_stage_transform_prices_bus_fares_from_journeys() -> None:
         "bus_pricing",
         "energy_pricing",
         "energy_rake",
+        "budget_and_mix",
+        "decile_fit",
     } <= set(evidence)
+    # The draw's range step and the mixes behind each decile are on record
+    # (microcosm#1717).
+    assert set(evidence["budget_and_mix"]["range_step"]) == {"redrawn", "moved_budget"}
+    assert "effective_mix_donors_by_region" in evidence["decile_fit"]
     # The excise shares are scratch: neither they nor the spending they give
     # reach the frame (microcosm#1359), and the receipt sets the frame's part
     # of each total beside the donor's.
@@ -4516,7 +5038,7 @@ def test_stage_tops_up_the_gambling_keys_when_declared(monkeypatch) -> None:
         assert weights @ out[column].to_numpy() == pytest.approx(level)
         assert (out[column] > 0).mean() > (before[column] > 0).mean()
     # The two gambling classifiers and stake models follow the gas payer's.
-    assert len(synthetic.transform.fit_weight_records) == 34
+    assert len(synthetic.transform.fit_weight_records) == 11
     assert synthetic.transform.fit_weight_records[-1].fit_name.endswith(
         ":betting_and_gaming_participation_stake"
     )

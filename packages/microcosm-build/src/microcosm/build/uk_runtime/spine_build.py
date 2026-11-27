@@ -186,7 +186,10 @@ from microcosm.build.uk_runtime.regional_home_values import (
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
-from microcosm.build.uk_runtime.rowwise_staging import close_run_blocked
+from microcosm.build.uk_runtime.rowwise_staging import (
+    close_run_blocked,
+    confirm_final_commit,
+)
 from microcosm.build.uk_runtime.salary_sacrifice import UKSalarySacrificeStageTransform
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
@@ -856,7 +859,10 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                         stage_seeds[target] = seed
                     else:
                         stage_seeds["assign_binary_from_rate"] = seed
-                elif operation.kind == "fit_weighted_qrf_chain":
+                elif operation.kind in (
+                    "fit_weighted_qrf_chain",
+                    "draw_budget_and_mix",
+                ):
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "fit_weighted_qrf":
                     stage_seeds[stage.stage] = seed
@@ -1118,7 +1124,7 @@ def _close_failed_telemetry(
     """
     classified = classify_failure(error)
     if classified.block is not None and not rung_abort:
-        close_run_blocked(staging_bundle, emitter, classified.block)
+        close_run_blocked(staging_bundle, emitter, classified.block, error=error)
         return
     error_code, failure_class = (
         ("RUNG_ABORTED", "aborted")
@@ -1128,16 +1134,22 @@ def _close_failed_telemetry(
             classified.failure_class or "error",
         )
     )
-    if staging_bundle is not None and staging_bundle.status == "running":
-        try:
-            staging_bundle.fail(
-                error, error_code=error_code, failure_class=failure_class
-            )
-            staging_bundle.validate_local_bundle()
-        except Exception:
-            pass
-    if emitter is not None and emitter.available:
-        emitter.fail(error, failure_class=failure_class, error_code=error_code)
+    try:
+        if staging_bundle is not None and staging_bundle.status == "running":
+            try:
+                staging_bundle.fail(
+                    error, error_code=error_code, failure_class=failure_class
+                )
+                staging_bundle.validate_local_bundle()
+            except Exception:
+                pass
+            # Before the emitter records the outcome, which ends the run's
+            # telemetry.
+            if staging_bundle.status != "running":
+                confirm_final_commit(staging_bundle, emitter, error=error)
+    finally:
+        if emitter is not None and emitter.available:
+            emitter.fail(error, failure_class=failure_class, error_code=error_code)
 
 
 def _record_attempt(
@@ -1522,7 +1534,6 @@ def _create_staging_run_bundle(
         run_kind="smoke" if args.smoke else "spine",
         delivery_mode="local_only" if local_only else "local_and_remote",
         repo_id=None if local_only else args.staging_repo_id,
-        upload_interval_seconds=args.staging_upload_interval_seconds,
         # The build's emitter commits the run files with its own credential.
         emitter_client=(
             None if local_only or _ACTIVE_EMITTER is None else _ACTIVE_EMITTER.client
@@ -2534,8 +2545,11 @@ def _main(argv: list[str] | None = None) -> int:
                     else "UK spine staging run completed."
                 )
             )
-            if args.staging_read_back:
-                staging_bundle.verify_remote()
+            # Before the emitter records the outcome; with --staging-read-back
+            # a failed read-back fails the build.
+            confirm_final_commit(
+                staging_bundle, emitter, read_back=bool(args.staging_read_back)
+            )
             staging_bundle.validate_local_bundle()
             sidecar["staging_delivery"] = staging_bundle.delivery_summary
             atomic_write_json(sidecar_path, sidecar)

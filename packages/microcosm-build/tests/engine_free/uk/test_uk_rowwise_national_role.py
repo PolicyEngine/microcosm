@@ -22,6 +22,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from microcosm.build.country_spec import load_country_spec
 from microcosm.build.logbook import load_spool_rows
 from microcosm.build.staging_v2 import validate_v2_bundle
 from microcosm.build.uk_runtime import (
@@ -85,8 +86,9 @@ def _bound_spine(tmp_path: Path, frame) -> Path:
         **calibration_run.uk_spine_checkpoint_gate_digests(),
         "blocked_at_phase": None,
         "gates": {
-            gate_id: {"status": "passed", "criticality": "release_blocking"}
-            for gate_id in calibration_run.UK_SPINE_GATE_SCOPE
+            entry.id: {"status": "passed", "criticality": entry.criticality}
+            for entry in load_country_spec("uk").gates.gates
+            if entry.id in calibration_run.UK_SPINE_GATE_SCOPE
         },
     }
     report_path = input_h5.with_suffix(".spine_gates.json")
@@ -629,14 +631,7 @@ def test_uk_national_role_publishes_telemetry_and_the_bundle_to_the_hub(
     share_fake_hub(monkeypatch, hub)
     out = tmp_path / "national"
 
-    assert (
-        builder.main(
-            _argv(
-                input_h5, out, "--epochs", "5", "--staging-upload-interval-seconds", "0"
-            )
-        )
-        == 0
-    )
+    assert builder.main(_argv(input_h5, out, "--epochs", "5")) == 0
 
     manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
     run_id = manifest["build_id"]

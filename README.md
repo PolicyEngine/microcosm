@@ -155,11 +155,18 @@ make their own attempt ID (see
 item 6).
 
 US fiscal refresh builds also write pre-release staging run files **by
-default**. The build hands its progress JSON to the emitter, which commits it
-to `policyengine/populace-us-staging` while the build runs, one commit per
-upload interval (best-effort: no emitter, a missing token or a failed commit
-never fails the build), so every candidate shows up on the staging dashboard
-before it is published. Disable these files with `--no-staging`, or point them
+default**. The build hands its run files to the emitter, which commits them
+to `policyengine/populace-us-staging` when the run starts, when each result
+file is produced and when the run ends; the build's hosted telemetry carries
+its progress in between. Before the build reports how it ended, the emitter
+reads the final commit back (after a SIGTERM or Ctrl-C, only its receipts)
+and the build reports the result to its hosted telemetry as a progress event
+whose details name the check `staging_final_commit` (best-effort: no
+emitter, a missing token, a failed commit or a failed read-back never fails
+the build), so every candidate shows up on the staging dashboard before it is
+published. A SIGTERM during the build closes the staging run as failed and
+the build exits 143; one that arrives during that final check only ends the
+check. Disable these files with `--no-staging`, or point them
 elsewhere with `--staging-repo-id` / `POPULACE_STAGING_REPO_ID`. An *empty*
 `POPULACE_STAGING_REPO_ID` is ignored rather than read as off, and staging with
 no destination at all is an argparse error. `--no-staging` does not disable

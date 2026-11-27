@@ -5,8 +5,10 @@ import weakref
 from collections.abc import Iterator
 
 from microcosm.build.us_runtime.post_export_requests import (
+    RECORDS_REQUESTS_ONLY,
     ParameterChangesReform,
     PostExportRequest,
+    build_post_export_reform,
 )
 from microcosm.calibrate import DroppedConstraintMatrix
 from test_support.microcosm_build.us_post_export_scoring import *
@@ -848,9 +850,11 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
             in (getattr(call.func, "id", None), getattr(call.func, "attr", None))
         ]
 
-    # The scorer opens on the written H5 with the plan recorded before export.
+    # The scorer opens on the written H5 with the plan recorded before export,
+    # keeping its household batch files in a directory in the build's --out.
     assert [ast.unparse(call) for call in calls_to("_open_post_export_scorer")] == [
-        "_open_post_export_scorer(post_export_scoring_plan, dataset_path)"
+        "_open_post_export_scorer(post_export_scoring_plan, dataset_path, "
+        "batch_parent=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY)"
     ]
     # It opens the file the build wrote, which the record pins by digest
     # (never a previous run's bytes at the same path, microcosm#443), and
@@ -1714,6 +1718,52 @@ def test_guard_sweep_records_and_scores_shipped_reform_passes(
     scorer.close()
 
 
+def test_guard_sweep_baseline_worker_scores_its_plans_in_one_pass(
+    builder, fake_reforms, monkeypatch, tmp_path
+) -> None:
+    """The guard sweep's baseline worker registers the plans it recorded, so
+    its scorer serves them from one merged pass, as the release does, and
+    compares each consumer's served values with a whole-file engine."""
+    sweep = _load_sweep_module()
+    frame, log = _nested_frame(), _EngineLog()
+    opened: list[dict[str, object]] = []
+    scorer_cls = builder._HouseholdBatchedPostExportScorer
+
+    def fake_engine_scorer(dataset_path, **options):
+        opened.append(options)
+        return scorer_cls(
+            dataset_path,
+            **options,
+            microsimulation_cls=_fake_engine(log),
+            dataset_from_frame=lambda batch_frame: batch_frame,
+            load_frame=lambda path, *, expected_sha256: frame,
+        )
+
+    monkeypatch.setattr(sweep, "_load_builder", lambda: builder)
+    monkeypatch.setattr(sweep, "_watch_worker_rss", lambda: None)
+    monkeypatch.setattr(
+        builder, "_HouseholdBatchedPostExportScorer", fake_engine_scorer
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "default_simulate_factory",
+        lambda path: _unbatched_simulate(frame, _EngineLog()),
+    )
+    plans, _, _ = sweep._record_requests(builder)
+    report = sweep._worker(
+        SimpleNamespace(
+            dataset_path=_written_h5(tmp_path),
+            batch_size=3,
+            worker_start=None,
+            reforms_per_worker=4,
+        )
+    )
+    assert [options["baseline_plans"] for options in opened] == [plans]
+    assert report["n_batches"] == 3
+    assert len(log.constructions) == 3
+    assert all(engine.tax_benefit_system is None for engine in log.constructions)
+
+
 def test_guard_sweep_runs_every_chunk_and_propagates_worker_failure(tmp_path) -> None:
     import subprocess
 
@@ -2007,6 +2057,460 @@ def test_scorer_dataset_keeps_the_engine_projection(
 
     assert scorer._dataset_from_frame(first_batch) is first_batch
     assert calls == [{"assert_no_formula_owned_columns": False}]
+
+
+# ---------------------------------------------------------------------------
+# One merged baseline pass for the planned consumers (microcosm#1595)
+# ---------------------------------------------------------------------------
+
+
+def _release_plan(builder, fit=None):
+    """The plan and consumers ``_main`` records for the nested frame."""
+    fit = _full_in_sample_fit(builder.PERIOD) if fit is None else fit
+    args = _plan_args()
+    plan = builder._record_post_export_scoring_plan(
+        args, n_households=7, result=fit, release_id="fixture-release"
+    )
+    assert plan.error is None
+    consumers = builder._post_export_consumers(
+        args, result=fit, release_id="fixture-release"
+    )
+    return plan, consumers
+
+
+def _baseline_constructions(log):
+    return [engine for engine in log.constructions if engine.tax_benefit_system is None]
+
+
+def _union_plan(builder, plans):
+    return builder._ascending_period_plan(
+        key for plan in plans.values() for key in plan
+    )
+
+
+def test_registered_plans_share_one_baseline_pass_with_unchanged_outputs(
+    builder, fake_reforms, tmp_path
+) -> None:
+    """The five planned consumers' baselines cost one batch-outer pass over
+    the union of their plans, in ascending period order, instead of one pass
+    each. Every output, every served baseline array (byte for byte) and the
+    manifests' block equal those of the separate passes."""
+    plan, consumers = _release_plan(builder)
+    assert list(consumers) == [
+        "reform_coverage_smoke",
+        "reform_validation",
+        "demographics",
+        "ssi_social_security_holdout",
+        "medicare_irmaa_holdout",
+    ]
+    frame = _nested_frame()
+    separate_log, merged_log = _EngineLog(), _EngineLog()
+    separate = _scorer(builder, frame, separate_log, 3, tmp_path / "separate")
+    merged = _scorer(
+        builder,
+        frame,
+        merged_log,
+        3,
+        tmp_path / "merged",
+        baseline_plans=plan.baseline_plans,
+    )
+    expected_outputs, expected_served = _run_planned_consumers(
+        separate, plan, consumers
+    )
+    outputs, served = _run_planned_consumers(merged, plan, consumers)
+
+    assert {name: _comparable_output(output) for name, output in outputs.items()} == {
+        name: _comparable_output(output) for name, output in expected_outputs.items()
+    }
+    for name, expected_values in expected_served.items():
+        assert list(served[name]) == list(plan.baseline_plan(name)), name
+        assert list(expected_values) == list(plan.baseline_plan(name)), name
+        for key, values in expected_values.items():
+            assert _same_bytes(served[name][key], values), (name, key)
+    block = merged.manifest_record()
+    assert block == separate.manifest_record()
+    assert {
+        name: record["baseline_passes"] for name, record in block["consumers"].items()
+    } == {name: 1 for name in consumers}
+
+    union = _union_plan(builder, plan.baseline_plans)
+    assert len(union) < sum(len(keys) for keys in plan.baseline_plans.values())
+    assert len(_baseline_constructions(separate_log)) == 5 * separate.n_batches
+    merged_baseline = _baseline_constructions(merged_log)
+    assert len(merged_baseline) == merged.n_batches == 3
+    assert all(
+        engine.periods == [key[1] for key in union] for engine in merged_baseline
+    )
+
+
+def test_open_post_export_scorer_registers_the_recorded_plans(
+    builder, fake_reforms, engine_free_loader, tmp_path
+) -> None:
+    """``_main``'s scorer serves the plan it recorded from one pass: opening
+    the first consumer scores every planned consumer's baseline keys."""
+    log, _ = engine_free_loader
+    plan, _ = _release_plan(builder)
+    scorer = builder._open_post_export_scorer(plan, _written_h5(tmp_path))
+    scorer.open_consumer("demographics", plan.baseline_plan("demographics"))
+    union = _union_plan(builder, plan.baseline_plans)
+    assert [len(engine.household_ids) for engine in log.constructions] == [3, 3, 1]
+    assert all(
+        engine.periods == [key[1] for key in union] for engine in log.constructions
+    )
+    scorer.close()
+
+
+def test_a_registered_consumer_is_served_only_its_own_plan(
+    builder, fake_reforms, tmp_path
+) -> None:
+    """The merged pass scores keys other consumers planned; a consumer's
+    served baseline still refuses every key outside its own plan."""
+    plan, _ = _release_plan(builder)
+    scorer = _scorer(
+        builder,
+        _nested_frame(),
+        _EngineLog(),
+        3,
+        tmp_path,
+        baseline_plans=plan.baseline_plans,
+    )
+    key = ("income_tax", 2024, None)
+    assert key in plan.baseline_plan("reform_coverage_smoke")
+    assert key not in plan.baseline_plan("demographics")
+    smoke = scorer.open_consumer(
+        "reform_coverage_smoke", plan.baseline_plan("reform_coverage_smoke")
+    )
+    demographics = scorer.open_consumer(
+        "demographics", plan.baseline_plan("demographics")
+    )
+    assert smoke.simulate(None).calculate("income_tax", 2024).sum() != 0.0
+    with pytest.raises(RuntimeError, match="which its recorded plan does not hold"):
+        demographics.simulate(None).calculate("income_tax", 2024)
+    # The served baseline's prefetch, which the dry run's recorder also
+    # offers, refuses the same key and accepts the consumer's own.
+    with pytest.raises(RuntimeError, match="which its recorded plan does not hold"):
+        demographics.simulate(None).prefetch((("income_tax", 2024),))
+    demographics.simulate(None).prefetch((("age", 2024),))
+
+
+def test_a_registered_consumer_opened_with_another_plan_is_refused(
+    builder, tmp_path
+) -> None:
+    """A consumer is refused a plan other than its recorded one, including an
+    empty recorded plan, and still after the merged pass has failed."""
+    plans = {
+        "demographics": (("age", 2024, None),),
+        "ssi_social_security_holdout": (("ssi", 2024, None),),
+        "nothing planned": (),
+    }
+    log = _EngineLog()
+    scorer = _scorer(builder, _nested_frame(), log, 3, tmp_path, baseline_plans=plans)
+    refused = "demographics: .* registered baseline plan"
+    with pytest.raises(ValueError, match=refused):
+        scorer.open_consumer("demographics", (("age", 2024, None), ("ssi", 2024, None)))
+    with pytest.raises(ValueError, match=refused):
+        scorer.open_consumer("demographics", ())
+    with pytest.raises(
+        ValueError, match="nothing planned: .* registered baseline plan"
+    ):
+        scorer.open_consumer("nothing planned", (("age", 2024, None),))
+    assert log.constructions == []
+    assert scorer.open_consumer("nothing planned", ())._baseline == {}
+
+    log.fail_on = "ssi"
+    with pytest.raises(RuntimeError, match="fixture engine refuses ssi"):
+        scorer.open_consumer(
+            "ssi_social_security_holdout", plans["ssi_social_security_holdout"]
+        )
+    with pytest.raises(ValueError, match=refused):
+        scorer.open_consumer("demographics", (("age", 2024, None), ("ssi", 2024, None)))
+
+
+def test_the_merged_baseline_holds_only_keys_an_unserved_consumer_needs(
+    builder, tmp_path
+) -> None:
+    """Each served consumer's keys are dropped from the scorer once no
+    consumer still to be served planned them, so the merged values are freed
+    as the consumers finish. A consumer opened again scores its own plan."""
+    tax_2024 = ("income_tax", 2024, None)
+    snap_2024 = ("snap", 2024, None)
+    tax_2025 = ("income_tax", 2025, None)
+    plans = {
+        "first": (tax_2024, snap_2024),
+        "second": (snap_2024, tax_2025),
+        "third": (tax_2025,),
+    }
+    log = _EngineLog()
+    scorer = _scorer(builder, _nested_frame(), log, 3, tmp_path, baseline_plans=plans)
+    scorer.open_consumer("first", plans["first"])
+    assert set(scorer._merged_baseline) == {snap_2024, tax_2025}
+    scorer.open_consumer("second", plans["second"])
+    assert set(scorer._merged_baseline) == {tax_2025}
+    third = scorer.open_consumer("third", plans["third"])
+    assert not scorer._merged_baseline
+    assert len(log.constructions) == scorer.n_batches
+    assert all(engine.periods == [2024, 2024, 2025] for engine in log.constructions)
+    assert third.simulate(None).calculate("income_tax", 2025).sum() != 0.0
+
+    scorer.open_consumer("first", plans["first"])
+    assert len(log.constructions) == 2 * scorer.n_batches
+    assert all(
+        engine.periods == [2024, 2024]
+        for engine in log.constructions[scorer.n_batches :]
+    )
+
+
+def test_a_failed_merged_pass_falls_back_to_each_consumers_own_pass(
+    builder, fake_reforms, tmp_path, capsys
+) -> None:
+    """A key that fails the merged pass costs no other consumer its
+    baseline: each consumer then scores its own plan, as before the merge,
+    so only the holdout that planned the failing key fails, with the error
+    it raised before."""
+    plan, consumers = _release_plan(builder)
+    failing = "medicare_enrolled"
+    assert [
+        name
+        for name, keys in plan.baseline_plans.items()
+        if any(key[0] == failing for key in keys)
+    ] == ["medicare_irmaa_holdout"]
+
+    def run(scorer):
+        outputs, errors = {}, {}
+        for name, consumer in consumers.items():
+            try:
+                scoring = scorer.open_consumer(
+                    name,
+                    plan.baseline_plan(name),
+                    planned_reform_passes=plan.planned_reform_passes(name),
+                )
+            except RuntimeError as error:
+                errors[name] = str(error)
+                continue
+            outputs[name] = _comparable_output(consumer(scoring.simulate))
+            scorer.finish_consumer(scoring)
+        return outputs, errors
+
+    frame = _nested_frame()
+    separate_log, merged_log = _EngineLog(), _EngineLog()
+    separate_log.fail_on = merged_log.fail_on = failing
+    separate = _scorer(builder, frame, separate_log, 3, tmp_path / "separate")
+    merged = _scorer(
+        builder,
+        frame,
+        merged_log,
+        3,
+        tmp_path / "merged",
+        baseline_plans=plan.baseline_plans,
+    )
+    expected = run(separate)
+    capsys.readouterr()
+    observed = run(merged)
+
+    assert observed == expected
+    assert expected[1] == {
+        "medicare_irmaa_holdout": "fixture engine refuses medicare_enrolled"
+    }
+    assert merged.manifest_record() == separate.manifest_record()
+    # The merged pass stopped in its first batch engine, which was released;
+    # every consumer then ran the passes it ran before.
+    assert len(_baseline_constructions(merged_log)) == (
+        len(_baseline_constructions(separate_log)) + 1
+    )
+    assert all(engine.dataset is None for engine in merged_log.constructions)
+    assert "merged baseline plan failed" in capsys.readouterr().out
+
+
+def test_a_failed_merged_pass_frees_its_partial_values_before_the_fallback(
+    builder, tmp_path
+) -> None:
+    """The fallback pass starts only after the failed merged pass's frame,
+    and the per-batch values it had collected, are released, including
+    values held in a reference cycle, which only a full collection frees."""
+    import weakref
+
+    plans = {"first": (("age", 2024, None),), "second": (("ssi", 2024, None),)}
+    scorer = _scorer(
+        builder, _nested_frame(), _EngineLog(), 3, tmp_path, baseline_plans=plans
+    )
+    partial_values: list[weakref.ref] = []
+    score = scorer._score
+
+    class _PartialValues:
+        pass
+
+    def failing_merged_score(keys, **options):
+        if options["label"] == "merged baseline plan":
+            collected = _PartialValues()
+            collected.cycle = collected
+            partial_values.append(weakref.ref(collected))
+            raise RuntimeError("the merged pass failed in its last batch")
+        assert partial_values and partial_values[0]() is None, (
+            "the failed merged pass's values are still alive"
+        )
+        return score(keys, **options)
+
+    scorer._score = failing_merged_score
+    first = scorer.open_consumer("first", plans["first"])
+    assert first.simulate(None).calculate("age", 2024).sum() > 0.0
+
+
+def test_a_merged_pass_error_that_cannot_be_printed_still_falls_back(
+    builder, tmp_path, capsys
+) -> None:
+    """The fallback holds when the merged pass's error cannot be turned into
+    text: the consumer scores its own plan, and the merged pass is not tried
+    again for the next consumer."""
+    plans = {"first": (("age", 2024, None),), "second": (("ssi", 2024, None),)}
+    scorer = _scorer(
+        builder, _nested_frame(), _EngineLog(), 3, tmp_path, baseline_plans=plans
+    )
+    score = scorer._score
+
+    class _UnprintableError(RuntimeError):
+        def __str__(self) -> str:
+            raise ValueError("this error has no text")
+
+    def failing_merged_score(keys, **options):
+        if options["label"] == "merged baseline plan":
+            raise _UnprintableError()
+        return score(keys, **options)
+
+    scorer._score = failing_merged_score
+    passes = _record_pass_labels(scorer)
+    first = scorer.open_consumer("first", plans["first"])
+    second = scorer.open_consumer("second", plans["second"])
+    assert first.simulate(None).calculate("age", 2024).sum() > 0.0
+    assert second.simulate(None).calculate("ssi", 2024).sum() > 0.0
+    assert passes == [
+        "merged baseline plan",
+        "first baseline plan",
+        "second baseline plan",
+    ]
+    assert "_UnprintableError" in capsys.readouterr().out
+
+
+def test_the_consumer_log_names_the_merged_pass(builder, tmp_path, capsys) -> None:
+    """A consumer served from the merged pass says so in the build log; its
+    recorded ``baseline_passes`` stays 1."""
+    plans = {"demographics": (("age", 2024, None),)}
+    scorer = _scorer(
+        builder, _nested_frame(), _EngineLog(), 3, tmp_path, baseline_plans=plans
+    )
+    for name in ("demographics", "unregistered"):
+        builder._score_post_export_consumer(
+            name,
+            lambda simulate: simulate(None).calculate("age", 2024).sum(),
+            dataset_path=scorer.dataset_path,
+            post_export_scorer=scorer,
+            baseline_plan=plans["demographics"],
+            maximum_microsim_batch_size=3,
+        )
+    log = capsys.readouterr().out
+    assert (
+        "Post-export demographics: baseline served from the merged pass (1 keys)" in log
+    )
+    assert "Post-export unregistered: 1 baseline pass (1 keys)" in log
+    assert {
+        name: record["baseline_passes"]
+        for name, record in scorer.consumer_records.items()
+    } == {"demographics": 1, "unregistered": 1}
+
+
+# ---------------------------------------------------------------------------
+# Several keys of one reformed simulation in one pass (microcosm#1595)
+# ---------------------------------------------------------------------------
+
+
+def test_a_prefetched_reform_scores_its_keys_in_one_pass(
+    builder, fake_reforms, tmp_path
+) -> None:
+    """``prefetch`` scores every key a reformed simulation has not scored in
+    one batch-outer pass, in ascending period order. The dry run counts that
+    pass once, a later ``calculate`` of a prefetched key costs no pass, and
+    the totals equal those of one pass per key."""
+    description = ParameterChangesReform({"gov.fixture.two_keys": {"2026-01-01": 1}})
+    reform = build_post_export_reform(description)
+
+    def consumer(simulate):
+        records_only = getattr(simulate, RECORDS_REQUESTS_ONLY, False) is True
+        reformed = simulate(description if records_only else reform)
+        reformed.prefetch((("income_tax", 2027), ("estate_tax", 2026)))
+        reformed.prefetch((("estate_tax", 2026),))
+        return (
+            reformed.calculate("estate_tax", 2026).sum(),
+            reformed.calculate("income_tax", 2027).sum(),
+        )
+
+    plan, passes = builder._record_post_export_requests(consumer)
+    assert (plan, passes) == ((), 1)
+    log = _EngineLog()
+    scorer = _scorer(builder, _nested_frame(), log, 3, tmp_path / "together")
+    scoring = scorer.open_consumer("two keys", plan, planned_reform_passes=passes)
+    together = consumer(scoring.simulate)
+    record = scoring.record()
+    assert (record["reform_passes"], record["reform_systems"]) == (1, 1)
+    assert len(log.constructions) == scorer.n_batches
+    assert all(engine.periods == [2026, 2027] for engine in log.constructions)
+
+    alone = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path / "alone")
+    one_key_each = alone.open_consumer("one key each", ())
+    assert together == (
+        one_key_each.simulate(reform).calculate("estate_tax", 2026).sum(),
+        one_key_each.simulate(reform).calculate("income_tax", 2027).sum(),
+    )
+    assert one_key_each.record()["reform_passes"] == 2
+
+
+def test_reform_validation_scores_the_pre_obbba_state_in_one_pass(
+    builder, fake_reforms, tmp_path
+) -> None:
+    """Every OBBBA group stacks from the same pre-OBBBA state (every
+    provision reverted), so the release scores that state once: one reform
+    system and one pass for both groups' (measure, period) keys. With a
+    release fit, reform validation runs 53 reform passes, as its dry run
+    counts, instead of 54."""
+    plan, consumers = _release_plan(builder)
+    specs = reform_validation_module.load_default_reform_specs(period=builder.PERIOD)
+    obbba = [spec for spec in specs if reform_validation_module._is_obbba_spec(spec)]
+    pre_obbba = json.dumps(
+        reform_validation_module._merged_parameter_changes(obbba),
+        sort_keys=True,
+        default=str,
+    )
+    assert {(spec.budget_measure, spec.period) for spec in obbba} == {
+        ("income_tax", 2026),
+        ("estate_tax", 2026),
+    }
+    log = _EngineLog()
+    scorer = _scorer(
+        builder,
+        _nested_frame(),
+        log,
+        3,
+        tmp_path,
+        baseline_plans=plan.baseline_plans,
+    )
+    scoring = scorer.open_consumer(
+        "reform_validation",
+        plan.baseline_plan("reform_validation"),
+        planned_reform_passes=plan.planned_reform_passes("reform_validation"),
+    )
+    consumers["reform_validation"](scoring.simulate)
+    record = scoring.record()
+    assert plan.planned_reform_passes("reform_validation") == 53
+    assert record["reform_passes"] == record["reform_systems"] == 53
+    pre_obbba_systems = [
+        system for system in log.systems if system.reform.label == pre_obbba
+    ]
+    assert len(pre_obbba_systems) == 1
+    pre_obbba_engines = [
+        engine
+        for engine in log.constructions
+        if engine.tax_benefit_system is pre_obbba_systems[0]
+    ]
+    assert len(pre_obbba_engines) == scorer.n_batches
+    assert all(engine.periods == [2026, 2026] for engine in pre_obbba_engines)
 
 
 # ---------------------------------------------------------------------------

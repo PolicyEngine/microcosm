@@ -32,7 +32,7 @@ from microcosm.calibrate.exact_k import select_exact_k
 from microcosm.calibrate.gates import HardConcrete
 from microcosm.calibrate.initialization import contribution_initialization
 from microcosm.calibrate.kernels import CalibrateAdamKernel
-from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights, table_copies
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -275,6 +275,8 @@ class _CalibrationKernel(KernelBase):
                         size_checkpoint,
                         calibration_artifacts,
                         context_frame,
+                        # context_frame copies the kernel's inputs with it.
+                        table_copies,
                         select_exact_k,
                         HardConcrete,
                         contribution_initialization,
