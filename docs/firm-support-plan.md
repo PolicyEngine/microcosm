@@ -33,7 +33,7 @@ runs policyengine-uk's firm entity on the candidate table and reads
 simulation; the released policyengine-uk has no firm entity yet, so its only
 real-engine check is local, against PolicyEngine/policyengine-uk#2940.
 `tools/build_uk_firms.py` (`uk_runtime/firm_build.py`) runs a local UK firm
-build: generation and export to `uk_firms.parquet` with a JSON receipt of
+build: generation, attributes and export to `uk_firms.parquet` with a JSON receipt of
 inputs, configuration, rule period, data years, accuracy and rules provenance.
 It has no publish or staging path. The country-neutral pieces (band draws,
 thinning, the two-universe calibration, the rules seam, the engine-input
@@ -41,6 +41,31 @@ checks and the receipts comparison) live in `microcosm.build.firms`. A parity te
 paper's committed 2024-25 tables (`test_uk_firm_paper_parity.py`) checks the
 generator against golden numbers from paper runs, and
 `tools/uk_firm_paper_parity.py` prints the full comparison locally.
+
+Region and legal status are drawn after calibration from ONS UK Business 2025
+Tables 8, 12 and 13 (`uk_runtime/firm_attributes.py`; legal status is
+conditioned on the turnover band through Table 13 and on the employment band
+through Table 12), with Table 15 held out, and feed policyengine-uk's
+`firm_region`, `firm_in_england`, `firm_legal_form`, `firm_is_public_body`
+and `firm_is_charity`. Public corporations (ONS status 4) export as
+`COMPANY` and as public bodies, so they are liable to corporation tax and
+outside the Employment Allowance; every non-profit body or mutual (status 7)
+is assumed a charity. ONS does not name limited liability partnerships; they
+most likely sit with companies (status 1), so they are charged corporation
+tax although an LLP is transparent for tax. That is a caveat, not a drawn
+flag. `firm_table.UK_FIRM_POLICYENGINE_UK_INPUT_STATUS` records which of
+policyengine-uk's 71 firm inputs (at `0d1c25010`) microcosm sets. The build
+receipt's `data_years` records the year each input group's source describes,
+apart from the rule period.
+
+An engine-free test checks the export against a committed snapshot of
+policyengine-uk's firm variables. Value-free target candidates for the next
+Ledger sources are declared in `uk_runtime/firm_target_candidates.py`; they are
+not yet in `uk/uk_firms_targets.json` or the solve.
+
+The other policyengine-uk firm inputs (paybill, profit, rateable value, R&D,
+capital expenditure, the pay-distribution inputs and several flags) wait for
+sources.
 
 ## External Prerequisites
 

@@ -5,16 +5,20 @@
 1. ``read_uk_firm_source_data`` reads the processed ONS/HMRC tables;
 2. ``generate_uk_firm_population`` draws and calibrates the firms, with VAT
    liability from the ``rules`` it is given;
-3. ``to_policyengine_uk_firm_table`` exports policyengine-uk firm columns;
-4. ``validate_uk_firm_table`` checks the table.
+3. ``assign_uk_firm_attributes`` draws ONS region and legal status;
+4. ``to_policyengine_uk_firm_table`` exports policyengine-uk firm columns;
+5. ``validate_uk_firm_table`` checks the table.
 
 It writes ``uk_firms.parquet`` and ``uk_firms.receipt.json`` to the output
 directory and nothing else: there is no publication, staging or upload path.
 The receipt holds the inputs' hashes keyed by role and file name, the rule
 period with a note on how it treats mid-year changes, the years the source
-data describe (``data_years``, which can lag the rule period), the
+data describe (``data_years``, which can lag the rule period: the frame's
+sources for a checked vintage, then one entry per input group read, from
+``UK_FIRM_INPUT_DATA_YEARS``), the
 configuration's JSON-safe fields, the output's hash and shape, the
-calibration's accuracy figures and the provenance the rules reported.
+calibration's accuracy figures, the attribute fallback counts and the
+provenance the rules reported.
 It holds no timestamp, hostname or absolute path, so two builds from the same inputs write the same receipt.
 """
 
@@ -27,11 +31,17 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.firm_attributes import (
+    assign_uk_firm_attributes,
+    read_uk_firm_attribute_source_data,
+    uk_firm_attribute_fallback_counts,
+)
 from microcosm.build.uk_runtime.firm_generation import (
     UKFirmGenerationConfig,
     generate_uk_firm_population,
@@ -53,6 +63,29 @@ from microcosm.build.uk_runtime.firm_table import (
 UK_FIRM_BUILD_RECEIPT_SCHEMA_VERSION = 1
 UK_FIRM_TABLE_FILE = "uk_firms.parquet"
 UK_FIRM_RECEIPT_FILE = "uk_firms.receipt.json"
+
+#: The years each input group's source describes, recorded in the receipt's
+#: ``data_years`` beside the frame's and apart from ``rule_period``. A key
+#: appears only when its group's source is read. Each value is the source's
+#: own reference period, from its fixture provenance; the build reads the
+#: 2024-25 fixtures only.
+UK_FIRM_INPUT_DATA_YEARS: Mapping[str, str] = MappingProxyType(
+    {
+        # ONS UK Business 2025 Tables 8, 12 and 13: the 2025 frame, whose
+        # turnover bands are mostly from VAT returns for 2023-24 (note 4).
+        "ons_attributes": "2025 frame (turnover mostly 2023-24)",
+    }
+)
+
+
+def _input_data_years(groups: Mapping[str, bool]) -> dict[str, str]:
+    """``UK_FIRM_INPUT_DATA_YEARS`` entries of the groups switched on."""
+
+    unknown = sorted(set(groups) - set(UK_FIRM_INPUT_DATA_YEARS))
+    if unknown:
+        raise ValueError(f"No UK firm data year for input groups {unknown}.")
+    return {key: UK_FIRM_INPUT_DATA_YEARS[key] for key, on in groups.items() if on}
+
 
 #: Configuration fields holding rule objects, which the receipt leaves out.
 _RULE_CONFIG_FIELDS = frozenset({"firm_rules", "vat_rule_evaluator"})
@@ -76,6 +109,7 @@ class _RecordingRules:
 def build_uk_firm_dataset(
     *,
     processed_dir: str | Path,
+    attributes_dir: str | Path,
     output_dir: str | Path,
     rules: UKFirmRules,
     config: UKFirmGenerationConfig,
@@ -95,6 +129,7 @@ def build_uk_firm_dataset(
             "config.firm_rules differs from rules; pass the rules once, as rules."
         )
     processed = Path(processed_dir)
+    attributes = Path(attributes_dir)
     output = Path(output_dir)
 
     recorder = _RecordingRules(rules)
@@ -104,8 +139,12 @@ def build_uk_firm_dataset(
     if not recorder.provenance:
         raise RuntimeError("The UK firm rules were never evaluated.")
 
+    attribute_source = read_uk_firm_attribute_source_data(attributes)
+    firms = assign_uk_firm_attributes(
+        result.firms, attribute_source, seed=result.config.seed
+    )
     table = to_policyengine_uk_firm_table(
-        result.firms, threshold_k=float(result.config.vat_threshold)
+        firms, threshold_k=float(result.config.vat_threshold)
     )
     validate_uk_firm_table(table)
 
@@ -115,6 +154,7 @@ def build_uk_firm_dataset(
     written = pd.read_parquet(table_path, engine="pyarrow")
     validate_uk_firm_table(written)
 
+    fallback = uk_firm_attribute_fallback_counts(firms, attribute_source)
     validation = result.validation
     receipt: dict[str, Any] = {
         "schema_version": UK_FIRM_BUILD_RECEIPT_SCHEMA_VERSION,
@@ -122,10 +162,18 @@ def build_uk_firm_dataset(
         "seed": int(result.config.seed),
         "rule_period": rule_period_for_vintage(result.config.data_vintage),
         "rule_period_note": UK_FIRM_RULE_PERIOD_NOTE,
-        "data_years": data_years_for_vintage(result.config.data_vintage),
+        "data_years": {
+            **(data_years_for_vintage(result.config.data_vintage) or {}),
+            **_input_data_years(
+                {
+                    "ons_attributes": True,
+                }
+            ),
+        },
         "config": _config_record(result.config),
         "inputs": {
             "processed": _csv_hashes(processed),
+            "attributes": _csv_hashes(attributes),
         },
         "output": {
             "file": UK_FIRM_TABLE_FILE,
@@ -146,6 +194,7 @@ def build_uk_firm_dataset(
             "final_loss": float(result.calibration.final_loss),
         },
         "target_diagnostics": _records(result.target_diagnostics),
+        "uk_firm_attribute_fallback_counts": _records(fallback),
         "rules_provenance": recorder.provenance,
     }
     receipt = _json_safe(receipt)

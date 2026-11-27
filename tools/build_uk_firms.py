@@ -1,8 +1,9 @@
 """Build the UK firm table locally (microcosm#1705).
 
 Runs ``microcosm.build.uk_runtime.firm_build.build_uk_firm_dataset`` on the
-processed ONS/HMRC tables in ``--processed-dir`` and writes ``uk_firms.parquet``
-and ``uk_firms.receipt.json`` to ``--out-dir``. Nothing is published or uploaded.
+processed ONS/HMRC tables in ``--processed-dir`` and the ONS attribute tables
+in ``--attributes-dir``, and writes ``uk_firms.parquet`` and
+``uk_firms.receipt.json`` to ``--out-dir``. Nothing is published or uploaded.
 
 ``--rules`` picks the VAT rules and has no default:
 
@@ -30,6 +31,7 @@ DEFAULT_DATA_VINTAGE = "2024-25"
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--processed-dir", type=Path, required=True)
+    parser.add_argument("--attributes-dir", type=Path, required=True)
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--rules", choices=RULES_CHOICES, required=True)
     parser.add_argument(
@@ -84,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     rules = _rules(args)
     built = build_uk_firm_dataset(
         processed_dir=args.processed_dir,
+        attributes_dir=args.attributes_dir,
         output_dir=args.out_dir,
         rules=rules,
         config=_config(args, rules),

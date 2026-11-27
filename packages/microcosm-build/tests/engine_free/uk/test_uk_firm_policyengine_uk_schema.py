@@ -14,6 +14,7 @@ from functools import cache
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.firms import (
     EntityVariables,
@@ -21,13 +22,19 @@ from microcosm.build.firms import (
     input_status_problems,
 )
 from microcosm.build.uk_runtime.firm_table import (
+    UK_FIRM_EXPORT_GROUPS,
+    UK_FIRM_EXTENDED_TABLE_COLUMNS,
     UK_FIRM_INPUT_STATUSES,
+    UK_FIRM_LEGAL_FORMS,
+    UK_FIRM_MICROCOSM_COLUMNS,
     UK_FIRM_MICROCOSM_ONLY_COLUMNS,
-    UK_FIRM_POLICYENGINE_UK_COLUMNS,
+    UK_FIRM_ONS_LEGAL_STATUS_TO_LEGAL_FORM,
     UK_FIRM_POLICYENGINE_UK_INPUT_STATUS,
+    UK_FIRM_REGION_CODE_TO_REGION,
     UK_FIRM_SIC_SECTIONS,
     UK_FIRM_TABLE_COLUMNS,
     to_policyengine_uk_firm_table,
+    uk_firm_policyengine_uk_columns,
 )
 from test_support.paths import paths_for
 
@@ -57,8 +64,8 @@ def _variable(name: str) -> dict:
     return _snapshot()["firm_variables"][name]
 
 
-def _firms() -> pd.DataFrame:
-    return pd.DataFrame(
+def _firms(*, attributes: bool = False) -> pd.DataFrame:
+    firms = pd.DataFrame(
         {
             "firm_id": np.array([4, 2, 1, 3], dtype=np.int64),
             "source_firm_id": np.array([4, 2, 1, 3], dtype=np.int64),
@@ -77,6 +84,10 @@ def _firms() -> pd.DataFrame:
             "base_weight": [1.0, 2.0, 1.0, 1.0],
         }
     )
+    if attributes:
+        firms["ons_legal_status"] = np.array([1, 2, 5, 7], dtype=np.int64)
+        firms["ons_region_code"] = ["E12000007", "W92000004", "S92000003", "N92000002"]
+    return firms
 
 
 def test_snapshot_records_the_policyengine_uk_checkout() -> None:
@@ -103,7 +114,9 @@ def test_input_status_covers_exactly_the_snapshot_inputs() -> None:
         input_status_problems(
             UK_FIRM_POLICYENGINE_UK_INPUT_STATUS,
             _snapshot()["firm_input_names"],
-            exported_columns=UK_FIRM_POLICYENGINE_UK_COLUMNS,
+            exported_columns=uk_firm_policyengine_uk_columns(
+                group.name for group in UK_FIRM_EXPORT_GROUPS
+            ),
         )
         == []
     )
@@ -114,9 +127,25 @@ def test_sic_sections_are_the_sic_section_members() -> None:
     assert UK_FIRM_SIC_SECTIONS == tuple(_variable("firm_sic_section")["enum_members"])
 
 
+def test_legal_forms_and_regions_are_enum_members() -> None:
+    legal_form = _variable("firm_legal_form")
+    region = _variable("firm_region")
+
+    assert legal_form["enum"]["name"] == "FirmLegalForm"
+    assert UK_FIRM_LEGAL_FORMS == tuple(legal_form["enum_members"])
+    assert set(UK_FIRM_ONS_LEGAL_STATUS_TO_LEGAL_FORM.values()) <= set(
+        legal_form["enum_members"]
+    )
+    assert region["enum"] == {
+        "module": "policyengine_uk.variables.household.demographic.geography",
+        "name": "Region",
+    }
+    assert set(UK_FIRM_REGION_CODE_TO_REGION.values()) <= set(region["enum_members"])
+
+
 def test_microcosm_only_columns_collide_with_no_policyengine_uk_variable() -> None:
     snapshot = _snapshot()
-    microcosm_only = set(UK_FIRM_MICROCOSM_ONLY_COLUMNS)
+    microcosm_only = {*UK_FIRM_MICROCOSM_COLUMNS, *UK_FIRM_MICROCOSM_ONLY_COLUMNS}
 
     assert snapshot["collisions"] == []
     assert microcosm_only <= set(snapshot["microcosm_only_columns_checked"])
@@ -124,12 +153,23 @@ def test_microcosm_only_columns_collide_with_no_policyengine_uk_variable() -> No
     assert not any(column.startswith("firm_") for column in microcosm_only)
 
 
-def test_export_loads_as_policyengine_uk_firm_inputs() -> None:
-    table = to_policyengine_uk_firm_table(_firms(), threshold_k=90.0)
-    assert tuple(table.columns) == UK_FIRM_TABLE_COLUMNS
+@pytest.mark.parametrize(
+    ("attributes", "expected", "groups"),
+    [
+        (False, UK_FIRM_TABLE_COLUMNS, ()),
+        (True, UK_FIRM_EXTENDED_TABLE_COLUMNS, ("attributes",)),
+    ],
+)
+def test_export_loads_as_policyengine_uk_firm_inputs(
+    attributes, expected, groups
+) -> None:
+    table = to_policyengine_uk_firm_table(
+        _firms(attributes=attributes), threshold_k=90.0
+    )
+    assert tuple(table.columns) == expected
     assert (
         export_schema_problems(
-            table, _variables(), columns=UK_FIRM_POLICYENGINE_UK_COLUMNS
+            table, _variables(), columns=uk_firm_policyengine_uk_columns(groups)
         )
         == []
     )

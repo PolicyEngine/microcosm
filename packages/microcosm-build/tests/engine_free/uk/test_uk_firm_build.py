@@ -22,6 +22,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.firm_build import (
+    UK_FIRM_INPUT_DATA_YEARS,
     UK_FIRM_RECEIPT_FILE,
     UK_FIRM_TABLE_FILE,
     build_uk_firm_dataset,
@@ -33,7 +34,7 @@ from microcosm.build.uk_runtime.firm_rules import (
     rule_period_for_vintage,
 )
 from microcosm.build.uk_runtime.firm_table import (
-    UK_FIRM_TABLE_COLUMNS,
+    UK_FIRM_EXTENDED_TABLE_COLUMNS,
     validate_uk_firm_table,
 )
 from test_support.paths import paths_for
@@ -41,6 +42,7 @@ from test_support.paths import paths_for
 PATHS = paths_for("microcosm-build")
 FIXTURES = PATHS.tests / "fixtures" / "uk"
 PROCESSED = FIXTURES / "firm_2024_25"
+ATTRIBUTES = FIXTURES / "firm_attributes_2025"
 TOOL = PATHS.repository / "tools" / "build_uk_firms.py"
 SEED = 42
 ITERATIONS = 20
@@ -78,6 +80,7 @@ def _build(output_dir: Path) -> dict:
     rules = _StandardRateDouble()
     return build_uk_firm_dataset(
         processed_dir=PROCESSED,
+        attributes_dir=ATTRIBUTES,
         output_dir=output_dir,
         rules=rules,
         config=_config(rules),
@@ -132,7 +135,7 @@ def test_receipt_hashes_match_the_files(builds) -> None:
     assert built["receipt_path"].name == UK_FIRM_RECEIPT_FILE
     assert receipt == built["receipt"]
     assert receipt["output"]["sha256"] == _sha256(built["table_path"])
-    for role, directory in (("processed", PROCESSED),):
+    for role, directory in (("processed", PROCESSED), ("attributes", ATTRIBUTES)):
         expected = {path.name: _sha256(path) for path in directory.glob("*.csv")}
         assert expected
         assert receipt["inputs"][role] == expected
@@ -149,14 +152,29 @@ def test_receipt_records_the_run(builds) -> None:
     assert receipt["rule_period_note"] == UK_FIRM_RULE_PERIOD_NOTE
     assert receipt["data_years"]["ons_frame_turnover"] == "2023-24"
     assert receipt["data_years"]["hmrc_vat_statistics"] == "2024-25"
+    # The attribute source's year, and no key for an input group not read.
+    assert set(receipt["data_years"]) == {
+        "ons_frame_turnover",
+        "ons_frame_turnover_note",
+        "hmrc_vat_statistics",
+        "ons_attributes",
+    }
+    assert (
+        receipt["data_years"]["ons_attributes"]
+        == (UK_FIRM_INPUT_DATA_YEARS["ons_attributes"])
+    )
     assert receipt["config"]["n_iterations"] == ITERATIONS
     assert "firm_rules" not in receipt["config"]
     assert "vat_rule_evaluator" not in receipt["config"]
     assert receipt["rules_provenance"] == [{"rules": "standard-rate test double"}]
     assert 0.0 < receipt["validation"]["overall"] <= 1.0
     assert receipt["target_diagnostics"]
-    assert receipt["output"]["columns"] == list(UK_FIRM_TABLE_COLUMNS)
-    assert set(receipt["inputs"]) == {"processed"}
+    attributes = {
+        row["attribute"] for row in receipt["uk_firm_attribute_fallback_counts"]
+    }
+    assert attributes == {"ons_region_code", "ons_legal_status"}
+    assert receipt["output"]["columns"] == list(UK_FIRM_EXTENDED_TABLE_COLUMNS)
+    assert set(receipt["inputs"]) == {"processed", "attributes"}
 
 
 def _comparable(receipt: dict) -> dict:
@@ -203,6 +221,8 @@ def test_tool_needs_rules(tmp_path: Path) -> None:
             [
                 "--processed-dir",
                 str(PROCESSED),
+                "--attributes-dir",
+                str(ATTRIBUTES),
                 "--out-dir",
                 str(tmp_path),
             ]
@@ -218,6 +238,8 @@ def test_tool_needs_an_artifact_for_axiom(tmp_path: Path) -> None:
             [
                 "--processed-dir",
                 str(PROCESSED),
+                "--attributes-dir",
+                str(ATTRIBUTES),
                 "--out-dir",
                 str(tmp_path),
                 "--rules",
@@ -253,6 +275,8 @@ def test_tool_writes_the_library_build(
         [
             "--processed-dir",
             str(PROCESSED),
+            "--attributes-dir",
+            str(ATTRIBUTES),
             "--out-dir",
             str(out),
             "--rules",
@@ -275,3 +299,13 @@ def test_tool_writes_the_library_build(
     assert config.data_vintage == "2024-25"
     receipt = json.loads((out / UK_FIRM_RECEIPT_FILE).read_text(encoding="utf-8"))
     assert _comparable(receipt) == _comparable(builds[0]["receipt"])
+
+
+def test_input_data_years_refuse_an_unknown_group() -> None:
+    from microcosm.build.uk_runtime.firm_build import _input_data_years
+
+    assert _input_data_years({"ons_attributes": True}) == {
+        "ons_attributes": UK_FIRM_INPUT_DATA_YEARS["ons_attributes"]
+    }
+    with pytest.raises(ValueError, match="No UK firm data year"):
+        _input_data_years({"unknown_source": True})

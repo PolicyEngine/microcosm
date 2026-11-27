@@ -55,9 +55,8 @@ FIRM_ENTITY = "Firm"
 POLICYENGINE_UK_PULL_REQUEST = "PolicyEngine/policyengine-uk#2940"
 
 #: Columns Microcosm's firm table carries that are not policyengine-uk inputs.
-#: ``ons_legal_status`` and ``ons_region_code`` arrive with the region and
-#: legal-status draws (a later PR of the #1706 split); they are checked here
-#: already so the committed snapshot does not change when they do.
+#: ``ons_legal_status`` and ``ons_region_code`` come from the region and
+#: legal-status draws (``uk_runtime/firm_attributes.py``).
 #: None may share a name with a policyengine-uk variable, or a dataset load
 #: would read it as one.
 MICROCOSM_ONLY_COLUMNS = (
