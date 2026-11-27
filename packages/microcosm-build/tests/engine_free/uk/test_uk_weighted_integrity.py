@@ -534,8 +534,9 @@ def test_local_area_support_register_loads_both_schema3_blocks() -> None:
     assert set(loaded["bound_despite_support_floor"]) == {"census_households"}
     approval = loaded["bound_despite_support_floor"]["census_households"]
     assert approval.approved_by == "juaristi22"
-    assert approval.approved_on == "2026-09-10"
-    assert approval.expires_on == "2026-12-10"
+    # Renewed on 2026-11-27 with the two areas' exclusions (microcosm#1736).
+    assert approval.approved_on == "2026-11-27"
+    assert approval.expires_on == "2027-02-27"
 
 
 @pytest.mark.parametrize(
