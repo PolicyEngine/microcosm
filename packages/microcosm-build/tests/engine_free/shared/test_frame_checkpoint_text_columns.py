@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -400,6 +401,21 @@ def _narrow_offset_pyarrow_series() -> pd.Series:
     return pd.Series(pd.arrays.ArrowStringArray(chunks), copy=False)
 
 
+def _padded_offsets_pyarrow_series() -> pd.Series:
+    """One chunk whose offsets buffer is not a whole number of int64 values.
+
+    Arrow accepts an offsets buffer larger than its values need; here it has
+    three spare bytes after the three offsets.
+    """
+
+    offsets = np.asarray([0, 1, 3], dtype=np.int64).tobytes() + b"\0\0\0"
+    chunk = pa.LargeStringArray.from_buffers(
+        2, pa.py_buffer(offsets), pa.py_buffer(b"abc")
+    )
+    chunk.validate(full=True)
+    return pd.Series(pd.arrays.ArrowStringArray(pa.chunked_array([chunk])), copy=False)
+
+
 # Each layout's builder, chunk count and the first chunk's starting offset.
 _PYARROW_LAYOUTS: dict[str, tuple[Callable[[], pd.Series], int, int]] = {
     "two chunks": (_concatenated_pyarrow_series, 2, 0),
@@ -410,6 +426,7 @@ _PYARROW_LAYOUTS: dict[str, tuple[Callable[[], pd.Series], int, int]] = {
     ),
     "one chunk starting at an offset": (_sliced_chunk_pyarrow_series, 1, 1),
     "chunks built with 32-bit offsets": (_narrow_offset_pyarrow_series, 2, 0),
+    "offsets buffer with spare bytes": (_padded_offsets_pyarrow_series, 1, 0),
 }
 
 
@@ -442,6 +459,56 @@ def test_numpy_strings_in_an_object_column_keep_the_per_value_loop_bytes(
 
     assert calls.encoded == [] and calls.decoded == []
     assert [type(value) for value in restored] == [str, str, str]
+
+
+class _EncodeOverridingStr(str):
+    """A string whose ``encode`` returns other bytes than its UTF-8."""
+
+    def encode(self, *_arguments: object, **_keywords: object) -> bytes:
+        return b"OVERRIDDEN"
+
+
+@pytest.mark.parametrize("dtype_name", ["python_str", "python_string", "object"])
+def test_string_subclasses_go_through_the_per_value_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dtype_name: str
+) -> None:
+    """The per-value loop calls each value's own ``encode``; keep its bytes."""
+
+    values = np.asarray(["plain", _EncodeOverridingStr("odd")], dtype=object)
+    series = pd.Series(values, dtype=TEXT_DTYPES[dtype_name])
+    assert type(series.to_numpy(dtype=object)[1]) is _EncodeOverridingStr
+    calls = _LoopCalls(monkeypatch)
+
+    restored = _assert_matches_loop(tmp_path / "column.h5", series)
+
+    assert calls.encoded == [2]
+    assert restored.tolist() == ["plain", "OVERRIDDEN"]
+
+
+@pytest.mark.parametrize("dtype_name", ["python_str", "python_string", "object"])
+def test_writing_python_strings_leaves_their_memory_size_unchanged(
+    tmp_path: Path, dtype_name: str
+) -> None:
+    """Writing must not attach a cached UTF-8 copy to non-ASCII strings.
+
+    CPython's ``PyUnicode_AsUTF8AndSize``, which Arrow uses to read a
+    ``str``, keeps a UTF-8 copy inside every non-ASCII string it reads, for
+    the rest of that string's life. ``str.encode``, which the per-value loop
+    calls, keeps nothing.
+    """
+
+    values = np.asarray(
+        ["".join(["caf", "é-", str(position)]) for position in range(3)]
+        + ["".join(["中文-", str(position)]) for position in range(3)],
+        dtype=object,
+    )
+    series = pd.Series(values, dtype=TEXT_DTYPES[dtype_name], copy=False)
+    stored_values = series.to_numpy(dtype=object, copy=False)
+    sizes_before = [sys.getsizeof(value) for value in stored_values]
+
+    _round_trip_series(tmp_path / "column.h5", series)
+
+    assert [sys.getsizeof(value) for value in stored_values] == sizes_before
 
 
 _FALLBACK_COLUMNS: dict[str, Callable[[], pd.Series]] = {
@@ -567,6 +634,42 @@ def test_malformed_offsets_raise_the_per_value_loop_error(
 
     with pytest.raises(ValueError, match=message):
         _read_stored(tmp_path / "column.h5", dtype_name, offsets, payload)
+
+
+def _read_error(
+    path: Path, dtype_name: str, offsets: np.ndarray, payload: np.ndarray
+) -> tuple[type[BaseException], str]:
+    with pytest.raises(Exception) as raised:
+        _read_stored(path, dtype_name, offsets, payload)
+    return raised.type, str(raised.value)
+
+
+# The differences of these offsets overflow int64 and wrap around, so they
+# pass the boundary check although two of them lie outside the payload.
+_WRAPPING_OFFSETS = np.asarray([0, 2**63 - 1, -3, 5], dtype=np.int64)
+_WRAPPING_PAYLOADS = {
+    "first value invalid": _bytes(b"\x00abcd"),
+    "first value valid": _bytes(b"\x07ab\x07c"),
+}
+
+
+@pytest.mark.parametrize("dtype_name", list(TEXT_DTYPES))
+@pytest.mark.parametrize("case", list(_WRAPPING_PAYLOADS))
+def test_wrapping_offsets_raise_the_per_value_loop_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, dtype_name: str
+) -> None:
+    payload = _WRAPPING_PAYLOADS[case]
+    with monkeypatch.context() as patch:
+        _use_only_per_value_loop(patch)
+        expected = _read_error(
+            tmp_path / "loop.h5", dtype_name, _WRAPPING_OFFSETS, payload
+        )
+
+    actual = _read_error(
+        tmp_path / "converted.h5", dtype_name, _WRAPPING_OFFSETS, payload
+    )
+
+    assert actual == expected
 
 
 def test_object_tags_other_than_string_go_through_the_per_value_loop(
