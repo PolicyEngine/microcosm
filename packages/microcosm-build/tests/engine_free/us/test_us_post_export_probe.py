@@ -1503,6 +1503,33 @@ def test_engine_options_and_pool_settings_are_not_given_together(
     assert probe.scorer_options == {}
 
 
+def test_the_probe_registers_the_held_out_reports_certification_registers(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """The probe takes the held-out reports from the release tool's
+    ``_post_export_holdout_consumers``, the list certification registers, so
+    its merged pass follows certification's when a report is added or
+    removed, and the probe names no held-out module itself."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    monkeypatch.setattr(
+        builder,
+        "_post_export_holdout_consumers",
+        lambda: {"medicare_irmaa_holdout": builder._medicare_irmaa_holdout_consumer},
+    )
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        stages=("demographics",),
+    )
+    record = report["stages"]["open_scorer"]
+    assert record["registered_consumers"] == ["demographics", "medicare_irmaa_holdout"]
+    assert record["unregistered_consumers"] == {}
+
+
 def test_a_held_out_report_whose_dry_run_fails_is_recorded(
     probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
 ) -> None:
