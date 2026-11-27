@@ -172,11 +172,35 @@ def _families(document: Mapping | None) -> dict[str, tuple[str, list[Mapping]]]:
     return families
 
 
-def _coverage_entries(
+#: Appended to a held-out family's ID when a target family has the same one,
+#: so the two stay apart in the source coverage check.
+_HELD_OUT_SUFFIX = ".held_out"
+
+
+def _source_families(
     target_references: Mapping, holdout_references: Mapping | None
+) -> tuple[dict[str, tuple[str, list[Mapping]]], dict[str, tuple[str, list[Mapping]]]]:
+    """The target and held-out families, with no ID in both.
+
+    A held-out family whose ID a target family also has (possible where the
+    spec declares no categories and both documents name one ``family``) takes
+    :data:`_HELD_OUT_SUFFIX`, so a calibrated target never counts as a
+    calibrated held-out reference.
+    """
+    targets = _families(target_references)
+    holdouts = {
+        (family + _HELD_OUT_SUFFIX if family in targets else family): entry
+        for family, entry in _families(holdout_references).items()
+    }
+    return targets, holdouts
+
+
+def _coverage_entries(
+    targets: Mapping[str, tuple[str, list[Mapping]]],
+    holdouts: Mapping[str, tuple[str, list[Mapping]]],
 ) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
-    for family, (label, members) in _families(target_references).items():
+    for family, (label, members) in targets.items():
         executable = tuple(str(ref["name"]) for ref in members if _executable(ref))
         if executable:
             entries.append(
@@ -199,7 +223,7 @@ def _coverage_entries(
                     ),
                 }
             )
-    for family, (label, members) in _families(holdout_references).items():
+    for family, (label, members) in holdouts.items():
         entries.append(
             {
                 "family_id": family,
@@ -231,10 +255,12 @@ def source_coverage_payload(
             Chronicle pin and the resources' digests; the payload adds the
             contract's name and country.
     """
+    targets, holdouts = _source_families(target_references, holdout_references)
     category_of = {
-        str(ref["name"]): _family_of(ref, _categories(document))
-        for document in (target_references, holdout_references)
-        for ref in _references(document)
+        str(ref["name"]): family
+        for families in (targets, holdouts)
+        for family, (_label, members) in families.items()
+        for ref in members
         if isinstance(ref.get("name"), str)
     }
     active_aliases = sorted(_calibration_rows(diagnostics))
@@ -247,7 +273,7 @@ def source_coverage_payload(
     )
     name = source_coverage_name(country)
     result = source_coverage_gate(
-        _coverage_entries(target_references, holdout_references),
+        _coverage_entries(targets, holdouts),
         active_target_aliases=active_aliases,
         active_target_families=active_families,
         name=name,

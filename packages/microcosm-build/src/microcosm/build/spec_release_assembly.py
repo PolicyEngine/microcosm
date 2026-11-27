@@ -11,7 +11,7 @@ command wrote under ``--out``:
   there are none), the Microcosm commit, the Python and package versions and
   the digest of each JSON spec resource the build ran on (they must equal
   those of the spec this step loads), and the digests of the H5, its
-  descriptor and the diagnostics it wrote;
+  descriptor, the diagnostics and the run manifest it wrote;
 - ``skeleton.h5`` and ``export-descriptor.json``: the population, read back
   against its descriptor, and its period and weight entity;
 - ``calibration-diagnostics.json``: the calibration's diagnostics;
@@ -227,7 +227,8 @@ def _require_build_spec(
     The release files, the build's name and the source coverage check read
     the spec the assembler loads, so a checkout that moved since the build (a
     Chronicle re-pin, say) would pair the build with references it did not
-    compile. Every resource's digest must equal the one the build recorded.
+    compile. The digest of each JSON spec resource (``load_transport_spec``
+    hashes those) must equal the one the build recorded.
     """
     spec = status.get("spec")
     recorded = spec.get("resource_hashes") if isinstance(spec, Mapping) else None
@@ -591,6 +592,7 @@ def assemble_spec_release(
     _require_produced(produced, "skeleton_dataset", dataset_source)
     _require_produced(produced, "calibration_diagnostics", diagnostics_source)
     _require_produced(produced, "export_descriptor", build_dir / EXPORT_DESCRIPTOR_FILE)
+    _require_produced(produced, "run_manifest", build_dir / RUN_MANIFEST_FILE)
 
     descriptor = _load_json(build_dir / EXPORT_DESCRIPTOR_FILE)
     try:

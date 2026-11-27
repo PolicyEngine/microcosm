@@ -597,8 +597,8 @@ def execute_transport_graph(
 ) -> RunManifest:
     """Run the graph's checkpoints in order and write the local outputs.
 
-    ``spec_resource_hashes``, the SHA-256 of each country spec resource the
-    graph was composed from (:func:`load_transport_spec`'s
+    ``spec_resource_hashes``, the SHA-256 of each JSON country spec resource
+    the graph was composed from (:func:`load_transport_spec`'s
     ``resource_hashes``), is recorded in ``build-status.json`` under
     ``spec`` when given, so a release assembler can refuse a spec other than
     the build's.
@@ -727,7 +727,9 @@ def execute_transport_graph(
         ).encode("utf-8"),
         _destination(output, "explorer.html"),
     )
-    materialize_bytes(manifest.to_json_bytes(), _destination(output, "manifest.json"))
+    produced["run_manifest"] = materialize_bytes(
+        manifest.to_json_bytes(), _destination(output, "manifest.json")
+    )
     materialize_bytes(
         canonical_json(
             {
