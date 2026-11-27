@@ -72,10 +72,14 @@ def _is_offline_error(exc: Exception) -> bool:
     closed_after_retry = isinstance(exc, RuntimeError) and str(exc) == (
         "Cannot send a request, as the client has been closed."
     )
+    # Offline, the loader refuses a releases.json never cached with a
+    # ValueError whose cause is the Hub client's error.
+    cause = exc.__cause__
     return (
         isinstance(exc, (ConnectionError, TimeoutError))
         or closed_after_retry
         or any(cls.__name__ in offline_names for cls in type(exc).__mro__)
+        or (isinstance(cause, Exception) and _is_offline_error(cause))
     )
 
 

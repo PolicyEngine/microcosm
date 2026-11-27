@@ -363,7 +363,6 @@ def test_loader_selects_each_golden_build_through_its_releases_record(country):
         spec,
         release_id,
         release_manifest,
-        expected_revision=None,
         build=entry.current,
         release_role=entry.role,
     )
@@ -399,7 +398,6 @@ def test_loader_refuses_a_golden_build_under_the_other_role(country):
             spec,
             release_id,
             _manifests(country)[1],
-            expected_revision=None,
             build=entry.current,
             release_role=other_role,
         )

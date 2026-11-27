@@ -381,7 +381,6 @@ def test_national_manifests_satisfy_the_release_contract(inputs):
         UK_NATIONAL_SPEC,
         release_id,
         release_manifest,
-        expected_revision=None,
         build=entry.current,
         release_role=entry.role,
     )

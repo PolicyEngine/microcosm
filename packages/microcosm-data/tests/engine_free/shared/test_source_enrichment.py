@@ -11,7 +11,10 @@ import numpy as np
 import pytest
 
 from microcosm.data import source_enrichment as enrichment
-from microcosm.data.build_folder_manifests import rewrite_release_dir
+from microcosm.data.build_folder_manifests import (
+    build_folder_release_manifest,
+    rewrite_release_dir,
+)
 from microcosm.data.contract import (
     US_NATIONAL_RELEASE_ID,
     US_RECEIPT_DONOR_RELEASE_ID,
@@ -1635,8 +1638,12 @@ def test_declared_range_certifies_a_later_patch_for_both_readers(
 
     output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
     manifest, _ = _certified(output)
+    # The loader reads a build in its own folder, whose release manifest
+    # carries the built-with packages at its top level.
     certification = _package_certification(
-        manifest,
+        build_folder_release_manifest(
+            manifest, release=US_NATIONAL_RELEASE_ID, build=output.name
+        ),
         field="compatible_model_packages",
         package_name="policyengine-us",
         built_field="built_with_model_package",

@@ -1130,8 +1130,9 @@ work.
   - *The tagged publisher.* `microcosm-publish-release` and
     `tools/publish_release.sh` stay installed and sit on the
     [retire list](#retire-list-as-of-2026-10-15). Their removal waits on the
-    refusal of a new country's tagged publish. Loading a tagged build that
-    never moved into a folder stays.
+    refusal of a new country's tagged publish. A tagged build that never
+    moved into a folder stays readable by its path at its tag; the loader
+    reads no tagged build (microcosm#1794).
   - *The policyengine.py certification tool.*
     `tools/certify_uk_cut_in_policyengine_py.py` still reads a national
     build's manifests at its tag (`--national-tag`), so it cannot certify a
@@ -1470,7 +1471,7 @@ release and the tagged publisher joined the table on 2026-11-11.
 | `format_uk_release_id`, `apply_uk_release_identity` | This milestone deletes them, with `UKReleaseIdentity`, which builds on `format_uk_release_id`: none had a caller outside its own tests and the `uk_runtime` re-export. The tier vocabulary and the line ids stay | On main none has a caller outside its own tests and the `uk_runtime` re-export |
 | Stale text, microcosm.institute `/calibration`, the evidence tier | A separate task owns them (task_d2b70813) | Not read again. For the evidence tier, see the next row |
 | The US evidence release, `microcosm-us-2024-evidence` | On this list since 2026-10-15, as the evidence tier | A named exception: version 1 neither admits it to the contract nor retires it. microcosm#1571 made it a standing release in `US_RELEASES`, with the `national` role. `tools/certify_us_national_build.py --evidence-release` places its builds there: a build has no tier, and certification chooses it (microcosm#1585 item 11). `prepare_build_folder_release` checks them with `validate_evidence_release_dir`; they carry schema `1-evidence` and fail C1's certified contract by design. The registry names no entry for it, so `microcosm.data.load` never serves it. `latest_evidence_release`, which no module called, left with the pointer readers (microcosm#1794). Whoever retires the release must first find, from code, the readers of the evidence release |
-| The tagged publisher: `microcosm-publish-release` and `tools/publish_release.sh` | Not on the report's list | On the list from 2026-11-11. It refuses every release that `publishes_to_build_folder` names and every repository that has `releases.json`. Its removal waits on the refusal of a new country's tagged publish (C5 version 1, M3). Loading a tagged build that never moved into a folder stays |
+| The tagged publisher: `microcosm-publish-release` and `tools/publish_release.sh` | Not on the report's list | On the list from 2026-11-11. It refuses every release that `publishes_to_build_folder` names and every repository that has `releases.json`. Its removal waits on the refusal of a new country's tagged publish (C5 version 1, M3). A tagged build that never moved into a folder stays readable by its path at its tag; the loader reads no tagged build (microcosm#1794) |
 | microcosm-benchmarks, the calibration-diagnostics evaluation harness, policyengine-data's calibrate module | Each lives in another repository; proposed as a separate task (task_18c2af98) | Not read again |
 | cos d816 | Ruled 2026-10-09 (per-country Core pins, microcosm#1143) | The same |
 | cos d928 | Parked; its 2026-10-10 note records it resolved on main (the plan-2 exclusions renewed to 2026-11-03). Nothing to rule | Still parked. On main the plan-2 exclusions read approved on 2026-10-23 and expire on 2027-01-23 |

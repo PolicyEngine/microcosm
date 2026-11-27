@@ -49,7 +49,7 @@ ignore = ["E501"]
 # TID251, huggingface_hub outside the emitter. Datasets and the release
 # metadata that selects and verifies them: the loader, the publisher's
 # listing of the repository (its parent and annual base checks, and its
-# refusal of BE-era latest*.json pointer files, which 5b removes), a UK
+# refusal of any latest*.json pointer file in the repository), a UK
 # national build's reference build and releases.json (run_uk_cut.py also
 # fetches its build inputs), the policyengine.py certification, the US
 # recertification and the quick-start notebook.

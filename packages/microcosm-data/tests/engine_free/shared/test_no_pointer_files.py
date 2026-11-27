@@ -31,22 +31,48 @@ US_REPO_ID = "policyengine/populace-us"
 TAGGED_BUILD = "populace-us-2024-spm-20260915"
 TAGGED_DATASET = b"a dataset at its tag"
 
+#: The names the tagged publisher, ``publish_release``, still uses to write
+#: pointer files. They leave ``microcosm.data.release`` with it; until then
+#: their cases are expected to fail, and strictly, so the marks must go when
+#: the names do. ``microcosm.data`` exports none of them already.
+_TAGGED_PUBLISHER_NAMES = frozenset(
+    {
+        "LATEST_POINTER_PATH",
+        "LATEST_EVIDENCE_POINTER_PATH",
+        "LATEST_POINTER_SCHEMA_VERSION",
+        "RELEASE_TIER_EVIDENCE",
+        "latest_pointer_payload",
+        "latest_evidence_pointer_payload",
+    }
+)
+
 #: Every public name the pointer-file reader and writer had.
-POINTER_FILE_NAMES = (
-    "LATEST_POINTER_PATH",
-    "LINE_POINTER_PATH_TEMPLATE",
-    "LATEST_EVIDENCE_POINTER_PATH",
-    "LATEST_POINTER_SCHEMA_VERSION",
-    "RELEASE_TIER_CERTIFIED",
-    "RELEASE_TIER_EVIDENCE",
-    "LatestPointer",
-    "latest_release",
-    "latest_line_release",
-    "latest_evidence_release",
-    "latest_pointer_payload",
-    "line_pointer_payload",
-    "latest_evidence_pointer_payload",
-    "line_pointer_path",
+POINTER_FILE_NAMES = tuple(
+    pytest.param(
+        name,
+        marks=pytest.mark.xfail(
+            strict=True,
+            reason="removed with publish_release, the tagged publisher",
+        ),
+    )
+    if name in _TAGGED_PUBLISHER_NAMES
+    else name
+    for name in (
+        "LATEST_POINTER_PATH",
+        "LINE_POINTER_PATH_TEMPLATE",
+        "LATEST_EVIDENCE_POINTER_PATH",
+        "LATEST_POINTER_SCHEMA_VERSION",
+        "RELEASE_TIER_CERTIFIED",
+        "RELEASE_TIER_EVIDENCE",
+        "LatestPointer",
+        "latest_release",
+        "latest_line_release",
+        "latest_evidence_release",
+        "latest_pointer_payload",
+        "line_pointer_payload",
+        "latest_evidence_pointer_payload",
+        "line_pointer_path",
+    )
 )
 
 
