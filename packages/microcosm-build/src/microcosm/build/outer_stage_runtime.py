@@ -35,6 +35,7 @@ __all__ = [
     "StageRunContext",
     "StageRuntime",
     "assert_clone_expansion",
+    "assert_expected_identity",
     "assert_unchanged_identity",
     "frame_identity",
 ]
@@ -327,14 +328,25 @@ class StageRuntime:
         frame: Frame,
         *,
         metadata: Mapping[str, object] | None = None,
+        expected_identity: FrameIdentity | None = None,
     ) -> LoadedStageCheckpoint:
-        """Write a lossless Frame checkpoint, then atomically complete a stage."""
+        """Write a lossless Frame checkpoint, then atomically complete a stage.
+
+        With ``expected_identity``, a frame whose identity differs from it is
+        refused (:func:`assert_expected_identity`) before the checkpoint is
+        written or the stage recorded. The frame's identity is computed once
+        and serves both the check and the stage record.
+        """
 
         self.require_ready(stage_name)
         if not isinstance(frame, Frame):
             raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
         stage_index = self._pipeline.index(stage_name)
-        identity = frame_identity(frame)
+        identity = (
+            frame_identity(frame)
+            if expected_identity is None
+            else assert_expected_identity(expected_identity, frame, stage=stage_name)
+        )
         stage_metadata = _normalize_json_mapping(metadata or {}, label="metadata")
         checkpoint_path = self._checkpoint_path(stage_index, stage_name)
         write_frame_checkpoint(
@@ -676,6 +688,35 @@ def frame_identity(frame: Frame) -> FrameIdentity:
     return FrameIdentity(digest.hexdigest(), row_counts, columns)
 
 
+def assert_expected_identity(
+    expected: FrameIdentity,
+    frame: Frame,
+    *,
+    stage: str,
+) -> FrameIdentity:
+    """Assert ``frame`` has the ``expected`` identity; return the identity.
+
+    ``expected`` is typically the identity recorded when a stage's input was
+    loaded, so the input frame need not be kept to check a non-clone
+    transform. Comparing with that record also refuses a stage that changed
+    its input's identity columns in place, which hashing the changed input
+    again would not.
+    """
+
+    if not isinstance(expected, FrameIdentity):
+        raise TypeError(
+            f"expected must be a FrameIdentity, got {type(expected).__name__}."
+        )
+    actual = frame_identity(frame)
+    if actual != expected:
+        raise AssertionError(
+            f"stage {stage!r} changed Frame identity or row order: "
+            f"{expected.sha256} -> {actual.sha256}; "
+            f"row counts {expected.row_counts} -> {actual.row_counts}."
+        )
+    return actual
+
+
 def assert_unchanged_identity(
     before: Frame,
     after: Frame,
@@ -684,14 +725,7 @@ def assert_unchanged_identity(
 ) -> None:
     """Assert a non-clone transform preserved structural identity and row order."""
 
-    before_identity = frame_identity(before)
-    after_identity = frame_identity(after)
-    if after_identity != before_identity:
-        raise AssertionError(
-            f"stage {stage!r} changed Frame identity or row order: "
-            f"{before_identity.sha256} -> {after_identity.sha256}; "
-            f"row counts {before_identity.row_counts} -> {after_identity.row_counts}."
-        )
+    assert_expected_identity(frame_identity(before), after, stage=stage)
 
 
 def assert_clone_expansion(
