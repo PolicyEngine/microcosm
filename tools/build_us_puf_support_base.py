@@ -10,10 +10,12 @@ Telemetry: after parsing its arguments the builder starts the emitter
 records completion, or failure with the error. With
 ``MICROCOSM_TELEMETRY_REQUIRED=1``, which the Modal stage runner sets, an
 emitter that cannot be used stops the builder before it reads any input. A
-checkpointed ``--stage all`` run records a stage change before each child
-interpreter and fails with the first child that exits nonzero; the children
-start no emitter. The compatibility path records the single stage ``all``,
-and a named ``--stage`` run by hand records that stage.
+checkpointed ``--stage all`` run records one stage change per step and fails
+with the first child that exits nonzero; the children start no emitter. It
+records the change before each child interpreter starts, and, for the child
+that runs several of ``ONE_PROCESS_STEPS``, when that child reports starting
+each later one. The compatibility path records the single stage ``all``, and
+a named ``--stage`` run by hand records that stage.
 """
 
 from __future__ import annotations
@@ -38,12 +40,20 @@ if __name__ == "__main__":
     set_build_thread_environment()
 
 import argparse
+import copy
 import hashlib
 import json
 import os
 import shutil
 import subprocess
-from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
+from collections.abc import (
+    Callable,
+    Iterable,
+    Iterator,
+    Mapping,
+    MutableMapping,
+    Sequence,
+)
 from contextlib import contextmanager
 from dataclasses import replace
 from typing import NoReturn
@@ -58,6 +68,7 @@ from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.outer_stage_runtime import (
     FrameIdentity,
+    LoadedStageCheckpoint,
     Stage,
     StagePipeline,
     StageRuntime,
@@ -396,6 +407,23 @@ BLOCK_V1_OUTER_STAGE_PIPELINE = StagePipeline(
 # Every stage name --stage accepts under either rule; a rule's own pipeline
 # refuses the other rule's location stages at run time.
 ALL_STAGE_NAMES = (*STAGE_NAMES, HOUSEHOLD_LOCATION_STAGE_NAME)
+#: The steps that share one step process in a ``--stage all`` run (decision
+#: 1.5 · 6): the 16 from the capital-gains tail transfer to the education
+#: inputs, which follow each other under both location rules. The parent
+#: starts one child for those still to run. The child reads the first one's
+#: predecessor checkpoint and hands each later step the frame the step before
+#: it completed. Each step still writes its checkpoint, completion record,
+#: profile record and saved check observations, so a stopped run resumes
+#: after the last finished step. What sharing a process gives up: memory is
+#: not returned to the system between these steps; on macOS each step's
+#: recorded peak is the process's peak so far; and a frame handed over in
+#: memory is not read back, so its checkpoint's SHA-256 and identity are next
+#: checked when a later process reads the file.
+ONE_PROCESS_STEPS = PIPELINE_STEPS[
+    PIPELINE_STEPS.index(PUF_CAPITAL_GAINS_TAIL_STAGE_NAME) : (
+        PIPELINE_STEPS.index("education_inputs_post_clone") + 1
+    )
+]
 
 
 def _location_rule(args: object) -> str:
@@ -985,11 +1013,14 @@ def _run_staged_all(
     *,
     verified_asec_sha256: Mapping[str, str] | None = None,
 ) -> None:
-    """Run every outer boundary in a fresh interpreter, resuming by prefix.
+    """Run the pipeline's steps in fresh interpreters, resuming by prefix.
 
-    Before each child, ``telemetry`` (the parent's, if any) records that
-    child's stage; a child that exits nonzero stops the run, which main()
-    records as that stage's failure. The children start no emitter.
+    Each step still to run gets a child interpreter of its own, except that
+    the ``ONE_PROCESS_STEPS`` still to run share one
+    (``_run_one_process_steps``). ``telemetry`` (the parent's, if any)
+    records each step's stage as it starts; a child that exits nonzero stops
+    the run, which main() records as the failure of the step it was running.
+    The children start no emitter.
     ``verified_asec_sha256`` holds the digests this process's pin check
     computed (``_verify_asec_source_digests``), which the children's pin
     checks use, except in ``_STEPS_HASHING_THEIR_ASEC_SOURCES``.
@@ -1020,20 +1051,31 @@ def _run_staged_all(
     # one should have saved its observations.
     stages_run = list(completed_prefix)
     try:
-        for stage in remaining:
+        for steps in _step_process_runs(remaining):
+            stage = steps[0]
+            command = [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                *_stage_cli_args(args, stage),
+            ]
+            environment = {**_staged_subprocess_environment(), **digests_environment}
+            # Only the child for several of ONE_PROCESS_STEPS gets a report
+            # pipe; a value this process inherited goes to no child.
+            environment.pop(STEP_REPORT_VARIABLE, None)
+            if len(steps) > 1:
+                _run_one_process_steps(
+                    command,
+                    environment,
+                    steps,
+                    telemetry=telemetry,
+                    stages_run=stages_run,
+                )
+                continue
             if stage not in stages_run:
                 stages_run.append(stage)
             if telemetry is not None:
                 telemetry.transition_stage(stage)
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    str(Path(__file__).resolve()),
-                    *_stage_cli_args(args, stage),
-                ],
-                check=False,
-                env={**_staged_subprocess_environment(), **digests_environment},
-            )
+            completed = subprocess.run(command, check=False, env=environment)
             if completed.returncode != 0:
                 raise SystemExit(
                     f"Checkpointed stage {stage!r} failed with exit code "
@@ -1047,6 +1089,207 @@ def _run_staged_all(
     if shadow is not None:
         _load_stage_gate_shadows(shadow, args, stages_run)
         shadow.finish()
+
+
+def _step_process_runs(remaining: Sequence[str]) -> list[tuple[str, ...]]:
+    """The steps still to run, grouped by the step process that runs them.
+
+    Each step has a process of its own, except that the ``ONE_PROCESS_STEPS``
+    in ``remaining`` (a suffix of the pipeline, so from one of them through
+    the last) share one.
+    """
+
+    runs: list[tuple[str, ...]] = []
+    for step in remaining:
+        if runs and step in ONE_PROCESS_STEPS and runs[-1][-1] in ONE_PROCESS_STEPS:
+            runs[-1] = (*runs[-1], step)
+        else:
+            runs.append((step,))
+    for run in runs:
+        if len(run) > 1 and run != ONE_PROCESS_STEPS[ONE_PROCESS_STEPS.index(run[0]) :]:
+            raise AssertionError(
+                f"steps {run} are not the ONE_PROCESS_STEPS from {run[0]!r} on."
+            )
+    return runs
+
+
+def _run_one_process_steps(
+    command: Sequence[str],
+    environment: Mapping[str, str],
+    steps: Sequence[str],
+    *,
+    telemetry: LocalTelemetryEmitter | None,
+    stages_run: list[str],
+) -> None:
+    """Run ``steps`` in the one child ``command`` starts, step by step.
+
+    The child, started with ``STEP_REPORT_VARIABLE``, writes each step's name
+    to a pipe as the step starts (``_report_step_start``). Each step is added
+    to ``stages_run`` and recorded on ``telemetry`` as it starts: the first
+    before the child starts, as for any child, and each later one when the
+    child reports it, so a failure is recorded against the step that failed.
+    A report that is not the next step stops the child and raises
+    ``RuntimeError``; so does a child that exits cleanly before its last
+    step started. As with ``subprocess.run``, an exception raised here while
+    the child runs (a SIGTERM the build turns into one, say) stops the child
+    before it propagates.
+    """
+
+    def step_started(step: str) -> None:
+        if step not in stages_run:
+            stages_run.append(step)
+        if telemetry is not None:
+            telemetry.transition_stage(step)
+
+    step_started(steps[0])
+    read_fd, write_fd = os.pipe()
+    try:
+        process = subprocess.Popen(
+            list(command),
+            env={**environment, **_step_report_environment(write_fd)},
+            pass_fds=(write_fd,),
+        )
+    except BaseException:
+        os.close(read_fd)
+        raise
+    finally:
+        # The child has its own copy; the reports end when it exits.
+        os.close(write_fd)
+    with process, os.fdopen(read_fd, "rb") as reports:
+        try:
+            reported = _follow_step_reports(reports, steps, step_started)
+            returncode = process.wait()
+        except BaseException:
+            process.kill()
+            raise
+    if returncode != 0:
+        raise SystemExit(
+            f"Checkpointed stage {steps[max(reported - 1, 0)]!r} failed with "
+            f"exit code {returncode}."
+        )
+    if reported < len(steps):
+        raise RuntimeError(
+            f"The step process for {steps[0]!r} through {steps[-1]!r} exited "
+            f"cleanly before step {steps[reported]!r} started."
+        )
+
+
+def _follow_step_reports(
+    reports: Iterable[bytes],
+    steps: Sequence[str],
+    step_started: Callable[[str], None],
+) -> int:
+    """Call ``step_started`` for each later step the child reports starting.
+
+    Returns how many of ``steps`` the child reported, the first included.
+    """
+
+    reported = 0
+    for line in reports:
+        try:
+            text = line.decode("utf-8")
+        except UnicodeDecodeError:
+            text = ""
+        if not text.endswith("\n"):
+            raise RuntimeError(
+                f"The step process for {steps[0]!r} through {steps[-1]!r} wrote "
+                f"a report that is not a step name and a newline: {line!r}."
+            )
+        name = text[:-1]
+        if reported == len(steps):
+            raise RuntimeError(
+                f"The step process for {steps[0]!r} through {steps[-1]!r} "
+                f"reported {name!r} after its last step."
+            )
+        if name != steps[reported]:
+            raise RuntimeError(
+                f"The step process for {steps[0]!r} through {steps[-1]!r} "
+                f"reported {name!r} as starting; expected {steps[reported]!r}."
+            )
+        if reported > 0:
+            step_started(name)
+        reported += 1
+    return reported
+
+
+#: Set by a ``--stage all`` parent for the child it starts for several of
+#: ``ONE_PROCESS_STEPS``: the write end of a pipe the child inherits, and the
+#: parent's process ID. A step process uses it only when the process that set
+#: it is its parent (the recorded ID equals ``os.getppid()``) and its
+#: ``--stage`` is one of ``ONE_PROCESS_STEPS``. It then runs from that step
+#: through the last of them, writing each step's name and a newline to the
+#: pipe as the step starts. Otherwise it runs its one step, as a named
+#: ``--stage`` run by hand does. A malformed variable stops the process.
+STEP_REPORT_VARIABLE = "MICROCOSM_US_BASE_STEP_REPORT"
+_STEP_REPORT_SCHEMA_VERSION = 1
+_STEP_REPORT_KEYS = frozenset({"fd", "parent_pid", "schema_version"})
+
+
+def _step_report_environment(report_fd: int) -> dict[str, str]:
+    """``STEP_REPORT_VARIABLE`` naming ``report_fd`` and this process."""
+
+    payload = {
+        "fd": report_fd,
+        "parent_pid": os.getpid(),
+        "schema_version": _STEP_REPORT_SCHEMA_VERSION,
+    }
+    return {STEP_REPORT_VARIABLE: json.dumps(payload, sort_keys=True)}
+
+
+def _step_report_fd(stage: str) -> int | None:
+    """The pipe this step process reports its steps on, or ``None``.
+
+    ``None`` unless this process's parent set ``STEP_REPORT_VARIABLE`` and
+    ``stage`` is one of ``ONE_PROCESS_STEPS``.
+    """
+
+    raw = os.environ.get(STEP_REPORT_VARIABLE)
+    if raw is None:
+        return None
+    payload = _parse_step_report(raw)
+    if payload["parent_pid"] != os.getppid() or stage not in ONE_PROCESS_STEPS:
+        return None
+    return payload["fd"]
+
+
+def _parse_step_report(raw: str) -> dict[str, int]:
+    """Validate ``STEP_REPORT_VARIABLE``, refusing what no parent writes."""
+
+    def refuse(problem: str) -> NoReturn:
+        raise SystemExit(
+            f"{STEP_REPORT_VARIABLE} {problem}. A --stage all run sets it "
+            "for its step processes; unset it to run a named --stage by hand."
+        )
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+        refuse(f"is not JSON ({error})")
+    if not isinstance(payload, dict) or set(payload) != _STEP_REPORT_KEYS:
+        refuse(
+            f"is not a JSON object with exactly the keys {sorted(_STEP_REPORT_KEYS)}"
+        )
+    if (
+        type(payload["schema_version"]) is not int
+        or payload["schema_version"] != _STEP_REPORT_SCHEMA_VERSION
+    ):
+        refuse(
+            f"has schema_version {payload['schema_version']!r}; this tool "
+            f"reads {_STEP_REPORT_SCHEMA_VERSION}"
+        )
+    if type(payload["fd"]) is not int or payload["fd"] < 0:
+        refuse(f"has an fd that is not a file descriptor: {payload['fd']!r}")
+    if type(payload["parent_pid"]) is not int or payload["parent_pid"] < 1:
+        refuse(f"has a parent_pid that is not a process ID: {payload['parent_pid']!r}")
+    return payload
+
+
+def _report_step_start(report_fd: int, step: str) -> None:
+    """Tell the parent, on the pipe it opened, that ``step`` starts."""
+
+    message = f"{step}\n".encode()
+    while message:
+        message = message[os.write(report_fd, message) :]
 
 
 #: This tool's scope of us/gates.json, evaluated in shadow beside today's
@@ -2931,7 +3174,14 @@ def _run_configured_stage(args: argparse.Namespace) -> None:
 
 
 def _run_outer_stage(args: argparse.Namespace) -> None:
-    """Run one exact pipeline step through the lossless outer-stage runtime."""
+    """Run one exact pipeline step through the lossless outer-stage runtime.
+
+    A step process its ``--stage all`` parent started for several of
+    ``ONE_PROCESS_STEPS`` (``STEP_REPORT_VARIABLE``) runs every one of them
+    from ``--stage`` on, in order, telling the parent as each starts. Only
+    the first reads its predecessor's checkpoint; each later step takes the
+    frame the step before it completed.
+    """
 
     pipeline_steps = _pipeline_steps_for(args)
     if args.stage not in pipeline_steps:
@@ -2940,8 +3190,80 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             f"--location-rule {_location_rule(args)} pipeline "
             f"{list(pipeline_steps)}."
         )
+    report_fd = _step_report_fd(args.stage)
     runtime = _open_stage_runtime(args)
+    if report_fd is None:
+        _run_outer_step(args, runtime)
+        return
+    steps = ONE_PROCESS_STEPS[ONE_PROCESS_STEPS.index(args.stage) :]
+    print(
+        f"Running steps {steps[0]} through {steps[-1]} in this process.",
+        file=sys.stderr,
+        flush=True,
+    )
+    carried = _CarriedCheckpoint()
+    for step in steps:
+        _report_step_start(report_fd, step)
+        step_args = copy.copy(args)
+        step_args.stage = step
+        _run_outer_step(step_args, runtime, carried)
+
+
+class _CarriedCheckpoint:
+    """The checkpoint the last step completed, held for the next step.
+
+    ``take`` hands it over and keeps no reference, so the next step can free
+    its input frame before it writes its own checkpoint.
+    """
+
+    def __init__(self) -> None:
+        self._checkpoint: LoadedStageCheckpoint | None = None
+
+    def put(self, checkpoint: LoadedStageCheckpoint) -> None:
+        self._checkpoint = checkpoint
+
+    def take(self) -> LoadedStageCheckpoint | None:
+        checkpoint, self._checkpoint = self._checkpoint, None
+        return checkpoint
+
+
+def _predecessor_checkpoint(
+    args: argparse.Namespace,
+    runtime: StageRuntime,
+    carried: _CarriedCheckpoint | None,
+) -> LoadedStageCheckpoint | None:
+    """The previous step's checkpoint: the one ``carried`` holds, if any,
+    otherwise read from disk."""
+
+    handed_over = None if carried is None else carried.take()
+    if handed_over is None:
+        return runtime.load_predecessor(args.stage)
+    runtime.require_ready(args.stage)
+    pipeline_steps = _pipeline_steps_for(args)
+    previous = pipeline_steps[pipeline_steps.index(args.stage) - 1]
+    if handed_over.stage != previous:
+        raise AssertionError(
+            f"step {args.stage!r} was handed {handed_over.stage!r}'s frame, "
+            f"not {previous!r}'s."
+        )
+    return handed_over
+
+
+def _run_outer_step(
+    args: argparse.Namespace,
+    runtime: StageRuntime,
+    carried: _CarriedCheckpoint | None = None,
+) -> None:
+    """Run the step ``args.stage`` names, unless it is already complete.
+
+    With ``carried``, the step takes its input from it when it holds the
+    previous step's checkpoint, and leaves its own completed checkpoint there
+    for the next step.
+    """
+
     if args.stage in runtime.context.completed:
+        if carried is not None:
+            carried.take()
         if args.stage == "source_construction" and args.asec_h5 is not None:
             _require_completed_source_receipt_matches_pins(
                 args, runtime.metadata["source_construction"]
@@ -2989,7 +3311,7 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
             )
             return
 
-        predecessor = runtime.load_predecessor(args.stage)
+        predecessor = _predecessor_checkpoint(args, runtime, carried)
         if predecessor is None:
             raise AssertionError(f"stage {args.stage!r} requires a predecessor")
         before = predecessor.frame
@@ -3058,12 +3380,14 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
         # reads it.
         del before
         save_gate_shadow()
-        runtime.complete(
+        completed = runtime.complete(
             args.stage,
             after,
             metadata=metadata,
             expected_identity=expected_identity,
         )
+        if carried is not None:
+            carried.put(completed)
 
 
 def _link_all_stage_checkpoint(checkpoint_dir: Path, source: Path) -> None:
