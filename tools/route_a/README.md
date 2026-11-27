@@ -245,8 +245,8 @@ Every stage runs through the supervisor's admission check and limits:
 | certify | 110 | `RELEASE_RAM_GIB` (example: 50) | 45 | `CERTIFY_WALL_SECONDS` (default: 345600) | 2000000 |
 | publisher preflight | 24 | 16 | 22 | 7200 | 14400 |
 
-The certify stage scores the post-export stages in a pool of worker
-processes sized from the machine; `MICROCOSM_POST_EXPORT_WORKERS` in
+The certify stage runs the post-export stages' baseline passes itself and
+their reform passes in a pool of worker processes sized from the machine; `MICROCOSM_POST_EXPORT_WORKERS` in
 `route_a.env` (a number of workers, or `serial`) overrides it, and the driver
 exports it. On a machine under about 10.7 GiB, certification refuses to start
 without it. The stage's 110 GiB RSS cap counts the workers too, and the
@@ -255,10 +255,11 @@ worker (88 GiB for 17 workers on the 128 GiB build Mac), so on a machine
 where the formula gives more than 21 workers (about 151 GiB and 23 usable
 cores or more), set `MICROCOSM_POST_EXPORT_WORKERS` to 21 or fewer. The
 3 GiB is a plan, not a measurement: the certifying process runs every
-baseline pass before the workers start, and what those passes leave
-resident is not measured (after a failed shared baseline pass it also holds
-every stage's own baseline values). The manifests' `post_export_scoring`
-`execution` record reports its footprint when the workers start.
+baseline pass before the workers start, and nothing has yet measured what
+those passes leave resident at full size (after a failed shared baseline
+pass it also holds every stage's own baseline values). Each run's
+manifests record it: the `post_export_scoring` `execution` record holds the
+process's footprint when the workers started.
 
 The driver waits up to `RESOURCE_WAIT_HOURS` (example: 12) for admission and
 retries a supervisor admission race every five minutes. Every config includes

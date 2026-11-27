@@ -6350,7 +6350,8 @@ class _HouseholdBatchedPostExportScorer:
 
         If the pass raises, ``_merged_baseline_failed`` is set and every
         registered consumer then scores its own plan. A refused batch file
-        (:class:`PostExportBatchFileError`) propagates instead.
+        (:class:`PostExportBatchFileError`), or an error raised while the
+        build is being interrupted or terminated, propagates instead.
         """
         union = _ascending_period_plan(
             key for plan in self._unserved_baseline_plans.values() for key in plan
@@ -6362,6 +6363,9 @@ class _HouseholdBatchedPostExportScorer:
             # it stops certification.
             raise
         except Exception as error:
+            if _raised_while_interrupted(error):
+                # The build is stopping: no consumer's own pass runs.
+                raise
             self._merged_baseline_failed = True
             self._merged_fallback_reason = _post_export_error_text(error)
             print(
@@ -6489,7 +6493,10 @@ def _without_traceback_frames(
     of each exception in its chain is dropped, except ``callers_exception``,
     the exception the caller was handling when the pass ran, and that
     exception's own chain, which are left unchanged. The links stay, so the
-    build's run outcome still reads the chain (a MemoryError, a termination).
+    build's run outcome still reads the chain (a MemoryError). An error raised
+    later inside a handler gets that handler's exception as its context in
+    place of its own, as Python sets it; no stage is opened inside one.
+    Exception attributes, such as ``AttributeError.obj``, are kept.
     """
     try:
         formatted = "".join(traceback.format_exception(error))
@@ -6651,9 +6658,10 @@ def _open_post_export_scorer(
 ) -> _HouseholdBatchedPostExportScorer | None:
     """Open the scorer the plan recorded before export, or None if no stage runs.
 
-    With ``pooling`` the scorer scores the plan's recorded requests in the
-    shared worker pool (``_PooledPostExportScorer``); without it, every pass
-    runs in this process. The scorer keeps its household batch files in a new
+    With ``pooling`` the scorer runs the baseline passes in this process and
+    the plan's recorded reform passes in the shared worker pool
+    (``_PooledPostExportScorer``); without it, every pass runs in this
+    process. The scorer keeps its household batch files in a new
     directory of its own inside ``batch_parent`` (the system's temporary
     directory without one).
     """
@@ -7414,7 +7422,7 @@ class _PooledPostExportScorer(_HouseholdBatchedPostExportScorer):
                     "process, before the worker pool started:",
                     callers_exception=callers_exception,
                 )
-            # After a failed pass, outside the handler: a full collection
+            # Outside the handler: after a failed pass, a full collection
             # frees what its frames held in a cycle.
             collect_pass_garbage()
 
@@ -21259,8 +21267,10 @@ def _certify_us_build(
     ``certification`` is the tier certification chose, the release directory
     it placed the build's files in and the ID it publishes the build under,
     and both manifests record it beside the build's provenance. With
-    ``post_export_pooling`` the post-export stages are scored in the shared
-    worker pool (``_PooledPostExportScorer``); without it, in this process.
+    ``post_export_pooling`` the post-export stages' baseline passes run in
+    this process and their reform passes in the shared worker pool
+    (``_PooledPostExportScorer``); without it, every pass runs in this
+    process.
     """
 
     certify_started = time.perf_counter()
@@ -21329,9 +21339,10 @@ def _certify_us_build(
     # household-batched scorer instead of one whole-pool Microsimulation each.
     # It loads the written H5 once, binds its sha256 (the manifest must pin
     # the same bytes), and serves the baseline plans recorded above from one
-    # merged baseline pass (microcosm#1595). With pooling, the plan's
-    # recorded requests are scored in the shared worker pool and each stage
-    # is served from the results, byte-identically.
+    # merged baseline pass (microcosm#1595). With pooling, the baseline
+    # passes run here first, the plan's recorded reform passes in the shared
+    # worker pool, and each stage is served from the results,
+    # byte-identically.
     post_export_scorer = _open_post_export_scorer(
         post_export_scoring_plan,
         dataset_path,

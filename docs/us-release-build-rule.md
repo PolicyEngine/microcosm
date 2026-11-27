@@ -539,9 +539,9 @@ one Microsimulation over the whole file.
     each one when its stage opens; a stage whose own pass raised gets that
     error when it opens, with the original traceback as a note, and the
     exceptions it was raised from or while handling, so the build's run
-    outcome still reads them (out of memory, terminated). A changed batch
-    file, or an error raised while the build is being interrupted or
-    terminated, stops scoring at once. Each batch engine is released before
+    outcome still reads them (out of memory). A changed batch file, or an
+    error raised while the build is being interrupted or terminated, in the
+    shared pass or a stage's own, stops scoring at once. Each batch engine is released before
     the next is built, so no baseline engine is held in the certifying
     process while workers run.
   - After a failed shared pass this differs from the serial scorer in time
@@ -586,9 +586,10 @@ one Microsimulation over the whole file.
     served. When the pool cannot be built at all, the first stage's opening
     raises that error and every later stage is refused with
     `PostExportPoolStoppedError`, as after a changed batch file. Each of
-    these is a `WorkerPoolError` and stops certification, the held-out
-    reports included, where the serial scorer, which has no memory cap, may
-    have finished.
+    these stops certification, the held-out reports included, where the
+    serial scorer, which has no memory cap, may have finished: the first
+    stage's error is the pool's or the batch file's own, and every later one
+    is a `WorkerPoolError`.
   - Each stage then runs as in the serial path and builds its own reforms (the
     smoke records each list edit's resolved lists from its own). Its baseline
     is served its recorded plan, and each reformed simulation its recorded

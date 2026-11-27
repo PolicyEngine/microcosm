@@ -20,8 +20,9 @@ consumers, writers and file names:
    stale count-calibrated check ``_main`` raises on.
 4. ``reform_coverage_smoke``: the release's smoke consumer on the
    household-batched scorer, from the plan the engine-free dry run records:
-   in the shared worker pool (``_PooledPostExportScorer``), as the command
-   scores by default, or in this process
+   with the reform passes in the shared worker pool and the baseline passes
+   in this process (``_PooledPostExportScorer``), as the command scores by
+   default, or every pass in this process
    (``_HouseholdBatchedPostExportScorer``, with
    ``MICROCOSM_POST_EXPORT_WORKERS=serial``).
 5. ``reform_validation``: ``_reform_validation_consumer``. With the build's
@@ -1954,9 +1955,9 @@ class ExportProbe:
             probes = us_release_reform_coverage_probes()
         self.probes = tuple(probes)
         self.scorer_options = dict(scorer_options or {})
-        # The release tool's ``_PostExportPooling``: with it the engine stages
-        # are scored in the shared worker pool, as certification scores them;
-        # without it every pass runs in this process. The pool settings name
+        # The release tool's ``_PostExportPooling``: with it the engine
+        # stages' reform passes run in the shared worker pool, as
+        # certification runs them; without it every pass runs in this process. The pool settings name
         # the workers' engine, so one given to the scorer as well is refused.
         if post_export_pooling is not None and self.scorer_options:
             raise ValueError(
