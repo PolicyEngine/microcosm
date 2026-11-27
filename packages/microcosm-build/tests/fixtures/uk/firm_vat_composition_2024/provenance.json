@@ -1,0 +1,98 @@
+{
+  "kind": "uk_firm_vat_composition_fixture",
+  "schema_version": 1,
+  "describes": "tax year 2024-25 VAT treatment applied to calendar-year 2024 Supply and Use Tables",
+  "accessed": "2026-11-26",
+  "status": "assumed",
+  "method": "vat_product_treatment.csv is written by hand from the VAT Act 1994 schedules (provisions as at 1 October 2026, read for their 2024-25 effect): each SUT product's domestic sales are split into standard, reduced, zero and exempt shares, by buyer where the law differs for households. Rows marked statute have one treatment by law; rows marked assumed carry a share set by judgement and are never tuned to a receipt or relief figure. The three other CSVs are extracted by tools/extract_uk_firm_vat_composition_tables.py from the two workbooks below; none is typed by hand.",
+  "sources": {
+    "sut": {
+      "publisher": "Office for National Statistics",
+      "dataset_title": "Input-output supply and use tables",
+      "landing_page": "https://www.ons.gov.uk/economy/nationalaccounts/supplyandusetables/datasets/inputoutputsupplyandusetables",
+      "url": "https://www.ons.gov.uk/file?uri=/economy/nationalaccounts/supplyandusetables/datasets/inputoutputsupplyandusetables/current/supublicationtablesbb26.xlsx",
+      "edition": "Supply and Use Tables, 1997 - 2024 (consistent with UK National Accounts 2026 Blue Book), released October 2026",
+      "file": "supublicationtablesbb26.xlsx",
+      "size_bytes": 3160155,
+      "sha256": "716c9e023e95cad60d3ca6affb058540887f436ad21a2f3c0f8f01eec0bbeaa8",
+      "sheets": [
+        "Table 2 - Int Con 2024",
+        "Table 4 - GFCF 2024"
+      ],
+      "note": "The same workbook as firm_supply_use_2024 (same sha256); re-fetched 26 Nov 2026.",
+      "licence": "Open Government Licence v3.0"
+    },
+    "abs": {
+      "publisher": "Office for National Statistics",
+      "dataset_title": "Non-financial business economy, UK: Sections A to S (Annual Business Survey)",
+      "landing_page": "https://www.ons.gov.uk/businessindustryandtrade/business/businessservices/datasets/uknonfinancialbusinesseconomyannualbusinesssurveysectionsas",
+      "url": "https://www.ons.gov.uk/file?uri=/businessindustryandtrade/business/businessservices/datasets/uknonfinancialbusinesseconomyannualbusinesssurveysectionsas/current/abssectionsas.xlsx",
+      "edition": "ABS 2024 results, released 26 May 2026",
+      "file": "abssectionsas.xlsx",
+      "size_bytes": 1055873,
+      "sha256": "9e548c5c410b73e5a7aec1f97db8f92843430cb6ef5457b1459a0e0e9b13e710",
+      "sheets": [
+        "Sections A to S"
+      ],
+      "licence": "Open Government Licence v3.0"
+    },
+    "legislation": [
+      {
+        "title": "Value Added Tax Act 1994 (c. 23), Schedule 7A (reduced rate)",
+        "direct_url": "https://www.legislation.gov.uk/ukpga/1994/23/schedule/7A/data.xml",
+        "edition": "Latest available revised version (point in time ~2026-10-01 per RestrictStartDate on schedule; dc:modified 2026-10-07)",
+        "sha256": "9d0c1e13cbf3567f6ea0632a0cdd90b3935d0b83f824633cae41d6d2109bbac7"
+      },
+      {
+        "title": "Value Added Tax Act 1994 (c. 23), Schedule 8 (zero-rating)",
+        "direct_url": "https://www.legislation.gov.uk/ukpga/1994/23/schedule/8/data.xml",
+        "edition": "Latest available revised version (point in time ~2026-10-01 per RestrictStartDate on schedule; dc:modified 2026-10-07)",
+        "sha256": "cc96189d172d0216029a54ffa628998f1e92587f0ee3c1a7f1bc71b27eec6d27"
+      },
+      {
+        "title": "Value Added Tax Act 1994 (c. 23), Schedule 9 (exemptions)",
+        "direct_url": "https://www.legislation.gov.uk/ukpga/1994/23/schedule/9/data.xml",
+        "edition": "Latest available revised version (point in time ~2026-10-01 per RestrictStartDate on schedule; dc:modified 2026-10-07)",
+        "sha256": "64bc72f2017ee134c42a8e56739c0aa5b6729ede97fe626e9b58c34764d52788"
+      },
+      {
+        "title": "Value Added Tax Act 1994 (c. 23), section 30 (zero-rating; s.30(6) exports of goods)",
+        "direct_url": "https://www.legislation.gov.uk/ukpga/1994/23/section/30/data.xml",
+        "edition": "Latest available revised version (point in time ~2026-10-01 per RestrictStartDate on schedule; dc:modified 2026-10-07)",
+        "sha256": "65138eb4b5d766f59924776c7ed87207cfa64f55f70aeef57f1251a6e873f7dd"
+      }
+    ]
+  },
+  "checks_only": {
+    "hmrc_tax_relief_statistics": {
+      "title": "Estimated cost of tax reliefs (January 2026) - Tax relief statistics",
+      "direct_url": "https://assets.publishing.service.gov.uk/media/69a0194e3e672177d0bc76e6/tax_relief_statistics_january_2026.ods",
+      "edition": "January 2026 (released 22 January 2026; supersedes Dec 2024 non-structural edition)",
+      "sha256": "fa94a61fe6b6a02c19b87a656154f27eaf5f00f35f0cce9339b8101b9ac8ee4a",
+      "sheet": "Table_2 (Six-year cost estimates, GBP million; columns 2020 to 2021 .. 2025 to 2026; column J = 2024 to 2025)"
+    },
+    "use": "relief cost / rate compared with the modelled base of each zero- or reduced-rated relief; reported, never a target"
+  },
+  "files": {
+    "vat_product_treatment.csv": {
+      "sha256": "17ffd090e53d16be54789aa12ed8f1d6ed51b7df67fa4485d5ef07e47e871b66",
+      "bytes": 9163,
+      "rows": 111
+    },
+    "sut_intermediate_consumption.csv": {
+      "sha256": "2fc3bb4ee0fbc3a2b8c5200ddbb6cf18258250fc465190cb7e5419c06e75520f",
+      "bytes": 113784,
+      "rows": 5193
+    },
+    "sut_dwellings_gfcf.csv": {
+      "sha256": "69f916b05cd5f2cada6a611a95db08bbf166862e649c2fab87b0e208cd9dbb15",
+      "bytes": 98,
+      "rows": 1
+    },
+    "abs_section_turnover.csv": {
+      "sha256": "ac74ad1626752d55768878f2224345845e9856544730d3d7649a73333741108b",
+      "bytes": 695,
+      "rows": 21
+    }
+  }
+}

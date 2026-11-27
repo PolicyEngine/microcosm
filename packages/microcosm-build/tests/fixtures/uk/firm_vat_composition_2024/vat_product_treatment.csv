@@ -1,0 +1,112 @@
+product_code,user,standard,reduced,zero,exempt,basis,status
+CPA_A01,all,0.15,0,0.85,0,"VATA 1994 Sch 8 Group 1 (food, animal feeding stuffs, seeds, live food animals); flowers, plants, non-food crops standard",assumed
+CPA_A02,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_A03,all,0,0,1,0,"Sch 8 Group 1 item 1 (food of a kind used for human consumption)",statute
+CPA_B05 & B06,all,1,0,0,0,"Not in Sch 7A/8/9 (sales of crude oil and gas are business supplies); exports zero by s.30(6)",statute
+CPA_B07 & B08,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_B09,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C101,all,0,0,1,0,"Sch 8 Group 1 item 1",statute
+CPA_C102_3,all,0.05,0,0.95,0,"Sch 8 Group 1 item 1; crisps and similar (excepted item 5) standard",assumed
+CPA_C104,all,0,0,1,0,"Sch 8 Group 1 item 1",statute
+CPA_C105,all,0.05,0,0.95,0,"Sch 8 Group 1 item 1; ice cream (excepted item 1) standard",assumed
+CPA_C106,all,0,0,1,0,"Sch 8 Group 1 item 1",statute
+CPA_C107,all,0.1,0,0.9,0,"Sch 8 Group 1 item 1; chocolate-covered biscuits (excepted item 2) standard",assumed
+CPA_C108,all,0.4,0,0.6,0,"Sch 8 Group 1; confectionery, chocolate (excepted item 2) and hot-drink preparations partly standard",assumed
+CPA_C109,all,0.3,0,0.7,0,"Sch 8 Group 1 item 2 animal feeding stuffs; pet food (excepted item 6) standard",assumed
+CPA_C11.01-6 & C12,all,1,0,0,0,"Sch 8 Group 1 excepted item 4 (alcoholic beverages); tobacco not relieved",statute
+CPA_C1107,all,1,0,0,0,"Sch 8 Group 1 excepted item 4 (beverages)",statute
+CPA_C13,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C14,all,0.85,0,0.15,0,"Sch 8 Group 16 (young children's clothing) on the share of children's wear",assumed
+CPA_C15,all,0.95,0,0.05,0,"Sch 8 Group 16 (young children's footwear)",assumed
+CPA_C16,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C17,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C18,all,1,0,0,0,"Printing services standard; zero-rating of books falls on the publisher (J58)",assumed
+CPA_C19,all,1,0,0,0,"Road fuel standard; domestic heating oil (Sch 7A Group 1) not split out",assumed
+CPA_C203,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C204,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C205,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C20A,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C20B,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C20C,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C21,all,1,0,0,0,"Manufacturers' and wholesalers' sales standard; Sch 8 Group 12 zero-rating at dispensing is not modelled (NHS dispensing is bought by government, not households)",assumed
+CPA_C22,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C235_6,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C23OTHER,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C241_3,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C244_5,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C25,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C26,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C27,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C28,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C29,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C301,all,0.5,0,0.5,0,"Sch 8 Group 8 item 1 (qualifying ships) on part of ship output",assumed
+CPA_C303,all,0.5,0,0.5,0,"Sch 8 Group 8 item 2 (qualifying aircraft) on part of aircraft output",assumed
+CPA_C30OTHER,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C31,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_C32,all,0.95,0,0.05,0,"Sch 8 Group 12 (aids for disabled people) on a small share of medical devices",assumed
+CPA_C3315,all,0,0,1,0,"Sch 8 Group 8 item 1 (repair of qualifying ships)",assumed
+CPA_C3316,all,0,0,1,0,"Sch 8 Group 8 item 2 (repair of qualifying aircraft)",assumed
+CPA_C33OTHER,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_D351,households,0,1,0,0,"Sch 7A Group 1 (fuel and power for qualifying use: domestic)",statute
+CPA_D351,other,1,0,0,0,"Business use standard (de minimis and charity use not split)",assumed
+CPA_D352_3,households,0,1,0,0,"Sch 7A Group 1",statute
+CPA_D352_3,other,1,0,0,0,"Business use standard",assumed
+CPA_E36,households,0,0,1,0,"Sch 8 Group 2 item 2 (water other than to a relevant industrial activity)",statute
+CPA_E36,other,0.5,0,0.5,0,"Sch 8 Group 2: zero for non-industrial users, standard to relevant industrial activities (SIC divisions B-E); half assumed",assumed
+CPA_E37,households,0,0,1,0,"Sch 8 Group 2 item 1 (sewerage services, not to industrial users)",statute
+CPA_E37,other,0.5,0,0.5,0,"Sch 8 Group 2 item 1; half assumed industrial",assumed
+CPA_E38,all,1,0,0,0,"Not in Sch 7A/8/9 (local authority collection is non-business, treated as such under O84)",assumed
+CPA_E39,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+"CPA_F41, F42 & F43",all,DWELLINGS,0,DWELLINGS,0,"Sch 8 Group 5 (construction of new dwellings): zero share = SUT Table 4 dwellings GFCF of construction x 0.6 new-build fraction / construction total demand",assumed
+CPA_G45,all,1,0,0,0,"Vehicles, parts and fuel standard",assumed
+CPA_G46,all,GOODS,0,GOODS,0,"Wholesale turnover carries the treatment of the goods resold (SUT goods mix, non-household uses)",assumed
+CPA_G47,all,GOODS,0,GOODS,0,"Retail turnover carries the treatment of the goods resold (SUT household goods mix)",assumed
+CPA_H491_2,households,0,0,1,0,"Sch 8 Group 8 item 4 (passenger transport, vehicles of 10 or more seats)",statute
+CPA_H491_2,other,0.3,0,0.7,0,"Passenger zero (Group 8 item 4); freight standard",assumed
+CPA_H493_5,households,0.4,0,0.6,0,"Bus and coach zero (Group 8 item 4); taxis and private hire standard",assumed
+CPA_H493_5,other,0.9,0,0.1,0,"Mostly road freight and pipelines, standard",assumed
+CPA_H50,all,0.4,0,0.6,0,"Sch 8 Group 8 items 4-6 (passengers, international freight)",assumed
+CPA_H51,all,0.1,0,0.9,0,"Sch 8 Group 8 items 4-6 (passengers, international freight)",assumed
+CPA_H52,all,0.8,0,0.2,0,"Sch 8 Group 8 items 6-7 (port and airport services, handling of international freight)",assumed
+CPA_H53,all,0.7,0,0,0.3,"Sch 9 Group 3 (universal postal service) exempt; courier and parcels standard",assumed
+CPA_I55,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_I56,all,1,0,0,0,"Sch 8 Group 1 note 3: catering is not zero-rated; cold takeaway food (zero) not split out",assumed
+CPA_J58,households,0.3,0,0.7,0,"Sch 8 Group 3 (books, newspapers, periodicals, e-publications); software publishing standard",assumed
+CPA_J58,other,0.6,0,0.4,0,"Sch 8 Group 3; business purchases weighted to software and databases",assumed
+CPA_J59 & J60,all,1,0,0,0,"Not in Sch 7A/8/9 (licence fee and public broadcasting not split)",assumed
+CPA_J61,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_J62,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_J63,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_K64,all,0.1,0,0,0.9,"Sch 9 Group 5 (finance); fee-based advisory and management services standard",assumed
+CPA_K65.1-2 & K65.3,all,0,0,0,1,"Sch 9 Group 2 (insurance)",statute
+CPA_K66,all,0.5,0,0,0.5,"Sch 9 Groups 2 and 5 cover broking and intermediation; fund and other auxiliary services partly standard",assumed
+CPA_L68BXL683,households,0,0,0,1,"Sch 9 Group 1 (residential letting)",statute
+CPA_L68BXL683,other,0.4,0,0,0.6,"Sch 9 Group 1; Sch 10 option to tax on part of commercial property",assumed
+CPA_L68A,all,0,0,0,1,"Imputed rent: not a supply (excluded from firms)",statute
+CPA_L683,all,1,0,0,0,"Estate agency and property management standard",statute
+CPA_M691,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_M692,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_M70,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_M71,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_M72,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_M73,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_M74,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_M75,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_N77,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_N78,all,0.9,0,0,0.1,"Sch 9 Group 7 (supply of medical and nursing staff) on a small share",assumed
+CPA_N79,all,1,0,0,0,"Tour operators' margin scheme not modelled; treated as standard",assumed
+CPA_N80,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_N81,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_N82,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_O84,all,0,0,0,1,"Non-business activity outside the scope of VAT; s.33 and s.41 refunds not modelled (treated as exempt)",assumed
+CPA_P85,all,0.15,0,0,0.85,"Sch 9 Group 6 (education by eligible bodies); private school fees standard from 1 Jan 2025 (a quarter of 2024-25, part-year basis); commercial training standard",assumed
+CPA_Q86,all,0.1,0,0,0.9,"Sch 9 Group 7 (health and welfare)",assumed
+CPA_Q87 & Q88,all,0.1,0,0,0.9,"Sch 9 Group 7 items 4 and 9 (welfare services)",assumed
+CPA_R90,all,0.7,0,0,0.3,"Sch 9 Group 13 (cultural services by eligible bodies)",assumed
+CPA_R91,all,0.5,0,0,0.5,"Sch 9 Group 13 (museums, galleries by eligible bodies)",assumed
+CPA_R92,all,0,0,0,1,"Sch 9 Group 4 (betting, gaming and lotteries)",statute
+CPA_R93,all,0.7,0,0,0.3,"Sch 9 Group 10 (sport by eligible bodies)",assumed
+CPA_S94,all,0.4,0,0,0.6,"Sch 9 Group 9 (trade unions, professional and public-interest bodies)",assumed
+CPA_S95,all,1,0,0,0,"Not in Sch 7A/8/9",statute
+CPA_S96,all,0.9,0,0,0.1,"Sch 9 Group 8 (burial and cremation)",assumed
+CPA_T97,all,0,0,0,1,"Households as employers: no supply by a taxable person",statute
