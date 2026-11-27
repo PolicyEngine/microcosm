@@ -923,9 +923,14 @@ against 1.6 hours locally. At the preemption rate this run saw, a 5- to
 7-hour preemptible run finishes uninterrupted 1 to 3% of the time, so
 non-preemptible is the practical placement for it. The Modal path works,
 but it does not yet make this stage cheaper or faster. The run did show that the stage runs as one long single-core
-loop over 80 chunks of households. If the chunks are independent, which
-this runbook has not checked in `materialize_chunked`, fanning them out
-across containers would let preemption lose one chunk instead of the run.
+loop over 80 chunks of households. Two tests compare the target matrix
+`materialize_chunked` returns at several `--hh-chunk` and `--batch` values
+with one chunk in one batch, bit for bit: a fake-engine test in
+`packages/microcosm-build/tests/engine_free/us/test_us_acs_local_sparse_cd.py`
+and a real-engine test on six households in
+`packages/microcosm-build/tests/engine_workflow/us/test_us_acs_local_materialize_chunks.py`.
+The chunks are independent in those tests, so fanning them out across
+containers would let preemption lose one chunk instead of the run.
 
 ## Route A's base stage
 
