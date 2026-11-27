@@ -158,7 +158,12 @@ which age groups is the decision of PR #1531, not of this rule.
   source declares none (ladder population, county households).
   **Recommended: yes.** For county SOI, which has no bound today: add the
   band as a report first, and decide to enforce it after the factors are
-  measured on the county facts.
+  measured on the county facts. **Measured, 27 Nov 2026:** on the pinned
+  county facts, the factor of each of the 51 legs is within 0.998 to 1.052
+  of the median for adjusted gross income (median 1.1207), and within 0.9997
+  to 1.0005 for the return count (median 1.0000). No leg is outside the band
+  of 0.8 to 1.25. Whether the county bridge declares the band is still to
+  rule.
 - **Members.** A leg holds exactly its declared members: the district plan
   of the crosswalk, the counties of the ladder. A declared combined cell
   covers a county with no IRS row. An area with one district does not bind
@@ -218,7 +223,9 @@ ruled, with the recommended option.
    compile holds that sum before the pass, and after Chronicle PR #451 the
    file has no state row to compare.
 4. **The county rows are compared and pinned on the pinned county facts
-   file now**, not at step 3.
+   file now**, not at step 3. Done on 27 Nov 2026: the three county passes
+   give the old rows with the same value bits, and
+   `test_us_target_nesting_county.py` pins them.
 5. **Merge timing.** This branch does not merge while a UK release is between
    its first build and its sign-off, because the UK graph re-keys.
 6. **PR #1755 merges first.** This branch then takes its changes.
@@ -404,6 +411,5 @@ Two points to settle when the code is written:
 
 ## 8. Not measured
 
-- The county factors. The pinned county facts file is not on this machine.
 - Anything on a feed after Chronicle PR #451.
 - The concept match of each of the 14 families of microcosm#1243.

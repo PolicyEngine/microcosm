@@ -220,6 +220,40 @@ On valid data the rows and their values are the same. These things differ.
    negative state row, and a control of `-0.0`. None occurs on the pinned
    feed.
 
+## The county rows on the pinned inputs
+
+`test_us_target_nesting_county.py` reads the real inputs when three
+environment variables name them: `MICROCOSM_US_CHRONICLE_FACTS` (the pinned
+feed), `MICROCOSM_US_PUMA_LADDER_ARTIFACT` (the pinned PUMA ladder) and
+`MICROCOSM_US_CHRONICLE_COUNTY_FACTS` (the pinned county facts file of
+`us/chronicle_county_facts.json`, 922 MB). Without them the two tests skip.
+
+On those inputs the three county passes give the rows of the code before,
+with the same value bits:
+
+| Pass | Rows |
+|---|---|
+| County population, 2020 counties | 3,143 |
+| County population, 2023 county-equivalents | 3,144 |
+| County SOI (return count, adjusted gross income) | 6,286: two for each of 3,143 cells. One cell stands for Kalawao and Maui |
+| County households | 51 state rows and 3,144 county rows |
+
+The same test file pins the bytes of those rows.
+
+The county SOI bridge declares no bound. Its factors (the state row over the
+sum of the county facts) were measured on those inputs:
+
+| Measure | Legs | Median factor | Lowest and highest, as a ratio to the median | Legs outside 0.8 to 1.25 |
+|---|---:|---:|---|---:|
+| `adjusted_gross_income` | 51 | 1.1207 | 0.998 to 1.052 | 0 |
+| `return_count` | 51 | 1.0000 | 0.9997 to 1.0005 | 0 |
+
+The median of 1.12 for adjusted gross income is a gap that every state has.
+It is consistent with the aging of an amount from tax year 2022 to the target
+year; a count is not aged. The states farthest from the median are Montana
+(1.052) and Wyoming (1.038). So the band of the district bridge would unbind
+no county leg today.
+
 ## The coverage test
 
 `test_us_cross_grain_coverage.py` reads the declaration. With the pinned feed
@@ -254,6 +288,4 @@ After PolicyEngine/chronicle#451 and the feed re-pin:
 - the derived control of the kind `scaled`, for the national controls of the
   state rows (decision 2);
 - the ACS district rows (decision 7) and the ladder under the state estimate
-  (decision 4), each of which can have its own PR;
-- a pin of the county rows on the pinned county facts file. The equivalence
-  tests of the county rows use synthetic blocks.
+  (decision 4), each in its own PR.

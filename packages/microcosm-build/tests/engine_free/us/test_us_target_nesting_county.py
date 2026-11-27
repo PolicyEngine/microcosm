@@ -14,17 +14,24 @@ same receipt. Where the old code refused, the new code refuses: with the same
 text when the adapter refuses, and with the operator's text when the operator
 does.
 
-The blocks are synthetic. No test here reads the pinned county facts file
-(``us/chronicle_county_facts.json``), which is not a test input on every
-machine; a pin of the county rows on that file is a separate step.
+The seeded blocks are synthetic. Two tests at the end read the real inputs:
+the pinned feed, the pinned PUMA ladder and the pinned county facts file
+(``us/chronicle_county_facts.json``). They hold the county rows of those
+inputs to the old code, and they pin the bytes of the rows. They run only
+when ``MICROCOSM_US_CHRONICLE_FACTS``, ``MICROCOSM_US_PUMA_LADDER_ARTIFACT``
+and ``MICROCOSM_US_CHRONICLE_COUNTY_FACTS`` name those files, because the
+county facts file (922 MB) is not a test input on every machine.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import importlib.util
 import json
+import os
 import struct
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -60,7 +67,7 @@ _SOI_MEASURES = (
 
 
 @pytest.fixture(scope="module")
-def county():
+def local_tool():
     path = _TEST_PATHS.repository / "tools" / "build_us_acs_local_release.py"
     spec = importlib.util.spec_from_file_location(
         "build_us_acs_local_release_nesting_county", path
@@ -68,7 +75,12 @@ def county():
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
-    return module.county_surface
+    return module
+
+
+@pytest.fixture(scope="module")
+def county(local_tool):
+    return local_tool.county_surface
 
 
 def _bits(values) -> bytes:
@@ -652,3 +664,149 @@ def test_each_county_pass_records_the_operators_receipt(county) -> None:
             )
     # The surfaces' receipts do not hold the operator's receipt.
     assert "groups" not in soi.receipt and "groups" not in acs.receipt
+
+
+# ---------------------------------------------------------------------------
+# The real inputs: the pinned feed, ladder and county facts
+# ---------------------------------------------------------------------------
+
+#: The household county columns: 2020 counties, and the 2023 county-equivalents
+#: of the county facts (Connecticut's planning regions), which a full run uses.
+_COUNTY_COLUMNS = ("county_fips", "county_fips_2023")
+_COUNTY_FACTS_ENV = "MICROCOSM_US_CHRONICLE_COUNTY_FACTS"
+
+#: The county rows on the pinned inputs: their counts, and the sha256 of the
+#: rows as a registry file writes them (keys in insertion order), of the
+#: populations (county code and the bits of the value) and of the receipts.
+#: Measured on the code of microcosm#1760 after the county rows took the
+#: operator's metadata keys.
+#: ``test_the_pinned_county_rows_are_the_old_rows`` holds the same rows to
+#: the code before that: the same values, bit for bit.
+PINNED_COUNTY_ROWS: dict[str, object] = {
+    "population_county_fips": {
+        "counties": 3143,
+        "sha256": "5a93db95e287a549ce4fb01126475382765e55f70a8a6e47670b63afb342c2e1",
+    },
+    "population_county_fips_2023": {
+        "counties": 3144,
+        "sha256": "636f344557d3b06b8c3363d10683df251aea099bfa7368346f3c4af294e5a2f9",
+    },
+    "soi": {
+        "rows": 6286,
+        "rows_sha256": "dce48ac26c326d3c11c01908a7a9ad3aa6fc43b88acf87037fc85271b9ddaf46",
+        "receipt_sha256": "a77f6326b9921878e10aac4e39af65bc4c607f763bc4caf6023aceb152083cc5",
+    },
+    "households": {
+        "rows": 3195,
+        "rows_sha256": "ad642af8198354d8508e6d581a6028fc89c8beac6d9339021cdce9fee2df3430",
+        "receipt_sha256": "c06dc6f2a45724d3a7160cdd71c1b8f07be7c6bd5cd4d75351b3cc6edf3406bd",
+    },
+}
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _rows_sha256(specs) -> str:
+    return _sha256(json.dumps([spec.to_dict() for spec in specs], indent=1))
+
+
+def _population_sha256(cells) -> str:
+    return _sha256(
+        json.dumps([[int(code), float(value).hex()] for code, value in cells.items()])
+    )
+
+
+@pytest.fixture(scope="module")
+def pinned_county(local_tool):
+    """The three county passes on the pinned inputs, by the new and the old code."""
+
+    paths = {}
+    for name, what in (
+        ("MICROCOSM_US_CHRONICLE_FACTS", "the pinned 41b2fb2 feed"),
+        ("MICROCOSM_US_PUMA_LADDER_ARTIFACT", "the pinned PUMA ladder"),
+        (_COUNTY_FACTS_ENV, "the pinned county facts file"),
+    ):
+        value = os.environ.get(name, "")
+        if not value or not Path(value).exists():
+            pytest.skip(f"set {name} to {what}")
+        paths[name] = Path(value)
+    from microcosm.build.us_runtime.county_facts import load_us_county_facts
+    from microcosm.build.us_runtime.puma_ladder import load_us_puma_ladder
+
+    county = local_tool.county_surface
+    ladder_path = paths["MICROCOSM_US_PUMA_LADDER_ARTIFACT"]
+    ladder = load_us_puma_ladder(ladder_path)
+    states = local_tool.ladder_population(ladder_path, ["state"])
+    populations = {
+        column: tuple(
+            module.with_county_populations(
+                ladder, states, ["state", "county"], county_column=column
+            )
+            for module in (county, reference)
+        )
+        for column in _COUNTY_COLUMNS
+    }
+    state_specs = local_tool.state_admin_surface(
+        str(paths["MICROCOSM_US_CHRONICLE_FACTS"]),
+        ["snap", "medicaid", "soi"],
+        soi_mode=county.SOI_MODE,
+    ).registry.specs
+    # The loader refuses a file that is not the pinned one.
+    facts = load_us_county_facts(paths[_COUNTY_FACTS_ENV]).rows
+    counties = populations["county_fips_2023"][0]["county"]
+    return SimpleNamespace(
+        populations=populations,
+        soi=tuple(
+            module.state_county_soi_surface(state_specs, facts, counties)
+            for module in (county, reference)
+        ),
+        acs=tuple(
+            module.acs_household_surface(facts, counties)
+            for module in (county, reference)
+        ),
+    )
+
+
+def test_the_pinned_county_rows_are_the_old_rows(pinned_county) -> None:
+    """On the real inputs: the old rows and value bits, under the new keys."""
+
+    for column in _COUNTY_COLUMNS:
+        new, old = pinned_county.populations[column]
+        assert _population_image(new) == _population_image(old), column
+    _assert_same_surface(*pinned_county.soi, declarations.COUNTY_SOI, 0)
+    _assert_same_surface(*pinned_county.acs, declarations.COUNTY_ACS_HOUSEHOLDS, 0)
+    # Kalawao has no IRS row: one Maui cell stands for both counties in each
+    # of the two measures, so the SOI rows are two fewer than two per county.
+    soi, acs = pinned_county.soi[0], pinned_county.acs[0]
+    combined = [spec for spec in soi.specs if MEMBERS_KEY in spec.metadata]
+    assert {spec.metadata[MEMBERS_KEY] for spec in combined} == {"15005,15009"}
+    assert len(soi.specs) == 2 * 3_144 - len(combined) == 6_286
+    assert len(acs.specs) == 51 + 3_144
+
+
+def test_the_pinned_county_rows_have_their_pinned_bytes(pinned_county) -> None:
+    soi, acs = pinned_county.soi[0], pinned_county.acs[0]
+    measured = {
+        **{
+            f"population_{column}": {
+                "counties": len(pinned_county.populations[column][0]["county"]),
+                "sha256": _population_sha256(
+                    pinned_county.populations[column][0]["county"]
+                ),
+            }
+            for column in _COUNTY_COLUMNS
+        },
+        "soi": {
+            "rows": len(soi.specs),
+            "rows_sha256": _rows_sha256(soi.specs),
+            "receipt_sha256": _sha256(json.dumps(soi.receipt, indent=1)),
+        },
+        "households": {
+            "rows": len(acs.specs),
+            "rows_sha256": _rows_sha256(acs.specs),
+            "receipt_sha256": _sha256(json.dumps(acs.receipt, indent=1)),
+        },
+    }
+    assert measured == PINNED_COUNTY_ROWS
