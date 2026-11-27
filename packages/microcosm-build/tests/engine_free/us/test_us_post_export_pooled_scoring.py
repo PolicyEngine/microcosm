@@ -1681,6 +1681,56 @@ def test_an_error_closing_the_scorer_does_not_replace_the_one_that_stopped_it(
             type(scorer).close(scorer)
 
 
+class _BrokenStream:
+    """A standard error stream whose reader has gone."""
+
+    def write(self, text):
+        raise BrokenPipeError("standard error is closed")
+
+    def flush(self):
+        raise BrokenPipeError("standard error is closed")
+
+
+def test_a_warning_that_cannot_be_written_does_not_replace_the_error(
+    builder,
+    pooled_reforms,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """If closing the scorer after an error raises, and the warning about it
+    cannot be written either (standard error's reader has gone), the error
+    that stopped certification is still the one raised."""
+    _use_probes(monkeypatch, passing=False)
+    plan, fit = _release_plan(builder)
+
+    def failing_close():
+        raise OSError("the batch directory is gone")
+
+    def make_scorer(batch_parent):
+        scorer = _serial_scorer(
+            builder, plan, tmp_path / "scoring", batch_parent=batch_parent
+        )
+        monkeypatch.setattr(scorer, "close", failing_close)
+        return scorer
+
+    opened: list = []
+    try:
+        with monkeypatch.context() as broken:
+            broken.setattr(sys, "stderr", _BrokenStream())
+            with pytest.raises(RuntimeError, match="Release gates failed"):
+                _certify_with(
+                    builder,
+                    monkeypatch,
+                    make_scorer,
+                    _record_for_certification(builder, plan, fit, tmp_path),
+                    _certification(builder, tmp_path, evidence_release=False),
+                    opened,
+                )
+    finally:
+        for scorer in opened:
+            type(scorer).close(scorer)
+
+
 def test_an_interrupt_while_closing_the_scorer_is_raised(
     builder,
     pooled_reforms,
@@ -1800,6 +1850,9 @@ def test_a_stage_error_kills_the_units_still_running(
         assert _child_processes() - children_before == set()
         [scorer] = opened
         assert not scorer.batch_directory.exists()
+        assert not (
+            tmp_path / "build" / builder.US_POST_EXPORT_BATCH_DIRECTORY
+        ).exists()
         execution = scorer.execution_record()
         assert execution["report"]["units_completed"] == (
             execution["units"]["baseline"] + len(probes) + 1
