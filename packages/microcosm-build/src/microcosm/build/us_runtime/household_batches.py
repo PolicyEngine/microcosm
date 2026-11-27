@@ -25,6 +25,8 @@ what those passes share:
   :func:`collect_pass_garbage` are the garbage-collection pattern of a batch
   loop: no automatic collection inside a batch, a youngest-generation
   collection after it, and one full collection when the pass ends.
+  :func:`one_pass_garbage_collection` runs several calls of a pass function
+  as one pass, with one full collection at the end.
 
 A population-aggregate variable is a policyengine-us formula that sums or ranks
 over every person or household in its engine
@@ -66,6 +68,7 @@ __all__ = [
     "group_to_household_positions",
     "household_batch_plan",
     "household_position_batches",
+    "one_pass_garbage_collection",
     "record_engine_branches",
     "refuse_batch_population_aggregates",
     "select_households_by_position",
@@ -375,10 +378,40 @@ def collect_pass_garbage() -> None:
     CPython's own full collections are throttled against the build's multi-GB
     long-lived heap, so without an explicit sweep the skeletons accumulate
     for the run's lifetime. One full collection per pass (a target family,
-    an input stage) is cheap next to the pass's engine work.
+    an input stage) is cheap next to the pass's engine work. Inside
+    :func:`one_pass_garbage_collection` it leaves the collection to the end.
     """
 
+    if _PASS_GARBAGE_DEFERRED:
+        return
     gc.collect()
+
+
+#: While set, :func:`collect_pass_garbage` leaves the full collection to
+#: :func:`one_pass_garbage_collection`.
+_PASS_GARBAGE_DEFERRED = False
+
+
+@contextmanager
+def one_pass_garbage_collection() -> Iterator[None]:
+    """Run the pass calls inside as one pass: one full collection at the end.
+
+    A reuse of an earlier pass (``microcosm.build.household_pass_reuse``)
+    calls the pass function once per batch of households it reruns, and each
+    call ends with :func:`collect_pass_garbage`; a full pass collects once.
+    Nested uses collect once, when the outermost ends, also after an
+    exception.
+    """
+
+    global _PASS_GARBAGE_DEFERRED
+    already_deferred = _PASS_GARBAGE_DEFERRED
+    _PASS_GARBAGE_DEFERRED = True
+    try:
+        yield
+    finally:
+        _PASS_GARBAGE_DEFERRED = already_deferred
+        if not already_deferred:
+            gc.collect()
 
 
 @contextmanager

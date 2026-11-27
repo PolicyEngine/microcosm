@@ -9236,10 +9236,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         *,
         simulation=None,
         maximum_microsim_batch_size=None,
+        refuse_population_aggregates=None,
     ):
+        captured.setdefault("ssi_uncapped_refusals", []).append(
+            refuse_population_aggregates
+        )
         captured["ssi_uncapped_stage_called"] = True
         captured["ssi_uncapped_batch_size"] = maximum_microsim_batch_size
-        return np.zeros(4, dtype=np.float64)
+        values = np.zeros(4, dtype=np.float64)
+        captured.setdefault("ssi_uncapped_calls", []).append((frame, values))
+        return values
 
     fake_band_targets = {
         "under_18": 1_001_922.0,
@@ -9319,6 +9325,74 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_ssi_person_uncapped_amount",
         fake_ssi_uncapped_amount,
     )
+
+    # The post-calibration passes reuse the pre-calibration pass records. The
+    # stand-ins keep the frame and values each record was made from, and the
+    # reuse runs its recompute on the frame it was given, as a real reuse
+    # does for changed households, so the assertions below can check which
+    # frame, values and pass function main() wired to each variable.
+    def fake_household_pass_record(frame, values, *, variable, reuse_refused=None):
+        captured.setdefault("household_pass_records", []).append(
+            (variable, frame, values, reuse_refused)
+        )
+        return SimpleNamespace(variable=variable)
+
+    def fake_reuse_household_pass(
+        record,
+        frame,
+        *,
+        recompute,
+        maximum_microsim_batch_size,
+        description,
+        telemetry=None,
+        telemetry_stage="take_up_final_diagnostics",
+        reuse_refused=None,
+    ):
+        captured.setdefault("household_pass_reuses", []).append(
+            (
+                record.variable,
+                frame,
+                maximum_microsim_batch_size,
+                telemetry_stage,
+                reuse_refused,
+            )
+        )
+        values = recompute(frame)
+        # A real reuse also hands the pass a selection of some households.
+        recompute(rerun_selection)
+        captured.setdefault("household_pass_values", {})[record.variable] = values
+        return SimpleNamespace(values=values)
+
+    rerun_selection = SimpleNamespace(name="selection of rerun households")
+
+    def fake_medicaid_person_eligibility(
+        frame,
+        *,
+        simulation=None,
+        maximum_microsim_batch_size=None,
+        refuse_population_aggregates=None,
+    ):
+        values = np.zeros(4, dtype=bool)
+        captured.setdefault("medicaid_eligibility_calls", []).append(
+            (frame, maximum_microsim_batch_size, refuse_population_aggregates)
+        )
+        return values
+
+    monkeypatch.setattr(
+        builder, "_medicaid_person_eligibility", fake_medicaid_person_eligibility
+    )
+
+    # A reason per frame, so the assertions can check which frame's claiming
+    # links each Medicaid record and reuse was judged on.
+    def fake_medicaid_claim_crossing(frame):
+        return f"claim-crossing:{id(frame)}"
+
+    monkeypatch.setattr(
+        builder, "_medicaid_claim_crossing", fake_medicaid_claim_crossing
+    )
+
+    monkeypatch.setattr(builder, "_household_pass_record", fake_household_pass_record)
+    monkeypatch.setattr(builder, "_reuse_household_pass", fake_reuse_household_pass)
     monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_with_ssi_take_up)
     monkeypatch.setattr(builder, "us_ssi_take_up_gate", fake_ssi_take_up_gate)
     # The digest reads the persisted flag column, which the stub above never
@@ -9472,8 +9546,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         seed,
         substitutions=(),
         maximum_microsim_batch_size=None,
+        eligibility_recorder=None,
     ):
         captured["health_stage_events"].append("medicaid")
+        captured["medicaid_first_pass_frame"] = frame
+        if eligibility_recorder is not None:
+            eligibility = np.zeros(4, dtype=bool)
+            captured["medicaid_first_pass_eligibility"] = eligibility
+            eligibility_recorder(frame, eligibility)
         return frame, {}
 
     def fake_medicaid_gate(diagnostics):
@@ -9773,6 +9853,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         reporter_source_ids,
     ):
         captured["final_ssi_diagnostics_called"] = True
+        captured["final_ssi_frame"] = frame
+        captured["ssi_final_uncapped"] = uncapped_ssi
         captured["final_ssi_diagnostics_targets"] = dict(targets)
         captured["final_ssi_diagnostics_assignment_priors"] = dict(assignment_priors)
         captured["final_ssi_diagnostics_prior_basis"] = prior_basis
@@ -9786,8 +9868,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         seed,
         substitutions,
         maximum_microsim_batch_size=None,
+        eligibility=None,
     ):
         captured["final_medicaid_diagnostics_called"] = True
+        captured["final_medicaid_frame"] = frame
+        captured["final_medicaid_eligibility"] = eligibility
         return {}
 
     monkeypatch.setattr(builder, "_with_l0_refit_weights", fake_l0_refit_weights)
@@ -10548,6 +10633,63 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         assert "final_medicaid_diagnostics_called" not in captured
     else:
         assert captured["final_medicaid_diagnostics_called"] is True
+    # Both pre-calibration passes leave a record of the frame they ran on and
+    # the values they returned; the post-calibration values come from reusing
+    # them on the export frame with the matching pass function; a quarantined
+    # Medicaid evaluation reuses nothing.
+    batch_size = builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    (first_ssi_frame, first_ssi_values), *later_ssi_calls = captured[
+        "ssi_uncapped_calls"
+    ]
+    (ssi_record, medicaid_record) = captured["household_pass_records"]
+    assert ssi_record[0] == "uncapped_ssi"
+    assert ssi_record[1] is first_ssi_frame
+    assert ssi_record[2] is first_ssi_values
+    assert ssi_record[3] is None
+    assert medicaid_record[0] == "is_medicaid_eligible"
+    assert medicaid_record[1] is captured["medicaid_first_pass_frame"]
+    assert medicaid_record[2] is captured["medicaid_first_pass_eligibility"]
+    assert medicaid_record[3] == (
+        f"claim-crossing:{id(captured['medicaid_first_pass_frame'])}"
+    )
+    export_frame = captured["final_ssi_frame"]
+    reuses = captured["household_pass_reuses"]
+    assert reuses[0][0] == "uncapped_ssi"
+    assert reuses[0][1] is export_frame
+    assert reuses[0][2:] == (batch_size, "take_up_final_diagnostics", None)
+    # The SSI recompute is the SSI pass, run on the export frame.
+    assert len(later_ssi_calls) == 2
+    assert later_ssi_calls[0][0] is export_frame
+    assert later_ssi_calls[1][0] is rerun_selection
+    # The whole export frame keeps the pass's own refusal rule; a selection
+    # of households holds part of the population and refuses aggregates.
+    assert captured["ssi_uncapped_refusals"] == [None, None, True]
+    assert (
+        captured["ssi_final_uncapped"]
+        is captured["household_pass_values"]["uncapped_ssi"]
+    )
+    if terminal_mode == "integrity":
+        assert len(reuses) == 1
+        assert "medicaid_eligibility_calls" not in captured
+    else:
+        assert captured["final_medicaid_frame"] is export_frame
+        assert reuses[1][0] == "is_medicaid_eligible"
+        assert reuses[1][1] is export_frame
+        assert reuses[1][2:] == (
+            batch_size,
+            "medicaid_final_diagnostics",
+            f"claim-crossing:{id(export_frame)}",
+        )
+        # The Medicaid recompute is the Medicaid pass, run on the export frame.
+        (export_call, selection_call) = captured["medicaid_eligibility_calls"]
+        assert export_call[0] is export_frame
+        assert export_call[1:] == (batch_size, None)
+        assert selection_call[0] is rerun_selection
+        assert selection_call[1:] == (batch_size, True)
+        assert (
+            captured["final_medicaid_eligibility"]
+            is captured["household_pass_values"]["is_medicaid_eligible"]
+        )
     assert captured["voluntary_filing_stage_called"] is True
     assert captured["voluntary_filing_seed"] == 0
     assert captured["voluntary_filing_gate_called"] is True

@@ -100,6 +100,12 @@ from microcosm.build.gates import (
     target_fit_gate,
     target_profile_coverage_gate,
 )
+from microcosm.build.household_pass_reuse import (
+    HouseholdPassRecord,
+    HouseholdPassReuse,
+    record_household_pass,
+    reuse_household_pass,
+)
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.run_outcome import classify_failure
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
@@ -357,9 +363,13 @@ from microcosm.build.us_runtime.household_batches import (
     group_to_household_positions,
     household_batch_plan,
     household_position_batches,
+    one_pass_garbage_collection,
     record_engine_branches,
     refuse_batch_population_aggregates,
     select_households_by_position,
+)
+from microcosm.build.us_runtime.household_pass_inputs import (
+    us_household_pass_inputs,
 )
 from microcosm.build.us_runtime.input_mass import (
     us_input_mass_parity_gate,
@@ -4678,6 +4688,7 @@ def _with_medicaid_take_up_outputs(
     substitutions: Sequence[dict[str, object]] = (),
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    eligibility_recorder: Callable[[Frame, np.ndarray], None] | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Assign Medicaid take-up (microcosm #331) and return frame + diagnostics.
 
@@ -4686,6 +4697,8 @@ def _with_medicaid_take_up_outputs(
     they ride the take-up diagnostics so the gate can rot-check a backfilled
     substitution and the ``us_medicaid_take_up.json`` release artifact records
     exactly which states shipped a substituted point-in-time count.
+    ``eligibility_recorder``, when given, receives the frame and the
+    eligibility array computed on it, before the take-up assignment.
     """
     target_table = _medicaid_source_target_table(target_specs)
     if target_table.empty:
@@ -4699,6 +4712,8 @@ def _with_medicaid_take_up_outputs(
         simulation=simulation,
         maximum_microsim_batch_size=maximum_microsim_batch_size,
     )
+    if eligibility_recorder is not None:
+        eligibility_recorder(frame, eligibility)
     return with_us_medicaid_take_up(
         frame,
         is_medicaid_eligible=eligibility,
@@ -4709,6 +4724,150 @@ def _with_medicaid_take_up_outputs(
     )
 
 
+def _medicaid_claim_crossing(frame: Frame) -> str | None:
+    """Why ``frame``'s households are not independent for Medicaid, if they are not.
+
+    ``is_medicaid_eligible`` reads each person's claiming tax unit through
+    joins over every person in the simulation. A positive
+    ``medicaid_claiming_tax_unit_id`` that does not resolve within the
+    person's own household links two households, so neither can reuse a
+    value computed without the other.
+    """
+
+    try:
+        assert_medicaid_claiming_tax_units_local(frame, work="Medicaid eligibility")
+    except ValueError:
+        return (
+            "a positive medicaid_claiming_tax_unit_id does not resolve within "
+            "the person's own household"
+        )
+    return None
+
+
+def _household_pass_record(
+    frame: Frame,
+    values: np.ndarray,
+    *,
+    variable: str,
+    reuse_refused: str | None = None,
+) -> HouseholdPassRecord:
+    """Keep one pre-calibration pass of ``variable`` for reuse after calibration.
+
+    The record holds the values, the person IDs and a digest of each
+    household's rows over every column the installed policyengine-us can
+    read for ``variable`` (``us_household_pass_inputs``: its static
+    dependency graph plus the reads that graph does not follow); it holds no
+    frame.
+    """
+
+    from policyengine_us.system import system
+
+    inputs = us_household_pass_inputs(
+        variable,
+        metadata_index=_formula_owned_gate_adapter(),
+        system=system,
+    )
+    return record_household_pass(frame, values, inputs, reuse_refused=reuse_refused)
+
+
+def _reuse_household_pass(
+    record: HouseholdPassRecord,
+    frame: Frame,
+    *,
+    recompute: Callable[[Frame], np.ndarray],
+    maximum_microsim_batch_size: int | None,
+    description: str,
+    telemetry: _BuildProgress | None = None,
+    telemetry_stage: str = "take_up_final_diagnostics",
+    reuse_refused: str | None = None,
+) -> HouseholdPassReuse:
+    """The pass's values on ``frame``, running policyengine-us only where needed.
+
+    Households whose digest matches the record take their recorded values.
+    ``recompute`` runs the pass on the others, together with one batch of
+    unchanged households spread over the frame as a check, in selections of
+    one batch at most; if that check disagrees with the record, ``recompute``
+    runs on the whole frame (see
+    :func:`microcosm.build.household_pass_reuse.reuse_household_pass`). The
+    passes inside share one full garbage collection, as a full pass has.
+    With ``telemetry``, ``telemetry_stage`` is reported running before the
+    reuse and again with the counts after it; the counts are also printed.
+    No release file records them. ``reuse_refused`` (a reason) runs the whole
+    frame, as does a record made with one. Without a positive batch size the
+    reruns take one selection, as the unbatched pass does.
+    """
+
+    def report(message: str, **details: object) -> None:
+        if telemetry is None:
+            return
+        # Reporting only: a telemetry failure must not stop the build here
+        # or mask an earlier failure (microcosm#547).
+        try:
+            telemetry.stage(telemetry_stage, message=message, **details)
+        except Exception as error:
+            print(
+                f"WARNING: the {description} reuse report did not reach "
+                f"telemetry: {error}",
+                flush=True,
+            )
+
+    batched = (
+        maximum_microsim_batch_size is not None and maximum_microsim_batch_size > 0
+    )
+    checked_households = (
+        maximum_microsim_batch_size if batched else DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+    batch_households = maximum_microsim_batch_size if batched else frame.n("household")
+    report(
+        f"Reusing pre-calibration {description} for households whose inputs "
+        "are unchanged."
+    )
+    with one_pass_garbage_collection():
+        reuse = reuse_household_pass(
+            record,
+            frame,
+            recompute=recompute,
+            checked_household_count=checked_households,
+            batch_household_count=batch_households,
+            reuse_refused=reuse_refused,
+        )
+    total = reuse.reused_households + reuse.recomputed_households
+    if reuse.reuse_refused is not None:
+        message = (
+            f"{description} recomputed for all {total:,} households without "
+            f"reuse: {reuse.reuse_refused}."
+        )
+    elif reuse.check_failed:
+        message = (
+            f"WARNING: {description} recomputed for all {total:,} households. "
+            f"On {reuse.checked_households:,} households whose inputs did not "
+            "change, policyengine-us gave at least one person a value that "
+            "differs from the pre-calibration pass, so the input list misses "
+            f"something the engine reads ({record.inputs.description})."
+        )
+    else:
+        message = (
+            f"Reused pre-calibration {description} for "
+            f"{reuse.reused_households:,} of {total:,} households; ran "
+            f"policyengine-us on {reuse.recomputed_households:,} households "
+            f"whose inputs changed and on {reuse.checked_households:,} "
+            "unchanged households as a check."
+        )
+    print(message, flush=True)
+    report(
+        message,
+        household_pass_reuse={
+            "variable": record.inputs.variable,
+            "reused_households": reuse.reused_households,
+            "recomputed_households": reuse.recomputed_households,
+            "checked_households": reuse.checked_households,
+            "check_failed": reuse.check_failed,
+            "reuse_refused": reuse.reuse_refused,
+        },
+    )
+    return reuse
+
+
 def _medicaid_diagnostics_for_existing_output(
     frame: Frame,
     target_specs: tuple,
@@ -4716,18 +4875,30 @@ def _medicaid_diagnostics_for_existing_output(
     seed: int,
     substitutions: Sequence[dict[str, object]] = (),
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    eligibility: np.ndarray | None = None,
 ) -> dict[str, object]:
-    """Diagnose persisted Medicaid flags on actual release weights."""
+    """Diagnose persisted Medicaid flags on actual release weights.
+
+    ``eligibility`` is the person-aligned ``is_medicaid_eligible`` of
+    ``frame`` when the caller already has it (the post-calibration reuse of
+    the first pass); otherwise this runs the pass.
+    """
 
     target_table = _medicaid_source_target_table(target_specs)
     if target_table.empty:
         raise RuntimeError(
             "Final Medicaid take-up diagnostics require CMS state targets."
         )
-    eligibility = _medicaid_person_eligibility(
-        frame,
-        maximum_microsim_batch_size=maximum_microsim_batch_size,
-    )
+    if eligibility is None:
+        eligibility = _medicaid_person_eligibility(
+            frame,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+    elif np.shape(eligibility) != (frame.n("person"),):
+        raise ValueError(
+            "Final Medicaid eligibility must hold one value per export person: "
+            f"{frame.n('person')} people, shape {np.shape(eligibility)}."
+        )
     assigned = us_medicaid_source_person_table(
         frame,
         is_medicaid_eligible=eligibility,
@@ -17859,6 +18030,14 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         base_frame,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
     )
+    # The post-calibration measurement reuses these values for every
+    # household whose December SSI inputs are unchanged on the export frame.
+    # A dry run stops before calibration and needs no record.
+    ssi_pass_record = (
+        _household_pass_record(base_frame, ssi_uncapped_amount, variable="uncapped_ssi")
+        if dry_run is None
+        else None
+    )
     base_frame, ssi_take_up_stage_diagnostics = with_us_ssi_take_up(
         base_frame,
         uncapped_ssi=ssi_uncapped_amount,
@@ -18171,13 +18350,32 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
                 "state enrollment snapshots."
             ),
         )
+    # As for SSI, the post-calibration Medicaid diagnostics reuse this pass for
+    # households whose eligibility inputs are unchanged on the export frame.
+    medicaid_pass_records: list[HouseholdPassRecord] = []
     base_frame, medicaid_take_up_diagnostics = _with_medicaid_take_up_outputs(
         base_frame,
         target_specs,
         seed=args.seed,
         substitutions=medicaid_enrollment_substitutions,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+        eligibility_recorder=(
+            None
+            if dry_run is not None
+            else lambda frame, eligibility, records=medicaid_pass_records: (
+                records.append(
+                    _household_pass_record(
+                        frame,
+                        eligibility,
+                        variable="is_medicaid_eligible",
+                        reuse_refused=_medicaid_claim_crossing(frame),
+                    )
+                )
+            )
+        ),
     )
+    medicaid_pass_record = medicaid_pass_records[0] if medicaid_pass_records else None
+    del medicaid_pass_records
     medicaid_take_up_gate = shadow_gate(
         "us_national_medicaid_take_up",
         lambda: us_medicaid_take_up_gate(medicaid_take_up_diagnostics),
@@ -18940,10 +19138,21 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             weights="calibrated_household_weights",
         )
     compilation = dict(compilation)
-    final_uncapped_ssi = _ssi_person_uncapped_amount(
+    final_uncapped_ssi = _reuse_household_pass(
+        ssi_pass_record,
         export_frame,
+        # A rerun of only some households holds part of the population, so
+        # the population-aggregate refusal is on whatever its batch count.
+        recompute=lambda frame: _ssi_person_uncapped_amount(
+            frame,
+            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+            refuse_population_aggregates=None if frame is export_frame else True,
+        ),
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
-    )
+        description="December SSI candidate amounts",
+        telemetry=telemetry,
+    ).values
+    del ssi_pass_record
     ssi_take_up_diagnostics = dict(
         us_ssi_take_up_diagnostics(
             export_frame,
@@ -19026,17 +19235,38 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
         _final_medicaid_diagnostics_or_quarantine(
             ssi_law_degraded=ssi_law_degraded,
             degraded=bool(early_terminal_gate_failures),
-            evaluate=lambda: dict(
+            evaluate=lambda record=medicaid_pass_record: dict(
                 _medicaid_diagnostics_for_existing_output(
                     export_frame,
                     target_specs,
                     seed=args.seed,
                     substitutions=medicaid_enrollment_substitutions,
                     maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+                    eligibility=_reuse_household_pass(
+                        record,
+                        export_frame,
+                        recompute=lambda frame: _medicaid_person_eligibility(
+                            frame,
+                            maximum_microsim_batch_size=(
+                                args.maximum_microsim_batch_size
+                            ),
+                            refuse_population_aggregates=(
+                                None if frame is export_frame else True
+                            ),
+                        ),
+                        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+                        description="Medicaid eligibility",
+                        telemetry=telemetry,
+                        # A failed SSI delivery check closes the running
+                        # stage; the Medicaid measurement opens its own.
+                        telemetry_stage="medicaid_final_diagnostics",
+                        reuse_refused=_medicaid_claim_crossing(export_frame),
+                    ).values,
                 )
             ),
         )
     )
+    del medicaid_pass_record
     early_terminal_gate_failures.extend(medicaid_guard_failures)
     # Signal gates re-check the exported support: sparse selection can drop
     # rows, and a column nonconstant on the candidate base can flatten on the
