@@ -34,7 +34,7 @@ _PASSING_GATE = SimpleNamespace(passed=True, failures=(), details={})
 
 # One step for each branch of _run_outer_stage that loads the previous
 # checkpoint and writes a frame of its own, plus a second post-QRF step that
-# evaluates signal gates. final_export is left out: its result is its input.
+# evaluates signal gates. final_export is left out: it writes no frame.
 _FRAME_WRITING_STEPS = (
     "pre_clone_enrichment",
     "clone_feature_extraction",
@@ -45,7 +45,8 @@ _FRAME_WRITING_STEPS = (
     "wic_post_clone",
     "household_location_assignment",
 )
-# The steps whose result must keep the input's identity and row order.
+# One step for each branch whose result must keep the input's identity and
+# row order.
 _IDENTITY_KEEPING_STEPS = (
     "pre_clone_enrichment",
     "qrf_finalization",
@@ -124,9 +125,10 @@ def _with_person_ids_offset(frame: Frame) -> Frame:
 def _rewrite_input_person_ids_in_place(frame: Frame) -> Frame:
     """Change the input's person IDs in its own table, then build the result.
 
-    The result's identity equals the changed input's, so a check that hashes
-    the input again after the step finds nothing; only the identity recorded
-    when the input was loaded shows the change.
+    The result carries the changed IDs, and its identity equals the changed
+    input's, so a check that hashes the input again after the step finds
+    nothing; only the identity recorded when the input was loaded shows the
+    change.
     """
 
     person = frame.table("person")

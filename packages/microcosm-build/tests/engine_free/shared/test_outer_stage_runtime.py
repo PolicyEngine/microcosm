@@ -416,21 +416,31 @@ def test_expected_identity_check_needs_only_the_recorded_identity() -> None:
 
 
 def test_expected_identity_check_finds_input_ids_rewritten_in_place() -> None:
-    """A step that rewrites its input's IDs in place passes the two-frame check.
+    """Only the result is compared with the identity recorded before the step.
 
     ``assert_unchanged_identity`` hashes the input again after the step, so it
-    hashes the rewritten IDs; the identity recorded before the step does not
-    change with them.
+    hashes the input's rewritten IDs. A result that carries them passes that
+    check and fails the recorded one. A result built before the rewrite keeps
+    the recorded identity: the recorded check accepts it, and the two-frame
+    check refuses it although the result is unchanged.
     """
 
     original = _source_frame()
     recorded = frame_identity(original)
+    built_before_rewrite = _with_income(original, [4.0, 5.0, 6.0])
     original.table("person")["source_row_id"] = np.array([5, 6, 7], dtype=np.int32)
-    result = _with_income(original, [1.0, 2.0, 3.0])
+    carries_rewrite = _with_income(original, [1.0, 2.0, 3.0])
 
-    assert_unchanged_identity(original, result, stage="in_place")
+    assert_unchanged_identity(original, carries_rewrite, stage="in_place")
     with pytest.raises(AssertionError, match="stage 'in_place' changed"):
-        assert_expected_identity(recorded, result, stage="in_place")
+        assert_expected_identity(recorded, carries_rewrite, stage="in_place")
+
+    assert (
+        assert_expected_identity(recorded, built_before_rewrite, stage="in_place")
+        == recorded
+    )
+    with pytest.raises(AssertionError, match="stage 'in_place' changed"):
+        assert_unchanged_identity(original, built_before_rewrite, stage="in_place")
 
 
 def test_complete_refuses_a_frame_unlike_the_expected_identity_before_writing(

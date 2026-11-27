@@ -698,9 +698,11 @@ def assert_expected_identity(
 
     ``expected`` is typically the identity recorded when a stage's input was
     loaded, so the input frame need not be kept to check a non-clone
-    transform. Comparing with that record also refuses a stage that changed
-    its input's identity columns in place, which hashing the changed input
-    again would not.
+    transform. Only ``frame`` is compared with that record. So a stage that
+    rewrote its input's identity columns in place and carried the rewritten
+    values into its result is refused, which hashing the changed input again
+    would miss. A stage that rewrote its input but returns a result with the
+    recorded identity is accepted, since the result is what gets written.
     """
 
     if not isinstance(expected, FrameIdentity):
