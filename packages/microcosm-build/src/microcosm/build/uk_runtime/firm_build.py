@@ -107,6 +107,10 @@ from microcosm.build.uk_runtime.firm_paybill import (
     read_uk_firm_paybill_source,
     uk_firm_paybill_fallback_counts,
 )
+from microcosm.build.uk_runtime.firm_paybill_anchor import (
+    read_uk_firm_paybill_anchors,
+    uk_firm_paybill_anchor_ratios,
+)
 from microcosm.build.uk_runtime.firm_profit import (
     UK_FIRM_PROFIT_METHOD,
     UK_FIRM_PROFIT_STATUS,
@@ -143,7 +147,15 @@ from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_EA_RULE_CLAIMS_COLUMN,
     UK_FIRM_ENGLISH_REGION_CODES,
     to_policyengine_uk_firm_table,
+    uk_firm_sic_sections,
     validate_uk_firm_table,
+)
+from microcosm.build.uk_runtime.firm_vat_composition import (
+    UK_FIRM_VAT_COMPOSITION_STATUS,
+    add_uk_firm_vat_composition_columns,
+    read_uk_firm_vat_composition_source,
+    uk_firm_vat_relief_checks,
+    uk_firm_vat_section_shares,
 )
 
 #: policyengine-uk's 2024-25 annual secondary threshold: £175 a week
@@ -186,6 +198,10 @@ UK_FIRM_INPUT_DATA_YEARS: Mapping[str, str] = MappingProxyType(
         "voa_rating_list": "31 Mar 2026 (2023 list)",
         # ONS Supply and Use Tables, Blue Book 2026: calendar year 2024.
         "ons_supply_use": "2024",
+        # ONS Annual Business Survey 2024 results (VAT composition, section G).
+        "ons_abs": "2024",
+        # ONS D.11 wages and salaries, calendar 2024; PAYE RTI, 2024-25.
+        "paybill_anchor": "2024 (D.11); 2024-25 (PAYE RTI)",
     }
 )
 
@@ -234,6 +250,8 @@ def build_uk_firm_dataset(
     bpe_dir: str | Path | None = None,
     employment_allowance_takeup_dir: str | Path | None = None,
     consumption_dir: str | Path | None = None,
+    vat_composition_dir: str | Path | None = None,
+    paybill_anchor_dir: str | Path | None = None,
     bpe_mid_headcount: bool = False,
     out_of_frame_no_employees: bool = False,
     bpe_turnover: bool = False,
@@ -313,6 +331,8 @@ def build_uk_firm_dataset(
         ("bpe_dir", bpe_dir),
         ("employment_allowance_takeup_dir", employment_allowance_takeup_dir),
         ("consumption_dir", consumption_dir),
+        ("vat_composition_dir", vat_composition_dir),
+        ("paybill_anchor_dir", paybill_anchor_dir),
         ("rd_tax_credits_dir", rd_tax_credits_dir),
     ):
         if directory is not None and config.data_vintage != "2024-25":
@@ -322,6 +342,10 @@ def build_uk_firm_dataset(
             )
     if pay_distribution_dir is not None and paybill_dir is None:
         raise ValueError("pay_distribution_dir needs paybill_dir.")
+    if vat_composition_dir is not None and consumption_dir is None:
+        raise ValueError("vat_composition_dir needs consumption_dir.")
+    if paybill_anchor_dir is not None and paybill_dir is None:
+        raise ValueError("paybill_anchor_dir needs paybill_dir.")
     if bpe_dir is not None and paybill_dir is None:
         raise ValueError("bpe_dir needs paybill_dir.")
     if (
@@ -484,6 +508,17 @@ def build_uk_firm_dataset(
                 for column in UK_FIRM_CONSUMPTION_COLUMNS
             }
         )
+    vat_source = None
+    vat_shares = None
+    if vat_composition_dir is not None:
+        vat_source = read_uk_firm_vat_composition_source(
+            vat_composition_dir, consumption_dir
+        )
+        vat_shares = uk_firm_vat_section_shares(vat_source)
+        firms = add_uk_firm_vat_composition_columns(
+            firms.assign(firm_sic_section=uk_firm_sic_sections(firms["sic_code"])),
+            vat_shares,
+        ).drop(columns="firm_sic_section")
     takeup_source = None
     takeup = None
     if employment_allowance_takeup_dir is not None:
@@ -554,6 +589,8 @@ def build_uk_firm_dataset(
                     "hmrc_rd_statistics": rd_tax_credits_dir is not None,
                     "voa_rating_list": rateable_value_dir is not None,
                     "ons_supply_use": consumption_dir is not None,
+                    "ons_abs": vat_composition_dir is not None,
+                    "paybill_anchor": paybill_anchor_dir is not None,
                 }
             ),
         },
@@ -725,6 +762,36 @@ def build_uk_firm_dataset(
                 ).reset_index()
             ),
         }
+    if vat_source is not None:
+        receipt["inputs"]["vat_composition"] = dict(vat_source.sha256)
+        receipt["uk_firm_vat_composition"] = {
+            "status": UK_FIRM_VAT_COMPOSITION_STATUS,
+            "mode": "columns_only",
+            "method": (
+                "SIC section shares of standard-, reduced-, zero-rated and "
+                "exempt supplies, export share, input VAT rate and input ratio "
+                "from the ONS Supply and Use Tables 2024 read through the VAT "
+                "Act 1994 schedules (firm_vat_composition.py); attached as "
+                "Microcosm-only columns; no policyengine-uk input changes"
+            ),
+            "section_shares": _records(vat_shares.reset_index()),
+            # Checks only: modelled relief bases against HMRC tax relief
+            # statistics (January 2026) cost / rate; never targets.
+            "relief_checks": _records(
+                uk_firm_vat_relief_checks(vat_source)
+                .rename_axis("relief")
+                .reset_index()
+            ),
+        }
+    if paybill_anchor_dir is not None:
+        anchors = read_uk_firm_paybill_anchors(paybill_anchor_dir)
+        receipt["inputs"]["paybill_anchor"] = {"paybill_anchors.csv": anchors.sha256}
+        receipt["uk_firm_paybill_anchor"] = uk_firm_paybill_anchor_ratios(
+            table["firm_paybill"].to_numpy(np.float64),
+            table["firm_employees"].to_numpy(np.float64),
+            weight,
+            anchors,
+        )
     if takeup_source is not None:
         receipt["inputs"]["employment_allowance_takeup"] = dict(takeup_source.sha256)
         receipt["uk_firm_employment_allowance_takeup"] = {

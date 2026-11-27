@@ -95,6 +95,23 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--vat-composition-dir",
+        type=Path,
+        help=(
+            "directory holding the VAT composition fixture; adds Microcosm-only "
+            "SIC section shares of standard-, reduced-, zero-rated and exempt "
+            "supplies (columns only; needs --consumption-dir)"
+        ),
+    )
+    parser.add_argument(
+        "--paybill-anchor-dir",
+        type=Path,
+        help=(
+            "directory holding the ONS D.11 and PAYE RTI paybill anchors; "
+            "reports paybill over each in the receipt (needs --paybill-dir)"
+        ),
+    )
+    parser.add_argument(
         "--consumption-dir",
         type=Path,
         help=(
@@ -215,6 +232,8 @@ def main(argv: list[str] | None = None) -> int:
         bpe_dir=args.bpe_dir,
         employment_allowance_takeup_dir=args.employment_allowance_takeup_dir,
         consumption_dir=args.consumption_dir,
+        vat_composition_dir=args.vat_composition_dir,
+        paybill_anchor_dir=args.paybill_anchor_dir,
         bpe_mid_headcount=args.bpe_mid_headcount,
         out_of_frame_no_employees=args.out_of_frame_no_employees,
         bpe_turnover=args.bpe_turnover,

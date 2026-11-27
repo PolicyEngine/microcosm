@@ -672,6 +672,66 @@ def test_consumption_build_splits_turnover_only(builds, tmp_path: Path) -> None:
     assert "uk_firm_consumption" not in builds[0]["receipt"]
 
 
+def test_vat_composition_build_adds_share_columns_only(builds, tmp_path: Path) -> None:
+    consumption = _build(
+        tmp_path / "consumption", consumption_dir=FIXTURES / "firm_supply_use_2024"
+    )["table"]
+    built = _build(
+        tmp_path / "vat",
+        consumption_dir=FIXTURES / "firm_supply_use_2024",
+        vat_composition_dir=FIXTURES / "firm_vat_composition_2024",
+    )
+    table = built["table"]
+    assert tuple(table.columns) == uk_firm_table_columns(
+        ["attributes", "sic_division", "consumption", "vat_composition"]
+    )
+    validate_uk_firm_table(pd.read_parquet(built["table_path"]))
+    # Columns only: every column the build had without the group, weights and
+    # scored VAT inputs included, is unchanged.
+    pd.testing.assert_frame_equal(table[list(consumption.columns)], consumption)
+    shares = table[
+        [
+            "firm_sut_standard_rated_share",
+            "firm_sut_reduced_rated_share",
+            "firm_sut_zero_rated_share",
+            "firm_sut_exempt_share",
+        ]
+    ].sum(axis=1)
+    np.testing.assert_allclose(shares, 1.0, atol=1e-9)
+    record = built["receipt"]["uk_firm_vat_composition"]
+    assert record["status"] == "assumed" and record["mode"] == "columns_only"
+    assert {row["relief"] for row in record["relief_checks"]} >= {"NS7 food (zero)"}
+    assert built["receipt"]["data_years"]["ons_abs"] == "2024"
+    assert "uk_firm_vat_composition" not in builds[0]["receipt"]
+
+
+def test_vat_composition_needs_consumption_and_anchor_needs_paybill(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="vat_composition_dir needs consumption_dir"):
+        _build(
+            tmp_path / "a", vat_composition_dir=FIXTURES / "firm_vat_composition_2024"
+        )
+    with pytest.raises(ValueError, match="paybill_anchor_dir needs paybill_dir"):
+        _build(tmp_path / "b", paybill_anchor_dir=FIXTURES / "firm_paybill_anchor_2024")
+
+
+def test_paybill_anchor_is_reported_only(builds, tmp_path: Path) -> None:
+    paybill = FIXTURES / "firm_paybill_2024"
+    plain = _build(tmp_path / "plain", paybill_dir=paybill)
+    built = _build(
+        tmp_path / "anchor",
+        paybill_dir=paybill,
+        paybill_anchor_dir=FIXTURES / "firm_paybill_anchor_2024",
+    )
+    pd.testing.assert_frame_equal(built["table"], plain["table"])
+    record = built["receipt"]["uk_firm_paybill_anchor"]
+    assert record["status"] == "report_only"
+    weight = built["table"]["firm_weight"].to_numpy()
+    paybill_total = float((built["table"]["firm_paybill"].to_numpy() * weight).sum())
+    assert record["paybill_over_ons_d11"] == pytest.approx(paybill_total / 1_162_752e6)
+
+
 def test_mid_headcount_and_out_of_frame_switches(builds, tmp_path: Path) -> None:
     built = _build(
         tmp_path / "mid",
@@ -793,6 +853,7 @@ def test_labour_link_sources_need_their_prerequisites(tmp_path: Path) -> None:
     [
         ("bpe_dir", "firm_bpe_2025"),
         ("consumption_dir", "firm_supply_use_2024"),
+        ("paybill_anchor_dir", "firm_paybill_anchor_2024"),
         ("rd_tax_credits_dir", "firm_rd_tax_credits_2024_25"),
         ("employment_allowance_takeup_dir", "firm_employment_allowance_takeup_2024_25"),
         ("public_sector_dir", "firm_public_sector_2025"),

@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.firm_consumption import UKFirmSupplyUseSource
 from microcosm.build.uk_runtime.firm_vat_composition import (
     UK_FIRM_INPUT_RATIO_BOUNDS,
     UK_FIRM_VAT_COMPOSITION_FILES,
@@ -18,11 +19,13 @@ from microcosm.build.uk_runtime.firm_vat_composition import (
     UK_FIRM_VAT_SUPPLY_COLUMNS,
     UK_FIRM_VAT_TREATMENTS,
     UKFirmVATCompositionRules,
+    UKFirmVATCompositionSource,
     add_uk_firm_vat_composition_columns,
     compose_uk_firm_vat_supplies,
     read_uk_firm_vat_composition_source,
     rescale_uk_firm_input_costs,
     uk_firm_input_ratio_factors,
+    uk_firm_vat_product_shares,
     uk_firm_vat_relief_checks,
     uk_firm_vat_section_shares,
     uk_firm_vat_voluntary_registration,
@@ -99,7 +102,11 @@ def test_section_shares_are_shares_and_match_the_reviewed_values():
     assert shares.loc["D", "reduced"] == pytest.approx(0.2136, abs=1e-4)
     assert shares.loc["A", "zero"] == pytest.approx(0.8142, abs=1e-4)
     assert shares.loc["G", "input_ratio_target"] == pytest.approx(0.8612, abs=1e-4)
-    assert shares.loc["G", "input_vat_rate"] == pytest.approx(0.1462, abs=1e-4)
+    assert shares.loc["G", "input_vat_rate"] == pytest.approx(0.1669, abs=1e-4)
+    assert shares.loc["G", "standard"] == pytest.approx(0.6911, abs=1e-4)
+    # Exports of hotel and restaurant services are non-residents' spending here.
+    assert shares.loc["I", "standard"] == pytest.approx(1.0)
+    assert shares.loc["P", "zero"] == pytest.approx(0.0)
     assert shares.loc["O", "exempt"] == pytest.approx(0.9923, abs=1e-4)
 
 
@@ -231,12 +238,157 @@ def test_rules_hand_zero_and_reduced_supplies_to_policyengine_uk():
 
 
 def test_relief_checks_are_reported_not_targets():
-    checks = uk_firm_vat_relief_checks(_source())
-    assert checks.loc["NS7 food (zero)", "ratio"] == pytest.approx(1.044, abs=1e-3)
-    assert checks.loc[
-        "NS4 domestic fuel and power (reduced)", "ratio"
-    ] == pytest.approx(0.999, abs=1e-3)
-    assert checks.loc["NS6 prescription drugs (zero)", "model_base_gbp_bn"] == 0.0
+    checks = uk_firm_vat_relief_checks(_source())["ratio"].round(3).to_dict()
+    # Every ratio is pinned, the poor ones too; none is a target.
+    assert checks == {
+        "NS7 food (zero)": 1.044,
+        "NS1 printed matter (zero)": 1.563,
+        "NS2 children's clothing (zero)": 0.866,
+        "NS3 new dwellings (zero)": 0.892,
+        "NS4 domestic fuel and power (reduced)": 0.999,
+        "NS5 domestic passenger transport (zero)": 0.72,
+        "NS6 prescription drugs (zero)": 0.0,
+        "NS16 water and sewerage (zero)": 0.846,
+    }
+    costs = _source().relief_costs.set_index("code")["cost_2024_25_gbp_million"]
+    assert costs["VAT - NS7"] == 26300 and costs["VAT - NS16"] == 2900
+
+
+def _copy_fixture(tmp_path):
+    for name in (*UK_FIRM_VAT_COMPOSITION_FILES, "provenance.json"):
+        (tmp_path / name).write_bytes((FIXTURE / name).read_bytes())
+
+
+def _rewrite_treatment(tmp_path, edit):
+    path = tmp_path / "vat_product_treatment.csv"
+    table = pd.read_csv(path, dtype=str)
+    table = edit(table)
+    table.to_csv(path, index=False, lineterminator="\n")
+    provenance = json.loads((tmp_path / "provenance.json").read_text())
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    provenance["files"]["vat_product_treatment.csv"]["sha256"] = digest
+    (tmp_path / "provenance.json").write_text(json.dumps(provenance))
+
+
+def _set(column, value):
+    def edit(table):
+        table.loc[0, column] = value
+        return table
+
+    return edit
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (_set("user", "tourists"), "user must be"),
+        (_set("standard", "0.5"), "sum to 1"),
+        (_set("status", "guess"), "status"),
+        (lambda table: table.drop(index=0), "Every SUT product"),
+        (lambda table: pd.concat([table, table.iloc[[1]]]), "repeats"),
+    ],
+)
+def test_reader_refuses_a_malformed_treatment_table(tmp_path, edit, message):
+    _copy_fixture(tmp_path)
+    _rewrite_treatment(tmp_path, edit)
+    with pytest.raises(ValueError, match=message):
+        read_uk_firm_vat_composition_source(tmp_path, SUPPLY_USE)
+
+
+def _toy_source() -> UKFirmVATCompositionSource:
+    """Three products by hand: food (A), a service (M) and retail (G47)."""
+
+    uses = pd.DataFrame(
+        {
+            "intermediate_consumption": [20.0, 30.0, 0.0],
+            "households": [60.0, 10.0, 0.0],
+            "npish": 0.0,
+            "central_government": 0.0,
+            "local_government": 0.0,
+            "gfcf": 0.0,
+            "valuables": 0.0,
+            "changes_in_inventories": 0.0,
+            "exports": [20.0, 60.0, 0.0],
+            "total_demand": [100.0, 100.0, 0.0],
+            "domestic_output": [80.0, 100.0, 40.0],
+            "distributors_margins": [40.0, 0.0, -40.0],
+        },
+        index=pd.Index(["CPA_A01", "CPA_M70", "CPA_G47"], name="product_code"),
+    )
+    treatment = pd.DataFrame(
+        [
+            ("CPA_A01", "all", "0.25", "0", "0.75", "0", "toy", "assumed"),
+            ("CPA_M70", "all", "1", "0", "0", "0", "toy", "statute"),
+            ("CPA_G47", "all", "GOODS", "0", "GOODS", "0", "toy", "assumed"),
+        ],
+        columns=["product_code", "user", *UK_FIRM_VAT_TREATMENTS, "basis", "status"],
+    )
+    intermediate = pd.DataFrame(
+        {
+            "product_code": ["CPA_A01", "CPA_M70", "CPA_M70"],
+            "industry_product_code": ["CPA_M70", "CPA_M70", "CPA_A01"],
+            "value_gbp_million": [10.0, 30.0, 20.0],
+        }
+    )
+    divisions = pd.DataFrame(
+        {
+            "product_code": ["CPA_A01", "CPA_M70", "CPA_G47"],
+            "sic_division": [1, 70, 47],
+            "sic_section": ["A", "M", "G"],
+        }
+    )
+    supply_use = UKFirmSupplyUseSource(
+        uses=uses, hhfce=pd.DataFrame(), divisions=divisions, sha256={}
+    )
+    abs_turnover = pd.DataFrame(
+        {
+            "sic_section": ["G", "45", "46", "47"],
+            "turnover_gbp_million": [200.0, 0.0, 0.0, 200.0],
+        }
+    )
+    return UKFirmVATCompositionSource(
+        treatment=treatment,
+        intermediate=intermediate,
+        dwellings_gfcf_gbp_million=0.0,
+        abs_turnover=abs_turnover,
+        relief_costs=pd.DataFrame(),
+        supply_use=supply_use,
+        sha256={},
+    )
+
+
+def test_product_and_section_shares_by_hand():
+    source = _toy_source()
+    products = uk_firm_vat_product_shares(source)
+    # Food: 80 of 100 sold at home at 0.25/0.75, 20 exported zero-rated.
+    assert products.loc["CPA_A01", "zero"] == pytest.approx((80 * 0.75 + 20) / 100)
+    assert products.loc["CPA_A01", "export_share"] == pytest.approx(0.2)
+    # Service: 40 at home standard, 60 exported zero-rated.
+    assert products.loc["CPA_M70", "standard"] == pytest.approx(0.4)
+    # Retail resells household goods (food only here): the food household mix.
+    assert products.loc["CPA_G47", "zero"] == pytest.approx(0.75)
+    # Industry M70 buys 10 of food at 0.2 x 0.25 and 30 of M at 0.2.
+    assert products.loc["CPA_M70", "input_vat_rate"] == pytest.approx(
+        (10 * 0.05 + 30 * 0.2) / 40
+    )
+    assert products.loc["CPA_A01", "input_vat_rate"] == pytest.approx(0.2)
+    sections = uk_firm_vat_section_shares(source)
+    assert sections.loc["M", "input_ratio_target"] == pytest.approx(40 / 100)
+    # Section G: gross sales 200, margin 40, no IC, so the ratio is
+    # 1 - 40 / 200; goods resold are priced at food's business rate 0.2 x 0.25.
+    assert sections.loc["G", "input_ratio_target"] == pytest.approx(0.8)
+    assert sections.loc["G", "input_vat_rate"] == pytest.approx(0.05)
+
+
+def test_rescale_leaves_sections_without_a_target_alone():
+    turnover = np.array([100.0, 100.0, 0.0])
+    inputs = np.array([50.0, 5.0, 3.0])
+    new, factors = rescale_uk_firm_input_costs(
+        turnover, inputs, np.array(["G", "Z", "G"]), pd.Series({"G": 0.6})
+    )
+    assert new[0] == pytest.approx(60.0)
+    assert new[1] == 5.0 and new[2] == 3.0
+    assert factors["Z"]["rescaled"] == 0.0
 
 
 def test_columns_only_mode_adds_shares_and_leaves_scored_columns_alone():

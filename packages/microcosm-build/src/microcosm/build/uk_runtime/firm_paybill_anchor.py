@@ -14,7 +14,7 @@ totals that do not depend on ASHE:
 employees by them. The ratios are reported, never used as a target or a
 guard. Neither anchor is the firm table's concept: both include employees of
 every employer (the firm table's public sector is partial), D.11 includes
-wages in kind, and RTI counts jobs held at any point in a month.
+wages in kind, and the RTI count is of payrolled employees (persons) in each month, averaged.
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def uk_firm_paybill_anchor_ratios(
     employees: np.ndarray,
     weight: np.ndarray,
     anchors: UKFirmPaybillAnchors,
-) -> dict[str, float]:
+) -> dict[str, float | str]:
     """Weighted paybill and employees over each anchor (report-only)."""
 
     weight = np.asarray(weight, np.float64)

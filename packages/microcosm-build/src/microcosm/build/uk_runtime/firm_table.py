@@ -80,6 +80,13 @@ The groups today:
   ONS Supply and Use Tables 2024 (``firm_consumption.py``), the linkage keys
   for a consumption match with household data. They sum to
   ``firm_turnover``. It extends ``attributes`` and ``sic_division``.
+- ``vat_composition``: Microcosm-only ``firm_sut_*`` columns, the firm's
+  SIC section's standard-, reduced-, zero-rated and exempt shares of
+  turnover, export share, input VAT rate and input ratio from the Supply and
+  Use Tables 2024 read through the VAT Act 1994 schedules
+  (``firm_vat_composition.py``). Columns only: no policyengine-uk input
+  changes, so VAT is still scored on all-standard-rated supplies. It
+  extends ``attributes``.
 
 ``UK_FIRM_POLICYENGINE_UK_INPUT_STATUS`` records, for every formula-less
 policyengine-uk firm input, whether the fullest table (every group) sets it.
@@ -107,6 +114,9 @@ from microcosm.build.uk_runtime.firm_employment_allowance import (
 from microcosm.build.uk_runtime.firm_headcount import (
     uk_firm_employee_size_bands,
     uk_firm_employees,
+)
+from microcosm.build.uk_runtime.firm_vat_composition import (
+    UK_FIRM_VAT_COMPOSITION_SHARE_COLUMNS,
 )
 from microcosm.build.uk_runtime.occupation_constants import (
     UK_SIC2007_SECTION_DIVISIONS,
@@ -786,6 +796,34 @@ def _consumption_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
     }
 
 
+UK_FIRM_VAT_COMPOSITION_COLUMNS = tuple(UK_FIRM_VAT_COMPOSITION_SHARE_COLUMNS.values())
+_UK_FIRM_VAT_SUPPLY_SHARE_COLUMNS = tuple(
+    UK_FIRM_VAT_COMPOSITION_SHARE_COLUMNS[k]
+    for k in ("standard", "reduced", "zero", "exempt")
+)
+
+
+def _vat_composition_group_columns(ordered: pd.DataFrame) -> dict[str, np.ndarray]:
+    return {
+        column: ordered[column].to_numpy(np.float64)
+        for column in UK_FIRM_VAT_COMPOSITION_COLUMNS
+    }
+
+
+def _validate_vat_composition_columns(df: pd.DataFrame) -> None:
+    for column in UK_FIRM_VAT_COMPOSITION_COLUMNS:
+        values = df[column].to_numpy(np.float64)
+        if not np.all(np.isfinite(values)) or np.any(values < 0) or np.any(values > 1):
+            raise ValueError(f"UK firm {column} must be a share in [0, 1].")
+    total = sum(df[c].to_numpy(np.float64) for c in _UK_FIRM_VAT_SUPPLY_SHARE_COLUMNS)
+    if not np.allclose(total, 1.0, rtol=0, atol=1e-9):
+        raise ValueError("UK firm VAT composition supply shares must sum to 1.")
+    sections = df["firm_sic_section"].astype(str)
+    for column in UK_FIRM_VAT_COMPOSITION_COLUMNS:
+        if (df.groupby(sections)[column].nunique() > 1).any():
+            raise ValueError(f"UK firm {column} must be uniform within a SIC section.")
+
+
 def _validate_consumption_columns(df: pd.DataFrame) -> None:
     turnover = df["firm_turnover"].to_numpy(np.float64)
     parts = [df[column].to_numpy(np.float64) for column in UK_FIRM_CONSUMPTION_COLUMNS]
@@ -968,6 +1006,15 @@ UK_FIRM_EXPORT_GROUPS: tuple[UKFirmExportGroup, ...] = (
         requires=("attributes", "sic_division"),
         columns=_consumption_group_columns,
         validate=_validate_consumption_columns,
+    ),
+    UKFirmExportGroup(
+        name="vat_composition",
+        source_columns=UK_FIRM_VAT_COMPOSITION_COLUMNS,
+        policyengine_uk_columns=(),
+        microcosm_columns=UK_FIRM_VAT_COMPOSITION_COLUMNS,
+        requires=("attributes",),
+        columns=_vat_composition_group_columns,
+        validate=_validate_vat_composition_columns,
     ),
 )
 
