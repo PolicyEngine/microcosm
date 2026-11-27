@@ -934,10 +934,10 @@ def test_the_command_refuses_a_repository_that_has_not_switched_without_advising
     hub_listing: HubListing,
     promote: bool,
 ) -> None:
-    """Before its switch a repository has no releases.json, the loader
-    follows its pointer files and the switch reads them to choose each
-    release's current build, so the refusal says the repository has not
-    switched and does not advise removing them."""
+    """Before its switch a repository has no releases.json and the loader
+    follows its pointer files, so the refusal says the repository has not
+    switched and does not advise removing them. Microcosm no longer has the
+    one-time switch tool, so the refusal names no tool and no step to run."""
     started, repository = _start_emitters(monkeypatch)
     hub_listing.files.extend(["README.md", "latest.json", "latest-national.json"])
     argv = (
@@ -953,7 +953,11 @@ def test_the_command_refuses_a_repository_that_has_not_switched_without_advising
     assert output is None
     assert "has not switched to releases.json" in error
     assert "latest-national.json" in error
-    assert "microcosm.build.build_folder_switch" in error
+    assert "python -m" not in error
+    assert "microcosm.build." not in error
+    assert "`copy`" not in error and "`switch`" not in error
+    assert "--write" not in error
+    assert "keep the files in place" in error
     assert "remove" not in error
     assert repository == {}
 

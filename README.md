@@ -741,101 +741,26 @@ of an ACS local-area build publishes into `microcosm-us-2024-local-annual`,
 carrying its base local build's files
 ([the local projection guide](docs/us-local-annual-projection.md)).
 
-**The switch.** `microcosm.build.build_folder_switch` moves a repository over,
-once, in two steps, and a third step later deletes what the old layout left
-on `main`. Each step only reads the repository and prints, as JSON, what it
-would do, unless given `--write`:
-
-```bash
-# 1. Copy each tagged build, and each untagged folder --include-untagged
-#    names, into its folder, one commit per build; run it again later to
-#    copy builds published since. Hugging Face copies the large (LFS) files
-#    on its own servers.
-uv run python -m microcosm.build.build_folder_switch copy <owner/repository> \
-  [--include <tag>=<release>] [--exclude <tag>] \
-  [--include-untagged <folder>=<release>] [--write]
-# 2. In one commit, write releases.json and delete every latest*.json file.
-uv run python -m microcosm.build.build_folder_switch switch <owner/repository> \
-  [--include <tag>=<release>] [--exclude <tag>] \
-  [--include-untagged <folder>=<release>] [--retire-pointer <latest file>] [--current <release>=<build>] \
-  [--default <release>] [--finished-branch <release-staging/ branch>] [--write]
-# 3. Later, in one commit, delete the old layout's files from main.
-uv run python -m microcosm.build.build_folder_switch delete-old-layout \
-  <owner/repository> [--write]
-```
-
-Run the switch step only while nobody publishes to the repository, and give
-it the same `--include`, `--exclude` and `--include-untagged` options as the
-copy step.
-
-The copy step moves every tag of a release that publishes into build folders
-whose manifest names that tag, and each release-per-build tag that
-`--include` names (the June 2023 UK release, or a US release), and refuses a
-build any of whose files does not match its manifest, or whose release, build
-or role the emitter interface refuses; it reports both without `--write`. It
-also copies the files a build's checksum ledger records but its manifest
-doesn't declare (each US ACS local-area build has six), checked against the
-ledger, and a manifest that declares its own `build_manifest.json` (the US
-SPM builds') declares the rewritten one.
-
-A build with no tag, as BE's builds are stored, is an untagged folder
-`releases/<folder>/` on `main` holding its files directly, and moves only
-when `--include-untagged <folder>=<release>` names it; its build is then
-`<folder>`. The copy step copies every file the folder holds from the commit
-that last changed it, and rewrites the two manifests as for a tagged build.
-The release manifest's `artifacts` then lists exactly the files the folder
-holds besides the manifests, and keeps the map it had, which may declare
-files of the builder's output directory that the folder doesn't hold,
-unchanged as `unpublished_artifacts`. Its `migrated_from` names the old
-folder, that commit and the old manifest's SHA-256, and the build's
-`published_at` is that commit's date. The copy step refuses a folder that is
-also a tag, a release named like a folder `--include-untagged` moves, a
-folder holding a checksum ledger, a subfolder or nothing but its manifests,
-two files whose names give one artifact name, a folder from which a file was
-deleted after the commit that last changed the files it holds, and a
-manifest with no `build` object, whose `build.build_id` is not the folder's
-name or that names a tag (`build.cut_tag`). A `latest.json` with no `revision` names such a folder by its
-`release_id`, and its build becomes current.
-
-The switch refuses unless every such build's folder holds exactly its copied
-files, every pointer file's build moves or `--retire-pointer` deletes that
-pointer file, no other build folder is on `main`, the repository's tags did
-not change while it read them, no `release-staging/` branch shows a tagged
-publication in progress, and the emitter interface's checks pass. A
-`release-staging/` branch that a finished publication left behind is
-accepted when `--finished-branch` names it, its build is tagged and the commit
-it names is on `main`; the branch stays where it is. The publisher makes no
-branch for a build that is already tagged, but one older than 2026-09-23
-(`7053b9173`) did when retrying such a build, which looks the same while it
-runs (the US leftover branch is one), so name a branch only while nobody
-publishes. Each build keeps the date of its
-tagged commit as `published_at` (an untagged build, the date of the commit
-that last changed its old folder), and each pointer file's build becomes its
-release's current build.
-
-After the switch, `main` still holds the tagged layout's files: those each
-tagged build overwrote directly in `releases/<release>/`, each
-release-per-build tag's `releases/<tag>/` folder (every US build, the June
-2023 UK build and builds the switch did not move), each untagged folder
-`releases/<folder>/` (BE's builds), and the dataset files
-(`.h5`, `.hdf5`, `.npz`) at the repository's root. The `delete-old-layout`
-step deletes all of them in one commit, so build folders and `releases.json`
-are the only layout. It keeps `releases.json`, every build folder it lists,
-the other root files (`.gitattributes`, `README.md`) and every directory
-outside `releases/`, such as the UK repository's `staged/`. It refuses a
-repository without `releases.json` or with a `latest*.json` file, and a build
-folder `releases.json` does not list, which it never deletes. It runs the
-emitter interface's repository check on what remains, and takes none of the
-other steps' options. Every tagged build stays readable at its tag, which is
-where Microcosm's tag references read it, and every deleted file stays in
-`main`'s history at the head the report names; the report lists any deleted
-release-per-build or untagged folder that no tag names (`untagged_folders`). Anything
-that reads those paths from `main` stops finding them, so run it only once
-nothing does (the example notebook reads the US dataset through
-`releases.json`).
-The commit removes the files from `main` only: their large (LFS) objects stay
-in the repository's history. A second run finds nothing to delete. The
-module's docstring describes all three steps in full.
+**The switch.** The US, UK and BE repositories each moved once to build
+folders, with a one-time tool: the US and UK repositories' builds from tags,
+BE's from untagged folders on `main`, and all three from `latest*.json`
+pointer files. It copied each build it moved into its folder, then in one
+commit wrote `releases.json` and deleted every pointer file, and later
+deleted the old layout's files from `main`: the files each tagged build
+overwrote directly in
+`releases/<release>/`, each release-per-build or untagged folder
+`releases/<folder>/`, and the dataset files (`.h5`, `.hdf5`, `.npz`) at the
+repository's root. The tool was removed once BE had moved; its last version
+is in Git history at `d3b7f4b4a`. Build folders and `releases.json` are now
+the only layout on each repository's `main`. Every tagged build stays
+readable at its tag, which is where Microcosm's tag references read it, and
+every deleted file stays in `main`'s history, with its large (LFS) objects.
+A moved build's release manifest names where it came from in
+`migrated_from`: its tag, or BE's old untagged folder, with the commit it
+was copied from and the SHA-256 of the manifest it was rewritten from. A
+moved BE build's folder holds no dataset; its manifest lists the files the
+folder holds and keeps its old `artifacts` map as `unpublished_artifacts`
+([the release contract](docs/release-contract.md), C1).
 
 `microcosm-publish-release-build` publishes only the two manifests, the
 artifacts the release manifest declares and the checksum ledger. The US

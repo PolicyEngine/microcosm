@@ -1,8 +1,8 @@
 """The example notebooks read published datasets the way the loader does.
 
-The switch tool's ``delete-old-layout`` step deletes the dataset files at a
-dataset repository's root, so an example that downloads one from ``main``
-stops working once it has run. Every ``hf_hub_download`` call in an example
+The switch tool's ``delete-old-layout`` step deleted the dataset files at
+each dataset repository's root, so an example that downloads one from
+``main`` no longer works. Every ``hf_hub_download`` call in an example
 names ``releases.json`` or a file inside ``releases/``.
 """
 

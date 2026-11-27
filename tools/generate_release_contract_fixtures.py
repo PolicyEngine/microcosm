@@ -35,10 +35,10 @@ holds its rules. The generator builds each record from three sources:
 1. ``add_build`` with ``make_current=False``, the interface's change for a
    publication;
 2. ``make_current``, the interface's change for a promotion;
-3. ``dataclasses.replace(record, default=...)``, the step
-   ``microcosm.build.build_folder_switch._switch_record`` takes to set
-   ``default``. The interface has no function that sets it. Both goldens name
-   the national release as the default.
+3. ``dataclasses.replace(record, default=...)``, the step the one-time switch
+   tool took to set ``default`` when it wrote each repository's first record.
+   The interface has no function that sets it. Both goldens name the national
+   release as the default.
 
 ``ReleasesRecord.serialize`` then gives the bytes.
 

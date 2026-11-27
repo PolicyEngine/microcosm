@@ -40,7 +40,7 @@ class DatasetSpec:
             ``"populace_us_2024.h5"``: the name a tagged build's manifest
             declares, and the file the repository's root held in the tagged
             layout, which the switch tool's ``delete-old-layout`` step
-            deletes.
+            deleted.
         build_folder_filename: The dataset file name new builds of
             ``release`` declare, when it differs from ``filename``: the US
             national release's builds declare ``microcosm_us_2024.h5``,

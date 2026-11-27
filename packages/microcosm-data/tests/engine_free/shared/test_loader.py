@@ -664,6 +664,26 @@ def test_download_certified_returns_the_current_builds_record(
     assert certified.model.built_version == "2.89.2"
 
 
+def test_download_certified_reads_a_moved_builds_manifest(tmp_path: Path) -> None:
+    """The UK and US builds the one-time switch tool moved from their tags
+    into folders carry ``migrated_from``, naming the tag, its commit and the
+    old manifest's SHA-256. The loader certifies them as it does any build in
+    a folder."""
+    manifest = _uk_build_folder_manifest()
+    manifest["migrated_from"] = {
+        "tag": "neutral-release-20000101T000000Z-00000000",
+        "commit": "0" * 40,
+        "release_manifest_sha256": "1" * 64,
+    }
+    hub = _build_folder_hub(tmp_path, manifest=manifest)
+
+    path, certified = loader.download_certified("uk", 2025, hub_download=hub)
+
+    assert path.read_bytes() == UK_TAGGED_ARTIFACT
+    assert certified.build == UK_NATIONAL_BUILD
+    assert certified.artifact_sha256 == hashlib.sha256(UK_TAGGED_ARTIFACT).hexdigest()
+
+
 def _declare_build_file(
     hub: FakeHubDownload,
     tmp_path: Path,
