@@ -560,6 +560,18 @@ one Microsimulation over the whole file.
     the shared pass's values is still served. Each of these is a
     `WorkerPoolError` and stops certification, the held-out reports included,
     where the serial scorer, which has no memory cap, may have finished.
+  - The smoke's reform units are the first reform units in the second run, so
+    its result is known before reform validation's units are due. Workers
+    still run ahead of the stages, by up to twice the worker count of units,
+    so reform validation's first units start while the smoke's last are
+    running. Any error that stops certification during scoring (the smoke's
+    refusal at the certified tier, an evidence-tier failure with no owner, a
+    stage's own error, a SIGTERM) closes the scorer before the error is
+    raised: the workers stop at once, those still running a unit are killed,
+    and the batch files are removed. An error from closing is printed and the
+    first error raised. A failed smoke that certification goes on past (the
+    allow option, or an evidence failure with an owner) cancels nothing. The
+    serial scorer is closed the same way.
   - Each stage then runs as in the serial path and builds its own reforms (the
     smoke records each list edit's resolved lists from its own). Its baseline
     is served its recorded plan, and each reformed simulation its recorded

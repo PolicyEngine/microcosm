@@ -6604,6 +6604,26 @@ def _close_post_export_scorer(
     return scorer.dataset_sha256
 
 
+def _close_post_export_scorer_after_error(
+    scorer: _HouseholdBatchedPostExportScorer | None,
+) -> None:
+    """Close the scorer after an error that stops certification.
+
+    A pooled scorer stops its workers, killing those still running a unit,
+    and every scorer removes its batch files. An error from closing is
+    printed, not raised, so the error that stopped certification is the one
+    raised.
+    """
+    try:
+        _close_post_export_scorer(scorer)
+    except Exception as close_error:
+        print(
+            "warning: could not close the post-export scorer after an error: "
+            f"{type(close_error).__name__}: {close_error}",
+            file=sys.stderr,
+        )
+
+
 class _PostExportConsumer:
     """One consumer's simulate seam over a scored baseline plan."""
 
@@ -21312,163 +21332,182 @@ def _certify_us_build(
         batch_parent=record.release_root / US_POST_EXPORT_BATCH_DIRECTORY,
         pooling=post_export_pooling,
     )
-    # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
-    # gate above proves the required keys exist and carry signal; this is the
-    # end-to-end backstop: each pinned probe (first: SSI asset limits at
-    # $10k/$20k) mechanically binds through named input leaves and must move
-    # its budget measure. A ~$0 score on a bound reform means those leaves are
-    # absent or degenerate — the release aborts before any manifest or
-    # contract file certifies the artifact. Runs on both dense and sparse
-    # default paths (both reach this line). Until the asset stage is restored
-    # (Deliverable 2) the SSI probe fails by design; that is the gate working.
-    if not args.skip_reform_coverage_smoke:
-        if telemetry is not None:
-            telemetry.stage(
-                "reform_coverage_smoke",
-                message="Scoring pinned bound-reform probes on the written H5.",
-            )
-        smoke_scoring = post_export_scorer.open_consumer(
-            "reform_coverage_smoke",
-            post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
-            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
-                "reform_coverage_smoke"
-            ),
-        )
-        reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
-            simulate=smoke_scoring.simulate,
-            period=PERIOD,
-        )
-        smoke_scoring_record = post_export_scorer.finish_consumer(smoke_scoring)
-        reform_coverage_smoke_path = release_dir / "reform_coverage_smoke.json"
-        reform_coverage_smoke_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "enforced": not args.allow_reform_coverage_smoke_failures,
-                    "reform_coverage_smoke": {
-                        "passed": reform_coverage_smoke_gate.passed,
-                        "failures": list(reform_coverage_smoke_gate.failures),
-                        "details": dict(reform_coverage_smoke_gate.details),
-                    },
-                    "post_export_scoring": smoke_scoring_record,
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n"
-        )
-        # The smoke's record is written; free its reform results before reform
-        # validation runs. Its baseline values stay with the scorer only while
-        # a consumer still to be served planned them.
-        del smoke_scoring
-        if telemetry is not None:
-            telemetry.attach_artifact(
-                "reform_coverage_smoke", reform_coverage_smoke_path
-            )
-        if (
-            not reform_coverage_smoke_gate.passed
-            and not args.allow_reform_coverage_smoke_failures
-        ):
+    # Any error from here until the scorer closes stops certification. Close
+    # the scorer first, so a pooled scorer's workers stop at once, the units
+    # they had started included, instead of running until the process exits,
+    # and its batch files are removed; then raise the error (tracker task
+    # 1.4 · 8). The reform-coverage smoke's units are the first reform units
+    # the pool runs, so its refusal stops the reform-validation units that
+    # had already started.
+    try:
+        # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
+        # gate above proves the required keys exist and carry signal; this is the
+        # end-to-end backstop: each pinned probe (first: SSI asset limits at
+        # $10k/$20k) mechanically binds through named input leaves and must move
+        # its budget measure. A ~$0 score on a bound reform means those leaves are
+        # absent or degenerate — the release aborts before any manifest or
+        # contract file certifies the artifact. Runs on both dense and sparse
+        # default paths (both reach this line). Until the asset stage is restored
+        # (Deliverable 2) the SSI probe fails by design; that is the gate working.
+        if not args.skip_reform_coverage_smoke:
             if telemetry is not None:
                 telemetry.stage(
                     "reform_coverage_smoke",
-                    status="failed",
-                    message="Reform-coverage smoke gate failed.",
-                    failures=list(reform_coverage_smoke_gate.failures),
+                    message="Scoring pinned bound-reform probes on the written H5.",
                 )
-            smoke_failures = [
-                f"Reform coverage smoke failed: {failure}"
-                for failure in reform_coverage_smoke_gate.failures
-            ]
-            if not args.evidence_release:
-                raise RuntimeError("Release gates failed: " + "; ".join(smoke_failures))
-            # Evidence tier: the smoke verdict joins the recorded terminal
-            # set (owner-checked immediately, so an unowned failure aborts
-            # before further export work).
-            terminal_gate_failures.extend(smoke_failures)
-            _evidence_known_failures(
-                terminal_gate_failures, evidence_failure_owner_patterns
+            smoke_scoring = post_export_scorer.open_consumer(
+                "reform_coverage_smoke",
+                post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
+                planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                    "reform_coverage_smoke"
+                ),
             )
-    if not args.skip_reform_validation:
+            reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
+                simulate=smoke_scoring.simulate,
+                period=PERIOD,
+            )
+            smoke_scoring_record = post_export_scorer.finish_consumer(smoke_scoring)
+            reform_coverage_smoke_path = release_dir / "reform_coverage_smoke.json"
+            reform_coverage_smoke_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "enforced": not args.allow_reform_coverage_smoke_failures,
+                        "reform_coverage_smoke": {
+                            "passed": reform_coverage_smoke_gate.passed,
+                            "failures": list(reform_coverage_smoke_gate.failures),
+                            "details": dict(reform_coverage_smoke_gate.details),
+                        },
+                        "post_export_scoring": smoke_scoring_record,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+            # The smoke's record is written; free its reform results before reform
+            # validation runs. Its baseline values stay with the scorer only while
+            # a consumer still to be served planned them.
+            del smoke_scoring
+            if telemetry is not None:
+                telemetry.attach_artifact(
+                    "reform_coverage_smoke", reform_coverage_smoke_path
+                )
+            if (
+                not reform_coverage_smoke_gate.passed
+                and not args.allow_reform_coverage_smoke_failures
+            ):
+                if telemetry is not None:
+                    telemetry.stage(
+                        "reform_coverage_smoke",
+                        status="failed",
+                        message="Reform-coverage smoke gate failed.",
+                        failures=list(reform_coverage_smoke_gate.failures),
+                    )
+                smoke_failures = [
+                    f"Reform coverage smoke failed: {failure}"
+                    for failure in reform_coverage_smoke_gate.failures
+                ]
+                if not args.evidence_release:
+                    raise RuntimeError(
+                        "Release gates failed: " + "; ".join(smoke_failures)
+                    )
+                # Evidence tier: the smoke verdict joins the recorded terminal
+                # set (owner-checked immediately, so an unowned failure aborts
+                # before further export work).
+                terminal_gate_failures.extend(smoke_failures)
+                _evidence_known_failures(
+                    terminal_gate_failures, evidence_failure_owner_patterns
+                )
+        if not args.skip_reform_validation:
+            if telemetry is not None:
+                telemetry.stage(
+                    "reform_validation",
+                    message="Writing reform validation diagnostics.",
+                )
+            _write_reform_validation(
+                release_dir=release_dir,
+                dataset_path=dataset_path,
+                result=result,
+                registry=registry,
+                release_id=release_id,
+                simulate_out_of_sample=not args.skip_out_of_sample_reforms,
+                post_export_scorer=post_export_scorer,
+                baseline_plan=(
+                    None
+                    if args.skip_out_of_sample_reforms
+                    else post_export_scoring_plan.baseline_plan("reform_validation")
+                ),
+                planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
+                    "reform_validation"
+                ),
+            )
+            if telemetry is not None:
+                telemetry.attach_artifact(
+                    "reform_validation",
+                    release_dir / "reform_validation.json",
+                )
+
+        if not args.skip_demographics:
+            if telemetry is not None:
+                telemetry.stage(
+                    "demographics", message="Writing demographics diagnostics."
+                )
+            _write_demographics(
+                release_dir=release_dir,
+                dataset_path=dataset_path,
+                release_id=release_id,
+                post_export_scorer=post_export_scorer,
+                baseline_plan=post_export_scoring_plan.baseline_plan("demographics"),
+            )
+            if telemetry is not None:
+                telemetry.attach_artifact(
+                    "demographics", release_dir / "demographics.json"
+                )
         if telemetry is not None:
             telemetry.stage(
-                "reform_validation",
-                message="Writing reform validation diagnostics.",
+                "ssi_social_security_holdout",
+                message="Writing held-out SSI/Social Security receipt overlap.",
             )
-        _write_reform_validation(
+        _write_ssi_social_security_holdout(
             release_dir=release_dir,
             dataset_path=dataset_path,
-            result=result,
-            registry=registry,
             release_id=release_id,
-            simulate_out_of_sample=not args.skip_out_of_sample_reforms,
             post_export_scorer=post_export_scorer,
-            baseline_plan=(
-                None
-                if args.skip_out_of_sample_reforms
-                else post_export_scoring_plan.baseline_plan("reform_validation")
-            ),
-            planned_reform_passes=post_export_scoring_plan.planned_reform_passes(
-                "reform_validation"
+            baseline_plan=post_export_scoring_plan.baseline_plan(
+                "ssi_social_security_holdout"
             ),
         )
         if telemetry is not None:
             telemetry.attach_artifact(
-                "reform_validation",
-                release_dir / "reform_validation.json",
+                "us_ssi_social_security_holdout",
+                release_dir / "us_ssi_social_security_holdout.json",
             )
-
-    if not args.skip_demographics:
-        if telemetry is not None:
-            telemetry.stage("demographics", message="Writing demographics diagnostics.")
-        _write_demographics(
+            telemetry.stage(
+                "medicare_irmaa_holdout",
+                message="Writing held-out Medicare IRMAA payers and premiums.",
+            )
+        _write_medicare_irmaa_holdout(
             release_dir=release_dir,
             dataset_path=dataset_path,
             release_id=release_id,
             post_export_scorer=post_export_scorer,
-            baseline_plan=post_export_scoring_plan.baseline_plan("demographics"),
+            baseline_plan=post_export_scoring_plan.baseline_plan(
+                "medicare_irmaa_holdout"
+            ),
         )
         if telemetry is not None:
-            telemetry.attach_artifact("demographics", release_dir / "demographics.json")
-    if telemetry is not None:
-        telemetry.stage(
-            "ssi_social_security_holdout",
-            message="Writing held-out SSI/Social Security receipt overlap.",
-        )
-    _write_ssi_social_security_holdout(
-        release_dir=release_dir,
-        dataset_path=dataset_path,
-        release_id=release_id,
-        post_export_scorer=post_export_scorer,
-        baseline_plan=post_export_scoring_plan.baseline_plan(
-            "ssi_social_security_holdout"
-        ),
-    )
-    if telemetry is not None:
-        telemetry.attach_artifact(
-            "us_ssi_social_security_holdout",
-            release_dir / "us_ssi_social_security_holdout.json",
-        )
-        telemetry.stage(
-            "medicare_irmaa_holdout",
-            message="Writing held-out Medicare IRMAA payers and premiums.",
-        )
-    _write_medicare_irmaa_holdout(
-        release_dir=release_dir,
-        dataset_path=dataset_path,
-        release_id=release_id,
-        post_export_scorer=post_export_scorer,
-        baseline_plan=post_export_scoring_plan.baseline_plan("medicare_irmaa_holdout"),
-    )
-    if telemetry is not None:
-        telemetry.attach_artifact(
-            "us_medicare_irmaa_holdout",
-            release_dir / "us_medicare_irmaa_holdout.json",
-        )
-    # Every post-export engine stage has run; remove the scorer's batch files.
-    # The manifest must pin the bytes those stages scored, and both manifests
-    # carry how they were scored (Route A remediation PR-3).
-    post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
+            telemetry.attach_artifact(
+                "us_medicare_irmaa_holdout",
+                release_dir / "us_medicare_irmaa_holdout.json",
+            )
+        # Every post-export engine stage has run; remove the scorer's batch files.
+        # The manifest must pin the bytes those stages scored, and both manifests
+        # carry how they were scored (Route A remediation PR-3).
+        post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
+    except BaseException:
+        _close_post_export_scorer_after_error(post_export_scorer)
+        raise
     scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
     post_export_scorer = None
     # Reads the written H5 without an engine, after the scorer has closed,
