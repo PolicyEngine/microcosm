@@ -5937,6 +5937,18 @@ def _reform_validation_consumer(
     return payload_for
 
 
+def _post_export_holdout_consumers() -> dict[
+    str, Callable[[Callable[[Any], Any]], object]
+]:
+    """The held-out reports' consumers, which every build registers after its
+    post-export stages. Built at each call, so a consumer replaced on this
+    module is the one returned."""
+    return {
+        "ssi_social_security_holdout": _ssi_social_security_holdout_consumer,
+        "medicare_irmaa_holdout": _medicare_irmaa_holdout_consumer,
+    }
+
+
 def _post_export_consumers(
     args: argparse.Namespace, *, result, release_id: str
 ) -> dict[str, Callable[[Callable[[Any], Any]], object]]:
@@ -5950,8 +5962,7 @@ def _post_export_consumers(
         )
     if not args.skip_demographics:
         consumers["demographics"] = _demographics_consumer
-    consumers["ssi_social_security_holdout"] = _ssi_social_security_holdout_consumer
-    consumers["medicare_irmaa_holdout"] = _medicare_irmaa_holdout_consumer
+    consumers.update(_post_export_holdout_consumers())
     return consumers
 
 

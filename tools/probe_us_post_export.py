@@ -2537,8 +2537,9 @@ class ExportProbe:
         order: for each, a function that returns its consumer (a function of
         the ``simulate`` seam).
 
-        The engine stages to run, and the two held-out reports, which
-        certification always registers: the probe does not report them, but
+        The engine stages to run, and the held-out reports certification
+        always registers (``_post_export_holdout_consumers``, so the probe
+        names no held-out module itself): the probe does not report them, but
         their keys are in certification's merged baseline pass, so the
         probe's merged pass is that pass (its keys, its time and memory, and
         its failure and fallback when a held-out report's key fails).
@@ -2550,12 +2551,8 @@ class ExportProbe:
             "demographics": lambda: builder._demographics_consumer,
         }
         consumers = {name: make for name, make in makers.items() if name in self.stages}
-        consumers["ssi_social_security_holdout"] = lambda: (
-            builder._ssi_social_security_holdout_consumer
-        )
-        consumers["medicare_irmaa_holdout"] = lambda: (
-            builder._medicare_irmaa_holdout_consumer
-        )
+        for name, consumer in builder._post_export_holdout_consumers().items():
+            consumers[name] = lambda consumer=consumer: consumer
         return consumers
 
     def _record_stage_requests(self) -> dict[str, Any]:
