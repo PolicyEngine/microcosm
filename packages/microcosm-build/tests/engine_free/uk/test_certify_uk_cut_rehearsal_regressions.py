@@ -14,8 +14,10 @@ from unittest.mock import Mock, patch
 
 from tools import certify_uk_cut_in_policyengine_py as runner
 
-TAG = "microcosm-uk-2024-25-national-20261023T075039Z-a133f37a"
-DENSE_TAG = "microcosm-uk-2024-25-dense-20261019T000432Z-ee5c2dbe"
+BUILD = "uk-frs-calibration-attempt-20261023T075039Z-a133f37a"
+DENSE_BUILD = "uk-local-candidate-f100-s42-20261019T000432Z-ee5c2dbe"
+NATIONAL_COMMIT = "a133f37a" * 5
+DENSE_COMMIT = "ee5c2dbe" * 5
 EVIDENCE = {
     "schema_version": 2,
     "model_version": "2.147.2",
@@ -28,37 +30,25 @@ EVIDENCE = {
 }
 
 
+def published(release, build, model):
+    """A build in its own folder, pinned at its publishing commit."""
+    commit = NATIONAL_COMMIT if release == runner.NATIONAL_RELEASE else DENSE_COMMIT
+    return runner.PublishedBuild(release, build, commit, model, "3.0", ())
+
+
 class RunnerTests(unittest.TestCase):
     def test_hugging_face_token_is_explicit_and_not_logged(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            manifest = Path(tmp) / "manifest.json"
-            manifest.write_text(
-                json.dumps(
-                    {
-                        "build": {
-                            "cut_tag": TAG,
-                            "built_with_model_package": {"version": "2.147.2"},
-                            "built_with_core_package": {"version": "3.0"},
-                        }
-                    }
-                )
-            )
-            download = Mock(return_value=str(manifest))
-            with (
-                patch.dict(
-                    sys.modules,
-                    {
-                        "huggingface_hub": types.SimpleNamespace(
-                            hf_hub_download=download
-                        )
-                    },
-                ),
-                patch.dict(os.environ, {"HUGGING_FACE_TOKEN": "private-value"}),
-            ):
-                self.assertEqual(
-                    runner.read_cut(TAG, runner.NATIONAL_RELEASE).model, "2.147.2"
-                )
-            self.assertEqual(download.call_args.kwargs["token"], "private-value")
+        client = Mock()
+        with (
+            patch.dict(
+                sys.modules, {"huggingface_hub": types.SimpleNamespace(HfApi=client)}
+            ),
+            patch.dict(os.environ, {"HUGGING_FACE_TOKEN": "private-value"}),
+            patch("builtins.print") as printed,
+        ):
+            self.assertIs(runner.hub_api(), client.return_value)
+        client.assert_called_once_with(token="private-value")
+        printed.assert_not_called()
 
     def test_shell_records_failed_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -222,8 +212,8 @@ class RunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             args = runner.parse(
                 [
-                    "--national-tag",
-                    TAG,
+                    "--national-build",
+                    BUILD,
                     "--drop-regional-release",
                     "--pepy-repo",
                     tmp,
@@ -238,7 +228,7 @@ class RunnerTests(unittest.TestCase):
                     "check_test_temp_directory",
                     side_effect=runner.CertifyError("temporary directory inside Git"),
                 ),
-                patch.object(runner, "read_cut") as manifest,
+                patch.object(runner, "read_published_build") as manifest,
                 patch.object(runner, "fetch_regional_microdata") as microdata,
                 patch.object(runner.subprocess, "run") as spawn,
             ):
@@ -253,8 +243,8 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 runner.parse(
                     [
-                        "--national-tag",
-                        TAG,
+                        "--national-build",
+                        BUILD,
                         "--drop-regional-release",
                         "--pepy-repo",
                         "pepy",
@@ -265,8 +255,8 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(
             runner.parse(
                 [
-                    "--national-tag",
-                    TAG,
+                    "--national-build",
+                    BUILD,
                     "--drop-regional-release",
                     "--pepy-repo",
                     "pepy",
@@ -279,8 +269,8 @@ class RunnerTests(unittest.TestCase):
 
     def test_pr_base_accepts_explicit_stack_target(self):
         common = [
-            "--national-tag",
-            TAG,
+            "--national-build",
+            BUILD,
             "--drop-regional-release",
             "--pepy-repo",
             "pepy",
@@ -295,8 +285,8 @@ class RunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             args = runner.parse(
                 [
-                    "--national-tag",
-                    TAG,
+                    "--national-build",
+                    BUILD,
                     "--drop-regional-release",
                     "--dry-run",
                     "--base-ref",
@@ -317,12 +307,18 @@ class RunnerTests(unittest.TestCase):
                 patch.object(runner.subprocess, "run") as spawn,
                 patch.object(
                     runner,
-                    "read_cut",
-                    return_value=runner.CutVersions(TAG, "2.147.2", "3.0", ()),
+                    "read_published_build",
+                    return_value=published(runner.NATIONAL_RELEASE, BUILD, "2.147.2"),
                 ),
             ):
+                spawn.return_value = subprocess.CompletedProcess([], 0, "", "")
                 self.assertEqual(runner.certify(args), 0)
-            spawn.assert_not_called()
+            # The one command a dry run spawns asks whether the resolved base
+            # reads build folders.
+            (argv,), _ = spawn.call_args
+            self.assertEqual(spawn.call_count, 1)
+            self.assertEqual(argv[:2], ["git", "grep"])
+            self.assertIn("immutable-sha", argv)
             self.assertEqual(
                 read.call_args_list[1].args[0],
                 ["git", "rev-parse", "--verify", "stack-local^{commit}"],
@@ -338,7 +334,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_certification_changes_preserve_auxiliary_untracked_files(self):
         manifest = "src/policyengine/data/bundle/manifest.json"
-        changelog = f"changelog.d/certify-uk-{TAG}.changed.md"
+        changelog = f"changelog.d/certify-uk-{BUILD}.changed.md"
         with patch.object(
             runner.subprocess,
             "check_output",
@@ -349,7 +345,7 @@ class RunnerTests(unittest.TestCase):
                 "tests/fixtures/household_calculator_snapshots/operator-helper.json\0",
             ],
         ):
-            paths = runner.certification_changes(Path.cwd(), TAG)
+            paths = runner.certification_changes(Path.cwd(), BUILD)
         self.assertEqual(paths, sorted(["pyproject.toml", manifest, changelog]))
 
     def test_certification_changes_refuse_unrelated_tracked_edits(self):
@@ -359,7 +355,7 @@ class RunnerTests(unittest.TestCase):
             return_value="src/policyengine/core/simulation.py\0",
         ):
             with self.assertRaisesRegex(runner.CertifyError, "unrelated tracked"):
-                runner.certification_changes(Path.cwd(), TAG)
+                runner.certification_changes(Path.cwd(), BUILD)
 
     def test_resume_validates_identity_and_preserves_unfinished_generated_files(self):
         for problem in (
@@ -370,7 +366,8 @@ class RunnerTests(unittest.TestCase):
             "head",
             "merge",
             "tracked",
-            "cut",
+            "build",
+            "tag",
         ):
             with self.subTest(problem=problem), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
@@ -381,19 +378,26 @@ class RunnerTests(unittest.TestCase):
                 relative = "src/policyengine/data/bundle/manifest.json"
                 path = worktree / relative
                 path.parent.mkdir(parents=True)
+                folder = f"releases/{runner.NATIONAL_RELEASE}/{BUILD}"
+                data_package = {
+                    "release_manifest_path": f"{folder}/release_manifest.json",
+                    "release_manifest_revision": NATIONAL_COMMIT,
+                }
+                if problem == "build":
+                    data_package["release_manifest_path"] = data_package[
+                        "release_manifest_path"
+                    ].replace(BUILD, DENSE_BUILD)
+                if problem == "tag":
+                    # A modified manifest from a tagged handoff of the same build.
+                    data_package = {
+                        "release_manifest_path": (
+                            f"releases/{runner.NATIONAL_RELEASE}/release_manifest.json"
+                        ),
+                        "release_manifest_revision": BUILD,
+                    }
                 path.write_text(
                     json.dumps(
-                        {
-                            "data_releases": {
-                                "uk": {
-                                    "data_package": {
-                                        "release_manifest_revision": "another-cut"
-                                        if problem == "cut"
-                                        else TAG
-                                    }
-                                }
-                            }
-                        }
+                        {"data_releases": {"uk": {"data_package": data_package}}}
                     )
                 )
                 original = path.read_bytes()
@@ -444,12 +448,12 @@ class RunnerTests(unittest.TestCase):
                     if problem:
                         with self.assertRaises(runner.CertifyError):
                             runner.validate_resume_worktree(
-                                repo, worktree, branch, base, TAG
+                                repo, worktree, branch, base, BUILD
                             )
                     else:
                         self.assertEqual(
                             runner.validate_resume_worktree(
-                                repo, worktree, branch, base, TAG
+                                repo, worktree, branch, base, BUILD
                             ),
                             [relative],
                         )
@@ -465,6 +469,12 @@ class RunnerTests(unittest.TestCase):
         call_details=None,
         resume=False,
         evidence=None,
+        old_record=None,
+        replayed=(),
+        fetched=None,
+        bundle_packages=None,
+        extra_args=(),
+        rewritten=(),
     ):
         if receipt is None and uc_code == 0:
             receipt = {
@@ -479,7 +489,12 @@ class RunnerTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name)
         worktree = root / "certification"
-        bundle = {"data_releases": {"uk": {"default_dataset": "candidate"}}}
+        bundle = {
+            "data_releases": {
+                "uk": {"default_dataset": "candidate", **(old_record or {})}
+            },
+            **({"packages": bundle_packages} if bundle_packages else {}),
+        }
         if resume:
             path = worktree / "src/policyengine/data/bundle/manifest.json"
             path.parent.mkdir(parents=True)
@@ -487,8 +502,8 @@ class RunnerTests(unittest.TestCase):
         route = ["--drop-regional-release"]
         if evidence is not None:
             route = [
-                "--dense-tag",
-                DENSE_TAG,
+                "--dense-build",
+                DENSE_BUILD,
                 "--accept-regional-model-mismatch",
                 "recorded rehearsal mismatch",
                 "--audited-by",
@@ -498,8 +513,8 @@ class RunnerTests(unittest.TestCase):
             ]
         args = runner.parse(
             [
-                "--national-tag",
-                TAG,
+                "--national-build",
+                BUILD,
                 *route,
                 "--base-ref",
                 "local",
@@ -510,12 +525,13 @@ class RunnerTests(unittest.TestCase):
                 "--skip-writer-check",
                 "offline regression",
                 *(["--resume-worktree"] if resume else []),
+                *extra_args,
             ]
         )
         calls = []
-        cuts = {
-            TAG: runner.CutVersions(TAG, "2.147.2", "3.0", ()),
-            DENSE_TAG: runner.CutVersions(DENSE_TAG, "2.132.6", "3.0", ()),
+        builds = {
+            BUILD: published(runner.NATIONAL_RELEASE, BUILD, "2.147.2"),
+            DENSE_BUILD: published(runner.DENSE_RELEASE, DENSE_BUILD, "2.132.6"),
         }
 
         def command(argv, **kwargs):
@@ -531,7 +547,9 @@ class RunnerTests(unittest.TestCase):
             if call_details is not None:
                 call_details.append((argv, kwargs))
             if "constant-rewrite" == kwargs.get("step"):
-                return subprocess.CompletedProcess(argv, 0, "[]", "")
+                return subprocess.CompletedProcess(
+                    argv, 0, json.dumps(list(rewritten)), ""
+                )
             if "audit-help" == kwargs.get("step"):
                 flags = (
                     "--regional-manifest-uri --artifact --model-version "
@@ -561,12 +579,19 @@ class RunnerTests(unittest.TestCase):
                 side_effect=["microcosm", "immutable-sha", json.dumps(bundle)],
             ),
             patch.object(runner.subprocess, "run", side_effect=command),
-            patch.object(runner, "read_cut", side_effect=lambda tag, _: cuts[tag]),
+            patch.object(
+                runner,
+                "read_published_build",
+                side_effect=lambda release, build, **kwargs: builds[build],
+            ),
             patch.object(runner, "regional_audit_support", return_value=None),
             patch.object(
                 runner,
                 "fetch_regional_microdata",
-                return_value={"microcosm_uk_2024_25_dense": root / "dense.h5"},
+                side_effect=lambda build, **kwargs: (
+                    (fetched.append(build) if fetched is not None else None)
+                    or {"microcosm_uk_2024_25_dense": root / "dense.h5"}
+                ),
             ),
             patch.object(runner.Shell, "__call__", side_effect=shell),
             patch.object(
@@ -574,7 +599,9 @@ class RunnerTests(unittest.TestCase):
                 "check_test_temp_directory",
                 return_value=root / "isolated-test-temp",
             ),
-            patch.object(runner, "validate_resume_worktree", return_value=[]),
+            patch.object(
+                runner, "validate_resume_worktree", return_value=list(replayed)
+            ),
             patch.object(
                 runner,
                 "certification_changes",
@@ -621,6 +648,177 @@ class RunnerTests(unittest.TestCase):
         body = (root / "certification.pr-body.md").read_text()
         self.assertIn("local_bus_uncapped_single_fare", body)
         self.assertIn("audited by A Reviewer", body)
+
+    def test_certify_data_gets_each_builds_folder_manifest_at_its_commit(self):
+        details = []
+        result, calls, root = self.run_mock_pipeline(
+            evidence=EVIDENCE, call_details=details
+        )
+        self.assertEqual(result, 0)
+        by_step = {kwargs.get("step"): argv for argv, kwargs in details}
+        certify = by_step["certify-data"]
+        self.assertEqual(
+            certify[certify.index("--manifest-uri") + 1],
+            "hf://dataset/policyengine/populace-uk-private@"
+            f"{NATIONAL_COMMIT}/releases/microcosm-uk-2024-25-national/{BUILD}/"
+            "release_manifest.json",
+        )
+        self.assertEqual(
+            certify[certify.index("--regional-manifest-uri") + 1],
+            runner.manifest_uri(runner.DENSE_RELEASE, DENSE_BUILD, DENSE_COMMIT),
+        )
+        worktree = next(c for c in calls if c[:3] == ["git", "worktree", "add"])
+        self.assertEqual(worktree[worktree.index("-b") + 1], "certify-uk-a133f37a")
+        commit = next(argv for argv, _ in details if argv[:2] == ["git", "commit"])
+        self.assertEqual(
+            commit[commit.index("-m") + 1], f"Certify Microcosm UK build {BUILD}"
+        )
+        body = (root / "certification.pr-body.md").read_text()
+        self.assertIn(f"Microcosm UK national build `{BUILD}`", body)
+        self.assertIn(f"`{NATIONAL_COMMIT}`", body)
+
+    def test_old_builds_sharing_a_commit_leave_their_constants_to_a_person(self):
+        """The constants are rewritten as quoted literals, so when the old
+        local-area commit is also the old or the new national commit, its
+        commit is left unrewritten and the body asks for a check by hand."""
+
+        old_build = "uk-local-candidate-old"
+        cases = (
+            # (old national commit, old local-area commit, shared?)
+            ("5" * 40, "5" * 40, True),
+            ("6" * 40, NATIONAL_COMMIT, True),
+            ("6" * 40, "5" * 40, False),
+        )
+        for old_national, old_regional, shared in cases:
+            with self.subTest(old_national=old_national, old_regional=old_regional):
+                old_record = {
+                    "data_package": {"release_manifest_revision": old_national},
+                    "regional_source_manifest_uri": runner.manifest_uri(
+                        runner.DENSE_RELEASE, old_build, old_regional
+                    ),
+                }
+                with patch.object(
+                    runner, "rewrite_regional_constants", return_value=[]
+                ) as rewrite:
+                    result, _, root = self.run_mock_pipeline(
+                        evidence=EVIDENCE, old_record=old_record
+                    )
+                self.assertEqual(result, 0)
+                _, old_pin, new_pin = rewrite.call_args.args
+                self.assertEqual(
+                    old_pin,
+                    runner.BuildPin(runner.DENSE_RELEASE, old_build, old_regional),
+                )
+                self.assertEqual(
+                    new_pin,
+                    runner.BuildPin(
+                        runner.DENSE_RELEASE,
+                        DENSE_BUILD,
+                        old_regional if shared else DENSE_COMMIT,
+                    ),
+                )
+                body = (root / "certification.pr-body.md").read_text()
+                self.assertEqual(f"shared commit `{old_regional}`" in body, shared)
+
+    def test_a_resume_at_another_commit_refuses_before_any_download(self):
+        """An accepted mismatch downloads every regional H5; a resume that
+        would be refused must not download them first."""
+
+        details, fetched = [], []
+        with self.assertRaisesRegex(
+            runner.CertifyError, f"national build at '{'5' * 40}'"
+        ):
+            self.run_mock_pipeline(
+                resume=True,
+                replayed=["src/policyengine/data/bundle/manifest.json"],
+                old_record={"data_package": {"release_manifest_revision": "5" * 40}},
+                evidence=EVIDENCE,
+                call_details=details,
+                fetched=fetched,
+            )
+        self.assertEqual((details, fetched), ([], []))
+
+    def test_a_resume_that_stops_routing_regions_refuses(self):
+        """The first attempt routed regions to a local-area build, and its
+        constant rewrite moved the local-area constants to that build; a
+        resume that drops the routing would keep them."""
+
+        with self.assertRaisesRegex(runner.CertifyError, "routes regions to"):
+            self.run_mock_pipeline(
+                resume=True,
+                replayed=["src/policyengine/data/bundle/manifest.json"],
+                old_record={
+                    "data_package": {"release_manifest_revision": NATIONAL_COMMIT},
+                    "regional_source_manifest_uri": runner.manifest_uri(
+                        runner.DENSE_RELEASE, DENSE_BUILD, DENSE_COMMIT
+                    ),
+                },
+            )
+
+    def test_a_resume_at_another_commit_refuses_before_any_command(self):
+        """The resumed bundle names the first attempt's national commit, so a
+        resume that resolves another one is refused before anything runs."""
+
+        details = []
+        with self.assertRaisesRegex(runner.CertifyError, "national build at"):
+            self.run_mock_pipeline(
+                resume=True,
+                replayed=["src/policyengine/data/bundle/manifest.json"],
+                call_details=details,
+            )
+        self.assertEqual(details, [])
+
+    def test_certify_data_follows_the_bundles_core_pin_by_default(self):
+        """.py's default certificate follows the bundle's shared core pin
+        (core_binding: bundle_pin). --core-version would bind the UK to one
+        core and move the pin, so a later core move for another country
+        would need a UK re-certification first."""
+
+        details = []
+        result, _, root = self.run_mock_pipeline(
+            evidence=EVIDENCE,
+            call_details=details,
+            bundle_packages={"policyengine-core": {"version": "3.1"}},
+        )
+        self.assertEqual(result, 0)
+        by_step = {kwargs.get("step"): argv for argv, kwargs in details}
+        self.assertNotIn("--core-version", by_step["certify-data"])
+        # The audit runs the target pair the bundle will serve.
+        self.assertIn("policyengine-core==3.1", by_step["audit-model-install"])
+        first = (root / "certification.pr-body.md").read_text().splitlines()[0]
+        self.assertIn("policyengine-core 3.1", first)
+        self.assertIn("`core_binding: bundle_pin`", first)
+
+    def test_an_operators_core_version_binds_the_certificate(self):
+        details = []
+        _, _, root = self.run_mock_pipeline(
+            evidence=EVIDENCE,
+            call_details=details,
+            bundle_packages={"policyengine-core": {"version": "3.1"}},
+            extra_args=["--core-version", "3.2"],
+        )
+        by_step = {kwargs.get("step"): argv for argv, kwargs in details}
+        certify = by_step["certify-data"]
+        self.assertEqual(certify[certify.index("--core-version") + 1], "3.2")
+        self.assertIn("policyengine-core==3.2", by_step["audit-model-install"])
+        first = (root / "certification.pr-body.md").read_text().splitlines()[0]
+        self.assertIn("`core_binding: certified`", first)
+
+    def test_each_rewritten_constant_file_is_listed_once(self):
+        with patch.object(
+            runner,
+            "rewrite_regional_constants",
+            return_value=["tests/test_uk_regions.py", "tests/test_models.py"],
+        ):
+            _, _, root = self.run_mock_pipeline(
+                evidence=EVIDENCE,
+                rewritten=["tests/test_models.py", "tests/test_uk_regions.py"],
+            )
+        self.assertIn(
+            "Certified-constant files rewritten: tests/test_models.py, "
+            "tests/test_uk_regions.py\n",
+            (root / "certification.pr-body.md").read_text(),
+        )
 
     def test_package_steps_get_no_hugging_face_token(self):
         details = []

@@ -1604,8 +1604,8 @@ def test_scorer_refuses_a_unit_that_spans_households(builder, tmp_path) -> None:
     # The partition check is a second line: a batch set that misses or
     # repeats a household is refused.
     batches = [
-        builder._select_households_by_position(frame, np.asarray([0, 1, 2])),
-        builder._select_households_by_position(frame, np.asarray([2, 3, 4, 5, 6])),
+        builder.select_households_by_position(frame, np.asarray([0, 1, 2])),
+        builder.select_households_by_position(frame, np.asarray([2, 3, 4, 5, 6])),
     ]
     with pytest.raises(ValueError, match="do not partition the pool"):
         builder._assert_post_export_batching_premises(frame, batches)
@@ -1613,7 +1613,7 @@ def test_scorer_refuses_a_unit_that_spans_households(builder, tmp_path) -> None:
     # Batches that partition the pool must also keep the written household
     # order and household weights, or the concatenated arrays would misalign.
     batches = [
-        builder._select_households_by_position(frame, np.asarray(positions))
+        builder.select_households_by_position(frame, np.asarray(positions))
         for positions in ([0, 1, 2], [3, 4, 5, 6])
     ]
     builder._assert_post_export_batching_premises(frame, batches)

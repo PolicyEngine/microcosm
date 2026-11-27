@@ -217,8 +217,8 @@ def _income_tax_given_reform_argument(
     ), reform_spec.measure
     n_households = frame.n("household")
     income_tax = np.zeros(n_households, dtype=np.float64)
-    for positions in builder._household_position_batches(n_households, batch_size):
-        batch_frame = builder._select_households_by_position(frame, positions)
+    for positions in builder.household_position_batches(n_households, batch_size):
+        batch_frame = builder.select_households_by_position(frame, positions)
         simulation = Microsimulation(
             tax_benefit_system=reform_system,
             dataset=builder._dataset_from_frame(
@@ -298,7 +298,7 @@ def test_jct_reform_batches_match_the_reform_argument_construction() -> None:
     assert (
         len(
             tuple(
-                builder._household_position_batches(n_households, _IDENTITY_BATCH_SIZE)
+                builder.household_position_batches(n_households, _IDENTITY_BATCH_SIZE)
             )
         )
         == 2
@@ -357,9 +357,7 @@ def test_jct_reform_batches_clone_no_tax_benefit_system(monkeypatch) -> None:
     reform_spec = builder.US_JCT_TAX_EXPENDITURE_REFORMS[0]
     assert (
         len(
-            tuple(
-                builder._household_position_batches(frame.n("household"), _BATCH_SIZE)
-            )
+            tuple(builder.household_position_batches(frame.n("household"), _BATCH_SIZE))
         )
         == _BATCHES
     )

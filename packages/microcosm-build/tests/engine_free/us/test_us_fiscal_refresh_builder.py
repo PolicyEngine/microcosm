@@ -11502,6 +11502,11 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
         def _invalidate_all_caches(self):
             pass
 
+        def get_holder(self, variable):
+            # The batches are checked for population aggregates; this
+            # stand-in computes none.
+            return SimpleNamespace(get_known_periods=lambda: [])
+
     def fake_calculate_array(simulation, variable, *, map_to=None):
         if map_to == "person":
             return np.asarray(

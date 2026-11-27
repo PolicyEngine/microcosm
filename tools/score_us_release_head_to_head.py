@@ -29,8 +29,8 @@ whole-registry). Neither fits the 20 GiB scoring budget, so both sides run
 the same two-axis decomposition through unmodified canonical calls:
 
 * households are sliced with the production reform-sweep batching machinery
-  (`_household_position_batches` + `_select_households_by_position`,
-  tools/build_us_fiscal_refresh_release.py:3730-3750), and each slice is
+  (`household_position_batches` + `select_households_by_position`,
+  microcosm.build.us_runtime.household_batches), and each slice is
   materialized and scored through the canonical calls before it is freed;
 * registry specs are scored in fixed contiguous chunks. A chunk's estimates
   are additive matrix products, so slice estimates are accumulated in fixed
@@ -89,6 +89,12 @@ from microcosm.build.us_runtime.h5_io import (
     AuthenticatedPoolH5,
     load_authenticated_us_multispine_pool_for_scoring,
     read_nullable_us_h5_metadata,
+)
+from microcosm.build.us_runtime.household_batches import (
+    assert_group_entities_nest_in_households,
+    assert_medicaid_claiming_tax_units_local,
+    household_position_batches,
+    select_households_by_position,
 )
 from microcosm.build.us_runtime.multispine_pool import (
     materialize_multispine_agreement_outputs,
@@ -886,7 +892,7 @@ def _score_household_slice(
     slice_frame = (
         base_frame
         if full_slice
-        else release._select_households_by_position(base_frame, positions)
+        else select_households_by_position(base_frame, positions)
     )
     slice_target_frame, slice_registry, slice_compilation = (
         release._materialize_target_frame(
@@ -994,7 +1000,7 @@ def _score_chunk_household_sliced(
     """Materialize and score slices, reducing in the original sequential order."""
 
     slice_batches = tuple(
-        release._household_position_batches(
+        household_position_batches(
             base_frame.n("household"),
             maximum_microsim_batch_size,
         )
@@ -1002,8 +1008,10 @@ def _score_chunk_household_sliced(
     if not slice_batches:
         raise ValueError(f"{artifact_name} has no households to score.")
     if len(slice_batches) > 1:
-        release._assert_group_entities_nest_in_households(base_frame)
-        release._assert_medicaid_claiming_tax_units_local(base_frame)
+        assert_group_entities_nest_in_households(base_frame)
+        assert_medicaid_claiming_tax_units_local(
+            base_frame, work=release.TARGET_MATERIALIZATION_PASS
+        )
 
     def scored_slices() -> Iterator[ScoredSlice]:
         for slice_index, positions in enumerate(slice_batches):
@@ -1053,7 +1061,7 @@ def _initialize_slice_worker(
     """
 
     slice_batches = tuple(
-        release._household_position_batches(
+        household_position_batches(
             base_frame.n("household"), maximum_microsim_batch_size
         )
     )
@@ -1223,7 +1231,7 @@ def _score_chunks_parallel(
 
     slice_count = len(
         tuple(
-            release._household_position_batches(
+            household_position_batches(
                 base_frame.n("household"), maximum_microsim_batch_size
             )
         )
@@ -1231,8 +1239,10 @@ def _score_chunks_parallel(
     if not slice_count:
         raise ValueError(f"{artifact_name} has no households to score.")
     if slice_count > 1:
-        release._assert_group_entities_nest_in_households(base_frame)
-        release._assert_medicaid_claiming_tax_units_local(base_frame)
+        assert_group_entities_nest_in_households(base_frame)
+        assert_medicaid_claiming_tax_units_local(
+            base_frame, work=release.TARGET_MATERIALIZATION_PASS
+        )
     chunk_size = MATERIALIZE_SCORE_CHUNK_SPECS
     chunk_count = max(1, math.ceil(len(specs) / chunk_size))
     # Tasks span chunk boundaries so short chunks still use the pool.

@@ -531,7 +531,7 @@ def test_jct_reform_refuses_moved_behavioral_responses_before_its_engines(
     ("target", "wrap", "message"),
     [
         (
-            "_select_households_by_position",
+            "select_households_by_position",
             # Each batch is handed the next batch's households.
             lambda real: lambda frame, positions: real(frame, positions + 1),
             "does not carry exactly its households in pool order",
@@ -698,6 +698,10 @@ def test_refusal_reads_a_value_held_only_on_baseline() -> None:
     with pytest.raises(
         ValueError, match=r"computed medicaid_slcsp_state_denominator@2024"
     ):
-        builder._refuse_batch_population_aggregates(
-            root, batch=1, batches=3, n_households=6
+        builder.refuse_batch_population_aggregates(
+            root,
+            batch=1,
+            batches=3,
+            work=builder.TARGET_MATERIALIZATION_PASS,
+            remedy=builder.TARGET_POPULATION_AGGREGATE_REMEDY,
         )

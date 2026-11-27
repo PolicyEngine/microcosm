@@ -418,8 +418,8 @@ EXPECTED_HASHES = {
     # Importing torch inside the solve functions that use it, and the QRF chain
     # handing each worker a record of its caller's lock-file check, move both
     # again: solve's and puf_qrf_chain's attested bytes change; no draw does.
-    "seed_map": "9c809470367a211c88ba047211ad9461850ca56100af41d56d807312ee8ccd5f",
-    "seed_protocol": "eea4cf01a4924295e760edbe74e368dc6a48d66334ffe9a04d2fa13beebee2c5",
+    "seed_map": '44e5d87c927a800aa5f232e61896e70c949e1d5607722691e0c8b732284a70c4',
+    "seed_protocol": '5a1264820d12f7e448126f56a65feaba96d6d2fbb30540b2dc84d8485f141ba1',
     "source_manifest": "dc3879886d2a69f20fb982a675d7fb322c0e4017afef6471be54b0ee3cbd2af6",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "565f0ceeadab69d3e96a886a00dd0305f7425fa3acde24d12ba48db2b37d5fc0",

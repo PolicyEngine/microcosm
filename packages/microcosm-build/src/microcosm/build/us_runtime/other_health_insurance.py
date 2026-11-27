@@ -18,7 +18,6 @@ restored targets.
 
 from __future__ import annotations
 
-import gc
 from importlib.resources import files
 from typing import Any
 
@@ -36,6 +35,15 @@ from microcosm.build.source_runtime import (
     SourceRuntimeContext,
     SourceRuntimeError,
     run_source_stage,
+)
+from microcosm.build.us_runtime.household_batches import (
+    INPUT_PASS_POPULATION_AGGREGATE_REMEDY,
+    automatic_gc_suspended,
+    checked_batch_engine,
+    collect_batch_garbage,
+    collect_pass_garbage,
+    household_batch_plan,
+    select_households_by_position,
 )
 from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
@@ -743,18 +751,28 @@ def _tax_unit_values_on_first_person(
     return allocated
 
 
+#: The pass the premium loop's refusals name.
+_OTHER_HEALTH_INSURANCE_PREMIUM_PASS = "The other-health-insurance premium pass"
+
+
 def _materialize_modeled_premiums(
     frame: Frame,
     *,
     time_period: int,
     maximum_microsim_batch_size: int | None,
+    refuse_population_aggregates: bool | None = None,
 ) -> dict[str, np.ndarray]:
-    """Materialize tax-unit premiums in household batches and realign by ID."""
+    """Materialize tax-unit premiums in household batches and realign by ID.
 
-    household = frame.table("household")
+    Each batch engine is built by the PolicyEngine-US adapter, exactly as its
+    ``materialize`` builds one, and runs in ``checked_batch_engine``: with more
+    than one batch, or ``refuse_population_aggregates=True``, an engine that
+    computed a population-aggregate variable is refused, and every engine is
+    released before the next one is built.
+    """
+
     tax_unit = frame.table("tax_unit")
-    person = frame.table("person")
-    household_ids = household["household_id"].to_numpy()
+    n_households = frame.n("household")
     tax_unit_ids = tax_unit["tax_unit_id"].to_numpy()
     tax_unit_positions = pd.Series(
         np.arange(len(tax_unit_ids), dtype=np.int64),
@@ -765,66 +783,73 @@ def _materialize_modeled_premiums(
         for variable in US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES
     }
     assigned = np.zeros(len(tax_unit_ids), dtype=bool)
-    batch_size = (
-        len(household_ids)
-        if maximum_microsim_batch_size is None or maximum_microsim_batch_size <= 0
-        else min(int(maximum_microsim_batch_size), len(household_ids))
-    )
-    if batch_size == 0:
+    if n_households == 0:
         raise ValueError(
             "US other-health-insurance premium materialization requires at "
             "least one household."
         )
+    plan = household_batch_plan(
+        frame,
+        maximum_microsim_batch_size,
+        refuse_population_aggregates=refuse_population_aggregates,
+        work=_OTHER_HEALTH_INSURANCE_PREMIUM_PASS,
+    )
+    batches = plan.batches
+    period = int(time_period)
 
     engine = PolicyEngineUSEngine()
-    for start in range(0, len(household_ids), batch_size):
-        positions = np.arange(
-            start,
-            min(start + batch_size, len(household_ids)),
-            dtype=np.int64,
-        )
-        full_batch = len(positions) == len(household_ids)
-        batch_frame = (
-            frame
-            if full_batch
-            else frame.select(
-                person["person_household_id"].isin(household_ids[positions])
+    for batch, positions in enumerate(batches, start=1):
+        with automatic_gc_suspended():
+            full_batch = len(positions) == n_households
+            batch_frame = (
+                frame if full_batch else select_households_by_position(frame, positions)
             )
-        )
-        batch_tax_unit_ids = batch_frame.table("tax_unit")["tax_unit_id"].to_numpy()
-        full_positions = tax_unit_positions.reindex(batch_tax_unit_ids).to_numpy()
-        if np.isnan(full_positions).any():
-            raise ValueError(
-                "US other-health-insurance premium batch produced tax-unit IDs "
-                "outside the full frame."
-            )
-        full_positions = full_positions.astype(np.int64)
-        if assigned[full_positions].any():
-            raise ValueError(
-                "US other-health-insurance premium batches overlap tax units; "
-                "tax units must not span household batches."
-            )
-        materialized = engine.materialize(
-            batch_frame,
-            list(US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES),
-            period=int(time_period),
-        )
-        for variable in US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES:
-            if variable not in materialized:
+            batch_tax_unit_ids = batch_frame.table("tax_unit")["tax_unit_id"].to_numpy()
+            full_positions = tax_unit_positions.reindex(batch_tax_unit_ids).to_numpy()
+            if np.isnan(full_positions).any():
                 raise ValueError(
-                    "PolicyEngine-US did not materialize required formula "
-                    f"{variable!r}."
+                    "US other-health-insurance premium batch produced tax-unit IDs "
+                    "outside the full frame."
                 )
-            values = np.asarray(materialized[variable], dtype=np.float64)
-            if values.shape != (len(batch_tax_unit_ids),):
+            full_positions = full_positions.astype(np.int64)
+            if assigned[full_positions].any():
                 raise ValueError(
-                    f"Materialized {variable!r} has shape {values.shape}; expected "
-                    f"{(len(batch_tax_unit_ids),)} for the tax-unit batch."
+                    "US other-health-insurance premium batches overlap tax units; "
+                    "tax units must not span household batches."
                 )
-            modeled[variable][full_positions] = values
-        assigned[full_positions] = True
-        del materialized, batch_frame
-        gc.collect()
+            simulation = engine.build_microsimulation(batch_frame, period)
+            with checked_batch_engine(
+                simulation,
+                refuse_population_aggregates=plan.refuse_population_aggregates,
+                batch=batch,
+                batches=len(batches),
+                work=_OTHER_HEALTH_INSURANCE_PREMIUM_PASS,
+                remedy=INPUT_PASS_POPULATION_AGGREGATE_REMEDY,
+            ):
+                materialized = engine.calculate_variables(
+                    simulation,
+                    batch_frame,
+                    list(US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES),
+                    period,
+                )
+            for variable in US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES:
+                if variable not in materialized:
+                    raise ValueError(
+                        "PolicyEngine-US did not materialize required formula "
+                        f"{variable!r}."
+                    )
+                values = np.asarray(materialized[variable], dtype=np.float64)
+                if values.shape != (len(batch_tax_unit_ids),):
+                    raise ValueError(
+                        f"Materialized {variable!r} has shape {values.shape}; "
+                        f"expected {(len(batch_tax_unit_ids),)} for the tax-unit "
+                        "batch."
+                    )
+                modeled[variable][full_positions] = values
+            assigned[full_positions] = True
+            del materialized, batch_frame, simulation
+        collect_batch_garbage()
+    collect_pass_garbage()
 
     if not assigned.all():
         missing_ids = tax_unit_ids[~assigned].tolist()
@@ -842,8 +867,13 @@ def with_us_other_health_insurance_inputs(
     time_period: int,
     maximum_microsim_batch_size: int | None = None,
     allow_existing_without_source: bool = False,
+    refuse_population_aggregates: bool | None = None,
 ) -> Frame:
-    """Materialize modeled premiums, derive ASEC residuals, and impute PUF."""
+    """Materialize modeled premiums, derive ASEC residuals, and impute PUF.
+
+    ``refuse_population_aggregates`` overrides when the premium batches refuse
+    a population-aggregate variable (see :func:`_materialize_modeled_premiums`).
+    """
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US other-health-insurance inputs require the US schema.")
@@ -871,6 +901,7 @@ def with_us_other_health_insurance_inputs(
         frame,
         time_period=int(time_period),
         maximum_microsim_batch_size=maximum_microsim_batch_size,
+        refuse_population_aggregates=refuse_population_aggregates,
     )
     stage_person = person.copy(deep=True)
     for variable in US_OTHER_HEALTH_INSURANCE_MODELED_PREMIUM_VARIABLES:
