@@ -599,8 +599,9 @@ def _copied_frame(fixtures) -> Frame:
       are not adjacent rows.
     - One copied Maryland household moves to New York district 3601. 3601 then
       has the most households, so chunk 0's direct check of one district row
-      per carrier picks 3601 rows in a one-chunk run, but 0601 rows in a chunk
-      0 that starts with the 0601 households and is not the whole frame.
+      per carrier picks 3601 rows in a one-chunk run (except for the
+      ``cd_0601_wages`` carrier, which has only a 0601 row), but 0601 rows
+      for every carrier in a chunk 0 of at most ten households.
     """
 
     base = fixtures._nested_frame()
@@ -690,20 +691,36 @@ def _materialize_layout(
     return materialized, ledger
 
 
-def _engine_batches(chunk_sizes, batch) -> list[int]:
-    """The households of each engine the fake engine builds, in order.
+def _engine_runs(household_ids, chunk_sizes, batch) -> list[tuple]:
+    """Each engine the fake engine should build, in order: its pass and its
+    household ids.
 
-    Each chunk runs the base pass, then the one JCT reform family, each in
-    batches of at most ``batch`` households.
+    Each chunk runs the base pass, then the one JCT reform family, each over
+    consecutive batches of at most ``batch`` of the chunk's households.
     """
 
-    sizes = []
+    runs = []
+    low = 0
     for chunk in chunk_sizes:
-        batches = [batch] * (chunk // batch) + (
-            [chunk % batch] if chunk % batch else []
-        )
-        sizes += batches * 2
-    return sizes
+        chunk_ids = tuple(int(value) for value in household_ids[low : low + chunk])
+        batches = [chunk_ids[start : start + batch] for start in range(0, chunk, batch)]
+        runs += [("base", ids) for ids in batches]
+        runs += [("reform", ids) for ids in batches]
+        low += chunk
+    return runs
+
+
+def _ledger_runs(ledger) -> list[tuple]:
+    """The engines the fake engine built: their pass and household ids."""
+
+    return [
+        ("base" if run["reform"] is None else "reform", run["households"])
+        for run in ledger.constructions
+    ]
+
+
+def _compiled_names(materialized) -> list[str]:
+    return [spec.name for spec in materialized.compiled_specs]
 
 
 def _directly_checked_districts(materialized) -> set[str]:
@@ -778,19 +795,17 @@ def test_every_chunk_and_batch_size_gives_the_one_chunk_target_matrix(
         module, fixtures, release, monkeypatch, tmp_path, hh_chunk=hh_chunk, batch=batch
     )
 
-    # The reference ran one chunk, each engine over every household.
+    # The reference ran one chunk, each engine over every household; the
+    # layout ran its chunks, each engine over one batch of a chunk.
+    household_ids = _copied_frame(fixtures).table("household")["household_id"]
     assert [stat["households"] for stat in reference.chunk_stats] == [15]
-    assert [len(run["households"]) for run in reference_ledger.constructions] == [
-        15,
-        15,
-    ]
-    # The layout ran its chunks, and each engine over one batch of a chunk.
+    assert _ledger_runs(reference_ledger) == _engine_runs(
+        household_ids, (15,), _COPIED_HOUSEHOLDS
+    )
     assert [stat["households"] for stat in materialized.chunk_stats] == list(
         chunk_sizes
     )
-    assert [len(run["households"]) for run in ledger.constructions] == (
-        _engine_batches(chunk_sizes, batch)
-    )
+    assert _ledger_runs(ledger) == _engine_runs(household_ids, chunk_sizes, batch)
     # Chunk 0's direct check covered other rows than the reference's when the
     # layout has several chunks (0601 against 3601).
     assert "3601" in _directly_checked_districts(reference)
@@ -803,10 +818,10 @@ def test_every_chunk_and_batch_size_gives_the_one_chunk_target_matrix(
     # declared row but the two of _EMPTY_ROWS holds one, the uncompiled target
     # is dropped, and float32 rounding changed some values.
     assert np.all(np.diff(reference.matrix.tocsc().indptr) > 0)
-    assert _UNCOMPILED_TARGET not in reference.names
+    assert _UNCOMPILED_TARGET not in _compiled_names(reference)
     empty = {
         name
-        for row, name in enumerate(reference.names)
+        for row, name in enumerate(_compiled_names(reference))
         if reference.matrix[[row]].nnz == 0
     }
     assert empty == _EMPTY_ROWS

@@ -1,17 +1,23 @@
-"""The ACS local release's materialize step gives one target matrix at any chunk size.
+"""The ACS local release's materialize step gives one target matrix at several chunk sizes.
 
 ``materialize_chunked`` (``tools/build_us_acs_local_release.py``) runs
 policyengine-us over contiguous household chunks (``--hh-chunk``), each in
 engine batches (``--batch``), and assembles the targets-by-households CSR
 float32 matrix of the targets it compiles. This test runs it with the real
-engine on six households, unpatched: the input projection, the reviewed-null
-fill, the population-aggregate refusal that several chunks turn on, and chunk
-0's direct check of one district row per carrier. Every layout must give the
-one-chunk, one-batch run's compiled target names and matrix bit for bit. So,
-on these six households and layouts, no formula these targets reach changed a
-stored value by reading another household; the scan of the installed engine's
-sources in ``test_us_batched_target_materialization.py`` is the check over the
-whole engine.
+engine on six households. Nothing in it is replaced: the input projection, the
+reviewed-null fill, the population-aggregate refusal that several chunks turn
+on, and chunk 0's direct check of one district row per carrier all run. The
+test only wraps the release tool's ``_dataset_from_frame`` to record how many
+households each engine batch holds.
+
+Every layout must give the one-chunk, one-batch run's compiled target names
+and matrix bit for bit. So, on these six households and layouts, no formula
+these targets reach changed a stored value by reading another household. That
+is not a proof for other households: the run-time refusal covers the listed
+population-aggregate variables, the source scan in
+``test_us_batched_target_materialization.py`` keeps that list in step with
+the engine's sources, and neither proves that every formula stays within a
+household.
 
 The targets are the local build's default families: SNAP amounts and
 household counts, Medicaid enrollment, and IRS SOI state rows with district
