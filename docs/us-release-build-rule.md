@@ -569,15 +569,15 @@ one Microsimulation over the whole file.
     back, before the smoke's result is decided. Any error that stops
     certification during scoring (the smoke's refusal at the certified tier,
     an evidence-tier failure with no owner, a stage's own error, a SIGTERM)
-    closes the scorer before the error is raised: workers still running a
-    unit are killed at once, idle workers are told to exit and killed if they
-    have not within 10 seconds, and the batch files are removed. An ordinary
-    error from closing is printed and the first error raised; an interrupt
-    while closing (Ctrl-C, or a first SIGTERM) is raised instead, and batch
-    files a failed close left are removed when the process exits. A failed
-    smoke that certification goes on past (the allow option, or an evidence
-    failure with an owner) cancels nothing. The serial scorer is closed the
-    same way.
+    closes the scorer before the error leaves certification: workers still
+    running a unit are killed at once, idle workers are told to exit and
+    killed if they have not within 10 seconds, and the batch files are
+    removed. An ordinary error from closing is printed and the first error
+    raised; an interrupt while closing (Ctrl-C, or a first SIGTERM) is raised
+    instead, and batch files a failed close left are removed when the process
+    exits. A failed smoke that certification goes on past (the allow option,
+    or an evidence failure with an owner) cancels nothing. The serial scorer
+    is closed the same way.
   - Each stage then runs as in the serial path and builds its own reforms (the
     smoke records each list edit's resolved lists from its own). Its baseline
     is served its recorded plan, and each reformed simulation its recorded

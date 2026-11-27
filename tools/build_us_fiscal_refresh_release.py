@@ -6620,9 +6620,13 @@ def _close_post_export_scorer_after_error(
     try:
         _close_post_export_scorer(scorer)
     except Exception as close_error:
+        try:
+            detail = f"{type(close_error).__name__}: {close_error}"
+        except Exception:
+            # Its text cannot be made; its class still names it.
+            detail = type(close_error).__name__
         print(
-            "warning: could not close the post-export scorer after an error: "
-            f"{type(close_error).__name__}: {close_error}",
+            f"warning: could not close the post-export scorer after an error: {detail}",
             file=sys.stderr,
         )
 
