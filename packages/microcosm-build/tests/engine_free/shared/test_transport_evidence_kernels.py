@@ -182,7 +182,6 @@ BINDING_MODULES_ADDED_AFTER_BASE = frozenset(
         "microcosm.data.registry",
         "microcosm.data.release",
         "microcosm.data.releases_record",
-        "microcosm.data.slack",
         "microcosm.data.source_enrichment",
         "microcosm.data.stored_inputs",
         "microcosm.data.us_critical_targets",

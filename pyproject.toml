@@ -52,8 +52,12 @@ ignore = ["E501"]
 # refusal of BE-era latest*.json pointer files, which 5b removes), a UK
 # national build's reference build and releases.json (run_uk_cut.py also
 # fetches its build inputs), the policyengine.py certification, the US
-# recertification and the quick-start notebook.
+# recertification and the quick-start notebook. release.py's Hub error checks
+# (missing_on_hub, never_cached_offline), which the loader's releases.json
+# read uses, also import it, as do its readers of latest*.json pointer files,
+# which substage 5b removes.
 "packages/microcosm-data/src/microcosm/data/loader.py" = ["TID251"]
+"packages/microcosm-data/src/microcosm/data/release.py" = ["TID251"]
 "packages/microcosm-build/src/microcosm/build/release_publication.py" = ["TID251"]
 "packages/microcosm-build/src/microcosm/build/uk_runtime/cut_reference.py" = ["TID251"]
 "tools/run_uk_cut.py" = ["TID251"]
@@ -73,10 +77,8 @@ ignore = ["E501"]
 "tools/provision_uk_staging_repository.py" = ["TID251"]
 "tools/fetch_uk_staged_dataset.py" = ["TID251"]
 "packages/microcosm-build/src/microcosm/build/staging_storage.py" = ["TID251"]
-# TID251. BE's publication tools, which substage 5b removes: the build-folder
-# switch and the tagged publisher (microcosm-publish-release).
+# TID251. The build-folder switch, which substage 5b removes.
 "packages/microcosm-build/src/microcosm/build/build_folder_switch.py" = ["TID251"]
-"packages/microcosm-data/src/microcosm/data/release.py" = ["TID251"]
 # TID251. Tests and their stand-ins for the Hub (the root conftest.py only).
 "packages/*/tests/**" = ["TID251"]
 "test_support/**" = ["TID251"]

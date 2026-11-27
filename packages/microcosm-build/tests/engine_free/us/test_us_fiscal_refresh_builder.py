@@ -7166,7 +7166,6 @@ def _run_green_register_release(
         _check_us_stored_input_evidence,
         stored_input_evidence_manifest_block,
     )
-    from microcosm.data.release import _release_manifest_release_artifacts
 
     release_dir = out / "releases" / builder.US_NATIONAL_RELEASE_ID
     # The build's own directory: a build has no tier, so certification places
@@ -7690,7 +7689,9 @@ def _run_green_register_release(
         evidence_tier=False,
     )
     assert failures == []
-    assert set(bound.values()) <= set(_release_manifest_release_artifacts(release_dir))
+    assert set(bound.values()) <= set(
+        _declared_artifacts_in_build_directory(release_dir)
+    )
     assert not list(release_dir.glob("final_household_weight*"))
 
 
@@ -13930,7 +13931,6 @@ def test_build_manifests_selects_ssi_social_security_holdout_for_publication(
         _check_local_artifact_hashes,
         _check_release_manifest,
     )
-    from microcosm.data.release import _release_manifest_release_artifacts
 
     builder = _load_builder_module()
     release_id, release_dir, artifact_root = _gate_evidence_release_dir(
@@ -13972,7 +13972,7 @@ def test_build_manifests_selects_ssi_social_security_holdout_for_publication(
         "revision": release_id,
         "sha256": hashlib.sha256(holdout_path.read_bytes()).hexdigest(),
     }
-    assert filename in _release_manifest_release_artifacts(release_dir)
+    assert filename in _declared_artifacts_in_build_directory(release_dir)
     failures: list[str] = []
     _check_release_manifest(manifest, release_id, failures)
     _check_local_artifact_hashes(release_dir, manifest, failures)
@@ -13992,7 +13992,6 @@ def test_build_manifests_selects_medicare_irmaa_holdout_for_publication(
         _check_local_artifact_hashes,
         _check_release_manifest,
     )
-    from microcosm.data.release import _release_manifest_release_artifacts
 
     builder = _load_builder_module()
     release_id, release_dir, artifact_root = _gate_evidence_release_dir(
@@ -14035,7 +14034,7 @@ def test_build_manifests_selects_medicare_irmaa_holdout_for_publication(
         "revision": release_id,
         "sha256": hashlib.sha256(holdout_path.read_bytes()).hexdigest(),
     }
-    assert filename in _release_manifest_release_artifacts(release_dir)
+    assert filename in _declared_artifacts_in_build_directory(release_dir)
     failures: list[str] = []
     _check_release_manifest(manifest, release_id, failures)
     _check_local_artifact_hashes(release_dir, manifest, failures)
@@ -14052,6 +14051,29 @@ def _write_scf_education_debt_fits(builder, monkeypatch, release_dir, filenames)
         builder._write_us_scf_education_debt_fit(
             release_dir / filename, object(), weights="calibrated_household_weights"
         )
+
+
+def _declared_artifacts_in_build_directory(release_dir: Path) -> set[str]:
+    """The files a build's release manifest declares that are in the build's
+    own directory, from which build-folder publication reads them."""
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    return {
+        entry["path"]
+        for entry in manifest["artifacts"].values()
+        if (release_dir / entry["path"]).is_file()
+    }
+
+
+def _declared_artifacts_outside_build_directory(release_dir: Path) -> set[str]:
+    """The files a build's release manifest declares that are not in the
+    build's own directory, which build-folder publication reads from the
+    artifact root."""
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    return {
+        entry["path"]
+        for entry in manifest["artifacts"].values()
+        if not (release_dir / entry["path"]).is_file()
+    }
 
 
 SCF_EDUCATION_DEBT_FIT_ARTIFACT_PATHS = {
@@ -14071,10 +14093,6 @@ def test_build_manifests_lists_scf_education_debt_fits_only_with_the_flag(
     from microcosm.data.contract import (
         _check_local_artifact_hashes,
         _check_release_manifest,
-    )
-    from microcosm.data.release import (
-        _release_manifest_release_artifacts,
-        _release_manifest_root_artifacts,
     )
 
     builder = _load_builder_module()
@@ -14097,8 +14115,8 @@ def test_build_manifests_lists_scf_education_debt_fits_only_with_the_flag(
         for key, entry in manifest["artifacts"].items()
         if entry["path"] in filenames
     }
-    published = set(_release_manifest_release_artifacts(release_dir))
-    assert not filenames & set(_release_manifest_root_artifacts(release_dir))
+    published = set(_declared_artifacts_in_build_directory(release_dir))
+    assert not filenames & set(_declared_artifacts_outside_build_directory(release_dir))
     if not flag:
         assert listed == {}
         assert not filenames & published
@@ -14286,7 +14304,6 @@ def test_build_manifests_selects_population_structure_holdout_for_publication(
         _check_local_artifact_hashes,
         _check_release_manifest,
     )
-    from microcosm.data.release import _release_manifest_release_artifacts
 
     builder = _load_builder_module()
     release_id, release_dir, artifact_root = _gate_evidence_release_dir(
@@ -14340,7 +14357,7 @@ def test_build_manifests_selects_population_structure_holdout_for_publication(
         "revision": release_id,
         "sha256": hashlib.sha256(holdout_path.read_bytes()).hexdigest(),
     }
-    assert filename in _release_manifest_release_artifacts(release_dir)
+    assert filename in _declared_artifacts_in_build_directory(release_dir)
     failures: list[str] = []
     _check_release_manifest(manifest, release_id, failures)
     _check_local_artifact_hashes(release_dir, manifest, failures)
@@ -14384,7 +14401,6 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
         _check_us_stored_input_evidence,
         stored_input_evidence_manifest_block,
     )
-    from microcosm.data.release import _release_manifest_release_artifacts
 
     builder = _load_builder_module()
     receipt = {
@@ -14508,7 +14524,7 @@ def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
     )
     assert contract_failures == []
     assert set(builder.US_RELEASE_GATE_EVIDENCE_FILES.values()) <= set(
-        _release_manifest_release_artifacts(release_dir)
+        _declared_artifacts_in_build_directory(release_dir)
     )
     # ...and its local hash check covers each file: an edited verdict fails.
     for key, filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.items():

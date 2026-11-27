@@ -20,8 +20,6 @@ from microcosm.data.contract import (
     validate_release_dir,
 )
 from microcosm.data.h5_enrichment import append_native_spm_role, compare_h5_enrichment
-from microcosm.data.publish_cli import main as publish_main
-from microcosm.data.release import publish_release
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-data")
@@ -268,40 +266,6 @@ def test_pending_candidate_is_valid_but_actual_release_gate_refuses(candidate):
         validate_release_dir(release, parent_h5=parent, artifact_root=root)
 
 
-def test_publisher_refuses_before_constructing_hub_client(candidate, monkeypatch):
-    import microcosm.data.release as release_module
-
-    def no_hub():
-        pytest.fail("publisher contacted Hub for a pending enrichment")
-
-    monkeypatch.setattr(release_module, "_hf_api", no_hub)
-    release, parent, root = candidate
-    with pytest.raises(ReleaseContractError, match="compatibility is pending"):
-        publish_release(
-            release, "policyengine/populace-us", parent_h5=parent, artifact_root=root
-        )
-
-
-def test_preflight_runs_actual_gate_and_never_publishes(candidate, monkeypatch):
-    import microcosm.data.publish_cli as cli
-
-    monkeypatch.setattr(
-        cli, "publish_release", lambda *a, **kw: pytest.fail("preflight published")
-    )
-    release, parent, root = candidate
-    with pytest.raises(ReleaseContractError, match="compatibility is pending"):
-        publish_main(
-            [
-                str(release),
-                "--parent-h5",
-                str(parent),
-                "--artifact-root",
-                str(root),
-                "--preflight-only",
-            ]
-        )
-
-
 def test_requires_actual_parent_and_h5(candidate):
     release, _, root = candidate
     with pytest.raises(ReleaseContractError, match="requires parent_h5"):
@@ -453,30 +417,20 @@ def _qualify_candidate(candidate, tmp_path, monkeypatch, **claim):
 def test_annual_cut_preserves_source_enrichment_qualification(
     candidate, tmp_path, monkeypatch
 ):
-    from microcosm.data.release import prepare_release
     from test_support.microcosm_data.annual_projections import add_annual_extension
 
     output, calls = _qualify_candidate(candidate, tmp_path, monkeypatch)
     _, parent, root = candidate
-    tag = add_annual_extension(output, root)
+    add_annual_extension(output, root)
     previous_calls = len(calls)
-    prepared = prepare_release(
+    validate_release_dir(
         output,
-        artifact_root=root,
         parent_h5=parent,
+        artifact_root=root,
         compatibility_wheels=(tmp_path / "country.whl",),
-        tag_name=tag,
-        update_latest=False,
     )
     assert len(calls) == previous_calls + 1
     assert calls[-1]["require_wheels"] is True
-    assert {
-        "annual_manifest.json",
-        "annual_acceptance.json",
-        "projection_2025.json",
-        enrichment.COMPATIBILITY_FILE,
-    }.issubset(prepared.filenames)
-    assert set(prepared.root_artifacts) == {"populace_us_2024.h5", "annual_2025.h5"}
 
 
 @pytest.mark.parametrize(
@@ -522,16 +476,9 @@ def test_annual_source_enrichment_retains_original_constraints(
         )
 
 
-def test_certification_writes_new_bundle_and_preflight_replays(
+def test_certification_writes_new_bundle_and_the_contract_replays(
     candidate, tmp_path, monkeypatch
 ):
-    import microcosm.data.release as release_module
-
-    monkeypatch.setattr(
-        release_module,
-        "_hf_api",
-        lambda: pytest.fail("successful preflight constructed a Hub client"),
-    )
     release, parent, root = candidate
     original_report = (release / enrichment.SOURCE_ENRICHMENT_FILE).read_bytes()
     output, calls = _qualify_candidate(candidate, tmp_path, monkeypatch)
@@ -539,22 +486,13 @@ def test_certification_writes_new_bundle_and_preflight_replays(
     assert (output / enrichment.SOURCE_EVIDENCE_FILE).read_bytes() == (
         release / enrichment.SOURCE_EVIDENCE_FILE
     ).read_bytes()
-    assert (
-        publish_main(
-            [
-                str(output),
-                "--parent-h5",
-                str(parent),
-                "--artifact-root",
-                str(root),
-                "--compatibility-wheel",
-                str(tmp_path / "country.whl"),
-                "--preflight-only",
-            ]
-        )
-        == 0
+    validate_release_dir(
+        output,
+        parent_h5=parent,
+        artifact_root=root,
+        compatibility_wheels=(tmp_path / "country.whl",),
     )
-    assert len(calls) == 3  # Test, staged revalidation, then real publisher preflight.
+    assert len(calls) == 3  # Test, staged revalidation, then the contract's replay.
     assert all(call["require_wheels"] for call in calls)
 
 
@@ -606,46 +544,6 @@ def test_certified_enrichment_lists_its_complete_build_folder_with_the_h5_once(
         assert files[entry["path"]].role == entry["role"]
     assert files[dataset["path"]].role == "dataset"
     assert files["build_manifest.json"].role == "build_manifest"
-
-
-def test_certified_enrichment_preflight_and_publish_refuse_a_build_folder_identically(
-    build_folder_candidate, tmp_path, monkeypatch
-):
-    import microcosm.data.release as release_module
-
-    _, parent, root = build_folder_candidate
-    release, _ = _qualify_candidate(build_folder_candidate, tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        release_module,
-        "_hf_api",
-        lambda: pytest.fail("a build-folder release constructed a Hub client"),
-    )
-    wheels = (tmp_path / "country.whl",)
-    with pytest.raises(
-        ValueError, match="microcosm-publish-release-build"
-    ) as published:
-        publish_release(
-            release,
-            "policyengine/populace-us",
-            parent_h5=parent,
-            artifact_root=root,
-            compatibility_wheels=wheels,
-            notify=False,
-        )
-    with pytest.raises(type(published.value)) as preflight:
-        publish_main(
-            [
-                str(release),
-                "--parent-h5",
-                str(parent),
-                "--artifact-root",
-                str(root),
-                "--compatibility-wheel",
-                str(wheels[0]),
-                "--preflight-only",
-            ]
-        )
-    assert str(preflight.value) == str(published.value)
 
 
 def test_a_build_folder_candidate_names_its_parent_as_a_build_in_a_folder(
@@ -857,14 +755,9 @@ def test_certification_records_a_build_folders_built_with_packages_at_its_top_le
 
 
 @pytest.mark.parametrize("duplicate", ["identical", "different", "symlink"])
-@pytest.mark.parametrize(
-    "entrypoint", ["candidate", "preflight", "publisher", "publisher_existing_client"]
-)
-def test_release_local_h5_duplicate_is_rejected_before_hub_activity(
-    candidate, tmp_path, monkeypatch, duplicate, entrypoint
+def test_release_local_h5_duplicate_is_rejected(
+    candidate, tmp_path, monkeypatch, duplicate
 ):
-    import microcosm.data.release as release_module
-
     _, parent, root = candidate
     release, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
     # The unduplicated fixture passes the full gate: pending compatibility or
@@ -882,45 +775,12 @@ def test_release_local_h5_duplicate_is_rejected_before_hub_activity(
                 row["person_weight"] += 1
                 handle["person/table"][0] = row
     monkeypatch.setattr(
-        release_module,
-        "_hf_api",
-        lambda: pytest.fail("duplicate reached Hub client construction"),
-    )
-
-    class NoHubActivity:
-        def __getattr__(self, name):
-            pytest.fail(f"duplicate accessed supplied Hub client: {name}")
-
-    monkeypatch.setattr(
         enrichment,
         "run_native_loader_compatibility",
         lambda *a, **kw: pytest.fail("duplicate reached compatibility probing"),
     )
     with pytest.raises(ReleaseContractError, match="release-local H5"):
-        if entrypoint == "candidate":
-            _validate((release, parent, root))
-        elif entrypoint == "preflight":
-            publish_main(
-                [
-                    str(release),
-                    "--parent-h5",
-                    str(parent),
-                    "--artifact-root",
-                    str(root),
-                    "--preflight-only",
-                ]
-            )
-        else:
-            publish_release(
-                release,
-                "policyengine/populace-us",
-                parent_h5=parent,
-                artifact_root=root,
-                notify=False,
-                api=NoHubActivity()
-                if entrypoint == "publisher_existing_client"
-                else None,
-            )
+        _validate((release, parent, root))
 
 
 @pytest.mark.parametrize("year", [2023, 2024, 2025])
@@ -1202,16 +1062,9 @@ def test_default_certification_pins_the_tested_version_and_declares_nothing(
     assert "publisher_claims" not in report["compatibility"]
 
 
-def test_declared_model_range_is_emitted_verbatim_and_replayed_by_preflight(
+def test_declared_model_range_is_emitted_verbatim_and_replayed_by_the_contract(
     candidate, tmp_path, monkeypatch
 ):
-    import microcosm.data.release as release_module
-
-    monkeypatch.setattr(
-        release_module,
-        "_hf_api",
-        lambda: pytest.fail("successful preflight constructed a Hub client"),
-    )
     release, parent, root = candidate
     output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
     manifest, report = _certified(output)
@@ -1225,20 +1078,11 @@ def test_declared_model_range_is_emitted_verbatim_and_replayed_by_preflight(
     assert manifest["compatible_core_packages"] == [
         {"name": "policyengine-core", "specifier": "==3.99.0"}
     ]
-    assert (
-        publish_main(
-            [
-                str(output),
-                "--parent-h5",
-                str(parent),
-                "--artifact-root",
-                str(root),
-                "--compatibility-wheel",
-                str(tmp_path / "country.whl"),
-                "--preflight-only",
-            ]
-        )
-        == 0
+    validate_release_dir(
+        output,
+        parent_h5=parent,
+        artifact_root=root,
+        compatibility_wheels=(tmp_path / "country.whl",),
     )
 
 
@@ -2078,90 +1922,6 @@ def test_validation_output_surfaces_a_recorded_narrowing(
         "compatibility": "passed",
         "claim_measurement": MEASURED_RECORD,
     }
-
-
-def test_publish_preflight_surfaces_a_recorded_narrowing(
-    candidate, tmp_path, monkeypatch, capsys
-):
-    """The publisher's own preflight is where the later operator actually is."""
-    import microcosm.data.release as release_module
-
-    monkeypatch.setattr(
-        release_module,
-        "_hf_api",
-        lambda: pytest.fail("successful preflight constructed a Hub client"),
-    )
-    _, parent, root = candidate
-    narrowed, declared = _narrowed_bundle(candidate, tmp_path, monkeypatch)
-
-    def _preflight(bundle):
-        assert (
-            publish_main(
-                [
-                    str(bundle),
-                    "--parent-h5",
-                    str(parent),
-                    "--artifact-root",
-                    str(root),
-                    "--compatibility-wheel",
-                    str(tmp_path / "country.whl"),
-                    "--preflight-only",
-                ]
-            )
-            == 0
-        )
-        return json.loads(capsys.readouterr().out)
-
-    assert _preflight(narrowed) == {
-        "valid": True,
-        "published": False,
-        "narrowed_claims": NARROWED_RECORD,
-    }
-    assert _preflight(declared) == {
-        "valid": True,
-        "published": False,
-        "claim_measurement": MEASURED_RECORD,
-    }
-
-
-def test_publication_says_on_stderr_what_the_preflight_says_in_json(
-    candidate, tmp_path, monkeypatch, capsys
-):
-    """Publication is reachable without ever running the preflight.
-
-    `tools/publish_release.sh` passes its arguments straight through, so the
-    runbook's "remove --preflight-only" step is a habit rather than a gate. The
-    JSON verdict belongs to whatever parses stdout; the operator reading the
-    terminal gets the same record on stderr, on both paths.
-    """
-    from microcosm.data import publish_cli
-
-    _, parent, root = candidate
-    narrowed, declared = _narrowed_bundle(candidate, tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        publish_cli, "publish_release", lambda *args, **kwargs: {"published": True}
-    )
-    tail = [
-        "--parent-h5",
-        str(parent),
-        "--artifact-root",
-        str(root),
-        "--compatibility-wheel",
-        str(tmp_path / "country.whl"),
-    ]
-    assert publish_main([str(narrowed), *tail]) == 0
-    published = capsys.readouterr()
-    assert json.loads(published.out) == {"published": True}
-    assert "compatibility narrowing" in published.err
-    assert ">=1.999.0,<2" in published.err
-
-    assert publish_main([str(declared), *tail]) == 0
-    declared_err = capsys.readouterr().err
-    assert "narrowing" not in declared_err
-    # The declared range is announced with the one version it was measured
-    # against (microcosm#1034).
-    assert "measured against only the versions recorded here" in declared_err
-    assert json.dumps(MEASURED_RECORD, sort_keys=True) in declared_err
 
 
 @pytest.mark.parametrize(
