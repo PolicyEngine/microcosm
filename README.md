@@ -705,17 +705,16 @@ only its tag, so existing builds' references keep working.
 read: at `main` from `releases/<release>/<build>/`, or at the tag from
 `releases/<id>/`.
 
-**No release publishes with tags.** `microcosm-publish-release` (and
-`tools/publish_release.sh`, a thin wrapper that passes every argument straight
-through) refuses every release that publishes into build folders and any
-repository that has `releases.json`, so it publishes no UK or US release.
-The UK repository's switch moved the June 2023 build, which `latest.json`
-named, into its own folder as the only and current build of release
-`populace-uk-2023`; `microcosm.data.load("uk", 2023)` reads it there, and no
-new builds publish to that release. `populace-uk-<year>-<tier>-k<N>` releases
-have no publication path in the UK repository since its switch: the emitter
-command takes only the releases above, and the tagged publisher refuses
-a repository that has `releases.json`. A US annual-projection build publishes
+**No release publishes with tags.** Every release publishes each build into
+its own folder with `microcosm-publish-release-build`. The tagged publisher,
+`microcosm-publish-release`, which committed, tagged and wrote `latest*.json`
+pointer files on the Hub directly, has been removed, with
+`tools/publish_release.sh`. The UK repository's switch moved the June 2023
+build, which `latest.json` named, into its own folder as the only and current
+build of release `populace-uk-2023`; `microcosm.data.load("uk", 2023)` reads it
+there, and no new builds publish to that release.
+`populace-uk-<year>-<tier>-k<N>` releases have no publication path: the
+emitter command takes only the releases above. A US annual-projection build publishes
 into `microcosm-us-2024-annual`, carrying its base national build's files
 ([the annual guide](docs/us-annual-static-aging.md)); its base is a
 calibrated national build, not yet a source enrichment. An annual projection
@@ -950,14 +949,10 @@ The US switch deleted every `latest*.json` file, so
 `microcosm.data.latest_evidence_release`, which still reads
 `latest-evidence.json`, finds no pointer in the US repository.
 
-The tagged publisher posts a Slack alert when it moves `latest.json`, and only
-when the channel's incoming-webhook URL is set (`SLACK_WEBHOOK_POPULACE_US`,
-`SLACK_WEBHOOK_POPULACE_UK`), which `tools/publish_release.sh` loads from
-`tools/release.env` and warns about when neither is set. It publishes no UK or
-US release since the two repositories' switches, so no publication reads
-either variable: the calibration diagnostics dashboard posts every UK and US
-release alert from changes to `releases.json`. `tools/release.env` still
-holds the UK release key below; create it once on the build machine:
+No release command posts a Slack alert: `microcosm-publish-release-build`
+sends none, and the calibration diagnostics dashboard posts release alerts
+from changes to `releases.json`. `tools/release.env` holds the UK release key
+below; create it once on the build machine:
 
 ```bash
 cp tools/release.env.example tools/release.env   # then fill in the values

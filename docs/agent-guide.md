@@ -392,14 +392,12 @@ package stage prints both commands itself.
 need no calibration on the base before a build, and again with the finished
 build's `--release-manifest`. The emitter changes
 no current build while any `latest*.json` pointer file exists; the UK and US
-repositories' switches to `releases.json` deleted them. The tagged publisher
-(`tools/publish_release.sh` → `microcosm-publish-release`) refuses every one of
-these releases and any repository that has `releases.json`, so no UK or US
-release publishes with tags. The UK repository's switch moved the June 2023 UK
-build into release `populace-uk-2023`, which takes no new builds, and
-`populace-uk-<year>-<tier>-k<N>` releases have no publication path there. This
-holds for the US from its repository's switch commit; Microcosm's US change
-(microcosm#1570) merges straight after it. Tests hand release changes to the
+repositories' switches to `releases.json` deleted them. No release publishes
+with tags: the tagged publisher (`microcosm-publish-release`) has been
+removed, and `microcosm-publish-release-build` takes only the releases that
+`publishes_to_build_folder` names. The UK repository's switch moved the June
+2023 UK build into release `populace-uk-2023`, which takes no new builds, and
+`populace-uk-<year>-<tier>-k<N>` releases have no publication path. Tests hand release changes to the
 in-memory client (`client.release_requests`), which applies them to
 `hub_files` with the interface's shared `releases.json` checks. See README
 "Releasing & alerts". Before launching a US

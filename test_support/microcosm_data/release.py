@@ -1,9 +1,7 @@
-"""Publishing behavior: contract-gated uploads and a last-written pointer.
+"""Release fixtures: release directories, build folders and a fake Hub.
 
-The fake Hub client records every upload in order, so the suite asserts the
-real guarantees — an invalid release uploads nothing, and ``latest.json``
-lands strictly after the files it points at — rather than implementation
-details.
+The fake Hub client records every request, so the tests check what the
+pointer readers and build-folder publication read and refuse.
 """
 
 # ruff: noqa: F401
@@ -16,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from microcosm.data import ReleaseContractError, publish_cli
+from microcosm.data import ReleaseContractError
 from microcosm.data import release as release_module
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
@@ -39,7 +37,6 @@ from microcosm.data.release import (
     latest_release,
     line_pointer_path,
     line_pointer_payload,
-    publish_release,
 )
 from microcosm.data.stored_inputs import register_sha256
 from test_support.microcosm_data.build_folders import (
@@ -49,15 +46,6 @@ from test_support.microcosm_data.build_folders import (
     to_build_folder_layout,
 )
 from test_support.microcosm_data.hub_errors import missing_on_hub
-
-
-@pytest.fixture(autouse=True)
-def _no_slack_webhook(monkeypatch):
-    """Keep publish_release's release alert hermetic: never post to a real
-    webhook if the dev/CI environment happens to have one set."""
-    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
-    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_UK", raising=False)
-
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
 JUNE_UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"

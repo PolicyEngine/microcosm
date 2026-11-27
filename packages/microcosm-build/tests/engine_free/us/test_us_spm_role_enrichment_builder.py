@@ -17,7 +17,7 @@ from microcosm.build.us_runtime.spm_role_source import SpmRoleSourceResult
 from microcosm.data import source_enrichment as contract
 from microcosm.data.contract import US_NATIONAL_RELEASE_ID
 from microcosm.data.h5_enrichment import file_sha256
-from microcosm.data.publish_cli import _staging_undelivered
+from microcosm.data.release import _staging_undelivered
 from tools import build_us_spm_role_enrichment as builder
 
 pytest.importorskip("tables")
