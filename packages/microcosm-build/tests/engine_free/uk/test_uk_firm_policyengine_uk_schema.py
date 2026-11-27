@@ -29,6 +29,7 @@ from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_MICROCOSM_COLUMNS,
     UK_FIRM_MICROCOSM_ONLY_COLUMNS,
     UK_FIRM_ONS_LEGAL_STATUS_TO_LEGAL_FORM,
+    UK_FIRM_PAYBILL_TABLE_COLUMNS,
     UK_FIRM_POLICYENGINE_UK_INPUT_STATUS,
     UK_FIRM_REGION_CODE_TO_REGION,
     UK_FIRM_SIC_SECTIONS,
@@ -64,7 +65,7 @@ def _variable(name: str) -> dict:
     return _snapshot()["firm_variables"][name]
 
 
-def _firms(*, attributes: bool = False) -> pd.DataFrame:
+def _firms(*, attributes: bool = False, paybill: bool = False) -> pd.DataFrame:
     firms = pd.DataFrame(
         {
             "firm_id": np.array([4, 2, 1, 3], dtype=np.int64),
@@ -87,6 +88,9 @@ def _firms(*, attributes: bool = False) -> pd.DataFrame:
     if attributes:
         firms["ons_legal_status"] = np.array([1, 2, 5, 7], dtype=np.int64)
         firms["ons_region_code"] = ["E12000007", "W92000004", "S92000003", "N92000002"]
+    if paybill:
+        # Headcount x a pay per head; the source is test_uk_firm_paybill's.
+        firms["firm_paybill"] = firms["employment"].to_numpy(np.float64) * 30000.0
     return firms
 
 
@@ -154,17 +158,18 @@ def test_microcosm_only_columns_collide_with_no_policyengine_uk_variable() -> No
 
 
 @pytest.mark.parametrize(
-    ("attributes", "expected", "groups"),
+    ("attributes", "paybill", "expected", "groups"),
     [
-        (False, UK_FIRM_TABLE_COLUMNS, ()),
-        (True, UK_FIRM_EXTENDED_TABLE_COLUMNS, ("attributes",)),
+        (False, False, UK_FIRM_TABLE_COLUMNS, ()),
+        (True, False, UK_FIRM_EXTENDED_TABLE_COLUMNS, ("attributes",)),
+        (True, True, UK_FIRM_PAYBILL_TABLE_COLUMNS, ("attributes", "paybill")),
     ],
 )
 def test_export_loads_as_policyengine_uk_firm_inputs(
-    attributes, expected, groups
+    attributes, paybill, expected, groups
 ) -> None:
     table = to_policyengine_uk_firm_table(
-        _firms(attributes=attributes), threshold_k=90.0
+        _firms(attributes=attributes, paybill=paybill), threshold_k=90.0
     )
     assert tuple(table.columns) == expected
     assert (

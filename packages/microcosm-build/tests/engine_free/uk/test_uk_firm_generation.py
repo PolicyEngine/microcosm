@@ -22,6 +22,8 @@ from microcosm.build.uk_runtime.firm_generation import (
     INPUT_FILES,
     INPUT_RATIO_LOWER,
     INPUT_RATIO_UPPER,
+    LARGE_EMPLOYMENT_CAP,
+    LARGE_EMPLOYMENT_MEAN,
     UK_FIRM_TARGET_IDS,
     VAT_LIABILITY_BANDS_CALIBRATED,
     AxiomVATRuleEvaluator,
@@ -35,6 +37,9 @@ from microcosm.build.uk_runtime.firm_generation import (
     generate_input_values,
     generate_uk_firm_population,
     hmrc_band_name,
+    large_employment_mean_range,
+    large_employment_pareto_shape,
+    large_employment_slice_means,
     read_uk_firm_source_data,
     resolve_uk_firm_rules,
     uk_firm_source_data_from_frames,
@@ -701,6 +706,166 @@ def test_assign_employment_is_sector_conditional() -> None:
     unknown = employment[100:]
     assert (unknown <= 4).any() and (unknown >= 250).any()
     assert assign_employment(sic[:0], ons_employment).shape == (0,)
+
+
+def test_large_employment_slices_hit_the_mean_inside_the_band() -> None:
+    shape = large_employment_pareto_shape()
+    # DBT's 250-499 / 500-999 / 1000+ shares are 0.51 / 0.26 / 0.23.
+    tail = 1.0 - (250.0 / LARGE_EMPLOYMENT_CAP) ** shape
+    above_1000 = ((250.0 / 1_000.0) ** shape - (1.0 - tail)) / tail
+    assert 1.0 < shape < 1.3
+    assert above_1000 == pytest.approx(0.234, abs=0.04)
+    for masses in (np.ones(1), np.ones(2_000), np.linspace(0.5, 50.0, 997)):
+        means = large_employment_slice_means(masses)
+        assert np.all(np.diff(means) > 0)
+        assert means.min() >= 250.0
+        assert means.max() <= LARGE_EMPLOYMENT_CAP
+        weighted = float((masses * means).sum() / masses.sum())
+        assert weighted == pytest.approx(LARGE_EMPLOYMENT_MEAN, rel=1e-9)
+    # A zero-mass slice takes its quantile rather than dividing by zero.
+    assert np.isfinite(large_employment_slice_means(np.array([1.0, 0.0, 1.0]))).all()
+    with pytest.raises(ValueError, match="non-negative"):
+        large_employment_slice_means(np.array([-1.0, 1.0]))
+
+
+def test_assign_employment_weights_the_large_band_mean() -> None:
+    ons_employment = pd.DataFrame(
+        [{"SIC Code": 2, "Description": "Large", "0-4": 0, "250+": 5}]
+    )
+    torch.manual_seed(0)
+    sic = torch.full((400,), 2, dtype=torch.int64)
+    weights = np.linspace(1.0, 40.0, 400)
+
+    employment = assign_employment(
+        sic,
+        ons_employment,
+        weights=weights,
+        large_employment_mean=LARGE_EMPLOYMENT_MEAN,
+    ).numpy()
+    torch.manual_seed(0)
+    legacy = assign_employment(sic, ons_employment, weights=weights).numpy()
+
+    assert employment.min() >= 250 and employment.max() > 2_000
+    weighted = float((weights * employment).sum() / weights.sum())
+    assert weighted == pytest.approx(LARGE_EMPLOYMENT_MEAN, rel=1e-3)
+    # The default keeps the paper's draw, clamped to [250, 2000], and both
+    # rank the rows by the same lognormal draw.
+    assert legacy.min() >= 250 and legacy.max() <= 2_000
+    inside = (legacy > 250) & (legacy < 2_000)
+    order = np.argsort(legacy[inside], kind="stable")
+    ranked = employment[inside][order]
+    distinct = np.diff(legacy[inside][order]) > 0
+    assert np.all(np.diff(ranked)[distinct] >= 0)
+    with pytest.raises(ValueError, match="large_employment_mean"):
+        UKFirmGenerationConfig(large_employment_mean=100.0)
+
+
+def test_assign_employment_keeps_out_of_frame_rows_below_the_large_band() -> None:
+    """With a large-employment mean, only ONS-frame rows reach 250+, and the
+    mean is theirs; without one, ``in_frame`` changes nothing."""
+
+    ons_employment = pd.DataFrame(
+        [
+            {"SIC Code": 2, "Description": "Mixed", "0-4": 6, "20-49": 2, "250+": 2},
+            {"SIC Code": 3, "Description": "Large", "0-4": 0, "20-49": 0, "250+": 5},
+        ]
+    )
+    sic = torch.cat([torch.full((3_000,), 2), torch.full((1_000,), 3)]).to(torch.int64)
+    in_frame = np.arange(len(sic)) % 3 != 0
+    weights = np.linspace(1.0, 20.0, len(sic))
+
+    torch.manual_seed(0)
+    legacy = assign_employment(sic, ons_employment, weights=weights).numpy()
+    legacy_state = torch.get_rng_state()
+    torch.manual_seed(0)
+    masked = assign_employment(
+        sic, ons_employment, weights=weights, in_frame=in_frame
+    ).numpy()
+    # The default draw ignores the frame mask: out-of-frame rows reach 250+.
+    np.testing.assert_array_equal(masked, legacy)
+    assert torch.equal(torch.get_rng_state(), legacy_state)
+    assert (legacy[~in_frame] >= 250).any()
+
+    torch.manual_seed(0)
+    employment = assign_employment(
+        sic,
+        ons_employment,
+        weights=weights,
+        large_employment_mean=LARGE_EMPLOYMENT_MEAN,
+        in_frame=in_frame,
+    ).numpy()
+    # The option takes no draws of its own from the generator.
+    assert torch.equal(torch.get_rng_state(), legacy_state)
+
+    outside = employment[~in_frame]
+    assert outside.min() >= 1 and outside.max() <= 249
+    large = employment >= 250
+    np.testing.assert_array_equal(large, (legacy >= 250) & in_frame)
+    # Rows the default draws below 250 keep their headcount.
+    np.testing.assert_array_equal(employment[legacy < 250], legacy[legacy < 250])
+    weighted = float((weights * employment)[large].sum() / weights[large].sum())
+    assert weighted == pytest.approx(LARGE_EMPLOYMENT_MEAN, rel=1e-3)
+
+    moved = ~in_frame & (legacy >= 250)
+    # A sector with smaller bands redraws from its own shares of them (0-4
+    # and 20-49 here); a sector with only the open band uses the national
+    # shares, which are the same two bands.
+    for sector in (2, 3):
+        redrawn = employment[moved & (sic.numpy() == sector)]
+        assert len(redrawn) > 0
+        assert set(employment_band_name(value) for value in redrawn) == {
+            "0-4",
+            "20-49",
+        }
+    small_share = float((employment[moved & (sic.numpy() == 2)] <= 4).mean())
+    assert small_share == pytest.approx(0.75, abs=0.08)
+
+    with pytest.raises(ValueError, match="in_frame"):
+        assign_employment(
+            sic,
+            ons_employment,
+            large_employment_mean=LARGE_EMPLOYMENT_MEAN,
+            in_frame=in_frame[:-1],
+        )
+
+
+def test_employment_below_large_band_covers_each_closed_band() -> None:
+    below = firm_generation._employment_below_large_band
+    scores = np.linspace(-6.0, 6.0, 4_001)
+    shares = np.array([1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 5.0])
+    values = below(scores, 0.0, 1.0, shares, np.ones(7))
+    # Monotone in the score, whole numbers, inside the closed bands with mass.
+    assert np.all(np.diff(values) >= 0)
+    np.testing.assert_array_equal(values, np.round(values))
+    assert {employment_band_name(value) for value in values} == {
+        "0-4",
+        "5-9",
+        "20-49",
+        "100-249",
+    }
+    assert values.min() == 1 and values.max() == 249
+    # No mass below the open band: the fallback shares, then equal shares.
+    only_large = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0])
+    fallback = below(scores, 0.0, 1.0, only_large, np.array([0, 0, 1.0, 0, 0, 0, 3]))
+    assert fallback.min() == 10 and fallback.max() == 19
+    equal = below(scores, 0.0, 1.0, only_large, only_large)
+    assert equal.min() == 1 and equal.max() == 249
+
+
+@pytest.mark.parametrize("mean", [255.0, 100_000.0])
+def test_large_employment_mean_outside_the_reachable_range_raises(
+    mean: float,
+) -> None:
+    """Means a bracketed Pareto shape cannot reach raise, not saturate."""
+
+    smallest, largest = large_employment_mean_range()
+    assert not smallest <= mean <= largest
+    with pytest.raises(ValueError, match="outside"):
+        large_employment_pareto_shape(mean)
+    with pytest.raises(ValueError, match="large_employment_mean"):
+        UKFirmGenerationConfig(large_employment_mean=mean)
+    # The DBT mean is well inside the range.
+    assert smallest < LARGE_EMPLOYMENT_MEAN < largest
 
 
 def test_employment_band_index_array_matches_band_names() -> None:

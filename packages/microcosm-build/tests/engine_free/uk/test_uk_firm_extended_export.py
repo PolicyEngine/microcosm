@@ -12,6 +12,7 @@ from functools import cache
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.uk_runtime.firm_attributes import (
     assign_uk_firm_attributes,
@@ -24,9 +25,15 @@ from microcosm.build.uk_runtime.firm_generation import (
     generate_uk_firm_population,
     read_uk_firm_source_data,
 )
+from microcosm.build.uk_runtime.firm_paybill import (
+    assign_uk_firm_paybill,
+    read_uk_firm_paybill_source,
+    uk_firm_paybill_fallback_counts,
+)
 from microcosm.build.uk_runtime.firm_rules import UKFirmRuleOutputs
 from microcosm.build.uk_runtime.firm_table import (
     UK_FIRM_EXTENDED_TABLE_COLUMNS,
+    UK_FIRM_PAYBILL_TABLE_COLUMNS,
     UK_FIRM_TABLE_COLUMNS,
     to_policyengine_uk_firm_table,
     validate_uk_firm_table,
@@ -143,7 +150,35 @@ def test_weighted_region_by_legal_status_tracks_held_out_table_15() -> None:
     assert abs(company - official_company) < 0.02
 
 
-#: The two export layouts as named constants spelled them before the group
+def test_paybill_export_tracks_ashe_jobs_times_mean_pay() -> None:
+    """A coarse headcount check: weighted paybill near ASHE jobs x mean pay.
+
+    Not calibrated: headcount x section mean, with proprietors and
+    out-of-frame traders included. ASHE 2025's all-employees row gives
+    24,889 thousand jobs at a mean of 40,444.9 pounds, about 1.007 trillion
+    pounds; the band only catches gross failures, such as a headcount or
+    unit error. Every firm here has a published section, so none falls back
+    to the all-employees mean.
+    """
+
+    source = read_uk_firm_paybill_source(FIXTURES / "firm_paybill_2024")
+    firms = _with_attributes()
+    firms = firms.assign(firm_paybill=assign_uk_firm_paybill(firms, source))
+    table = to_policyengine_uk_firm_table(
+        firms, threshold_k=_generated().config.vat_threshold
+    )
+
+    assert tuple(table.columns) == UK_FIRM_PAYBILL_TABLE_COLUMNS
+    validate_uk_firm_table(table)
+    weighted = float((table["firm_weight"] * table["firm_paybill"]).sum())
+    ashe = 24_889_000 * 40_444.9
+    assert 0.85 < weighted / ashe < 1.25
+    counts = uk_firm_paybill_fallback_counts(table, source).set_index("level")
+    assert float(counts["weighted_paybill_gbp"].sum()) == pytest.approx(weighted)
+    assert int(counts.loc["all_employees", "firms"]) == 0
+
+
+#: The three export layouts as named constants spelled them before the group
 #: registry (microcosm#1705), written out so a registry change cannot move
 #: them unnoticed. Each column's dtype kind: integer, float, bool or string.
 _BASE_POLICYENGINE_UK = (
@@ -165,6 +200,7 @@ _ATTRIBUTE_POLICYENGINE_UK = (
     ("firm_is_public_body", "bool"),
     ("firm_is_charity", "bool"),
 )
+_PAYBILL_POLICYENGINE_UK = (("firm_paybill", "float"),)
 _BASE_MICROCOSM = (
     ("in_frame", "bool"),
     ("vat_scope", "bool"),
@@ -180,6 +216,13 @@ _LEGACY_LAYOUTS = {
     "extended": (
         *_BASE_POLICYENGINE_UK,
         *_ATTRIBUTE_POLICYENGINE_UK,
+        *_BASE_MICROCOSM,
+        *_ATTRIBUTE_MICROCOSM,
+    ),
+    "paybill": (
+        *_BASE_POLICYENGINE_UK,
+        *_ATTRIBUTE_POLICYENGINE_UK,
+        *_PAYBILL_POLICYENGINE_UK,
         *_BASE_MICROCOSM,
         *_ATTRIBUTE_MICROCOSM,
     ),
@@ -221,27 +264,33 @@ def _legacy_extended(base: pd.DataFrame, rows: pd.DataFrame) -> pd.DataFrame:
 def _exports() -> dict[str, pd.DataFrame]:
     threshold_k = _generated().config.vat_threshold
     attributed = _with_attributes()
+    source = read_uk_firm_paybill_source(FIXTURES / "firm_paybill_2024")
+    paybill = attributed.assign(firm_paybill=assign_uk_firm_paybill(attributed, source))
     return {
         layout: to_policyengine_uk_firm_table(firms, threshold_k=threshold_k)
         for layout, firms in (
             ("base", _generated().firms),
             ("extended", attributed),
+            ("paybill", paybill),
         )
     }
 
 
 def test_export_layouts_match_the_pre_registry_constants() -> None:
-    """Same-seed builds export the two layouts the named constants gave.
+    """Same-seed builds export the three layouts the named constants gave.
 
     Columns, their order and dtypes are the literal pre-registry layouts;
-    the named constants still spell them; the extended export
-    equals the base export assembled with its columns as the pre-registry
+    the named constants still spell them; the extended and paybill exports
+    equal the base export assembled with their columns as the pre-registry
     code assembled them.
     """
 
     assert UK_FIRM_TABLE_COLUMNS == tuple(c for c, _ in _LEGACY_LAYOUTS["base"])
     assert UK_FIRM_EXTENDED_TABLE_COLUMNS == tuple(
         c for c, _ in _LEGACY_LAYOUTS["extended"]
+    )
+    assert UK_FIRM_PAYBILL_TABLE_COLUMNS == tuple(
+        c for c, _ in _LEGACY_LAYOUTS["paybill"]
     )
     exports = _exports()
     for layout, table in exports.items():
@@ -252,10 +301,15 @@ def test_export_layouts_match_the_pre_registry_constants() -> None:
         validate_uk_firm_table(table)
         assert table.index.equals(pd.RangeIndex(len(table)))
 
-    base, extended = (exports[k] for k in ("base", "extended"))
+    base, extended, paybill = (exports[k] for k in ("base", "extended", "paybill"))
     rows = _with_attributes().sort_values("firm_id", kind="stable")
     legacy_extended = _legacy_extended(base, rows)
     pd.testing.assert_frame_equal(extended, legacy_extended, check_exact=True)
+    source = read_uk_firm_paybill_source(FIXTURES / "firm_paybill_2024")
+    legacy_paybill = legacy_extended.assign(
+        firm_paybill=np.asarray(assign_uk_firm_paybill(rows, source), np.float64)
+    )[[column for column, _ in _LEGACY_LAYOUTS["paybill"]]]
+    pd.testing.assert_frame_equal(paybill, legacy_paybill, check_exact=True)
     # Exporting the same seed's rows again gives the same tables.
     for layout, table in _exports().items():
         pd.testing.assert_frame_equal(table, exports[layout], check_exact=True)

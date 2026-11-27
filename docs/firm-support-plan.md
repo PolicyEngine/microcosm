@@ -63,8 +63,27 @@ policyengine-uk's firm variables. Value-free target candidates for the next
 Ledger sources are declared in `uk_runtime/firm_target_candidates.py`; they are
 not yet in `uk/uk_firms_targets.json` or the solve.
 
-The other policyengine-uk firm inputs (paybill, profit, rateable value, R&D,
-capital expenditure, the pay-distribution inputs and several flags) wait for
+`firm_paybill` is an opt-in assumed input (headcount × ONS ASHE section mean
+pay, `uk_runtime/firm_paybill.py`). Further opt-in assumed labour inputs,
+each from a saved source, are the Employment Allowance flags, public sector
+headcounts and the pay split below the secondary threshold. The labour link
+(`--bpe-dir`, `uk_runtime/firm_headcount.py`) prepares the firm table for
+linking to household data later; no person-firm link exists yet. It redraws
+headcount inside the ONS 0-4 band by legal status from DBT Business
+Population Estimates 2025 Table 3, sets `firm_employees` to employment less
+assumed working proprietors, and adds `firm_sic_division`, `ons_employment`,
+`firm_employee_size_band`, `firm_mean_pay` and `firm_is_public_sector`. A
+labour match should agree on jobs by SIC section and public/private, by
+region and by size band, on paybill by section and on the share of pay below
+the secondary threshold, each side calibrated to external totals, not to the
+other. The concepts differ: APS size is by workplace and the firm table's by
+enterprise; FRS and RTI regions are by residence and the firm table's by
+enterprise location; ONS employment counts working proprietors. The opt-in
+Employment Allowance take-up draw (`--employment-allowance-takeup-dir`) uses
+HMRC's 2024-25 claimants by employee size band, which then become in-sample.
+
+The other policyengine-uk firm inputs (profit, rateable value, R&D, capital
+expenditure, the other pay-distribution inputs and several flags) wait for
 sources.
 
 ## External Prerequisites

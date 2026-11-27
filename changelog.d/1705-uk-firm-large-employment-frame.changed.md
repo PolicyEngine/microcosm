@@ -1,0 +1,1 @@
+With `UKFirmGenerationConfig.large_employment_mean` set (opt-in), only in-frame rows can reach the 250+ employment band: out-of-frame rows the draw would put at 250+ get 1 to 249 from their sector's sub-250 shares, so the Pareto tail covers in-frame 250+ firms only (microcosm#1705). The default build is unchanged.

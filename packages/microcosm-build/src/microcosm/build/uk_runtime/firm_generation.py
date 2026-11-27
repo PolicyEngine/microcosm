@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -245,6 +246,130 @@ ONS_EMPLOYMENT_BANDS: dict[str, tuple[float, float, float]] = {
     "250+": (250.0, 2000.0, 400.0),
 }
 
+#: The legacy draw for the open 250+ band is the paper's lognormal (median
+#: 400, log-sd 0.8) clamped to the band's ``[250, 2000]`` above, so no firm
+#: exceeds 2,000 staff. Setting ``UKFirmGenerationConfig.large_employment_mean``
+#: (for example to :data:`LARGE_EMPLOYMENT_MEAN`) replaces the clamp with a
+#: truncated Pareto on ``[250, LARGE_EMPLOYMENT_CAP]`` with that mean.
+#:
+#: Mean headcount of a private-sector business with 250 or more employees:
+#: 11,115 thousand employment over 8,250 businesses, DBT "Business
+#: population estimates 2024" detailed tables, Table 1 (UK private sector,
+#: start 2024; rows 250-499, 500-999 and 1000 or more). The figures and their
+#: provenance are fixtured in ``tests/fixtures/uk/firm_2024_25_size/``.
+LARGE_EMPLOYMENT_MEAN = 11_115_000.0 / 8_250.0
+#: Upper limit of the Pareto 250+ headcount draw. It sits above the largest
+#: UK private employers' headcounts, so it bounds the draw's variance without
+#: acting as the legacy clamp at 2,000.
+LARGE_EMPLOYMENT_CAP = 500_000.0
+
+
+#: Shape bracket of the Pareto bisection. The truncated mean falls as the
+#: shape rises, so the bracket's ends bound the means a shape can reach.
+LARGE_EMPLOYMENT_SHAPE_BRACKET = (0.05, 20.0)
+
+
+def _large_employment_truncated_mean(shape: float, lower: float, cap: float) -> float:
+    tail = (lower / cap) ** shape
+    if abs(shape - 1.0) < 1e-9:
+        return lower * math.log(cap / lower) / (1.0 - tail)
+    return (
+        shape
+        * lower**shape
+        * (cap ** (1.0 - shape) - lower ** (1.0 - shape))
+        / ((1.0 - shape) * (1.0 - tail))
+    )
+
+
+def large_employment_mean_range(
+    lower: float = 250.0, cap: float = LARGE_EMPLOYMENT_CAP
+) -> tuple[float, float]:
+    """The 250+ means the Pareto draw can hit exactly, ``(smallest, largest)``.
+
+    They are the truncated means at the ends of
+    ``LARGE_EMPLOYMENT_SHAPE_BRACKET``; a mean outside them would make the
+    bisection saturate at a bracket end and miss the mean silently.
+    """
+
+    low_shape, high_shape = LARGE_EMPLOYMENT_SHAPE_BRACKET
+    return (
+        _large_employment_truncated_mean(high_shape, lower, cap),
+        _large_employment_truncated_mean(low_shape, lower, cap),
+    )
+
+
+def large_employment_pareto_shape(
+    mean: float = LARGE_EMPLOYMENT_MEAN,
+    lower: float = 250.0,
+    cap: float = LARGE_EMPLOYMENT_CAP,
+) -> float:
+    """Shape of the Pareto on ``[lower, cap]`` whose mean is ``mean``.
+
+    The truncated mean falls as the shape rises, so bisection on
+    ``LARGE_EMPLOYMENT_SHAPE_BRACKET`` converges; the shape-one case is its
+    logarithmic limit. A mean outside ``large_employment_mean_range`` raises
+    ``ValueError`` rather than saturating at a bracket end.
+    """
+
+    if not lower < mean < cap:
+        raise ValueError(
+            f"Large-firm mean {mean!r} must lie strictly inside ({lower}, {cap})."
+        )
+    smallest, largest = large_employment_mean_range(lower, cap)
+    if not smallest <= mean <= largest:
+        raise ValueError(
+            f"Large-firm mean {mean!r} is outside [{smallest:,.2f}, "
+            f"{largest:,.2f}], the means a Pareto shape in "
+            f"{LARGE_EMPLOYMENT_SHAPE_BRACKET} can reach on [{lower}, {cap}]."
+        )
+
+    low, high = LARGE_EMPLOYMENT_SHAPE_BRACKET
+    for _ in range(200):
+        middle = 0.5 * (low + high)
+        if _large_employment_truncated_mean(middle, lower, cap) > mean:
+            low = middle
+        else:
+            high = middle
+    return 0.5 * (low + high)
+
+
+def large_employment_slice_means(
+    masses: np.ndarray,
+    mean: float = LARGE_EMPLOYMENT_MEAN,
+    lower: float = 250.0,
+    cap: float = LARGE_EMPLOYMENT_CAP,
+) -> np.ndarray:
+    """Mean headcount of consecutive probability slices of the large-firm draw.
+
+    ``masses`` are the slices' non-negative sizes, lowest quantiles first;
+    they are rescaled to sum to one. Each slice gets the mean of the
+    truncated Pareto on ``[lower, cap]`` with mean ``mean`` over its quantile
+    range, so the mass-weighted mean of the result is ``mean`` exactly. A
+    zero-mass slice gets the quantile at its position.
+    """
+
+    masses = np.asarray(masses, dtype=np.float64)
+    if masses.size == 0:
+        return np.empty(0, dtype=np.float64)
+    if np.any(masses < 0) or not masses.sum() > 0:
+        raise ValueError("Large-firm slice masses must be non-negative, not all zero.")
+    shape = large_employment_pareto_shape(mean, lower, cap)
+    span = 1.0 - (lower / cap) ** shape
+    exponent = 1.0 - 1.0 / shape
+    cumulative = np.concatenate([[0.0], np.cumsum(masses)]) / masses.sum()
+    cumulative[-1] = 1.0
+    edges = 1.0 - cumulative * span
+    if abs(exponent) < 1e-12:
+        integral = np.log(edges) / span
+    else:
+        integral = edges**exponent / (exponent * span)
+    width = np.diff(cumulative)
+    quantile = lower * edges[:-1] ** (-1.0 / shape)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        means = lower * (integral[:-1] - integral[1:]) / width
+    return np.where(width > 0, means, quantile)
+
+
 NEGATIVE_LIABILITY_SECTORS = {
     1,
     3,
@@ -435,6 +560,14 @@ class UKFirmGenerationConfig:
     rows per sector x HMRC band x window-side stratum. The defaults keep every
     row; :meth:`fast` is the paper's fast-iteration preset.
 
+    ``large_employment_mean`` (headcount) replaces the paper's 250+ draw,
+    clamped at 2,000 staff, with a truncated Pareto on
+    ``[250, LARGE_EMPLOYMENT_CAP]`` with that base-weighted mean over the
+    ONS-frame rows; :data:`LARGE_EMPLOYMENT_MEAN` is DBT's private-sector
+    mean. Out-of-frame rows (the HMRC zero-turnover traders) then draw a
+    headcount below 250, so every 250+ firm is a frame firm. ``None`` (the
+    default) keeps the paper's draw, in which they can reach 250+.
+
     ``vat_threshold`` defaults to the ``data_vintage``'s threshold, resolved
     once at construction. ``dataclasses.replace(config, data_vintage=...)``
     therefore keeps the old vintage's threshold (it is passed back in as an
@@ -467,6 +600,7 @@ class UKFirmGenerationConfig:
     sample_window_hi_k: float = 150.0
     sample_cell_floor: int = 40
     firm_rules: UKFirmRules | None = None
+    large_employment_mean: float | None = None
 
     @classmethod
     def fast(cls, **overrides: Any) -> UKFirmGenerationConfig:
@@ -532,6 +666,14 @@ class UKFirmGenerationConfig:
             raise ValueError("sample_window_lo_k must not exceed sample_window_hi_k.")
         if self.sample_cell_floor < 0:
             raise ValueError("sample_cell_floor must be non-negative.")
+        if self.large_employment_mean is not None:
+            smallest, largest = large_employment_mean_range()
+            if not smallest <= float(self.large_employment_mean) <= largest:
+                raise ValueError(
+                    f"large_employment_mean must lie in [{smallest:,.2f}, "
+                    f"{largest:,.2f}], the means the Pareto draw can hit "
+                    "exactly."
+                )
 
 
 def _vat_rule_period(data_vintage: str) -> dict[str, str]:
@@ -934,7 +1076,14 @@ def generate_uk_firm_population(
     )
     # Employment is drawn once, for every row, and kept: the employment
     # target rows and the output describe the same firms.
-    employment = assign_employment(sic_codes, data.ons_employment, cfg.device)
+    employment = assign_employment(
+        sic_codes,
+        data.ons_employment,
+        cfg.device,
+        weights=base_weights,
+        large_employment_mean=cfg.large_employment_mean,
+        in_frame=frame_mask,
+    )
     employment_np = employment.detach().cpu().numpy()
     employment_band_indices = employment_band_index_array(employment_np)
     band_idx = map_to_hmrc_band_indices(turnover, threshold_k).cpu().numpy()
@@ -1118,6 +1267,9 @@ def assign_employment(
     sic_codes: Tensor,
     ons_employment: pd.DataFrame,
     device: str = "cpu",
+    weights: np.ndarray | Tensor | None = None,
+    large_employment_mean: float | None = None,
+    in_frame: np.ndarray | Tensor | None = None,
 ) -> Tensor:
     """Assign firm employment counts conditional on each firm's ONS sector.
 
@@ -1125,6 +1277,24 @@ def assign_employment(
     rows draw an employment band from that sector's ONS band shares (the
     national shares when the sector has no ONS employment row or no firms),
     then a count inside the band. Draws use torch's global generator.
+
+    By default the open 250+ band keeps the paper's lognormal draw clamped
+    to ``[250, 2000]``. With ``large_employment_mean`` it is not clamped: the
+    band's rows, ranked by the same lognormal draw (so the generator's
+    stream is unchanged), take the means of consecutive slices of a
+    truncated Pareto on ``[250, LARGE_EMPLOYMENT_CAP]`` with that mean, each
+    slice's probability proportional to the row's ``weights`` (equal when
+    omitted). The band's weighted mean headcount is then that mean, up to
+    rounding.
+
+    ``in_frame`` (every row when omitted) marks the ONS-frame rows and is
+    read only with ``large_employment_mean``. The published 250+ mean
+    describes businesses in the frame, so a row outside it whose band draw
+    is 250+ takes no slice of the tail: its lognormal draw instead picks a
+    headcount below 250 from its sector's shares of the smaller bands
+    (:func:`_employment_below_large_band`). The 250+ band then holds frame
+    rows only, and it is their weighted mean that equals the mean. Neither
+    option draws from the generator beyond the default's draws.
     """
 
     sic_codes = torch.as_tensor(sic_codes, dtype=torch.int64, device=device)
@@ -1159,7 +1329,16 @@ def assign_employment(
             device=device,
         )
 
+    frame: Tensor | None = None
+    if large_employment_mean is not None and in_frame is not None:
+        frame = torch.as_tensor(
+            _as_numpy(in_frame, bool), dtype=torch.bool, device=device
+        )
+        if len(frame) != n_firms:
+            raise ValueError("in_frame must have one entry per firm.")
     result = torch.empty(n_firms, dtype=torch.float32, device=device)
+    large_idx: list[Tensor] = []
+    large_scores: list[Tensor] = []
     for sic in torch.unique(sic_codes).tolist():
         idx = torch.where(sic_codes == int(sic))[0]
         counts = counts_by_sic.get(int(sic))
@@ -1173,20 +1352,102 @@ def assign_employment(
             if len(out_idx) == 0:
                 continue
             lower, upper, midpoint = ONS_EMPLOYMENT_BANDS[band]
+            if band == "250+":
+                # The paper's lognormal draw. With a large-employment mean it
+                # only ranks the band's rows, keeping the generator's stream
+                # unchanged; their headcounts are set after the loop.
+                log_mean = torch.log(torch.tensor(float(midpoint), device=device))
+                scores = torch.normal(log_mean, 0.8, (len(out_idx),), device=device)
+                if large_employment_mean is None:
+                    result[out_idx] = torch.clamp(scores.exp(), lower, upper).round()
+                elif frame is None:
+                    large_idx.append(out_idx)
+                    large_scores.append(scores)
+                else:
+                    inside = frame[out_idx]
+                    large_idx.append(out_idx[inside])
+                    large_scores.append(scores[inside])
+                    outside = out_idx[~inside]
+                    if len(outside):
+                        result[outside] = torch.as_tensor(
+                            _employment_below_large_band(
+                                scores[~inside].detach().cpu().numpy(),
+                                float(log_mean),
+                                0.8,
+                                probs.detach().cpu().numpy(),
+                                national.detach().cpu().numpy(),
+                            ),
+                            dtype=torch.float32,
+                            device=device,
+                        )
+                continue
             if band == "0-4":
                 values = torch.randint(1, 5, (len(out_idx),), device=device).float()
-            elif band == "250+":
-                log_mean = torch.log(torch.tensor(float(midpoint), device=device))
-                values = torch.normal(
-                    log_mean, 0.8, (len(out_idx),), device=device
-                ).exp()
-                values = torch.clamp(values, lower, upper).round()
             else:
                 values = torch.randint(
                     int(lower), int(upper) + 1, (len(out_idx),), device=device
                 ).float()
             result[out_idx] = values
+    if large_idx and sum(len(rows) for rows in large_idx):
+        # Ranked rows take consecutive weight-sized slices of a truncated
+        # Pareto fitted to the published mean, so the band's weighted mean
+        # matches the source without sampling noise from the heavy tail.
+        lower = ONS_EMPLOYMENT_BANDS["250+"][0]
+        rows = torch.cat(large_idx)
+        order = torch.argsort(torch.cat(large_scores), stable=True)
+        ranked = rows[order]
+        if weights is None:
+            masses = np.ones(len(ranked), dtype=np.float64)
+        else:
+            masses = _as_numpy(weights, np.float64)[ranked.cpu().numpy()]
+        slices = large_employment_slice_means(
+            masses, mean=float(large_employment_mean), lower=lower
+        )
+        result[ranked] = torch.as_tensor(
+            np.round(slices), dtype=torch.float32, device=device
+        )
     return result
+
+
+def _employment_below_large_band(
+    scores: np.ndarray,
+    log_mean: float,
+    log_sd: float,
+    shares: np.ndarray,
+    fallback_shares: np.ndarray,
+) -> np.ndarray:
+    """Headcounts below the open 250+ band for rows outside the ONS frame.
+
+    ``scores`` are the rows' normal draws on the log scale (mean
+    ``log_mean``, sd ``log_sd``). Each row's quantile of that normal picks
+    one of the closed bands by ``shares`` (band shares in
+    :data:`EMPLOYMENT_BANDS` order; the open band's share is dropped and
+    the rest renormalised) and a whole headcount inside it, so the result
+    is deterministic and consumes no random draws. ``fallback_shares``
+    serve when ``shares`` has no mass below the open band, and equal shares
+    when neither has.
+    """
+
+    closed_bands = list(ONS_EMPLOYMENT_BANDS.values())[:-1]
+    mass = np.asarray(shares, dtype=np.float64)[: len(closed_bands)]
+    if not mass.sum() > 0:
+        mass = np.asarray(fallback_shares, dtype=np.float64)[: len(closed_bands)]
+    if not mass.sum() > 0:
+        mass = np.ones(len(closed_bands), dtype=np.float64)
+    mass = mass / mass.sum()
+    standard = (np.asarray(scores, dtype=np.float64) - log_mean) / log_sd
+    quantile = np.asarray(
+        [0.5 * (1.0 + math.erf(value / math.sqrt(2.0))) for value in standard],
+        dtype=np.float64,
+    )
+    upper_edges = np.cumsum(mass)
+    last = int(np.flatnonzero(mass > 0)[-1])
+    band = np.minimum(np.searchsorted(upper_edges, quantile, side="right"), last)
+    lower_edges = np.concatenate([[0.0], upper_edges[:-1]])
+    position = np.clip((quantile - lower_edges[band]) / mass[band], 0.0, 1.0)
+    lowest = np.asarray([lower for lower, _, _ in closed_bands])[band]
+    highest = np.asarray([upper for _, upper, _ in closed_bands])[band]
+    return np.minimum(lowest + np.floor(position * (highest - lowest + 1.0)), highest)
 
 
 def employment_band_index_array(employment: np.ndarray) -> np.ndarray:

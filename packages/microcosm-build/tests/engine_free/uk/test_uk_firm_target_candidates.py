@@ -155,11 +155,6 @@ _NOT_SET_WITHOUT_CANDIDATE = {
     "firm_low_paid_paybill",
     "firm_paybill_above_auto_enrolment_upper_limit",
     "firm_paybill_below_auto_enrolment_earnings_trigger",
-    "firm_employees_below_secondary_threshold",
-    "firm_paybill_below_secondary_threshold",
-    # Employment Allowance flags.
-    "firm_claims_employment_allowance",
-    "firm_is_single_director_company",
 }
 
 

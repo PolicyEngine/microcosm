@@ -89,10 +89,11 @@ VAT_IN_SAMPLE_CAVEAT = (
 )
 
 PAYBILL_ASSUMED_CAVEAT = (
-    "Assumed input, not a validation: firm_paybill is not observed, and this "
-    "build does not set it. Any total here rests on a paybill assumed outside "
-    "the build, so agreement or disagreement reflects that assumption, not the "
-    "model."
+    "Assumed input, not a validation: firm_paybill is not observed. It is the "
+    "generator's headcount times the ONS ASHE 2025 section mean annual gross "
+    "pay (all employee jobs), with working proprietors counted as employees "
+    "and out-of-frame zero-turnover traders included, so agreement or "
+    "disagreement here reflects that assumption, not the model."
 )
 
 PAY_SPLIT_UNSET_CAVEAT = (
@@ -119,9 +120,11 @@ MODEL_CAVEATS: Mapping[str, str] = {
         + " Model: employer Class 1 secondary NICs after the Employment "
         "Allowance, accrued; official: cash, and also includes Class 1A "
         "(benefits in kind), so the official figure is larger in concept. "
-        "Employment Allowance: firm_is_single_director_company is unset, so no "
-        "firm is excluded as a single-director company and the allowance is "
-        "overstated. Employers outside the generated VAT/PAYE frame (e.g. "
+        "Employment Allowance: unless the build sets the assumed flags "
+        "(--employment-allowance-flags), firm_is_single_director_company and "
+        "firm_claims_employment_allowance are left at their defaults, so no firm "
+        "is excluded as a single-director company or as having no employees, and "
+        "the allowance is overstated. Employers outside the generated VAT/PAYE frame (e.g. "
         "households employing domestic staff) pay into the official total."
     ),
     "apprenticeship_levy": (

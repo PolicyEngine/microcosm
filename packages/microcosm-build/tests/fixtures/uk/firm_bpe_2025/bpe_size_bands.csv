@@ -1,0 +1,64 @@
+table,sector,size_band,business_number,employment_thousand,employees_thousand,working_proprietors_thousand,turnover_million
+Table 1,private_sector,All businesses,5690265,28128,23999,4129,5524662
+Table 1,private_sector,All employers,1417730,23464,23064,401,5122051
+Table 1,private_sector,With no employees (unregistered),3044940,3356,0,3356,135561
+Table 1,private_sector,With no employees (registered),1227595,1307,935,372,267051
+Table 1,private_sector,1,114170,254,114,140,27686
+Table 1,private_sector,2 to 4,772535,2124,1998,127,372779
+Table 1,private_sector,5 to 9,264170,1778,1729,49,300783
+Table 1,private_sector,10 to 19,142500,1952,1926,26,297849
+Table 1,private_sector,20 to 49,77585,2372,2350,23,478314
+Table 1,private_sector,50 to 99,26020,1811,1803,8,422278
+Table 1,private_sector,100 to 199,10205,1435,1430,5,350825
+Table 1,private_sector,200 to 249,2210,492,491,1,175536
+Table 1,private_sector,250 to 499,4290,1491,1487,4,407886
+Table 1,private_sector,500 to 999,2075,1435,1430,5,524307
+Table 1,private_sector,1000 or more,1970,8320,8307,13,1763807
+Table 2,whole_economy,All,5786945,36027,31899,,5938850
+Table 2,whole_economy,Zero or 1 employee,4420045,4943,1074,,432962
+Table 2,whole_economy,2 to 4,795555,2188,2061,,377854
+Table 2,whole_economy,5 to 9,280440,1888,1838,,308516
+Table 2,whole_economy,10 to 19,152135,2083,2057,,307255
+Table 2,whole_economy,20 to 49,83630,2560,2537,,490565
+Table 2,whole_economy,50 to 99,28960,2018,2010,,434005
+Table 2,whole_economy,100 to 199,12025,1695,1690,,364258
+Table 2,whole_economy,200 to 249,2765,616,615,,181692
+Table 2,whole_economy,250 to 499,5475,1911,1907,,429862
+Table 2,whole_economy,500 to 999,2890,2005,2000,,547379
+Table 2,whole_economy,1000 or more,3025,14120,14107,,2064503
+Table 2,private_sector,All,5690265,28128,23999,,5524662
+Table 2,private_sector,Zero or 1 employee,4386705,4918,1050,,430298
+Table 2,private_sector,2 to 4,772535,2124,1998,,372779
+Table 2,private_sector,5 to 9,264170,1778,1729,,300783
+Table 2,private_sector,10 to 19,142500,1952,1926,,297849
+Table 2,private_sector,20 to 49,77585,2372,2350,,478314
+Table 2,private_sector,50 to 99,26020,1811,1803,,422278
+Table 2,private_sector,100 to 199,10205,1435,1430,,350825
+Table 2,private_sector,200 to 249,2210,492,491,,175536
+Table 2,private_sector,250 to 499,4290,1491,1487,,407886
+Table 2,private_sector,500 to 999,2075,1435,1430,,524307
+Table 2,private_sector,1000 or more,1970,8320,8307,,1763807
+Table 2,central_and_local_government,All,12535,5829,5829,,289767
+Table 2,central_and_local_government,Zero or 1 employee,5065,5,5,,529
+Table 2,central_and_local_government,2 to 4,1685,4,4,,320
+Table 2,central_and_local_government,5 to 9,710,5,5,,300
+Table 2,central_and_local_government,10 to 19,400,6,6,,461
+Table 2,central_and_local_government,20 to 49,870,28,28,,1501
+Table 2,central_and_local_government,50 to 99,810,58,58,,2914
+Table 2,central_and_local_government,100 to 199,790,114,114,,6012
+Table 2,central_and_local_government,200 to 249,255,57,57,,2616
+Table 2,central_and_local_government,250 to 499,615,223,223,,11100
+Table 2,central_and_local_government,500 to 999,545,381,381,,12871
+Table 2,central_and_local_government,1000 or more,790,4948,4948,,251141
+Table 2,non_profit,All,84145,2070,2070,,124421
+Table 2,non_profit,Zero or 1 employee,28275,20,20,,2135
+Table 2,non_profit,2 to 4,21335,60,60,,4755
+Table 2,non_profit,5 to 9,15560,105,105,,7432
+Table 2,non_profit,10 to 19,9235,125,125,,8944
+Table 2,non_profit,20 to 49,5180,159,159,,10749
+Table 2,non_profit,50 to 99,2130,150,150,,8812
+Table 2,non_profit,100 to 199,1030,146,146,,7421
+Table 2,non_profit,200 to 249,300,67,67,,3541
+Table 2,non_profit,250 to 499,565,197,197,,10876
+Table 2,non_profit,500 to 999,270,189,189,,10200
+Table 2,non_profit,1000 or more,265,852,852,,49555

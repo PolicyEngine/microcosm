@@ -1,0 +1,67 @@
+{
+  "kind": "uk_firm_bpe_size_band_fixture",
+  "schema_version": 1,
+  "period": "start of 2025 (BPE reference date), not a tax year",
+  "accessed": "2026-11-22",
+  "method": "Figures were read from the downloaded workbook on the access date by tools/extract_uk_firm_bpe_tables.py; none was filled from memory. Numbers are the cells as published: business counts in businesses, employment, employees and working proprietors in thousands of people, turnover in millions of pounds. A cell published as [c] (disclosive) is left empty and flagged [c]. Band labels lose their [Note n] markers; percentage columns are not kept.",
+  "source": {
+    "publisher": "Department for Business and Trade",
+    "dataset_title": "Business population estimates 2025",
+    "landing_page": "https://www.gov.uk/government/statistics/business-population-estimates-2025",
+    "url": "https://assets.publishing.service.gov.uk/media/68dbccc9c487360cc70c9f4e/BPE_2025_detailed_tables.xlsx",
+    "edition": "BUSINESS POPULATION ESTIMATES FOR THE UK AND REGIONS 2025; Published 2nd October 2025",
+    "file": "bpe2025.xlsx",
+    "size_bytes": 634622,
+    "sha256": "223790dfd61d41d5866b747f2ea24535cef0db754ee261ae9a2d88bba9f478d7",
+    "sheets": {
+      "bpe_legal_status_bands.csv": [
+        "Table 3"
+      ],
+      "bpe_size_bands.csv": [
+        "Table 1",
+        "Table 2"
+      ]
+    },
+    "tables": {
+      "Table 1": "Number and percentage of businesses in the private sector and their associated employment and turnover, by number of employees, UK, start 2025",
+      "Table 2": "Number and percentage of businesses and other organisations in the whole economy, private sector, central and local government, and non-profit organisations with associated employment and turnover, start 2025",
+      "Table 3": "Number and percentage of businesses in the private sector and associated employment and turnover, by legal status and number of employees, UK, start 2025"
+    },
+    "designation": "Official statistics in development",
+    "licence": "Open Government Licence v3.0"
+  },
+  "notes": "Employment is employees plus working proprietors (Table 1 note 3). Companies with one PAYE employee on the IDBR are counted with no employees, the employee being treated as a working proprietor (Table 3 notes 3 and 6). Businesses with no employees are registered (VAT and/or PAYE) or unregistered (Table 3 note 2). Companies include public corporations and nationalised bodies (Table 3 heading). Turnover excludes SIC 2007 Section K. Business counts are rounded, so totals may not equal the sum of their parts.",
+  "extraction_date": "2026-11-22",
+  "tool": "tools/extract_uk_firm_bpe_tables.py",
+  "command": "uv run --no-sync python tools/extract_uk_firm_bpe_tables.py --xlsx <download>/BPE_2025_detailed_tables.xlsx",
+  "files": {
+    "bpe_legal_status_bands.csv": {
+      "sha256": "c4c2706bdaa79a268fdc3da247701da1b99f6db6f1b334455448b9100918db44",
+      "bytes": 2589,
+      "rows": 60,
+      "columns": [
+        "legal_status",
+        "size_band",
+        "business_number",
+        "business_number_flag",
+        "employment_thousand",
+        "employment_flag"
+      ]
+    },
+    "bpe_size_bands.csv": {
+      "sha256": "b636affd3b889f987f2787fbd9f44c79def85584550b4a205f0a4bd1bfa67275",
+      "bytes": 3779,
+      "rows": 63,
+      "columns": [
+        "table",
+        "sector",
+        "size_band",
+        "business_number",
+        "employment_thousand",
+        "employees_thousand",
+        "working_proprietors_thousand",
+        "turnover_million"
+      ]
+    }
+  }
+}

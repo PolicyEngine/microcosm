@@ -2,7 +2,8 @@
 
 Runs ``microcosm.build.uk_runtime.firm_build.build_uk_firm_dataset`` on the
 processed ONS/HMRC tables in ``--processed-dir`` and the ONS attribute tables
-in ``--attributes-dir``, and writes ``uk_firms.parquet`` and
+in ``--attributes-dir`` (and, with ``--paybill-dir``, the ONS ASHE section
+pay table that sets ``firm_paybill``), and writes ``uk_firms.parquet`` and
 ``uk_firms.receipt.json`` to ``--out-dir``. Nothing is published or uploaded.
 
 ``--rules`` picks the VAT rules and has no default:
@@ -33,6 +34,80 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--processed-dir", type=Path, required=True)
     parser.add_argument("--attributes-dir", type=Path, required=True)
     parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument(
+        "--paybill-dir",
+        type=Path,
+        help=(
+            "directory holding the ONS ASHE section pay CSV; sets firm_paybill "
+            "(tax year 2024-25 only, so --vintage 2024-25; omit to leave it unset)"
+        ),
+    )
+    parser.add_argument(
+        "--employment-allowance-flags",
+        action="store_true",
+        help=(
+            "set the assumed Employment Allowance flags "
+            "(firm_claims_employment_allowance, firm_is_single_director_company) "
+            "from ONS legal status and employment"
+        ),
+    )
+    parser.add_argument(
+        "--public-sector-dir",
+        type=Path,
+        help=(
+            "directory holding the ONS public sector employment CSV; scales "
+            "central government and local authority headcounts to it"
+        ),
+    )
+    parser.add_argument(
+        "--pay-distribution-dir",
+        type=Path,
+        help=(
+            "directory holding the ONS ASHE section pay percentiles; sets the "
+            "assumed count and pay of employees at or below the secondary "
+            "threshold (needs --paybill-dir)"
+        ),
+    )
+    parser.add_argument(
+        "--bpe-dir",
+        type=Path,
+        help=(
+            "directory holding the DBT Business Population Estimates 2025 "
+            "tables; redraws headcount inside the ONS 0-4 band by legal status "
+            "and sets firm_employees to employment less assumed working "
+            "proprietors, with the labour link columns (needs --paybill-dir)"
+        ),
+    )
+    parser.add_argument(
+        "--bpe-mid-headcount",
+        action="store_true",
+        help=(
+            "remap headcount inside the ONS 5-9 to 100-249 bands to BPE 2025 "
+            "Table 1 shapes (needs --bpe-dir)"
+        ),
+    )
+    parser.add_argument(
+        "--bpe-large-headcount",
+        action="store_true",
+        help="remap 250+ headcount to BPE 2025 Table 1 large rows (needs --bpe-dir)",
+    )
+    parser.add_argument(
+        "--out-of-frame-no-employees",
+        action="store_true",
+        help=(
+            "give rows outside the ONS frame no headcount, an assumption "
+            "(needs --bpe-dir)"
+        ),
+    )
+    parser.add_argument(
+        "--employment-allowance-takeup-dir",
+        type=Path,
+        help=(
+            "directory holding HMRC Employment Allowance take-up 2024-25; "
+            "draws claims at HMRC's take-up by employee size band (needs "
+            "--bpe-dir and --employment-allowance-flags)"
+        ),
+    )
     parser.add_argument("--rules", choices=RULES_CHOICES, required=True)
     parser.add_argument(
         "--axiom-artifact",
@@ -90,6 +165,15 @@ def main(argv: list[str] | None = None) -> int:
         output_dir=args.out_dir,
         rules=rules,
         config=_config(args, rules),
+        paybill_dir=args.paybill_dir,
+        employment_allowance=args.employment_allowance_flags,
+        public_sector_dir=args.public_sector_dir,
+        pay_distribution_dir=args.pay_distribution_dir,
+        bpe_dir=args.bpe_dir,
+        employment_allowance_takeup_dir=args.employment_allowance_takeup_dir,
+        bpe_mid_headcount=args.bpe_mid_headcount,
+        out_of_frame_no_employees=args.out_of_frame_no_employees,
+        bpe_large_headcount=args.bpe_large_headcount,
     )
     receipt = built["receipt"]
     print(

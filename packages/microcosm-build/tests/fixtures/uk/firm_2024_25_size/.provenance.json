@@ -1,0 +1,28 @@
+{
+  "source": {
+    "publisher": "Department for Business and Trade",
+    "dataset_title": "Business population estimates 2024",
+    "landing_page": "https://www.gov.uk/government/statistics/business-population-estimates-2024",
+    "edition": "Business population estimates for the UK and regions 2024 (start of 2024); landing page first published and last updated 3 October 2024 (GOV.UK content API on the access date)",
+    "download_url": "https://assets.publishing.service.gov.uk/media/66f554dcc71e42688b65ecd3/BPE_2024_detailed_tables.xlsx",
+    "file": "BPE_2024_detailed_tables.xlsx",
+    "sha256": "a1e96b8cd60cad6fbd4d8ea9d09c60c555953d9fced4b28cc6f928ce6048b399",
+    "bytes": 635200,
+    "sheet": "Table 1",
+    "sheet_title": "Table 1 (UK private sector): Number and percentage of businesses in the private sector and their associated employment and turnover, by number of employees, UK, start 2024",
+    "rows": ["250 to 499", "500 to 999", "1000 or more"],
+    "columns": ["Business number", "Employment number (thousands)"],
+    "licence": "Open Government Licence v3.0",
+    "access_date": "2026-11-22"
+  },
+  "method": "The three rows were read from the downloaded workbook on the access date; none was filled from memory. Together they give 8,250 private businesses with 250 or more employees and 11,115 thousand employment (the sum of the three published rows, each rounded to the nearest thousand), a mean of 1,347.3 per business. Employment includes working proprietors (Note 6 of the workbook).",
+  "used_by": "microcosm.build.uk_runtime.firm_generation.LARGE_EMPLOYMENT_MEAN, the mean headcount of the open 250+ employment band",
+  "files": {
+    "dbt_bpe_private_250plus.csv": {
+      "sha256": "0ad49d2c6b9f1350f2d06600f7c2fe2b7277991f2f46e7b3b126f9b61efc8771",
+      "bytes": 115,
+      "rows": 3,
+      "columns": ["employee_size_band", "businesses", "employment_thousand"]
+    }
+  }
+}
