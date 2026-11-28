@@ -202,7 +202,10 @@ def _state_cd_inputs(draw):
         measure: measure == "return_count" or draw(st.booleans())
         for measure in measures
     }
-    positive = st.floats(1.0, 1e10, allow_nan=False, allow_infinity=False)
+    # The operator refuses a block whose total is below 1e-9 of its control
+    # (the refusal has its own test). Eight orders of magnitude keep every
+    # block of this test above that limit, with the bound turned off.
+    positive = st.floats(1.0, 1e8, allow_nan=False, allow_infinity=False)
     specs, crosswalk, layout = [], [], {}
     for state in states:
         n_districts = draw(st.integers(1, 5))
@@ -383,6 +386,23 @@ def test_an_incomplete_or_unabsorbable_district_block_is_refused() -> None:
             [parent, district(1, 0.0), district(2, 0.0)],
             state_surface_predicate=predicate,
             crosswalk=crosswalk,
+        )
+    # The limit is relative to the control: a block of positive rows below
+    # 1e-9 of its state parent is refused too, also with the bound turned off.
+    large_parent = _soi_spec(
+        "ht2.10.adjusted_gross_income",
+        "adjusted_gross_income",
+        2000000001.0,
+        level="state",
+        record_set=_HT2,
+        state="10",
+    )
+    with pytest.raises(ValueError, match=r"vanishing lower-leg total 2\.0"):
+        _CD.state_cd_soi_surface(
+            [large_parent, district(1, 1.0), district(2, 1.0)],
+            state_surface_predicate=predicate,
+            crosswalk=crosswalk,
+            factor_band=math.inf,
         )
     with pytest.raises(ValueError, match="opposite-signed lower and control"):
         _CD.state_cd_soi_surface(
