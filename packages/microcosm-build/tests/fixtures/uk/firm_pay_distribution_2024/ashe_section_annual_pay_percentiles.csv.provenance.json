@@ -1,0 +1,47 @@
+{
+  "kind": "uk_firm_pay_distribution_fixture",
+  "schema_version": 1,
+  "period": "2024-25",
+  "accessed": "2026-11-22",
+  "method": "Cells were copied from the downloaded workbook by tools/extract_uk_firm_pay_distribution_table.py; none was filled from memory. p50 is the sheet's Median column. A cell ONS does not publish keeps its marker ('x' unreliable, ':' not available).",
+  "sources": {
+    "ons_ashe_table_4": {
+      "publisher": "Office for National Statistics",
+      "landing_page": "https://www.ons.gov.uk/employmentandlabourmarket/peopleinwork/earningsandworkinghours/datasets/industry2digitsicashetable4",
+      "url": "https://www.ons.gov.uk/file?uri=/employmentandlabourmarket/peopleinwork/earningsandworkinghours/datasets/industry2digitsicashetable4/2025revised/ashetable42025revised.zip",
+      "edition": "2025 revised",
+      "sha256": "df87c313d1cb40bf499f1ec001076bcb9c9884c6443d76b186f09e84ff614bc3",
+      "size_bytes": 2961773,
+      "member": "sic07 Industry (2) Table 4.7a   Annual pay - Gross 2025.xlsx",
+      "member_sha256": "5ec5fe60b9aaae2555996cbb66f8d4c29868105e59384b95d85db36462728baf",
+      "sheet": "All",
+      "sheet_title": "SIC2007 Table 4 .7a Annual pay - Gross (\u00a3) - For all employee jobsa: United Kingdom 2025",
+      "reference_period": "ASHE annual estimates are for the tax year that ended on 5 April of the reference year: the 2025 edition is 2024-25.",
+      "coverage": "Employees on adult rates in the same job for more than a year; all employee jobs, full-time and part-time.",
+      "licence": "Open Government Licence v3.0"
+    }
+  },
+  "files": {
+    "ashe_section_annual_pay_percentiles.csv": {
+      "sha256": "eed711c231c9d91570cf982b912088715ff40830b90df45c76cd3a012ebe809e",
+      "bytes": 3174,
+      "columns": [
+        "sic_section",
+        "description",
+        "jobs_thousand",
+        "mean",
+        "p10",
+        "p20",
+        "p25",
+        "p30",
+        "p40",
+        "p50",
+        "p60",
+        "p70",
+        "p75",
+        "p80",
+        "p90"
+      ]
+    }
+  }
+}

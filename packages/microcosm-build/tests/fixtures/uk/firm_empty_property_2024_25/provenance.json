@@ -1,0 +1,78 @@
+{
+  "kind": "uk_firm_empty_property_fixture",
+  "schema_version": 1,
+  "period": "2024-25: relief counts as at 31 December 2023 and 2024, relief value forecasts for 2024-25 and 2025-26, and the 2024-25 NNDR3 outturn",
+  "accessed": "2026-11-23",
+  "method": "Values were read from the downloaded files on the access date by tools/extract_uk_firm_empty_property_tables.py, from the England row of each supplementary sheet (columns found by MHCLG variable name) and the '2024 to 2025' column of NNDR3 Tables 1, 1a and 2; none was filled from memory.",
+  "sources": {
+    "nndr1_2024_25": {
+      "landing_page": "https://www.gov.uk/government/statistics/national-non-domestic-rates-collected-by-councils-in-england-forecast-2024-to-2025",
+      "url": "https://assets.publishing.service.gov.uk/media/663b98e474933dccbbb6c431/NNDR1_2024-25_Supplementary_table.xlsx",
+      "edition": "National non-domestic rates collected by councils in England: forecast 2024 to 2025; supplementary data tables (added 9 May 2024)",
+      "publisher": "Ministry of Housing, Communities and Local Government",
+      "file": "NNDR1_2024-25_Supplementary_table.xlsx",
+      "size_bytes": 164616,
+      "sha256": "69da6a689dd3121dd40affa8c7b48117c423b4f8a2300d54d2d5e54ac3fb82a4",
+      "licence": "Open Government Licence v3.0",
+      "sheets": [
+        "NNDR1S Hereditaments Data",
+        "NNDR1S Relief data"
+      ]
+    },
+    "nndr1_2025_26": {
+      "landing_page": "https://www.gov.uk/government/statistics/national-non-domestic-rates-collected-by-councils-in-england-forecast-2025-to-2026",
+      "url": "https://assets.publishing.service.gov.uk/media/67d2c9c4814acba3755e97c1/NNDR1_2025-26_Supplementary_table__ecomms_.xlsx",
+      "edition": "National non-domestic rates collected by councils in England: forecast 2025 to 2026; supplementary data tables (added 13 March 2025)",
+      "publisher": "Ministry of Housing, Communities and Local Government",
+      "file": "NNDR1_2025-26_Supplementary_table__ecomms_.xlsx",
+      "size_bytes": 162273,
+      "sha256": "5d7501eabad4de45f65c9fd45b1a7d48bf22a3a0bee722d64fb72012b6be60fc",
+      "licence": "Open Government Licence v3.0",
+      "sheets": [
+        "NNDR1S Hereditaments Data",
+        "NNDR1S Relief data"
+      ]
+    },
+    "nndr3_2024_25": {
+      "landing_page": "https://www.gov.uk/government/statistics/national-non-domestic-rates-collected-by-councils-in-england-2024-to-2025",
+      "url": "https://assets.publishing.service.gov.uk/media/6977f8533fd50ac304b79790/NNDR3_2024-25_Tables_1-3_accessible_gov.uk__Values_only__-_3rd_Release.ods",
+      "edition": "National non-domestic rates collected by councils in England: 2024 to 2025; Tables 1-3: England, 3rd release (updated 27 January 2026)",
+      "publisher": "Ministry of Housing, Communities and Local Government",
+      "file": "NNDR3_2024-25_Tables_1-3_accessible_gov.uk__Values_only__-_3rd_Release.ods",
+      "size_bytes": 35587,
+      "sha256": "f28b9bf086aa5c03fac29d171d6a40e937fbc57ea149fedb8c37239edf0ae32e",
+      "licence": "Open Government Licence v3.0",
+      "sheets": [
+        "Table_1",
+        "Table_1a",
+        "Table_2"
+      ]
+    }
+  },
+  "coverage": "Counts are hereditaments in receipt of mandatory empty premises relief at the snapshot date, not all empty hereditaments: an empty property past its 3-month (6 for industrial) exemption pays full rates and is not counted. The six sub-categories (industrial above the exemption threshold, listed building, community amateur sports club, charity, not in the previous four, non-industrial above the exemption threshold) partition the total; the relief value sub-categories do not quite sum to the relief total as published. No source gives the rateable value of empty property, empty shares by property type, or empty durations.",
+  "caveats": [
+    "NNDR1 2024-25 supplementary Note 7: the split of empty property relief by category was first published in 2024-25 and was validated against earlier unvalidated data; use with caution.",
+    "NNDR1 2025-26 Table 4 Note 25: for 2024 the empty premises hereditament count is under investigation for 2 local authorities; data are as provided by the authorities.",
+    "The NNDR1 2025-26 relief labels read 'to be granted in 2024-25' as published; the forecast year is taken from the sheet title, and the total equals Table 2's 2025-26 empty premises forecast (\u00a31,084.979229 million).",
+    "NNDR1 2024-25 supplementary Note 3: Three Rivers and Watford supplied no supplementary figures for 31 December 2023."
+  ],
+  "extraction_date": "2026-11-23",
+  "tool": "tools/extract_uk_firm_empty_property_tables.py",
+  "files": {
+    "mhclg_nndr1_empty_hereditaments.csv": {
+      "sha256": "e218cf5cdd52097e253472d34434b185c4865231e00160a5d4530e3caadd4dea",
+      "bytes": 1395,
+      "rows": 14
+    },
+    "mhclg_nndr1_empty_relief_value.csv": {
+      "sha256": "58448f3edf3706de9b8ac1086ecef210306a2f3520e56956aa4693b94d8829f7",
+      "bytes": 1486,
+      "rows": 14
+    },
+    "mhclg_nndr3_2024_25.csv": {
+      "sha256": "7daf60b3babadcff6644f2de425524590a72e64aa98dd635c42f8bf7affa85cf",
+      "bytes": 713,
+      "rows": 6
+    }
+  }
+}

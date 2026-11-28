@@ -1,0 +1,28 @@
+{
+  "kind": "uk_firm_tax_receipts_fixture",
+  "schema_version": 1,
+  "period": "2024-25",
+  "accessed": "2026-11-22",
+  "method": "Figures were read from the downloaded publications on the access date and multiplied from GBP million to GBP; none was filled from memory. corporation_tax is onshore CT, derived as Corporation Tax less its Offshore component.",
+  "sources": {
+    "hmrc_receipts": {
+      "landing_page": "https://www.gov.uk/government/statistics/hmrc-tax-and-nics-receipts-for-the-uk",
+      "url": "https://assets.publishing.service.gov.uk/media/6af706889be17c68c69ca800/NS_Table.ods",
+      "edition": "Published 0700 20 November 2026; next update 22 December 2026",
+      "sheet": "Receipts_Annually (Table 2, cash basis, GBP million), row '2024 to 2025'",
+      "sha256": "485a2fef86fbdc1339547253e401029e49a9cae781210affdebd1fa87caddc22",
+      "taxes": ["firm_vat", "firm_employer_ni", "apprenticeship_levy", "corporation_tax", "bank_surcharge"]
+    },
+    "mhclg_nndr3": {
+      "landing_page": "https://www.gov.uk/government/statistics/national-non-domestic-rates-collected-by-councils-in-england-2025-to-2026",
+      "release_page": "https://www.gov.uk/government/statistics/national-non-domestic-rates-collected-by-councils-in-england-2025-to-2026/national-non-domestic-rates-collected-by-local-authorities-in-england-2025-to-2026",
+      "url": "https://assets.publishing.service.gov.uk/media/6a5f99e734dfb74772f96c93/NNDR3_2025-26_Stats_release_Tables_Values_only.ods",
+      "edition": "Published 22 July 2026 (landing page public-updated-at 2026-07-22T09:30:07+01:00 on the retrieval date, so no later edition); the 2024-25 column agrees with the 2024-25 release updated 27 January 2026",
+      "retrieved": "2026-11-22",
+      "size_bytes": 32147,
+      "sha256": "2337ca62c997c7c1717dd9ec1f4df422752e99194ad2702116062a2eba62f8fe",
+      "table": "Sheet Table_1, column E '2024 to 2025' (GBP million): E5 'Gross rates payable in year' 35439.3077; E6 'Total cost of reliefs' 8587.7403; E9 'Gross Rates Payable in year less total cost of reliefs' 26851.5674, rounded to 26852 GBP million in the fixture",
+      "taxes": ["firm_business_rates"]
+    }
+  }
+}

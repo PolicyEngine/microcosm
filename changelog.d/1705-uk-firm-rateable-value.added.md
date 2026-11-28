@@ -1,0 +1,1 @@
+Add an opt-in assumed `firm_rateable_value` for UK firms in England (microcosm#1705; `--rateable-value-dir`): the VOA non-domestic rating stock of properties (March 2026, 2023 rating list) is allotted to firms by headcount rank, one hereditament per firm, never calibrated to NNDR receipts.

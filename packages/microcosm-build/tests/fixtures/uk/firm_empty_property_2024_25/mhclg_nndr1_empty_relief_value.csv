@@ -1,0 +1,15 @@
+forecast_year,variable,label,england_value_gbp
+2024-25,value_empty,Estimated value of empty property relief to be granted in 2024-25,1040932319
+2024-25,value_emptyind,Relief to be given to industrial property above the exemption threshold,93976929
+2024-25,value_emptylisted,Empty Property Relief value - listed building status,442786939
+2024-25,value_emptycasc,Empty Property Relief value - Community Amateur Sports Clubs,175240
+2024-25,value_emptycharity,Empty Property Relief value - charities,14004126
+2024-25,value_emptyoth,Empty Property Relief value - where the property is empty and not included in the previous categories,265323240
+2024-25,value_emptyabove,Empty Property Relief value - to non-industrial property above the exemption threshold,207668695
+2025-26,value_empty,Estimated value of empty property relief to be granted in 2024-25,-1084979229
+2025-26,value_emptyind,Relief to be given to industrial property above the exemption threshold,-105564889
+2025-26,value_emptylisted,Empty Property Relief value - listed building status,-464165033
+2025-26,value_emptycasc,Empty Property Relief value - Community Amateur Sports Clubs,-1031081
+2025-26,value_emptycharity,Empty Property Relief value - charities,-18439472
+2025-26,value_emptyoth,Empty Property Relief value - where the property is empty and not included in the previous categories,-291953680
+2025-26,value_emptyabove,Empty Property Relief value - to non-industrial property above the exemption threshold,-197607483

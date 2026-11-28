@@ -4,13 +4,96 @@ Microcosm should support firms as a first-class population while keeping the
 same boundary that now applies to person and household calibration:
 
 - Ledger is the only source of calibration target values and target contracts.
-- Axiom is the executable policy/rules surface for VAT liabilities.
+- policyengine-uk is the executable policy/rules surface for firm taxes: VAT,
+  and later corporation tax, employer NICs, the apprenticeship levy and
+  business rates, through its `Firm` entity (PolicyEngine/policyengine-uk#2939).
+  Axiom's UK VAT RuleSpec stays available as an optional cross-check, not as
+  the rules home.
 - Microcosm owns frame construction, model features, target activation, solver
   inputs, diagnostics, and published population artifacts.
 
 The firm microsim paper remains a reference implementation and validation
 baseline. It should not become the long-term source of target values, policy
 logic, or release artifacts.
+
+## Status
+
+Tracking issue: microcosm#1705. The first step brings
+`uk_runtime/firm_generation.py` up to the paper (sector-conditional employment,
+two-universe calibration with per-band registration propensity, stratified
+thinning with base weights, `in_frame` and `vat_scope` flags), moves it onto the
+public solver (microcosm#636) and fixes the input-ratio imputation
+(microcosm#258). It adds the rules seam (`uk_runtime/firm_rules.py`: a
+`UKFirmRules` protocol whose outputs are keyed by `firm_id`) and a firm table
+export with policyengine-uk's firm column names (`uk_runtime/firm_table.py`).
+The existing Axiom VAT evaluator is wrapped behind the seam.
+`uk_runtime/firm_policyengine_uk_rules.py` adds `PolicyEngineUKFirmRules`, which
+runs policyengine-uk's firm entity on the candidate table and reads
+`firm_vat_liability_if_registered`. It is tested engine-free with a fake
+simulation; the released policyengine-uk has no firm entity yet, so its only
+real-engine check is local, against PolicyEngine/policyengine-uk#2940.
+`tools/build_uk_firms.py` (`uk_runtime/firm_build.py`) runs a local UK firm
+build: generation, attributes and export to `uk_firms.parquet` with a JSON receipt of
+inputs, configuration, rule period, data years, accuracy and rules provenance.
+It has no publish or staging path. The country-neutral pieces (band draws,
+thinning, the two-universe calibration, the rules seam, the engine-input
+checks and the receipts comparison) live in `microcosm.build.firms`. A parity test on the
+paper's committed 2024-25 tables (`test_uk_firm_paper_parity.py`) checks the
+generator against golden numbers from paper runs, and
+`tools/uk_firm_paper_parity.py` prints the full comparison locally.
+
+Region and legal status are drawn after calibration from ONS UK Business 2025
+Tables 8, 12 and 13 (`uk_runtime/firm_attributes.py`; legal status is
+conditioned on the turnover band through Table 13 and on the employment band
+through Table 12), with Table 15 held out, and feed policyengine-uk's
+`firm_region`, `firm_in_england`, `firm_legal_form`, `firm_is_public_body`
+and `firm_is_charity`. Public corporations (ONS status 4) export as
+`COMPANY` and as public bodies, so they are liable to corporation tax and
+outside the Employment Allowance; every non-profit body or mutual (status 7)
+is assumed a charity. ONS does not name limited liability partnerships; they
+most likely sit with companies (status 1), so they are charged corporation
+tax although an LLP is transparent for tax. That is a caveat, not a drawn
+flag. `firm_table.UK_FIRM_POLICYENGINE_UK_INPUT_STATUS` records which of
+policyengine-uk's 71 firm inputs (at `0d1c25010`) microcosm sets. The build
+receipt's `data_years` records the year each input group's source describes,
+apart from the rule period.
+
+An engine-free test checks the export against a committed snapshot of
+policyengine-uk's firm variables. Value-free target candidates for the next
+Ledger sources are declared in `uk_runtime/firm_target_candidates.py`; they are
+not yet in `uk/uk_firms_targets.json` or the solve.
+
+`firm_paybill` is an opt-in assumed input (headcount × ONS ASHE section mean
+pay, `uk_runtime/firm_paybill.py`). Further opt-in assumed labour inputs,
+each from a saved source, are the Employment Allowance flags, public sector
+headcounts and the pay split below the secondary threshold. The labour link
+(`--bpe-dir`, `uk_runtime/firm_headcount.py`) prepares the firm table for
+linking to household data later; no person-firm link exists yet. It redraws
+headcount inside the ONS 0-4 band by legal status from DBT Business
+Population Estimates 2025 Table 3, sets `firm_employees` to employment less
+assumed working proprietors, and adds `firm_sic_division`, `ons_employment`,
+`firm_employee_size_band`, `firm_mean_pay` and `firm_is_public_sector`. A
+labour match should agree on jobs by SIC section and public/private, by
+region and by size band, on paybill by section and on the share of pay below
+the secondary threshold, each side calibrated to external totals, not to the
+other. The concepts differ: APS size is by workplace and the firm table's by
+enterprise; FRS and RTI regions are by residence and the firm table's by
+enterprise location; ONS employment counts working proprietors. The opt-in
+Employment Allowance take-up draw (`--employment-allowance-takeup-dir`) uses
+HMRC's 2024-25 claimants by employee size band, which then become in-sample.
+
+Taxable profit (`--profit-dir`, HMRC Corporation Tax statistics, so CT is
+in-sample) and R&D expenditure (`--rd-tax-credits-dir`, HMRC R&D tax credit
+statistics) are opt-in assumed inputs. Both go to ONS status 1 companies
+only, so public corporations pay no corporation tax.
+
+Rateable value (`--rateable-value-dir`, the VOA rating-list stock) is an
+opt-in assumed input. `uk_runtime/firm_empty_property.py` reads the MHCLG
+empty-property figures as a standalone diagnostic; the build does not set
+the empty-property inputs.
+
+The other policyengine-uk firm inputs (capital expenditure, the other
+pay-distribution inputs and several flags) wait for sources.
 
 ## External Prerequisites
 
@@ -21,7 +104,10 @@ The first integration should depend on these upstream artifacts:
   - `hmrc-vat-firm-targets-2024-25`
 - Ledger target profile:
   - `uk_firms`
-- Axiom UK RuleSpec:
+- policyengine-uk firm variables (rules home), once the `Firm` entity merges:
+  - `firm_vat_liability_if_registered`, `firm_vat`, `firm_vat_registered`
+  - later: corporation tax, employer NICs, apprenticeship levy, business rates
+- Axiom UK RuleSpec (optional cross-check only):
   - `uk:policies/govuk/vat#firm_must_register_for_vat`
   - `uk:policies/govuk/vat#firm_vat_registered`
   - `uk:policies/govuk/vat#firm_treated_as_vat_registered`
@@ -30,7 +116,8 @@ The first integration should depend on these upstream artifacts:
   - `uk:policies/govuk/vat#net_vat_liability`
 
 Microcosm should reject a UK firm build if those Ledger packages/profile are not
-available. It should not fall back to repo-local CSV targets.
+available. A build needs one rules engine (policyengine-uk once its firm entity
+is released; Axiom is accepted only as a cross-check or a stand-in until then). It should not fall back to repo-local CSV targets.
 
 ## Phase 1: Frame Contract
 
@@ -76,9 +163,16 @@ Acceptance gates:
 - Diagnostics include source package ID, source record ID, aggregate fact key,
   period, geography, and target activation status.
 
-## Phase 3: Axiom VAT Metrics
+## Phase 3: Rules-engine VAT Metrics
 
-Add an Axiom-backed `RulesEngine` adapter path for firm metrics:
+Firm metrics come through the `UKFirmRules` seam. The production adapter is
+`PolicyEngineUKFirmRules` (M4; VAT only so far, verified locally against the
+unreleased policyengine-uk firm entity), which builds a
+policyengine-uk simulation from the firm table (policyengine-uk column names)
+and reads its firm variables. The Axiom adapter below stays as an optional
+cross-check, and builds will record any difference between the two.
+
+For the Axiom cross-check:
 
 - Convert firm entity rows into the Axiom input variables used by
   `uk:policies/govuk/vat`.
@@ -100,9 +194,9 @@ Acceptance gates:
 
 - Metric outputs are deterministic for a fixed input frame.
 - `net_vat_liability` supports negative values for repayment positions.
-- Axiom rule IDs appear in metric provenance.
+- The rules engine and its variable or rule IDs appear in metric provenance.
 - No handwritten TypeScript/Python VAT calculation is used as a substitute for
-  Axiom.
+  the rules engine.
 
 ## Phase 4: UK Firm Base Builder
 
@@ -140,21 +234,22 @@ person-household-firm calibration are implemented.
 Acceptance gates:
 
 - Solver diagnostics report absolute and relative error by Ledger fact key.
-- Release trace contains the Ledger target profile ID and Axiom RuleSpec rule
-  IDs used for VAT metrics.
+- Release trace contains the Ledger target profile ID and the rules engine
+  (policyengine-uk version and variables, or Axiom rule IDs for a cross-check)
+  used for VAT metrics.
 - Static validation compares against the firm microsim paper's published target
   groups, but those paper CSVs are validation inputs only.
-- CI covers the target resolver, Axiom metric adapter, frame schema, and a small
+- CI covers the target resolver, rules adapters, frame schema, and a small
   synthetic firm calibration fixture.
 
 ## Open Design Questions
 
 - Whether `firm` should remain a standalone entity or become an owned entity
   linked to persons/households in the default UK frame.
-- How to reconcile source-observed VAT registration with Axiom's mandatory and
-  voluntary registration rules.
+- How to reconcile source-observed VAT registration with the rules engine's
+  mandatory and voluntary registration rules.
 - How to represent sector mappings between SIC, HMRC trade sectors, and future
-  Axiom supply classifications.
+  supply classifications in policyengine-uk.
 - Whether future local firm distributions should be calibrated from Ledger
   targets, allocated from national targets, or both with explicit source
   hierarchy rules.

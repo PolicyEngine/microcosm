@@ -1,0 +1,23 @@
+hmrc_section,description,companies_with_liability,liability_gbp_million
+A,"Agriculture, Forestry and Fishing",15640,711
+B,Mining and Quarrying,2525,2088
+C,Manufacturing,76530,7259
+D,"Electricity, Gas, Steam and Air Conditioning",4780,3189
+E,"Water, Sewerage and Waste",5255,324
+F,Construction,226575,6048
+G,"Wholesale and Retail Trade, Repairs",177720,8919
+H,Transport and Storage,46875,1575
+I,Accommodation and Food,61730,1321
+J,Information and Communication,138490,7026
+K,Financial and Insurance,48005,21738
+L,Real Estate,160170,3236
+M,"Professional, Scientific & Technical",261470,8403
+N,Admin and Support Services,136940,7295
+O,"Public Admin, Defence and Social Services",3340,321
+P,Education,29995,520
+Q,Health and Social Work,99540,2379
+R,"Arts, Entertainment and Recreation",36655,1248
+S,Other services activities,76530,1527
+T,Households,7325,48
+U,"Overseas; Unclassified, Dormant and Non-trading",21150,2770
+ALL,Total,1637230,87945
