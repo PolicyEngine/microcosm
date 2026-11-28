@@ -1,0 +1,14 @@
+region_code,region_description,employers_benefitting,share_percent
+E12000001,North East,38000,3
+E12000002,North West,130000,11
+E12000003,Yorkshire and The Humber,93000,8
+E12000004,East Midlands,83000,7
+E12000005,West Midlands,102000,8
+E12000006,East of England,120000,10
+E12000007,London,219000,18
+E12000008,South East,173000,14
+E12000009,South West,102000,8
+W99999999,Wales,49000,4
+S99999999,Scotland,82000,7
+N99999999,Northern Ireland,33000,3
+Total,Total,1223000,100

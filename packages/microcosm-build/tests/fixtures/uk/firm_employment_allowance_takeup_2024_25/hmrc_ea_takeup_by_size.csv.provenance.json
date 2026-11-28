@@ -1,0 +1,40 @@
+{
+  "kind": "uk_firm_employment_allowance_takeup_fixture",
+  "schema_version": 1,
+  "period": "tax year 2024-25",
+  "accessed": "2026-11-22",
+  "url": "https://assets.publishing.service.gov.uk/media/684bf34372e2ed81c079700c/Employment_Allowance_2024-2025.ods",
+  "landing_page": "https://www.gov.uk/government/statistics/employment-allowance-take-up-2024-to-2025-tax-year-estimate",
+  "edition": "Employment Allowance take-up statistics: 2024 to 2025 tax year estimates",
+  "published": "2025-06-25",
+  "published_note": "Cover_Sheet: 'The data tables in this spreadsheet were originally published at 9:30am 25 June 2025.' The next publication was due June 2026.",
+  "publisher": "HM Revenue and Customs",
+  "licence": "Open Government Licence v3.0",
+  "sha256": "3848abed310515a0882c5f59a34b0b5e2f350155965f22ff3b173b55a0ceaaf0",
+  "size_bytes": 32709,
+  "source_file": "ea_2024_25.ods",
+  "sheet": "5_Employer_size_breakdown",
+  "sheets_read": [
+    "Cover_Sheet",
+    "5_Employer_size_breakdown"
+  ],
+  "columns": [
+    "2024 to 2025 tax year: Employers benefitting from EA",
+    "2024 to 2025 tax year: % of EA beneficiaries"
+  ],
+  "method": "Every figure was read from the downloaded workbook on the access date by tools/extract_uk_firm_employment_allowance_takeup.py; none was filled from memory. Counts are as published, rounded by HMRC to the nearest 1,000, with thousands separators removed; shares are whole percent as published. Labels are whitespace-normalised (the region sheet's 'Total ' code loses its trailing space). An employer counts as benefitting when some allowance was offset against its employer NICs paid to HMRC (Cover_Sheet). Size is the number of employees on the claiming PAYE scheme at the end of the tax year (sheet note); employers may run several PAYE schemes. The 250+ count and share are published suppressed ('<500', '<1') and are kept as those markers, never as numbers. The bands sum to 1,222,000 against a published total of 1,223,000 (HMRC: 'Sum of employer sizes may not sum to the total due to rounding').",
+  "tool": "tools/extract_uk_firm_employment_allowance_takeup.py",
+  "command": "uv run --no-sync python tools/extract_uk_firm_employment_allowance_takeup.py --ods <download>/Employment_Allowance_2024-2025.ods",
+  "extraction_date": "2026-11-22",
+  "file": {
+    "name": "hmrc_ea_takeup_by_size.csv",
+    "sha256": "6f1b526dc67fffa2fa247514ca7fa96c75d4b0218a304e0d22402e97661c235a",
+    "bytes": 126,
+    "rows": 5,
+    "columns": [
+      "business_size",
+      "employers_benefitting",
+      "share_percent"
+    ]
+  }
+}

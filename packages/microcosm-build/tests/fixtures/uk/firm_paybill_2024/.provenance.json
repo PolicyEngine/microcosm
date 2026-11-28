@@ -1,0 +1,49 @@
+{
+  "source": {
+    "publisher": "Office for National Statistics",
+    "dataset_title": "Earnings and hours worked, industry by two-digit SIC: ASHE Table 4",
+    "dataset_id": "ASHE: Table 4",
+    "dataset_url": "https://www.ons.gov.uk/employmentandlabourmarket/peopleinwork/earningsandworkinghours/datasets/industry2digitsicashetable4",
+    "edition": "2025 revised",
+    "download_url": "https://www.ons.gov.uk/file?uri=/employmentandlabourmarket/peopleinwork/earningsandworkinghours/datasets/industry2digitsicashetable4/2025revised/ashetable42025revised.zip",
+    "zip_file": "ashetable42025revised.zip",
+    "zip_sha256": "df87c313d1cb40bf499f1ec001076bcb9c9884c6443d76b186f09e84ff614bc3",
+    "zip_bytes": 2961773,
+    "member": "sic07 Industry (2) Table 4.7a   Annual pay - Gross 2025.xlsx",
+    "member_sha256": "5ec5fe60b9aaae2555996cbb66f8d4c29868105e59384b95d85db36462728baf",
+    "member_bytes": 165467,
+    "sheet": "All",
+    "sheet_title": "SIC2007 Table 4 .7a Annual pay - Gross (\u00a3) - For all employee jobsa: United Kingdom 2025",
+    "column": "Mean (Annual pay - Gross, GBP)",
+    "jobs_column": "Number of jobs (thousand), indicative only",
+    "release_date_note": "The dataset landing page read 'Release date: 22 October 2026' on the access date; that is the page's latest release (the 2026 provisional edition), not necessarily this edition's. The zip's members are dated 13 October 2026.",
+    "licence": "Open Government Licence v3.0",
+    "access_date": "2026-11-22"
+  },
+  "reference_period": "Workbook Notes: annual estimates are for the tax year that ended on 5 April in the reference year, so the 2025 edition is tax year 2024-25. The directory is named for the build's rule period, 2024 (tax year 2024-25), not for the ASHE edition.",
+  "coverage": "Workbook footnote a: employees on adult rates who have been in the same job for more than a year. All employee jobs, full-time and part-time; a person with two jobs counts twice.",
+  "extraction_date": "2026-11-22",
+  "tool": "tools/extract_uk_firm_paybill_table.py",
+  "command": "uv run --no-sync python tools/extract_uk_firm_paybill_table.py --zip <download>/ashetable42025revised.zip",
+  "unpublished": {
+    "markers": {
+      "U": "x"
+    },
+    "rule": "A section whose mean is 'x' or ':' keeps blank numbers and the marker; it is never written as 0."
+  },
+  "all_row": "sic_section 'ALL' is the sheet's 'ALL EMPLOYEES' row, the fallback for sections without a published mean.",
+  "files": {
+    "ashe_section_annual_pay.csv": {
+      "sha256": "5be6605abf436d3bc6d80e911c3e7645a4b687ef62cd115b8fc626b1c9f536a5",
+      "bytes": 1344,
+      "rows": 22,
+      "columns": [
+        "sic_section",
+        "description",
+        "jobs_thousand",
+        "mean_annual_gross_pay_gbp",
+        "marker"
+      ]
+    }
+  }
+}
