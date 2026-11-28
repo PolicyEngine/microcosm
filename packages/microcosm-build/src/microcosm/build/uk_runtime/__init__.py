@@ -45,6 +45,9 @@ from microcosm.build.uk_runtime.diagnostics import (
     uk_zero_weight_strata,
     write_uk_calibration_diagnostics,
 )
+from microcosm.build.uk_runtime.firm_build import (
+    build_uk_firm_dataset,
+)
 from microcosm.build.uk_runtime.firm_generation import (
     EMPLOYMENT_BANDS,
     HMRC_BAND_COLUMNS,
@@ -60,7 +63,6 @@ from microcosm.build.uk_runtime.firm_generation import (
     UKFirmValidationReport,
     UKFirmVATRuleEvaluator,
     assign_employment,
-    assign_vat_flags,
     build_firm_target_matrix,
     employment_band_name,
     generate_base_firms,
@@ -76,6 +78,33 @@ from microcosm.build.uk_runtime.firm_generation import (
     uk_firm_source_data_from_ledger_facts,
     validate_uk_firm_population,
     write_uk_firm_population,
+)
+from microcosm.build.uk_runtime.firm_policyengine_uk_rules import (
+    POLICYENGINE_UK_FIRM_TAX_VARIABLES,
+    PolicyEngineUKFirmRules,
+    evaluate_uk_firm_taxes,
+    weighted_uk_firm_tax_totals,
+)
+from microcosm.build.uk_runtime.firm_rules import (
+    LegacyVATEvaluatorRules,
+    UKFirmRuleOutputs,
+    UKFirmRules,
+    align_rule_outputs,
+    data_years_for_vintage,
+    rule_period_for_vintage,
+)
+from microcosm.build.uk_runtime.firm_table import (
+    ASSUMED_INPUT_VAT_RATE,
+    UK_FIRM_POLICYENGINE_UK_INPUT_STATUS,
+    UK_FIRM_TABLE_COLUMNS,
+    build_candidate_rules_table,
+    to_policyengine_uk_firm_table,
+    validate_uk_firm_table,
+)
+from microcosm.build.uk_runtime.firm_universe import (
+    assign_vat_scope_and_registration,
+    registration_propensity,
+    stratified_thin,
 )
 from microcosm.build.uk_runtime.fiscal_targets import (
     UK_CGT_REQUIRED_COLUMNS,
@@ -824,7 +853,6 @@ __all__ = [
     "derive_hmrc_income_auxiliaries",
     "dense_reference_deltas",
     "assign_uk_geography_ladder",
-    "assign_vat_flags",
     "build_firm_target_matrix",
     "build_conservative_hmrc_replay_report",
     "build_uk_spi_support_channel",
@@ -981,6 +1009,26 @@ __all__ = [
     "validate_geography_coverage",
     "write_geography_crosswalk",
     "write_uk_firm_population",
+    "LegacyVATEvaluatorRules",
+    "UKFirmRuleOutputs",
+    "UKFirmRules",
+    "build_uk_firm_dataset",
+    "PolicyEngineUKFirmRules",
+    "POLICYENGINE_UK_FIRM_TAX_VARIABLES",
+    "evaluate_uk_firm_taxes",
+    "weighted_uk_firm_tax_totals",
+    "UK_FIRM_POLICYENGINE_UK_INPUT_STATUS",
+    "align_rule_outputs",
+    "rule_period_for_vintage",
+    "data_years_for_vintage",
+    "ASSUMED_INPUT_VAT_RATE",
+    "UK_FIRM_TABLE_COLUMNS",
+    "build_candidate_rules_table",
+    "to_policyengine_uk_firm_table",
+    "validate_uk_firm_table",
+    "assign_vat_scope_and_registration",
+    "registration_propensity",
+    "stratified_thin",
     "write_uk_calibration_diagnostics",
     "load_bound_spine_sidecar",
     "spine_provenance_from_sidecar",
