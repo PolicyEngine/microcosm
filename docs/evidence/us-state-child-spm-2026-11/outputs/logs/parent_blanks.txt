@@ -1,0 +1,5 @@
+default people 166321
+  stores no parent columns
+dense people 907863
+  parent_1_id int64 blank 0 zero 619213 negative 0 positive 288650
+  parent_2_id int64 blank 0 zero 673363 negative 0 positive 234500

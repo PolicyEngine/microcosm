@@ -1,0 +1,9 @@
+Census reference thresholds by tenure {1: 39068.0, 2: 32586.0, 3: 39430.0}
+PolicyEngine reference thresholds [np.float64(32879.0), np.float64(39220.0), np.float64(39231.0)]
+SPM_TENMORTSTATUS                           1     2     3
+spm_unit_reference_spm_threshold__2024                   
+32879.0                                     0  4477     0
+39220.0                                     0     0  7617
+39231.0                                 11367     0     0
+pairs {32879.0: 32586, 39220.0: 39430, 39231.0: 39068}
+child rate 2024: simulated 15.69, recomputed 15.69, with Census thresholds 15.72

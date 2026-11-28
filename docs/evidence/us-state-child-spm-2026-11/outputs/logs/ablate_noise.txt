@@ -1,0 +1,20 @@
+                             kish  med_se  mean_gap  sd_gap   mad  corr   tau       Q
+run                                                                                  
+initial                  42354.90    2.20      3.27    4.01  4.21  0.65  2.74  109.46
+published                 9174.43    4.04      3.24    5.11  4.80  0.52  2.73   71.55
+R0_full                   9275.03    4.27      2.93    5.40  4.75  0.42  2.70   71.31
+keep_pep                 34010.38    2.01      2.43    4.11  3.85  0.60  3.02  130.75
+keep_pep_ctc_only        33612.97    1.58     -0.82    3.34  2.60  0.65  2.16  106.45
+keep_pep_ctc_actc_count  30330.79    1.81      0.31    3.45  2.59  0.68  2.04   93.38
+keep_pep_all_soi         11820.60    3.34      0.71    4.54  3.16  0.53  2.14   69.98
+keep_pep_snap_ssi_aca    29749.40    2.75      6.85    5.46  7.20  0.64  3.56  121.34
+keep_pep_medicaid        32448.04    2.53      5.95    5.92  6.82  0.52  4.76  198.19
+drop_snap                 9277.93    3.99      1.51    5.52  4.28  0.43  3.45   89.44
+drop_medicaid_chip        9459.53    3.89      1.72    5.35  4.26  0.48  2.79   75.78
+drop_soi_return_count     9394.55    3.92      1.30    5.25  4.10  0.46  2.44   70.57
+drop_ctc_actc             9285.72    4.39      3.99    5.42  5.43  0.46  2.79   70.47
+drop_soi_other           18614.97    3.13      2.78    3.92  3.96  0.59  1.74   65.98
+                                             n  agg_ri  agg_rf  med_ri  med_rf
+fam                              geo                                          
+census_population:population_age state     918  -0.017    -0.0   0.096    -0.0
+                                 national   18  -0.017    -0.0  -0.038    -0.0
