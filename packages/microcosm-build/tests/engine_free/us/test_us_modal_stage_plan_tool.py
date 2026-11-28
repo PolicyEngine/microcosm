@@ -1893,13 +1893,19 @@ def test_every_valid_plan_has_a_runner_with_its_class_and_placement(app) -> None
         options = runner.modal_options
         assert (options["cpu"], options["memory"], options["timeout"]) == (
             resources.modal_cpu,
-            resources.memory_mib,
+            resources.modal_memory,
             resources.timeout_s,
         )
         assert options.get("nonpreemptible", False) is nonpreemptible
         assert options["retries"] == 0
-        # Memory is a request everywhere (an int, never a (request, limit)).
-        assert isinstance(options["memory"], int)
+        # The scorer caps memory at its request so its timeout bounds its
+        # compute bill. Existing ACS/base/smoke requests retain their reviewed
+        # behavior.
+        if name == "head-to-head":
+            assert options["memory"] == (288 * 1024, 288 * 1024)
+        else:
+            assert isinstance(options["memory"], int)
+            assert resources.memory_limit_mib is None
     # The base sets a CPU limit equal to its request, and Modal throttles CPU
     # use above the limit, which is what the $15 ceiling counts on; the ACS
     # classes keep request-only.
@@ -2310,7 +2316,7 @@ def _records(tmp_path: Path) -> list[dict]:
 
 
 def test_a_stage_runs_resumes_and_refuses_tampered_state_end_to_end(
-    fake_runner, tmp_path: Path
+    fake_runner, tmp_path: Path, capsys
 ) -> None:
     app = fake_runner(_fake_tool())
     volume_state = tmp_path / "runs" / "runs" / "fake-run" / "state"
@@ -2329,6 +2335,10 @@ def test_a_stage_runs_resumes_and_refuses_tampered_state_end_to_end(
     assert first["runner"]["state_pushed"]["copied"] == len(first["outputs"]) == 3
     budget = first["runner"]["tool_budget"]
     assert (budget["seconds"], budget["limited_by"]) == (600, "max_wall_seconds")
+    # Printed even when the plan's own budget is the limit, straight before the
+    # tool's argv, so a log with tool output but no BUDGET line lost its start.
+    printed = capsys.readouterr().out
+    assert "BUDGET: the tool may run 600s (limited by max_wall_seconds)\n$ " in printed
 
     # A second attempt of the run pulls the state, hashed and verified in
     # one pass, resumes, and re-reads nothing it did not change.

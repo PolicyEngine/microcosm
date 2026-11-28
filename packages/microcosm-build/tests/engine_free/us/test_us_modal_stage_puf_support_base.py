@@ -2729,10 +2729,14 @@ def test_a_hand_off_guard_checks_its_paths_whatever_the_caller_declared(
 def test_the_runbook_names_every_registered_tool() -> None:
     text = RUNBOOK.read_text()
     intro = text[: text.index("Two files do the work")]
-    assert len(plan_lib.TOOLS) == 6
-    assert "Six tools are registered" in intro
-    for name, tool in plan_lib.TOOLS.items():
-        assert f"`{name}`" in intro, name
+    assert len(plan_lib.TOOLS) == 7
+    assert "Seven tools are registered" in intro
+    # The intro names every registered tool and no other, so neither a tool
+    # left out nor a stale name passes on the count. Tool names are the
+    # intro's only hyphenated backticked words; its stage names have none.
+    named = set(re.findall(r"`([a-z0-9]+(?:-[a-z0-9]+)+)`", intro))
+    assert named == set(plan_lib.TOOLS)
+    for tool in plan_lib.TOOLS.values():
         if tool.script is not None:
             assert f"`{tool.script}`" in intro, tool.script
 
