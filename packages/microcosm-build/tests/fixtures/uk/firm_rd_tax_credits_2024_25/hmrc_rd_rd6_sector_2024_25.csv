@@ -1,0 +1,21 @@
+sector,sme_scheme_claims,sme_scheme_cost_gbp_m,sme_intensive_eris_claims,sme_intensive_eris_cost_gbp_m,rdec_large_claims,rdec_large_cost_gbp_m,rdec_sme_claims,rdec_sme_cost_gbp_m,merged_rdec_large_claims,merged_rdec_large_cost_gbp_m,merged_rdec_sme_claims,merged_rdec_sme_cost_gbp_m,total_claims,total_cost_gbp_m,total_expenditure_gbp_m
+"A. Agriculture, Forestry, Fishing",390,25,35,<10,50,55,85,<10,15,<10,195,15,770,110,700
+B. Mining & Quarrying,70,<10,<10,<10,50,135,35,<10,N/A,N/A,30,<10,190,150,825
+C. Manufacturing,"5,665",340,735,85,"1,100",960,"1,700",195,215,560,"1,670",95,"11,090","2,235","14,195"
+"D. Electricity, Gas, Steam and Air Conditioning",45,<10,10,<10,50,15,20,<10,10,<10,40,<10,175,30,195
+"E. Water, Sewerage and Waste",145,<10,20,<10,20,<10,40,<10,15,<10,50,<10,290,30,190
+F. Construction,"1,460",110,60,<10,240,190,125,10,60,50,455,30,"2,405",390,"2,510"
+"G. Wholesale & Retail Trade, Repairs",825,40,90,<10,120,135,140,15,25,10,180,<10,"1,375",220,"1,410"
+H. Transport & Storage,115,<10,20,<10,50,30,25,<10,20,<10,40,<10,270,50,310
+I. Accommodation & Food,40,<10,<10,<10,15,<10,<10,<10,N/A,N/A,15,<10,75,<10,50
+J. Information & Communication,"5,225",435,"2,180",250,425,480,"1,405",245,90,110,"1,600",110,"10,920","1,630","9,950"
+K. Financial & Insurance,305,40,55,10,230,335,80,60,30,35,100,20,805,500,"3,270"
+L. Real Estate,20,<10,<10,<10,<10,<10,<10,<10,<10,<10,<10,<10,40,<10,35
+"M. Professional, Scientific & Technical","3,410",290,"1,345",410,450,815,"1,665",280,75,70,"1,250",95,"8,195","1,960","11,665"
+N. Admin & Support Services,"1,130",70,195,45,255,265,230,30,35,120,335,20,"2,180",550,"3,475"
+"O. Public Admin, Defence & Social Services",15,<10,<10,<10,<10,10,<10,<10,<10,<10,<10,<10,45,15,110
+P. Education,65,<10,20,<10,<10,<10,10,<10,<10,<10,20,<10,125,<10,60
+Q. Health & Social Work,180,10,70,<10,25,<10,60,15,<10,<10,65,<10,405,45,265
+"R. Arts, Entertainment & Recreation",175,15,35,<10,40,105,25,<10,<10,<10,40,<10,320,130,885
+S. Other services activities,290,15,65,<10,40,40,55,15,<10,30,95,<10,550,115,730
+Unknown or other,30,<10,<10,<10,<10,<10,30,<10,<10,<10,20,<10,95,20,135

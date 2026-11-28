@@ -1,0 +1,19 @@
+sic_section,sic_description,employers_benefitting,share_percent
+A,"Agriculture, forestry and fishing",26000,2
+C,Manufacturing,61000,5
+F,Construction,160000,13
+G,Wholesale and retail trade; repair of motor vehicles and motorcycles,205000,17
+H,Transportation and storage,39000,3
+I,Accommodation and food service activities,127000,10
+J,Information and communication,58000,5
+K,Financial and insurance activities,18000,1
+L,Real estate activities,35000,3
+M,"Professional, scientific and technical activities",147000,12
+N,Administrative and support service activities,100000,8
+P,Education,23000,2
+Q,Human health and social work activities,67000,5
+R,"Arts, entertainment and recreation",27000,2
+S,Other service activities,75000,6
+T,Activities of households as employers...,50000,4
+"B,D,E,O,U",Other,6000,<1
+Total,Total,1223000,100
