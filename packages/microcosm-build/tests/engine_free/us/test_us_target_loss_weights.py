@@ -632,13 +632,10 @@ def _district(name, district, *, parent, value=100.0, unit="usd", **metadata):
         ledger_source_record_id=f"{name}.record",
         ledger_layout_groupby_value_label=f"CA congressional district {district}",
         ledger_fact_label=f"California Congressional District {district} {name}",
-        state_cd_vintage_rule="state_cd.historic_table_2_level_cd_file_shares.v1",
-        state_cd_parent_target_name=parent,
-        state_cd_parent_basis="historic_table_2",
-        state_cd_parent_value="500.0",
-        state_cd_cd_file_value=repr(value * 0.9),
-        state_cd_cd_file_state_sum="450.0",
-        state_cd_rebase_factor="1.11",
+        cross_grain_parent=parent,
+        cross_grain_control="historic_table_2_state_vs_district_file",
+        cross_grain_value_before=repr(value * 0.9),
+        cross_grain_factor="1.11",
         **metadata,
     )
 

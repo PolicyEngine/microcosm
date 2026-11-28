@@ -66,6 +66,7 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.build.cross_grain import PARENT_KEY, VALUE_BEFORE_KEY
 from microcosm.calibrate.target_loss_rules import (
     TargetLossRows,
     TargetWeightRule,
@@ -333,10 +334,10 @@ ACS_LOCAL_POPULATION_PREFIXES: Mapping[str, tuple[str, int]] = {
 #:   :data:`US_FISCAL_TARGET_CONCEPT_METADATA_EXCLUSIONS` does not list them,
 #:   so under the national mapping every compiled district row is its own
 #:   group; the national mapping is kept as it is here.
-#: - ``state_cd_cd_file_value``: the district file's own value of the row,
-#:   which the ``state_cd`` rebase (``tools/us_acs_local_cd_surface.py``)
-#:   stamps before rescaling it. The rebase's block-level stamps (parent,
-#:   basis, factor, file state sum) are equal across a block and may stay.
+#: - ``cross_grain_value_before``: the district file's own value of the row,
+#:   which the shared cross-grain operator's pass stamps when it divides the
+#:   state row among the districts. The pass's block-level stamps (parent,
+#:   control, factor) are equal across a block and may stay.
 #:
 #: :func:`validate_acs_local_concept_groups` refuses a surface where any other
 #: per-district key splits a reconciliation block.
@@ -344,7 +345,7 @@ ACS_LOCAL_PER_DISTRICT_METADATA = frozenset(
     {
         "ledger_fact_label",
         "ledger_layout_groupby_value_label",
-        "state_cd_cd_file_value",
+        VALUE_BEFORE_KEY,
     }
 )
 US_ACS_LOCAL_CONCEPT_METADATA_EXCLUSIONS = (
@@ -535,7 +536,7 @@ def validate_acs_local_concept_groups(
       per-district metadata key reaching the key would split them into one
       group per district, whatever the SOI mode.
     - Each ``state_cd`` reconciliation block (the district rows sharing one
-      ``state_cd_parent_target_name``) must be exactly one concept group, and
+      ``cross_grain_parent``) must be exactly one concept group, and
       no group may hold two blocks.
     - Each district group must lie in one state.
     """
@@ -557,7 +558,7 @@ def validate_acs_local_concept_groups(
             continue
         states_of_group.setdefault(key, set()).add(str(metadata.get("state_fips")))
         groups_of_identity.setdefault(district_concept_identity(spec), set()).add(key)
-        parent = metadata.get("state_cd_parent_target_name")
+        parent = metadata.get(PARENT_KEY)
         if parent:
             group_of_parent.setdefault(str(parent), set()).add(key)
             parent_of_group.setdefault(key, set()).add(str(parent))

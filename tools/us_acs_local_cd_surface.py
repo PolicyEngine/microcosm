@@ -46,90 +46,71 @@ from scipy import sparse
 
 #: Ledger record-set specs from the congressional-district SOI file.
 CD_FILE_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_"
-#: How the ``state_cd`` surface resolves the two vintages of a state concept.
-STATE_CD_VINTAGE_RULE = "state_cd.historic_table_2_level_cd_file_shares.v1"
 
-#: District-file measures that read the wrong IRS column (microcosm#1038).
-#: The compiler's ``US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS`` drops these
-#: facts by (measure id, IRS column) before this surface sees them; this
-#: register stays as a second fence on the ``state_cd`` surface, at both
-#: geographies, and records the reason in the receipt.
-STATE_CD_DEFECTIVE_CD_FILE_MEASURES: Mapping[str, str] = {
-    "limited_state_local_taxes_amount": (
-        "22incd.csv column A18425 is state and local income taxes (Schedule A "
-        "line 5a), not the limited SALT deduction (A18460); the district "
-        "file sums to 1.98x Historic Table 2 (microcosm#1038)."
-    ),
-    "limited_state_local_taxes_returns": (
-        "22incd.csv column N18425 counts state and local income-tax "
-        "deductions, not the limited SALT deduction (microcosm#1038)."
-    ),
-    "premium_tax_credit_returns": (
-        "22incd.csv column N85530 is the additional Medicare tax (Form 8959 "
-        "line 24), not the premium tax credit (N85770) (microcosm#1038)."
-    ),
-}
-#: District-file measures with no state parent in either vintage, so their
-#: district rows could not nest in a bound state target.
-STATE_CD_UNPARENTED_CD_MEASURES: Mapping[str, str] = {
-    "tax_filer_individual_count": (
-        "The compiler drops this measure at state and national geography "
-        "(fiscal_targets._soi_reference_from_fact), so no state target exists "
-        "for its district rows to reconcile to."
-    ),
-}
-#: District-file-only concepts (Historic Table 2 lacks them) and the sibling
-#: concept whose two state levels bridge theirs onto the Historic Table 2
-#: basis. The district file's own state levels sit below Historic Table 2's
-#: for two reasons: it covers only the returns processed in its window (about
-#: 1.7% fewer), and the feed stamps it one tax year late, so its amounts are
-#: aged one year less. A sibling both files carry, in the same state, estimates
-#: that gap, on the assumption that the measure shares the sibling's ratio:
-#: counts bridge by ``return_count`` (counts are not aged), amounts by the
-#: closest amount Historic Table 2 carries. The factor band below applies to
-#: the sibling. The bridge is stamp-invariant: if the stamp is corrected
-#: (#1030) both levels move together.
-STATE_CD_LEVEL_BRIDGES: Mapping[str, str] = {
-    "charitable_amount": "itemized_deductions_amount",
-    "charitable_returns": "return_count",
-    "interest_paid_deduction_amount": "itemized_deductions_amount",
-    "interest_paid_deduction_returns": "return_count",
-    "qualified_business_income_deduction_amount": "adjusted_gross_income",
-    "qualified_business_income_deduction_returns": "return_count",
-}
-#: States whose district SOI rows stay off the surface, with the evidence.
-#: Empty since #1043 rebuilt the 117th->119th crosswalk from the block plan
-#: registry: the packaged crosswalk before it (sha256 c7cb040b...) carried
-#: North Carolina's 2016 plan instead of the 2019 plan the 117th Congress used,
-#: and 37.0% of NC's population mapped to a different 119th district, so NC's
-#: district rows were held off until then.
-STATE_CD_EXCLUDED_CD_STATES: Mapping[str, str] = {}
-#: How far a state's Historic Table 2 / district-file ratio may sit from its
-#: measure's median across states before the district file's data for that
-#: (state, concept) is refused. The ratio mixes a common part (the file's
-#: coverage and aging gap, or a measure-wide rebase such as taxable interest's
-#: x2.47 onto Table 4.3), which the median absorbs, with a state-specific part.
-#: A state-specific part beyond 25% means the two publications disagree about
-#: that state (Hawaii's dividends differ 2.4x from the typical gap on the
-#: pinned feed), so the district file's shares, or a bridge built on that
-#: sibling, are not trusted: the block's district rows and any bridged state
-#: row are dropped and recorded; the Historic Table 2 state row stays.
-STATE_CD_FACTOR_BAND = 1.25
-#: The district file's own state row must equal the sum of its district rows
-#: to this relative tolerance wherever both are present (the receipt records
-#: the largest gap; the feed-gated contract test pins it on the pinned feed).
-#: A gap means a column or crosswalk defect inside the file (#1038 class),
-#: which no median absorbs.
-STATE_CD_INTERNAL_RTOL = 1e-6
-#: The packaged crosswalk the exclusions above were reviewed against. A test
-#: pins it, so regenerating the crosswalk forces a second look at them.
-STATE_CD_REVIEWED_CROSSWALK_SHA256 = (
-    "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233"
+
+def _district_soi_nesting():
+    """The declared choices of the ``state_cd`` surface (microcosm#1760).
+
+    ``us/cross_grain_declarations.json`` holds them with their reasons: the
+    bridge between Historic Table 2 and the district file with its bound, the
+    registers of defective, unparented and excluded district measures, and
+    the level bridges that stay until the feed re-pin. The names below are
+    those choices under the names this module always had.
+    """
+
+    from microcosm.build.us_runtime.cross_grain_declarations import (
+        us_district_soi_nesting,
+    )
+
+    return us_district_soi_nesting()
+
+
+def _cross_grain():
+    """The shared cross-grain operator module (its metadata key names)."""
+
+    from microcosm.build import cross_grain
+
+    return cross_grain
+
+
+_DISTRICT_SOI_NESTING = _district_soi_nesting()
+#: The metadata that a reconciled district row keeps, as every row that the
+#: shared cross-grain operator reconciles does (the UK rows too): its parent
+#: row, what reconciled it, the factor, and its value before.
+PARENT_KEY = _cross_grain().PARENT_KEY
+NESTING_KEYS = (
+    PARENT_KEY,
+    _cross_grain().CONTROL_KEY,
+    _cross_grain().FACTOR_KEY,
+    _cross_grain().VALUE_BEFORE_KEY,
 )
+#: How the ``state_cd`` surface resolves the two vintages of a state concept.
+STATE_CD_VINTAGE_RULE = _DISTRICT_SOI_NESTING.vintage_rule
+#: District-file measures that read the wrong IRS column (microcosm#1038).
+STATE_CD_DEFECTIVE_CD_FILE_MEASURES: Mapping[str, str] = dict(
+    _DISTRICT_SOI_NESTING.defective_lower_measures
+)
+#: District-file measures with no state parent in either vintage.
+STATE_CD_UNPARENTED_CD_MEASURES: Mapping[str, str] = dict(
+    _DISTRICT_SOI_NESTING.unparented_lower_measures
+)
+#: District-file-only concepts and the sibling concept that bridges their
+#: state level onto the Historic Table 2 basis (until the feed re-pin).
+STATE_CD_LEVEL_BRIDGES: Mapping[str, str] = dict(_DISTRICT_SOI_NESTING.level_bridges)
+#: States whose district SOI rows stay off the surface, with the evidence.
+STATE_CD_EXCLUDED_CD_STATES: Mapping[str, str] = dict(
+    _DISTRICT_SOI_NESTING.excluded_legs
+)
+#: How far a state's Historic Table 2 / district-file factor may sit from its
+#: measure's median across states: the declared bound of the bridge, as a
+#: ratio to that median.
+STATE_CD_FACTOR_BAND = _DISTRICT_SOI_NESTING.factor_band
+#: The packaged crosswalk the registers above were reviewed against. A test
+#: pins it, so regenerating the crosswalk forces a second look at them.
+STATE_CD_REVIEWED_CROSSWALK_SHA256 = _DISTRICT_SOI_NESTING.reviewed_crosswalk_sha256
 
-#: Relative tolerance for "district rows sum to their state parent". The
-#: rebase makes it exact up to float64 rounding.
-RECONCILIATION_RTOL = 1e-9
+#: Relative tolerance for "district rows sum to their state parent".
+RECONCILIATION_RTOL = _DISTRICT_SOI_NESTING.closure_rtol
 
 SIGMA_BASIS_FEED = "feed_standard_error"
 SIGMA_BASIS_NONE = "not_provided_by_feed"
@@ -275,29 +256,12 @@ class StateCdSurface:
     receipt: dict
 
 
-def _crosswalk_district_sets(crosswalk: pd.DataFrame):
-    """(source districts per state, target districts per state) as SSDD."""
+def _target_nesting():
+    """The US adapter to the shared cross-grain operator (microcosm#1760)."""
 
-    source: dict[str, set[str]] = defaultdict(set)
-    target: dict[str, set[str]] = defaultdict(set)
-    for source_id, target_id in zip(
-        crosswalk["source_geography_id"].astype(str),
-        crosswalk["target_geography_id"].astype(str),
-        strict=True,
-    ):
-        source[source_id[-4:-2]].add(source_id[-4:])
-        target[target_id[-4:-2]].add(target_id[-4:])
-    return dict(source), dict(target)
+    from microcosm.build.us_runtime import target_nesting
 
-
-def _factor_summary(values: Sequence[float]) -> dict[str, float | int]:
-    array = np.asarray(values, dtype=np.float64)
-    return {
-        "n": int(array.size),
-        "min": float(array.min()),
-        "median": float(np.median(array)),
-        "max": float(array.max()),
-    }
+    return target_nesting
 
 
 def state_cd_soi_surface(
@@ -310,6 +274,12 @@ def state_cd_soi_surface(
     factor_band: float = STATE_CD_FACTOR_BAND,
 ) -> StateCdSurface:
     """Select and reconcile the ``state_cd`` SOI surface.
+
+    The work is in
+    :func:`microcosm.build.us_runtime.target_nesting.district_soi_surface`:
+    the shared cross-grain operator divides each state control among its
+    district rows, with the choices declared in
+    ``us/cross_grain_declarations.json`` (microcosm#1760).
 
     Args:
         soi_specs: Every compiled ``irs_soi`` spec (the ``full`` surface).
@@ -337,416 +307,21 @@ def state_cd_soi_surface(
             a sign conflict).
     """
 
-    source_districts, target_districts = _crosswalk_district_sets(crosswalk)
-    at_large_source_states = sorted(
-        state for state, districts in source_districts.items() if len(districts) == 1
+    surface = _target_nesting().district_soi_surface(
+        soi_specs,
+        state_surface_predicate=state_surface_predicate,
+        crosswalk=crosswalk,
+        crosswalk_sha256=crosswalk_sha256,
+        level_bridges=level_bridges,
+        factor_band=factor_band,
+        concept_identity=soi_concept_identity,
+        materializer_semantics=soi_materializer_semantics,
+        is_lower_file_spec=is_cd_file_spec,
+        # Read at call time: the builder re-checks its own output with the
+        # report this module holds.
+        closure_report=lambda specs: state_parent_reconciliation(specs),
     )
-    dropped: Counter = Counter()
-    dropped_examples: dict[str, str] = {}
-
-    def drop(spec, reason: str) -> None:
-        dropped[reason] += 1
-        dropped_examples.setdefault(reason, spec.name)
-
-    ht2_state: list = []
-    cd_file_state: list = []
-    cd_rows: list = []
-    for spec in soi_specs:
-        level = geography_level(spec)
-        if state_surface_predicate(spec):
-            ht2_state.append(spec)
-        elif is_cd_file_spec(spec) and level == GEOGRAPHY_STATE:
-            cd_file_state.append(spec)
-        elif is_cd_file_spec(spec) and level == GEOGRAPHY_CD:
-            cd_rows.append(spec)
-        elif level == GEOGRAPHY_CD:
-            drop(spec, "historic_table_2_at_large_proxy_district_row")
-        else:
-            drop(spec, f"not_state_cd_geography:{level}")
-
-    ht2_by_key = {}
-    for spec in ht2_state:
-        key = (spec.metadata["state_fips"], soi_concept_identity(spec))
-        if key in ht2_by_key:
-            raise ValueError(
-                f"Two Historic Table 2 state specs measure {key}: "
-                f"{ht2_by_key[key].name} and {spec.name}."
-            )
-        ht2_by_key[key] = spec
-    cd_file_state_by_key = {}
-    for spec in cd_file_state:
-        key = (spec.metadata["state_fips"], soi_concept_identity(spec))
-        if key in cd_file_state_by_key:
-            raise ValueError(
-                f"Two district-file state specs measure {key}: "
-                f"{cd_file_state_by_key[key].name} and {spec.name}."
-            )
-        cd_file_state_by_key[key] = spec
-
-    # Each state concept both files carry: its Historic Table 2 / district-file
-    # ratio, judged against the measure's median ratio across states.
-    vintage_ratio: dict[tuple, float] = {}
-    for key in ht2_by_key.keys() & cd_file_state_by_key.keys():
-        ht2_value = float(ht2_by_key[key].value)
-        cd_value = float(cd_file_state_by_key[key].value)
-        vintage_ratio[key] = (
-            ht2_value / cd_value
-            if cd_value != 0.0 and (ht2_value > 0) == (cd_value > 0)
-            else math.nan
-        )
-    ratios_by_identity: dict[tuple, list[float]] = defaultdict(list)
-    for (_state, identity), ratio in vintage_ratio.items():
-        if math.isfinite(ratio):
-            ratios_by_identity[identity].append(ratio)
-    median_ratio = {
-        identity: float(np.median(values))
-        for identity, values in ratios_by_identity.items()
-    }
-    out_of_band: list[dict] = []
-
-    def within_band(
-        key: tuple,
-        ratio: float,
-        median: float,
-        basis: str,
-        measure: str,
-        *,
-        verdict: str,
-    ) -> bool:
-        relative = ratio / median if math.isfinite(ratio) and median else math.nan
-        ok = math.isfinite(relative) and 1 / factor_band <= relative <= factor_band
-        if not ok:
-            out_of_band.append(
-                {
-                    "state_fips": key[0],
-                    "measure": measure,
-                    "concept": key[1][0],
-                    "basis": basis,
-                    "verdict": verdict,
-                    "ratio": ratio,
-                    "median_ratio": median,
-                    "relative": relative,
-                }
-            )
-        return ok
-
-    kept_cd_by_key: dict[tuple, list] = defaultdict(list)
-    for spec in cd_rows:
-        metadata = spec.metadata
-        measure = str(metadata.get("source_measure_id"))
-        state = str(metadata["state_fips"])
-        if measure in STATE_CD_DEFECTIVE_CD_FILE_MEASURES:
-            drop(spec, f"defective_cd_file_column:{measure}")
-        elif measure in STATE_CD_UNPARENTED_CD_MEASURES:
-            drop(spec, f"no_state_parent:{measure}")
-        elif state in at_large_source_states:
-            drop(spec, "at_large_on_source_plan")
-        elif state in STATE_CD_EXCLUDED_CD_STATES:
-            drop(spec, f"excluded_state:{state}")
-        else:
-            kept_cd_by_key[(state, soi_concept_identity(spec))].append(spec)
-
-    # Each Historic-Table-2-parented block's rebase factor (parent over its
-    # district rows' sum), judged against its concept's median across states.
-    block_factor: dict[tuple, float] = {}
-    for key, block in kept_cd_by_key.items():
-        parent = ht2_by_key.get(key)
-        child_sum = math.fsum(float(spec.value) for spec in block)
-        if parent is not None and child_sum != 0.0:
-            block_factor[key] = float(parent.value) / child_sum
-    factors_by_identity: dict[tuple, list[float]] = defaultdict(list)
-    for (_state, identity), factor in block_factor.items():
-        if math.isfinite(factor) and factor > 0:
-            factors_by_identity[identity].append(factor)
-    median_factor = {
-        identity: float(np.median(values))
-        for identity, values in factors_by_identity.items()
-    }
-
-    # One basis for every state level: a concept Historic Table 2 lacks keeps
-    # the district file's state row, scaled by a sibling's two levels.
-    bridged: dict[str, object] = {}
-    bridge_factors: dict[str, list[float]] = defaultdict(list)
-    for key, spec in sorted(cd_file_state_by_key.items()):
-        state, identity = key
-        measure = identity[0]
-        if key in ht2_by_key or measure in STATE_CD_DEFECTIVE_CD_FILE_MEASURES:
-            continue
-        sibling = level_bridges.get(measure)
-        if sibling is None:
-            raise ValueError(
-                f"District-file-only concept {measure!r} has no level bridge; "
-                "register a sibling measure in STATE_CD_LEVEL_BRIDGES before "
-                "binding it."
-            )
-        sibling_key = (state, (sibling, *identity[1:]))
-        ht2_sibling = ht2_by_key.get(sibling_key)
-        cd_sibling = cd_file_state_by_key.get(sibling_key)
-        if ht2_sibling is None or cd_sibling is None or float(cd_sibling.value) == 0:
-            raise ValueError(
-                f"Level bridge {measure} -> {sibling} in state {state} needs "
-                "the sibling's state total in both files."
-            )
-        factor = float(ht2_sibling.value) / float(cd_sibling.value)
-        # A sign conflict is a data defect, not a level disagreement: refuse
-        # it before the band, which only judges finite positive ratios.
-        if not (math.isfinite(factor) and factor > 0.0):
-            raise ValueError(
-                f"Level bridge {measure} -> {sibling} in state {state} has "
-                f"factor {factor}."
-            )
-        # The sibling is trusted for bridging only if both of the band's
-        # verdicts on it pass: its two state levels, and (where it has district
-        # rows) the rebase of its own district block.
-        trusted = within_band(
-            sibling_key,
-            factor,
-            median_ratio.get(sibling_key[1], math.nan),
-            f"level_bridge:{measure}",
-            measure,
-            verdict="sibling_vintage_ratio",
-        )
-        if sibling_key in block_factor:
-            trusted = (
-                within_band(
-                    sibling_key,
-                    block_factor[sibling_key],
-                    median_factor.get(sibling_key[1], math.nan),
-                    f"level_bridge:{measure}",
-                    measure,
-                    verdict="sibling_rebase_factor",
-                )
-                and trusted
-            )
-        if not trusted:
-            continue
-        metadata = dict(spec.metadata)
-        metadata.update(
-            {
-                "state_cd_vintage_rule": STATE_CD_VINTAGE_RULE,
-                "state_cd_cd_file_value": repr(float(spec.value)),
-                "state_cd_level_bridge_sibling": ht2_sibling.name,
-                "state_cd_level_bridge_cd_file_sibling": cd_sibling.name,
-                "state_cd_level_bridge_factor": repr(factor),
-            }
-        )
-        value = float(spec.value) * factor
-        bridged[spec.name] = replace(
-            spec, value=value, signed=value < 0.0, metadata=metadata
-        )
-        bridge_factors[measure].append(factor)
-
-    rebased: dict[str, object] = {}
-    internal_gaps: list[float] = []
-    factors_by_measure: dict[str, list[float]] = defaultdict(list)
-    parent_basis_counts: Counter = Counter()
-    kept_cd_file_parents: set[str] = set()
-    for key in sorted(kept_cd_by_key):
-        state, identity = key
-        children = sorted(
-            kept_cd_by_key[key],
-            key=lambda spec: spec.metadata["congressional_district_geoid"],
-        )
-        districts = [spec.metadata["congressional_district_geoid"] for spec in children]
-        expected = sorted(target_districts.get(state, ()))
-        if districts != expected:
-            raise ValueError(
-                f"District concept {identity} in state {state} covers "
-                f"{districts}, expected the current plan's {expected}; "
-                "rebasing an incomplete set would misstate every district."
-            )
-        semantics = {soi_materializer_semantics(spec) for spec in children}
-        if len(semantics) != 1:
-            raise ValueError(
-                f"District rows of {identity} in state {state} materialize "
-                f"differently: {sorted(map(repr, semantics))}."
-            )
-        (child_semantics,) = semantics
-        parent = ht2_by_key.get(key)
-        basis = "historic_table_2"
-        if parent is None:
-            parent = cd_file_state_by_key.get(key)
-            basis = "cd_file_state_total_bridged"
-            if parent is None:
-                raise ValueError(
-                    f"District concept {identity} in state {state} has no "
-                    "state parent in either vintage."
-                )
-            if parent.name not in bridged:
-                for child in children:
-                    drop(child, f"level_bridge_out_of_band:{identity[0]}")
-                continue
-            parent = bridged[parent.name]
-            kept_cd_file_parents.add(parent.name)
-        if soi_materializer_semantics(parent) != child_semantics:
-            raise ValueError(
-                f"State parent {parent.name} materializes differently from "
-                f"its district rows ({identity}, state {state})."
-            )
-        child_sum = math.fsum(float(spec.value) for spec in children)
-        parent_value = float(parent.value)
-        if child_sum == 0.0:
-            if parent_value != 0.0:
-                raise ValueError(
-                    f"District rows of {identity} in state {state} sum to zero "
-                    f"under a nonzero parent {parent.name}={parent_value}."
-                )
-            factor = 1.0
-        else:
-            factor = parent_value / child_sum
-            if factor < 0.0:
-                raise ValueError(
-                    f"District rows of {identity} in state {state} sum to "
-                    f"{child_sum}, opposite in sign to parent {parent.name}="
-                    f"{parent_value}."
-                )
-        # The district file must agree with itself before its shares are used.
-        cd_state = cd_file_state_by_key.get(key)
-        if cd_state is not None:
-            cd_state_value = float(cd_state.value)
-            gap = abs(cd_state_value - child_sum)
-            internal_gaps.append(gap / max(abs(cd_state_value), 1.0))
-            if gap > STATE_CD_INTERNAL_RTOL * max(abs(cd_state_value), 1.0):
-                raise ValueError(
-                    f"District-file state row {cd_state.name}={cd_state_value} "
-                    f"differs from the sum of its district rows ({child_sum}) "
-                    f"for {identity} in state {state}: a column or crosswalk "
-                    "defect inside the district file."
-                )
-        # An all-zero block agrees with a zero parent whatever the median.
-        if (
-            basis == "historic_table_2"
-            and child_sum != 0.0
-            and not within_band(
-                key,
-                factor,
-                median_factor.get(identity, math.nan),
-                "rebase",
-                identity[0],
-                verdict="rebase_factor",
-            )
-        ):
-            for child in children:
-                drop(child, f"rebase_out_of_band:{identity[0]}")
-            continue
-        factors_by_measure[identity[0]].append(factor)
-        parent_basis_counts[basis] += len(children)
-        for child in children:
-            metadata = dict(child.metadata)
-            metadata.update(
-                {
-                    "state_cd_vintage_rule": STATE_CD_VINTAGE_RULE,
-                    "state_cd_parent_target_name": parent.name,
-                    "state_cd_parent_basis": basis,
-                    "state_cd_parent_value": repr(parent_value),
-                    "state_cd_cd_file_value": repr(float(child.value)),
-                    "state_cd_cd_file_state_sum": repr(child_sum),
-                    "state_cd_rebase_factor": repr(factor),
-                }
-            )
-            value = float(child.value) * factor
-            rebased[child.name] = replace(
-                child,
-                value=value,
-                signed=value < 0.0,
-                metadata=metadata,
-            )
-
-    kept_cd_file_state = []
-    for spec in cd_file_state:
-        measure = str(spec.metadata.get("source_measure_id"))
-        key = (spec.metadata["state_fips"], soi_concept_identity(spec))
-        if measure in STATE_CD_DEFECTIVE_CD_FILE_MEASURES:
-            drop(spec, f"defective_cd_file_column:{measure}")
-        elif key in ht2_by_key:
-            drop(spec, "second_vintage_of_state_concept")
-        elif spec.name not in bridged:
-            drop(spec, f"level_bridge_out_of_band:{measure}")
-        else:
-            kept_cd_file_state.append(bridged[spec.name])
-    missing_parents = kept_cd_file_parents - {spec.name for spec in kept_cd_file_state}
-    if missing_parents:
-        raise ValueError(
-            f"District-file state parents {sorted(missing_parents)[:5]} were "
-            "dropped while their district rows were kept."
-        )
-
-    cd_specs = tuple(rebased[spec.name] for spec in cd_rows if spec.name in rebased)
-    specs = (*ht2_state, *kept_cd_file_state, *cd_specs)
-    # Fail closed on the invariant the whole surface rests on.
-    unreconciled = [
-        block for block in state_parent_reconciliation(specs) if not block["ok"]
-    ]
-    if unreconciled:
-        raise ValueError(
-            f"{len(unreconciled)} district block(s) do not add up to a bound "
-            f"state parent, e.g. {unreconciled[:2]}."
-        )
-    with_sigma = sum(1 for spec in specs if getattr(spec, "se", None) is not None)
-    receipt = {
-        "vintage_rule": STATE_CD_VINTAGE_RULE,
-        "vintage_rule_description": (
-            "Historic Table 2 (TY2022) is the single vintage of every state "
-            "concept it carries. District-file (22incd.csv) district rows "
-            "keep only their within-state shares and are rebased to sum to "
-            "that parent. Concepts only the district file carries keep its "
-            "own state row as their parent, lifted onto the Historic Table 2 "
-            "basis by a sibling concept's ratio of the two files' state "
-            "totals in the same state (STATE_CD_LEVEL_BRIDGES)."
-        ),
-        "counts": {
-            "historic_table_2_state": len(ht2_state),
-            "cd_file_state": len(kept_cd_file_state),
-            "congressional_district": len(cd_specs),
-            "congressional_district_by_parent_basis": dict(parent_basis_counts),
-            "total": len(specs),
-        },
-        "dropped": dict(sorted(dropped.items())),
-        "dropped_examples": dict(sorted(dropped_examples.items())),
-        "defective_cd_file_measures": dict(STATE_CD_DEFECTIVE_CD_FILE_MEASURES),
-        "unparented_cd_measures": dict(STATE_CD_UNPARENTED_CD_MEASURES),
-        "excluded_cd_states": dict(STATE_CD_EXCLUDED_CD_STATES),
-        "at_large_on_source_plan": at_large_source_states,
-        "internal_consistency": {
-            "rtol": STATE_CD_INTERNAL_RTOL,
-            "blocks_checked": len(internal_gaps),
-            "max_relative_gap": max(internal_gaps, default=0.0),
-        },
-        "factor_band": {
-            "tolerance": factor_band,
-            "relative_to": "the measure's median Historic Table 2 / "
-            "district-file ratio across states",
-            "out_of_band": sorted(
-                out_of_band, key=lambda row: (row["concept"], row["state_fips"])
-            ),
-        },
-        "level_bridges": dict(level_bridges),
-        "level_bridge_factor_by_measure": {
-            measure: _factor_summary(values)
-            for measure, values in sorted(bridge_factors.items())
-        },
-        "rebase_factor_by_measure": {
-            measure: _factor_summary(values)
-            for measure, values in sorted(factors_by_measure.items())
-        },
-        "crosswalk": {
-            "source_plan": "117th_congress",
-            "target_plan": "119th_congress",
-            "method": "packaged 2020-block population crosswalk",
-            "sha256": crosswalk_sha256,
-        },
-        "sigma": {
-            "targets_with_sigma": with_sigma,
-            "targets_without_sigma": len(specs) - with_sigma,
-            "note": (
-                "The pinned feed carries no uncertainty field for any fact; "
-                "IRS SOI tables are administrative. target_roles.json records "
-                "sigma and sigma_basis for every target, null wherever a spec "
-                "carries none."
-            ),
-        },
-    }
-    return StateCdSurface(specs=specs, receipt=receipt)
+    return StateCdSurface(specs=surface.specs, receipt=surface.receipt)
 
 
 def state_parent_reconciliation(
@@ -754,35 +329,12 @@ def state_parent_reconciliation(
 ) -> list[dict]:
     """Every (state parent, district rows) block and whether it adds up.
 
-    A block is the district specs naming one ``state_cd_parent_target_name``.
+    A block is the district specs naming one parent (``cross_grain_parent``).
     Returns one entry per block with the parent value, the district sum and
     ``ok`` (relative difference within ``rtol``).
     """
 
-    by_name = {spec.name: spec for spec in specs}
-    blocks: dict[str, list] = defaultdict(list)
-    for spec in specs:
-        parent = spec.metadata.get("state_cd_parent_target_name")
-        if parent is not None:
-            blocks[parent].append(spec)
-    report = []
-    for parent_name, children in sorted(blocks.items()):
-        parent = by_name.get(parent_name)
-        child_sum = math.fsum(float(spec.value) for spec in children)
-        parent_value = None if parent is None else float(parent.value)
-        scale = max(abs(parent_value or 0.0), 1.0)
-        report.append(
-            {
-                "parent": parent_name,
-                "parent_bound": parent is not None,
-                "parent_value": parent_value,
-                "district_sum": child_sum,
-                "n_districts": len(children),
-                "ok": parent is not None
-                and abs(child_sum - parent_value) <= rtol * scale,
-            }
-        )
-    return report
+    return _target_nesting().district_block_closure(specs, rtol=rtol)
 
 
 # ---------------------------------------------------------------------------
@@ -1064,7 +616,7 @@ def district_row_parents(
     Returns ``{row index: (parent name, strict)}`` and the rows with no parent,
     over the rows whose carrier compiled.
 
-    - A ``state_cd`` row names its parent (``state_cd_parent_target_name``),
+    - A ``state_cd`` row names its parent (``cross_grain_parent``),
       and its block partitions that parent's state, so the check is strict:
       the stored district rows, laid side by side, must equal the parent's
       column on every household. A ``state_cd`` row without a compiled parent
@@ -1098,8 +650,8 @@ def district_row_parents(
             continue  # the row is not materialized, so not on the surface
         spec = plan.declared[index]
         metadata = spec.metadata
-        named = metadata.get("state_cd_parent_target_name")
-        if "state_cd_vintage_rule" in metadata and named not in compiled:
+        named = metadata.get(PARENT_KEY)
+        if PARENT_KEY in metadata and named not in compiled:
             raise ValueError(
                 f"state_cd district row {spec.name} has no compiled state "
                 f"parent ({named!r}); its per-chunk check would be vacuous."
@@ -1250,6 +802,53 @@ def csr_row_measure(matrix: sparse.csr_array, row: int, n: int):
 # ---------------------------------------------------------------------------
 
 
+#: The metadata keys of district and county rows until microcosm#1760, when
+#: the keys of the shared cross-grain operator (``cross_grain_*``) replaced
+#: them, and the fields of the district receipt that went with them. A saved
+#: target or receipt that still holds one was written by older code. A later
+#: stage that read it with this code would find no parent, no value before
+#: and no factor, without an error.
+RETIRED_NESTING_KEY_PREFIXES = ("state_cd_", "state_county_")
+RETIRED_SURFACE_RECEIPT_FIELDS = (
+    "rebase_factor_by_measure",
+    "factor_band",
+    "internal_consistency",
+)
+_OLDER_CODE = (
+    "it was materialized by older code, before the keys of the shared "
+    "cross-grain operator (microcosm#1760). Re-run --stage materialize with "
+    "the current tool."
+)
+
+
+def refuse_targets_of_older_code(targets, *, where: str) -> None:
+    """Refuse saved targets that carry the retired nesting keys.
+
+    ``targets`` are role records (mappings) or specs (their metadata is
+    read). ``where`` names the file, for the message.
+    """
+
+    for target in targets:
+        metadata = target if isinstance(target, Mapping) else target.metadata
+        retired = sorted(
+            key
+            for key in metadata
+            if str(key).startswith(RETIRED_NESTING_KEY_PREFIXES)
+        )
+        if retired:
+            raise SystemExit(
+                f"{where} holds the metadata key {retired[0]!r}: {_OLDER_CODE}"
+            )
+
+
+def refuse_surface_receipt_of_older_code(surface: Mapping, *, where: str) -> None:
+    """Refuse a saved district surface receipt with the retired fields."""
+
+    retired = sorted(set(RETIRED_SURFACE_RECEIPT_FIELDS) & set(surface))
+    if retired:
+        raise SystemExit(f"{where} holds the field {retired[0]!r}: {_OLDER_CODE}")
+
+
 def target_record(spec) -> dict:
     """The target_roles.json record for one admin spec (metadata subset)."""
 
@@ -1270,12 +869,7 @@ def target_record(spec) -> dict:
         "sigma": None if se is None else float(se),
         "sigma_basis": SIGMA_BASIS_NONE if se is None else SIGMA_BASIS_FEED,
     }
-    for key in (
-        "state_cd_parent_target_name",
-        "state_cd_parent_basis",
-        "state_cd_rebase_factor",
-        "state_cd_cd_file_value",
-    ):
+    for key in NESTING_KEYS:
         if key in metadata:
             record[key] = metadata[key]
     return record
@@ -1288,7 +882,7 @@ def cd_holdout_unit_key(record: Mapping) -> str | None:
         return None
     if record.get("geography_level") != GEOGRAPHY_CD:
         return None
-    if not record.get("state_cd_parent_target_name"):
+    if not record.get(PARENT_KEY):
         return None
     return (
         f"{record['state_fips']}|"
@@ -1456,7 +1050,7 @@ def pro_rata_baseline(records: Sequence[Mapping], rows: Sequence[int]) -> np.nda
     values = []
     for index in rows:
         record = records[index]
-        parent = by_name.get(record.get("state_cd_parent_target_name"))
+        parent = by_name.get(record.get(PARENT_KEY))
         if parent is None:
             raise ValueError(
                 f"{record['name']} has no bound state parent for the baseline."

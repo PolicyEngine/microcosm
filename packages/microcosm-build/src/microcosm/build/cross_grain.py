@@ -52,6 +52,16 @@ class CrossGrainBridge:
     signature group putting one leg's authorities on its constituencies)
     rescales them by whatever factor it needs. The bound must lie in (0, 1):
     at one or more it would accept every factor below one.
+
+    Three more fields shape the bound, and each default is the bound above.
+    ``min_factor_shift`` is the lowest signed shift a factor may take, where
+    a gap is known to run one way; without it the bound is symmetric.
+    ``shift_around`` names what the shift is measured from: ``"one"``, or
+    ``"median"`` for the median factor across the legs of the bridge, which
+    takes out a gap that every leg shares (two sources of two vintages).
+    ``out_of_bound`` says what an out-of-bound leg does: ``"refuse"`` stops
+    the pass; ``"unbind"`` leaves the leg's lower rows as they are and
+    records them, so that the caller takes them off its surface.
     """
 
     bridge_id: str
@@ -60,6 +70,150 @@ class CrossGrainBridge:
     lower_side: str
     per_geography: bool = False
     max_factor_shift: float | None = None
+    min_factor_shift: float | None = None
+    shift_around: str = "one"
+    out_of_bound: str = "refuse"
+
+
+SHIFT_REFERENCES = ("one", "median")
+OUT_OF_BOUND_ACTIONS = ("refuse", "unbind")
+
+#: The metadata that a reconciled target row keeps. Target metadata is text,
+#: so the numbers are exact ``repr`` strings.
+VALUE_BEFORE_KEY = "cross_grain_value_before"
+FACTOR_KEY = "cross_grain_factor"
+#: What reconciled the row: a bridge id, a partition id, or
+#: :data:`EXACT_SIGNATURE_CONTROL`.
+CONTROL_KEY = "cross_grain_control"
+EXACT_SIGNATURE_CONTROL = "exact_signature"
+#: The name of the control row, when the control is one row.
+PARENT_KEY = "cross_grain_parent"
+#: The geographies a row stands for, when it stands for more than its own.
+MEMBERS_KEY = "cross_grain_members"
+
+
+def cross_grain_metadata(
+    *,
+    value_before: float,
+    factor: float,
+    control: str,
+    parent: str | None = None,
+    members: Iterable[str] = (),
+) -> dict[str, str]:
+    """The metadata of one reconciled row, in a fixed key order."""
+
+    metadata = {
+        VALUE_BEFORE_KEY: repr(float(value_before)),
+        FACTOR_KEY: repr(float(factor)),
+        CONTROL_KEY: str(control),
+    }
+    if parent is not None:
+        metadata[PARENT_KEY] = str(parent)
+    members = tuple(str(member) for member in members)
+    if members:
+        metadata[MEMBERS_KEY] = ",".join(members)
+    return metadata
+
+
+@dataclass(frozen=True)
+class CrossGrainBridgeSelector:
+    """One declared entry that makes one bridge for each pair of targets.
+
+    Two sources that publish the same measures at two levels need one bridge
+    for each measure. A selector states the pairing once: ``higher`` and
+    ``lower`` choose the targets of each side by their attributes (a value,
+    or ``{"prefix": ...}``), and ``pair_on`` names the attributes on which a
+    higher and a lower target must agree. ``paired_values`` maps a higher
+    target's value of an attribute to the lower side's value, where the two
+    sources name one thing differently. The bound fields are those of
+    :class:`CrossGrainBridge`, and every bridge of the selector takes them.
+    """
+
+    bridge_id: str
+    concept: str
+    higher: Mapping[str, Any]
+    lower: Mapping[str, Any]
+    pair_on: tuple[str, ...]
+    paired_values: Mapping[str, Mapping[str, str]] | None = None
+    max_factor_shift: float | None = None
+    min_factor_shift: float | None = None
+    shift_around: str = "one"
+    out_of_bound: str = "refuse"
+
+
+def expand_bridge_selectors(
+    selectors: Iterable[CrossGrainBridgeSelector],
+    targets: Mapping[str, Mapping[str, Any]],
+) -> tuple[tuple[CrossGrainBridge, ...], dict[str, tuple[str, ...]]]:
+    """The bridges that the selectors make over ``targets``.
+
+    ``targets`` maps a target id to its attributes. Returns the bridges, each
+    named ``<selector id>:<lower target id>``, and for each selector the lower
+    targets that no higher target pairs with: the caller refuses them or
+    declares why they have no control. Two higher targets that pair with one
+    lower target are refused, since a lower target has one control.
+    """
+
+    bridges: list[CrossGrainBridge] = []
+    unpaired: dict[str, tuple[str, ...]] = {}
+    for selector in selectors:
+        if not selector.pair_on:
+            raise ValueError(
+                f"cross-grain bridge selector {selector.bridge_id!r} must name "
+                "the attributes its two sides are paired on."
+            )
+        mapped = selector.paired_values or {}
+        higher_by_key: dict[tuple[Any, ...], str] = {}
+        for target_id, attributes in targets.items():
+            if not _selects(selector.higher, attributes):
+                continue
+            key = tuple(
+                mapped.get(name, {}).get(attributes.get(name), attributes.get(name))
+                for name in selector.pair_on
+            )
+            if key in higher_by_key:
+                raise ValueError(
+                    f"cross-grain bridge selector {selector.bridge_id!r} pairs "
+                    f"two higher targets on {key!r}: {higher_by_key[key]!r} and "
+                    f"{target_id!r}."
+                )
+            higher_by_key[key] = target_id
+        without_control: list[str] = []
+        for target_id, attributes in targets.items():
+            if not _selects(selector.lower, attributes):
+                continue
+            key = tuple(attributes.get(name) for name in selector.pair_on)
+            higher = higher_by_key.get(key)
+            if higher is None:
+                without_control.append(target_id)
+                continue
+            bridges.append(
+                CrossGrainBridge(
+                    bridge_id=f"{selector.bridge_id}:{target_id}",
+                    concept=selector.concept,
+                    higher_target_ids=(higher,),
+                    lower_side=target_id,
+                    max_factor_shift=selector.max_factor_shift,
+                    min_factor_shift=selector.min_factor_shift,
+                    shift_around=selector.shift_around,
+                    out_of_bound=selector.out_of_bound,
+                )
+            )
+        unpaired[selector.bridge_id] = tuple(without_control)
+    return tuple(bridges), unpaired
+
+
+def _selects(side: Mapping[str, Any], attributes: Mapping[str, Any]) -> bool:
+    """Whether a target's attributes meet every test of a selector side."""
+
+    for name, wanted in side.items():
+        value = attributes.get(name)
+        if isinstance(wanted, Mapping):
+            if not str(value).startswith(str(wanted["prefix"])):
+                return False
+        elif value != wanted:
+            return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -78,6 +232,17 @@ class CrossGrainRule:
     #: constituencies and authorities while a country row controls the legs no
     #: region row covers.
     control_grains: tuple[str, ...] = ()
+    #: How one control's value is divided among its lower rows. ``None`` is
+    #: the standing rule: each row times the control over the rows' numpy
+    #: sum. An allocator takes the rows' values, in surface order, and the
+    #: control's value, and returns ``(values, factor, raw_sum)``: the
+    #: reconciled rows in the same order, and the factor and the lower-row
+    #: total that the leg receipt records. A country whose sources need
+    #: another summation or a residual rule declares one (microcosm#1760);
+    #: the refusals and the closure check below apply to it unchanged.
+    allocator: Callable[[np.ndarray, float], tuple[np.ndarray, float, float]] | None = (
+        None
+    )
 
 
 @dataclass(frozen=True)
@@ -290,6 +455,10 @@ def _reconcile_cross_grain_surface_with_control_receipts(
     list[dict[str, Any]],
     list[dict[str, Any]],
     list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
 ]:
     """Return a copied surface with every detected lower grain rescaled.
 
@@ -320,6 +489,7 @@ def _reconcile_cross_grain_surface_with_control_receipts(
     first_pair_id: dict[tuple[str, str], str] = {}
     absent_middle_tier_legs: list[dict[str, Any]] = []
     deferred_legs_without_control: list[dict[str, Any]] = []
+    unbound_legs: list[dict[str, Any]] = []
     pairs_per_key: dict[tuple[str, str], int] = {}
     for group in materialized_groups:
         key = (group.inconsistency_id.rsplit(":", 1)[0], group.lower_grain)
@@ -530,6 +700,24 @@ def _reconcile_cross_grain_surface_with_control_receipts(
             )
         controls = populated_controls
 
+        bridge = bridges_by_id.get(group.bridge_id or "")
+        bound = None if bridge is None else bridge.max_factor_shift
+        general_bound = bound is not None and (
+            bridge.shift_around != "one"
+            or bridge.min_factor_shift is not None
+            or bridge.out_of_bound != "refuse"
+        )
+        reference = 1.0
+        if bound is not None and bridge.shift_around == "median":
+            reference = _median_input_factor(
+                local_frame,
+                controls,
+                lower_by_leg,
+                row_legs,
+                columns,
+                rule,
+                group.inconsistency_id,
+            )
         leg_receipts: list[dict[str, Any]] = []
         used_controls: set[tuple[str, tuple[str, ...]]] = set()
         for control in controls:
@@ -546,8 +734,15 @@ def _reconcile_cross_grain_surface_with_control_receipts(
             raw_values = reconciled.iloc[positions][columns["value"]].to_numpy(
                 dtype=np.float64
             )
-            raw_sum = float(raw_values.sum())
             parent_value = float(control["value"])
+            if rule.allocator is None:
+                allocation = None
+                raw_sum = float(raw_values.sum())
+            else:
+                allocation = _allocation(
+                    rule.allocator, raw_values, parent_value, group.inconsistency_id
+                )
+                raw_sum = allocation[2]
             if not np.isfinite(raw_sum) or not np.isfinite(parent_value):
                 raise ValueError(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
@@ -565,7 +760,10 @@ def _reconcile_cross_grain_surface_with_control_receipts(
             # Live only when the control is itself zero (the floor above is
             # vacuous there): a zero-summing leg against a zero control is a
             # no-op, where `parent_value / raw_sum` would be 0/0.
-            factor = 1.0 if raw_sum == 0.0 else parent_value / raw_sum
+            if allocation is None:
+                factor = 1.0 if raw_sum == 0.0 else parent_value / raw_sum
+            else:
+                factor = allocation[1]
             if not np.isfinite(factor):
                 raise ValueError(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
@@ -576,10 +774,63 @@ def _reconcile_cross_grain_surface_with_control_receipts(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     "cannot reconcile opposite-signed lower and control targets."
                 )
-            bridge = bridges_by_id.get(group.bridge_id or "")
-            bound = None if bridge is None else bridge.max_factor_shift
             input_factor = None
-            if bound is not None:
+            if general_bound:
+                input_factor, input_sum = _input_factor(
+                    local_frame.iloc[positions][columns["value"]].to_numpy(
+                        dtype=np.float64
+                    ),
+                    parent_value,
+                    rule,
+                    group.inconsistency_id,
+                )
+                # A leg that sums to zero under a zero control has nothing to
+                # judge. Otherwise the shift is the factor over the reference.
+                relative = (
+                    input_factor / reference
+                    if np.isfinite(input_factor) and reference
+                    else float("nan")
+                )
+                lowest = (
+                    -bound
+                    if bridge.min_factor_shift is None
+                    else bridge.min_factor_shift
+                )
+                in_bound = input_sum == 0.0 or bool(
+                    np.isfinite(relative) and 1.0 + lowest <= relative <= 1.0 + bound
+                )
+                if check_factor_bounds and not in_bound:
+                    if bridge.out_of_bound == "unbind":
+                        already.update(positions)
+                        unbound_legs.append(
+                            {
+                                "inconsistency_id": group.inconsistency_id,
+                                "bridge_id": bridge.bridge_id,
+                                "leg": "+".join(control["covered_legs"]),
+                                "parent_geography_id": str(
+                                    control["parent_geography_id"]
+                                ),
+                                "higher_target_ids": list(control["higher_target_ids"]),
+                                "positions": [int(p) for p in positions],
+                                "factor_on_input_totals": input_factor,
+                                "factor_reference": reference,
+                                "relative_factor": relative,
+                                "max_factor_shift": bound,
+                                "min_factor_shift": lowest,
+                                "shift_around": bridge.shift_around,
+                            }
+                        )
+                        continue
+                    raise ValueError(
+                        f"cross-grain bridge {bridge.bridge_id!r} would scale the "
+                        f"{group.lower_grain} rows of leg "
+                        f"{'+'.join(control['covered_legs'])!r} by {input_factor!r} "
+                        f"on their input totals, {relative!r} of the "
+                        f"{bridge.shift_around} reference {reference!r}, outside "
+                        f"its declared shift from {lowest} to {bound}: the two "
+                        "sides no longer measure one quantity."
+                    )
+            elif bound is not None:
                 # The bound reads the lower rows as given, not as an earlier
                 # group left them: an exact-signature group that rescales this
                 # grain onto a nearer tier first would leave a factor of one
@@ -603,7 +854,7 @@ def _reconcile_cross_grain_surface_with_control_receipts(
                         "longer measure one quantity."
                     )
             reconciled.iloc[positions, reconciled.columns.get_loc(columns["value"])] = (
-                raw_values * factor
+                raw_values * factor if allocation is None else allocation[0]
             )
             already.update(positions)
             new_total = float(
@@ -641,11 +892,25 @@ def _reconcile_cross_grain_surface_with_control_receipts(
                     "declared_factor": factor,
                     **(
                         {}
+                        if rule.allocator is None
+                        else {"allocator": _allocator_name(rule.allocator)}
+                    ),
+                    **(
+                        {}
                         if bound is None
                         else {
                             "max_factor_shift": bound,
                             "factor_on_input_totals": input_factor,
                             "factor_bound_checked": check_factor_bounds,
+                        }
+                    ),
+                    **(
+                        {}
+                        if not general_bound
+                        else {
+                            "min_factor_shift": lowest,
+                            "shift_around": bridge.shift_around,
+                            "factor_reference": reference,
                         }
                     ),
                     "reason": (
@@ -700,6 +965,7 @@ def _reconcile_cross_grain_surface_with_control_receipts(
         delegated_legs,
         absent_middle_tier_legs,
         deferred_legs_without_control,
+        unbound_legs,
     )
 
 
@@ -770,6 +1036,7 @@ def apply_cross_grain_reconciliation(
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
     check_factor_bounds: bool = True,
     frame_only_positions: Iterable[int] = (),
+    expected_members: Mapping[str, Mapping[str, frozenset[str]]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Detect, reconcile, and return the always-present pass receipt.
 
@@ -779,8 +1046,16 @@ def apply_cross_grain_reconciliation(
     ``frame_only_positions`` names the rows that bind nothing (deferred
     cells); a leg holding only those needs no control
     (``deferred_legs_without_control``).
+    ``expected_members`` maps a lower target to the geographies that each of
+    its legs must hold, each one time. A leg that holds other rows than those,
+    or one of them two times, is refused:
+    rescaling a set that is not complete would move the missing members'
+    mass onto the present ones. A declared leg with no row is refused in the
+    same way. A leg that declares no member holds no row, and the empty-leg
+    licences decide it.
     """
 
+    _assert_expected_members(local_frame, rule, expected_members)
     bound = tuple(str(target_id) for target_id in bound_higher_targets)
     groups = detect_cross_grain_inconsistencies(
         local_frame,
@@ -803,6 +1078,7 @@ def apply_cross_grain_reconciliation(
         delegated_legs,
         absent_middle_tier_legs,
         deferred_legs_without_control,
+        unbound_legs,
     ) = _reconcile_cross_grain_surface_with_control_receipts(
         local_frame,
         groups,
@@ -822,6 +1098,13 @@ def apply_cross_grain_reconciliation(
         "delegated_legs": delegated_legs,
         "absent_middle_tier_legs": absent_middle_tier_legs,
         "deferred_legs_without_control": deferred_legs_without_control,
+        # Only a rule with a bridge that unbinds carries the key, so the
+        # receipt of every other rule keeps the keys it had.
+        **(
+            {"unbound_legs": unbound_legs}
+            if any(bridge.out_of_bound == "unbind" for bridge in rule.bridges)
+            else {}
+        ),
         "absence": (
             None
             if groups
@@ -1117,6 +1400,36 @@ def _validate_rule(rule: CrossGrainRule) -> None:
                 f"{bound!r}; a bound must be a number in (0, 1): at one or more "
                 "it would accept every factor below one."
             )
+        floor = bridge.min_factor_shift
+        if (
+            bridge.shift_around not in SHIFT_REFERENCES
+            or bridge.out_of_bound not in OUT_OF_BOUND_ACTIONS
+        ):
+            raise ValueError(
+                f"cross-grain bridge {bridge.bridge_id!r} declares shift_around "
+                f"{bridge.shift_around!r} and out_of_bound {bridge.out_of_bound!r}; "
+                f"expected one of {SHIFT_REFERENCES} and one of "
+                f"{OUT_OF_BOUND_ACTIONS}."
+            )
+        if bound is None and (
+            floor is not None
+            or bridge.shift_around != "one"
+            or bridge.out_of_bound != "refuse"
+        ):
+            raise ValueError(
+                f"cross-grain bridge {bridge.bridge_id!r} shapes a bound it does "
+                "not declare; set max_factor_shift."
+            )
+        if floor is not None and (
+            isinstance(floor, bool)
+            or not isinstance(floor, int | float)
+            or not -1.0 < floor < bound
+        ):
+            raise ValueError(
+                f"cross-grain bridge {bridge.bridge_id!r} declares min_factor_shift "
+                f"{floor!r}; it must be a number above -1 and below "
+                f"max_factor_shift {bound!r}."
+            )
     for geography_id, legs in rule.parent_geography_legs.items():
         if not str(geography_id) or not legs or any(not str(leg) for leg in legs):
             raise ValueError(
@@ -1319,6 +1632,167 @@ def _control_positions(
                 "control."
             )
     return positions
+
+
+def _allocation(
+    allocator: Callable[[np.ndarray, float], tuple[np.ndarray, float, float]],
+    raw_values: np.ndarray,
+    parent_value: float,
+    inconsistency_id: str,
+) -> tuple[np.ndarray, float, float]:
+    """One control's lower rows as the rule's declared allocator divides them.
+
+    Returns ``(values, factor, raw_sum)``. A result that is not one value for
+    each row is refused here; the caller's refusals (a non-finite or vanishing
+    total, a negative factor, a total off its control) then read ``factor``
+    and ``raw_sum`` as they read the standing rule's own.
+    """
+
+    values, factor, raw_sum = allocator(raw_values, parent_value)
+    values = np.asarray(values, dtype=np.float64)
+    if values.shape != raw_values.shape:
+        raise ValueError(
+            f"cross-grain inconsistency {inconsistency_id!r}: allocator "
+            f"{_allocator_name(allocator)!r} returned {values.shape} value(s) "
+            f"for {raw_values.shape} lower row(s)."
+        )
+    return values, float(factor), float(raw_sum)
+
+
+def _allocator_name(allocator: Callable[..., Any]) -> str:
+    return str(getattr(allocator, "__name__", type(allocator).__name__))
+
+
+def _input_factor(
+    input_values: np.ndarray,
+    parent_value: float,
+    rule: CrossGrainRule,
+    inconsistency_id: str,
+) -> tuple[float, float]:
+    """``(factor, lower total)`` of a leg on its rows as given.
+
+    The factor and the total are those of the rule's own division: the
+    allocator's when it declares one, else the control over the numpy sum.
+    """
+
+    if rule.allocator is not None:
+        _values, factor, input_sum = _allocation(
+            rule.allocator, input_values, parent_value, inconsistency_id
+        )
+        return factor, input_sum
+    input_sum = float(input_values.sum())
+    if input_sum != 0.0:
+        return parent_value / input_sum, input_sum
+    return (1.0 if parent_value == 0.0 else float("inf")), input_sum
+
+
+def _median_input_factor(
+    local_frame: pd.DataFrame,
+    controls: Iterable[Mapping[str, Any]],
+    lower_by_leg: Mapping[str, list[int]],
+    row_legs: Mapping[int, tuple[str, ...]],
+    columns: Mapping[str, str],
+    rule: CrossGrainRule,
+    inconsistency_id: str,
+) -> float:
+    """The median factor across a bridge's legs, on their rows as given.
+
+    Only a leg with a nonzero total and a positive finite factor counts, so
+    a leg that cannot be scaled does not move the reference. With no such
+    leg the reference is ``NaN``, and every judged leg is out of bound.
+    """
+
+    factors: list[float] = []
+    seen: set[tuple[str, tuple[str, ...]]] = set()
+    for control in controls:
+        key = (str(control["parent_geography_id"]), tuple(control["covered_legs"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        positions = _control_positions(
+            control, lower_by_leg, row_legs, inconsistency_id
+        )
+        factor, input_sum = _input_factor(
+            local_frame.iloc[positions][columns["value"]].to_numpy(dtype=np.float64),
+            float(control["value"]),
+            rule,
+            inconsistency_id,
+        )
+        if input_sum != 0.0 and np.isfinite(factor) and factor > 0:
+            factors.append(factor)
+    return float(np.median(factors)) if factors else float("nan")
+
+
+def _assert_expected_members(
+    local_frame: pd.DataFrame,
+    rule: CrossGrainRule,
+    expected_members: Mapping[str, Mapping[str, frozenset[str]]] | None,
+) -> None:
+    """Refuse a leg of a target that does not hold exactly its members.
+
+    The check reads every declared leg, with or without rows, so a leg whose
+    members are all absent is refused like a leg that lacks one member.
+    """
+
+    if not expected_members:
+        return
+    columns = _surface_columns(local_frame)
+    expected = {
+        _contract_target_id(str(target_id)): by_leg
+        for target_id, by_leg in expected_members.items()
+    }
+    held: dict[tuple[str, str], list[str]] = {}
+    for side, area in zip(
+        local_frame[columns["target_id"]].tolist(),
+        local_frame[columns["geography_id"]].tolist(),
+        strict=True,
+    ):
+        target_id = _contract_target_id(str(side))
+        if target_id not in expected:
+            continue
+        for leg in _row_legs(str(area), rule):
+            held.setdefault((target_id, leg), []).append(str(area))
+    declared = {
+        (target_id, str(leg))
+        for target_id, by_leg in expected.items()
+        for leg in by_leg
+    }
+    for target_id, leg in sorted(declared | held.keys()):
+        members = expected[target_id].get(leg)
+        if members is None:
+            raise ValueError(
+                f"cross-grain target {target_id!r} has rows on leg {leg!r}, "
+                "which declares no members for it."
+            )
+        assert_leg_members(target_id, leg, held.get((target_id, leg), ()), members)
+
+
+def assert_leg_members(
+    target_id: str, leg: str, present: Iterable[str], members: Iterable[str]
+) -> None:
+    """Refuse a leg that does not hold each of its declared members one time.
+
+    ``present`` is the geography of each row of the target on the leg, with a
+    geography that two rows hold given two times. A caller that takes a leg
+    off its surface before a pass checks the leg with this function, so one
+    rule and one text hold for every leg.
+    """
+
+    counts: dict[str, int] = {}
+    for area in present:
+        counts[str(area)] = counts.get(str(area), 0) + 1
+    declared = {str(member) for member in members}
+    missing = sorted(declared - counts.keys())
+    unexpected = sorted(counts.keys() - declared)
+    repeated = sorted(area for area, count in counts.items() if count > 1)
+    if missing or unexpected or repeated:
+        twice = f", repeated {repeated}" if repeated else ""
+        raise ValueError(
+            f"cross-grain target {target_id!r} does not hold the declared "
+            f"members of leg {leg!r}: missing {missing}, unexpected "
+            f"{unexpected}{twice}. Rescaling a set that is not complete would "
+            "misstate every member."
+        )
 
 
 def _controls_agree(left: float, right: float) -> bool:

@@ -123,10 +123,10 @@ def _district(name, value, unit, district, parent) -> TargetSpec:
         ledger_geography_id=f"5001900US{district}",
         ledger_layout_groupby_value_label=f"congressional district {district}",
         ledger_fact_label=f"Congressional District {district} {name}",
-        state_cd_parent_target_name=parent,
-        state_cd_parent_basis="historic_table_2",
-        state_cd_cd_file_value=repr(value * 0.97),
-        state_cd_rebase_factor="1.03",
+        cross_grain_parent=parent,
+        cross_grain_control="historic_table_2_state_vs_district_file",
+        cross_grain_value_before=repr(value * 0.97),
+        cross_grain_factor="1.03",
     )
     return TargetSpec(
         **{

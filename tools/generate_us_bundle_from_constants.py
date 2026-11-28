@@ -143,6 +143,9 @@ LEGACY_RESOURCE_PATHS = (
     "chronicle_county_facts_scope.json",
     "chronicle_feed.json",
     "chronicle_feed_scope.json",
+    # The US nesting declarations of the shared cross-grain operator
+    # (microcosm#1760).
+    "cross_grain_declarations.json",
     "ecps_parity_known_gaps.json",
     "ecps_parity_reference.json",
     "federal_eitc_by_state.json",

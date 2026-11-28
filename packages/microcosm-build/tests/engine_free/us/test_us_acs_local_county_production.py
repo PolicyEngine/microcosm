@@ -450,7 +450,7 @@ def test_acs_household_children_sum_to_their_new_state_parent(layout) -> None:
         children = [
             spec
             for spec in surface.specs
-            if spec.metadata.get("state_county_parent_target_name") == parent.name
+            if spec.metadata.get("cross_grain_parent") == parent.name
         ]
         assert {child.metadata["county_fips"] for child in children} == {
             code for code in values if code[:2] == state
@@ -569,7 +569,7 @@ def test_acs_household_rows_partition_each_state_row(draws) -> None:
         children = [
             child
             for child, other in enumerate(specs)
-            if other.metadata.get("state_county_parent_target_name") == spec.name
+            if other.metadata.get("cross_grain_parent") == spec.name
         ]
         parent = rows[[index]].toarray()[0]
         np.testing.assert_array_equal(rows[children].toarray().sum(axis=0), parent)
@@ -609,15 +609,14 @@ def test_kalawao_shares_a_declared_soi_cell_with_maui() -> None:
     surface = county.state_county_soi_surface(_hawaii_parents(), _hawaii_soi(), _HAWAII)
     maui = [spec for spec in surface.specs if spec.metadata["county_fips"] == "15009"]
     assert len(maui) == 2
+    parents = {parent.name: parent.value for parent in _hawaii_parents()}
     for spec in maui:
-        assert spec.metadata["state_county_cell_members"] == "15005,15009"
-        assert "fewer than 20 returns" in spec.metadata["state_county_cell_basis"]
+        assert spec.metadata["cross_grain_members"] == "15005,15009"
         published = sum(
             population for code, population in _HAWAII.items() if code != 15005
         )
-        assert float(spec.metadata["state_county_share"]) == pytest.approx(
-            160.0 / published
-        )
+        parent_value = parents[spec.metadata["cross_grain_parent"]]
+        assert spec.value / parent_value == pytest.approx(160.0 / published)
         assert float(spec.metadata["county_population"]) == 80.0 + 160.0
     assert not [
         spec for spec in surface.specs if spec.metadata["county_fips"] == "15005"
@@ -625,6 +624,7 @@ def test_kalawao_shares_a_declared_soi_cell_with_maui() -> None:
     (merge,) = surface.receipt["combined_cells"]
     assert merge["members"] == ["15005", "15009"]
     assert merge["absent_from_soi"] == "15005"
+    assert "fewer than 20 returns" in merge["basis"]
     assert set(merge["concepts"]) == {
         "return_count|2022",
         "adjusted_gross_income|2022",
@@ -634,11 +634,11 @@ def test_kalawao_shares_a_declared_soi_cell_with_maui() -> None:
 
 def test_an_undeclared_absent_county_is_still_refused() -> None:
     county = _county()
-    with pytest.raises(ValueError, match="missing=\\['15007'\\]"):
+    with pytest.raises(ValueError, match="missing \\['county:15007'\\]"):
         county.state_county_soi_surface(
             _hawaii_parents(), _hawaii_soi(without=(15005, 15007)), _HAWAII
         )
-    with pytest.raises(ValueError, match="missing=\\['15005'\\]"):
+    with pytest.raises(ValueError, match="missing \\['county:15005'\\]"):
         county.state_county_soi_surface(
             _hawaii_parents(), _hawaii_soi(), _HAWAII, combined_cells={}
         )
@@ -672,7 +672,7 @@ def test_a_present_declared_county_keeps_its_own_soi_row() -> None:
     assert {spec.metadata["county_fips"] for spec in surface.specs} == set(
         _codes(_HAWAII)
     )
-    assert "state_county_cell_members" not in surface.specs[0].metadata
+    assert "cross_grain_members" not in surface.specs[0].metadata
 
 
 @_SETTINGS
@@ -694,7 +694,7 @@ def test_combined_cells_partition_the_parent_row_exactly(codes, values) -> None:
         rows = [
             row
             for row, spec in enumerate(surface.specs)
-            if spec.metadata["state_county_parent_target_name"] == parent.name
+            if spec.metadata["cross_grain_parent"] == parent.name
         ]
         dense = children[rows].toarray()
         np.testing.assert_array_equal(
@@ -716,7 +716,7 @@ def test_combined_cells_partition_the_parent_row_exactly(codes, values) -> None:
     assert math.fsum(
         spec.value
         for spec in surface.specs
-        if spec.metadata["state_county_parent_target_name"] == parents[0].name
+        if spec.metadata["cross_grain_parent"] == parents[0].name
     ) == pytest.approx(parents[0].value)
 
 
@@ -732,7 +732,7 @@ def test_split_rows_refuse_overlapping_member_sets() -> None:
                 **{field: getattr(spec, field) for field in spec.__dataclass_fields__},
                 "metadata": {
                     **spec.metadata,
-                    "state_county_cell_members": "15001,15005",
+                    "cross_grain_members": "15001,15005",
                 },
             }
         )
@@ -1347,7 +1347,7 @@ def test_combined_soi_cell_errors_count_toward_both_member_counties() -> None:
             "name": "county_15009__returns",
             "geography_level": "county",
             "county_fips": "15009",
-            "state_county_cell_members": "15005,15009",
+            "cross_grain_members": "15005,15009",
             "value": 10.0,
             "role": "holdout",
         }

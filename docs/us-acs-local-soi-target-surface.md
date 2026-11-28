@@ -179,7 +179,13 @@ storage](#target-matrix-storage) replaces this.
 the TY2022 SOI congressional-district file (`22incd.csv`, record-set spec
 `irs_soi.congressional_district_2022.all_returns.v1`), reconciled so that
 every state concept has one vintage. The rule is
-`us_acs_local_cd_surface.state_cd_soi_surface`.
+`us_acs_local_cd_surface.state_cd_soi_surface`. Since microcosm#1760 that
+function calls `us_runtime.target_nesting.district_soi_surface`: the shared
+cross-grain operator divides each state row among its district rows, with the
+choices below declared in `us/cross_grain_declarations.json`. Each row has the
+value it had. The metadata keys and the receipt changed with microcosm#1760,
+so the bytes of the surface moved. See
+[US target nesting](us-target-nesting.md).
 
 ### One vintage per state concept
 
@@ -232,7 +238,7 @@ district rows, are mostly 1.00 to 1.10.
   state's level. The factor band below drops those blocks.
 
 `materialize_rss.json` records the full table under
-`soi_surface.rebase_factor_by_measure`.
+`soi_surface.factor_by_measure`.
 
 ### The factor band
 
@@ -255,16 +261,20 @@ bridge built on that sibling is trusted there:
   bridge loses the bridged state row and its district rows
   (`level_bridge_out_of_band:<measure>`).
 
-Every failing verdict is recorded in the receipt under
-`factor_band.out_of_band` with the verdict, its ratio, the median and the
-relative gap. The band only judges finite positive ratios: a sibling whose
-two levels differ in sign is a data defect and is refused outright. So is a
-district file that disagrees with itself: wherever the file carries a state
-row beside its district rows, the two must agree to 1e-6
-(`STATE_CD_INTERNAL_RTOL`), since no median absorbs a column or crosswalk
-defect inside the file. On the pinned feed all 2,193 blocks agree to float
-precision (largest relative gap 4e-16; the receipt records it under
-`internal_consistency`, and the feed-gated test pins it).
+The band is the declared bound of the bridge between the two files
+(`historic_table_2_state_vs_district_file` in
+`us/cross_grain_declarations.json`), and the shared cross-grain operator
+applies it (see [US target nesting](us-target-nesting.md)). The receipt
+records each block that the bound takes off under `bridge.unbound`, with its
+factor, and each distrusted bridge under `level_bridge_out_of_band`, with the
+verdict, its ratio, the median and the relative gap. The band only judges
+finite positive ratios: a sibling whose two levels differ in sign is a data
+defect and is refused outright.
+
+Until microcosm#1760 this stage also refused a district file whose own state
+row was not the sum of its district rows. That check is gone: the compile
+scales the district rows to that state row before this stage runs
+(`reconcile_ledger_target_hierarchy`), so the sum holds by construction.
 
 On the pinned feed the band drops eight:
 
@@ -309,9 +319,12 @@ amounts (median 1.062; the two above 1.25x the median are dropped) and
 stamp, the sibling ratio shrinks with it. Its district rows keep their
 within-state shares, as every other district row does.
 
-Every district row records its parent (`state_cd_parent_target_name`), the
-parent's basis, the district file's own value and the rebase factor; a
-bridged state row records its sibling and bridge factor.
+Every district row records its parent (`cross_grain_parent`), what
+reconciled it (`cross_grain_control`), the district file's own value
+(`cross_grain_value_before`) and the factor (`cross_grain_factor`). A bridged
+state row records its sibling (`cross_grain_control` reads
+`level_bridge:<sibling>`) and its bridge factor. These are the keys of every
+row that the shared cross-grain operator reconciles.
 
 ### What stays off the surface
 

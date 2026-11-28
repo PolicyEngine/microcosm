@@ -9,6 +9,14 @@ shares and ACS county households, scores four held-out ACS county families,
 gives every county a reliability grade, and moves a few same-PUMA households
 into any county the staging frame leaves empty.
 
+Since microcosm#1760 the three share mechanisms of the rung (county
+population, county SOI shares, county households) run on the shared
+cross-grain operator, through `us_runtime.target_nesting`, with their choices
+declared in `us/cross_grain_declarations.json`. The tool functions keep their
+names, and every row has the value it had. The metadata keys and the receipts
+changed with microcosm#1760: the rows carry the operator's `cross_grain_*`
+keys. See [US target nesting](us-target-nesting.md).
+
 ## Plan and invariants
 
 - Population measures are household size times county membership. County
@@ -82,6 +90,13 @@ to USD in the county facts file; the county rung does not apply another scale fa
 duplicate facts, negative or nonfinite shares, zero share denominators,
 incomplete county inventories, incompatible boundaries, and missing or
 ambiguous state parents. No unsupported concept receives a new engine measure.
+A state whose factor (its state target over the sum of its county source
+values) is more than 1.25 times its measure's median across states, or less
+than 0.8 times it, loses its county rows of that measure: the receipt names
+it under `bridge.unbound`, and its state target stays. This is the declared
+bound of the county bridge in `us/cross_grain_declarations.json`, the same as
+the district bridge's (see [US target nesting](us-target-nesting.md)). On the
+pinned county facts no state is outside it.
 Full runs also require the ladder to declare all 3,144 county-equivalents;
 matching omissions from both ladder and SOI cannot pass as a complete release.
 An ACS county family can later provide child targets with the same state-parent
@@ -345,7 +360,7 @@ The inspected Chronicle publisher inputs have two concrete issues:
   share is Maui's published value over the state's published county sum, and
   its households are those in either county. Kalawao keeps its own
   population row (from the ladder, like every county's) and ACS rows. The SOI receipt records the merge under
-  `combined_cells`, and each Maui row carries `state_county_cell_members`
+  `combined_cells`, and each Maui row carries `cross_grain_members`
   `15005,15009`. Any other county missing from SOI, a declared cell whose
   host is missing too, or a declaration across states is refused.
 - **Connecticut:** both packages use the nine planning-region codes `09110`

@@ -2310,6 +2310,11 @@ def _require_pro_rata_populations(targets: list[dict]) -> None:
 def do_materialize(args) -> None:
     from scipy import sparse
 
+    from microcosm.build.us_runtime import target_nesting
+
+    # microcosm#1760: the shared cross-grain operator makes the district and
+    # county share rows. Record its own receipt of each pass from here on.
+    nesting_receipts = target_nesting.start_nesting_receipts()
     families = [item.strip() for item in args.families.split(",") if item.strip()]
     geographies = [item.strip() for item in args.geographies.split(",") if item.strip()]
     holdout_fraction = _cd_holdout_fraction(args)
@@ -2559,6 +2564,9 @@ def do_materialize(args) -> None:
             indent=2,
         )
     )
+    # A receipt only: no stage reads it and the run identity does not hold it.
+    target_nesting.write_nesting_receipts(args.checkpoint_dir, nesting_receipts)
+    target_nesting.stop_nesting_receipts()
     log(f"materialize stage complete, peak RSS {rss():.2f}GB")
 
 
@@ -3141,6 +3149,10 @@ def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
             f"materialize with the current tool. {error}"
         ) from error
     roles = json.loads(roles_path.read_text())
+    # Targets written before microcosm#1760 name their parent, their value
+    # before and their factor under keys that this code does not read.
+    cd_surface.refuse_targets_of_older_code(registry.specs, where=registry_path.name)
+    cd_surface.refuse_targets_of_older_code(roles, where=TARGET_ROLES_FILENAME)
     matrix = cd_surface.load_target_matrix(matrix_path)
     frame, design_weights = load_lean_frame(checkpoint_dir / "target_frame_lean.h5")
     n_households = frame.n("household")
@@ -5116,6 +5128,11 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
     if materialize_rss.get("soi_mode") != SOI_MODE_STATE_CD:
         return []
     surface = materialize_rss.get("soi_surface") or {}
+    # A receipt of older code names its factors under another field, and the
+    # limitation below would record nothing for them.
+    cd_surface.refuse_surface_receipt_of_older_code(
+        surface, where="materialize_rss.json (soi_surface)"
+    )
     holdout = materialize_rss.get("cd_holdout") or {}
     excluded = surface.get("excluded_cd_states") or {}
     exclusion = (
@@ -5153,7 +5170,7 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
             "id": "cd_soi_one_vintage_per_state_concept",
             "status": "reviewed_construction",
             "reason": surface.get("vintage_rule_description"),
-            "rebase_factor_by_measure": surface.get("rebase_factor_by_measure"),
+            "factor_by_measure": surface.get("factor_by_measure"),
             "level_bridges": surface.get("level_bridges"),
             "level_bridge_factor_by_measure": surface.get(
                 "level_bridge_factor_by_measure"
@@ -6018,6 +6035,7 @@ def do_finalize(args) -> None:
     roles_path = args.checkpoint_dir / TARGET_ROLES_FILENAME
     if roles_path.is_file():
         targets = json.loads(roles_path.read_text())
+        cd_surface.refuse_targets_of_older_code(targets, where=TARGET_ROLES_FILENAME)
     elif registry_path.is_file():
         registry = TargetRegistry.from_json(registry_path)
         targets = [

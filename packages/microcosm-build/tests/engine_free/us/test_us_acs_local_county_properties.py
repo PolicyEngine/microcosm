@@ -144,7 +144,10 @@ def test_county_soi_shares_sum_to_one_and_preserve_parent_household_measures(
                 dtype=np.float32,
             )
             rows.append(np.where(codes // 1000 == state, values, 0.0))
-    surface = county.state_county_soi_surface(parents, facts, populations)
+    # Random parents make random factors. The bound has its own test.
+    surface = county.state_county_soi_surface(
+        parents, facts, populations, factor_band=math.inf
+    )
     state_matrix = sparse.csr_array(np.stack(rows))
     matrix = county.split_state_rows(
         parents,
@@ -157,7 +160,7 @@ def test_county_soi_shares_sum_to_one_and_preserve_parent_household_measures(
         children = [
             (index, spec)
             for index, spec in enumerate(surface.specs)
-            if spec.metadata["state_county_parent_target_name"] == parent_name
+            if spec.metadata["cross_grain_parent"] == parent_name
         ]
         assert len(children) == sum(
             code // 1000 == int(parent.metadata["state_fips"]) for code in populations
@@ -228,7 +231,7 @@ def test_county_holdout_is_deterministic_order_independent_and_nested(
             "state_fips": f"{code // 1000:02d}",
             "county_fips": f"{code:05d}",
             "source_measure_id": measure,
-            "state_county_parent_target_name": f"state.{code // 1000}.{measure}",
+            "cross_grain_parent": f"state.{code // 1000}.{measure}",
         }
         for code in np.unique(codes)
         for measure in ("return_count", "adjusted_gross_income")
@@ -253,9 +256,7 @@ def test_county_holdout_is_deterministic_order_independent_and_nested(
     # trained sibling counties from revealing the held-out county total.
     by_parent = {}
     for record in original:
-        by_parent.setdefault(record["state_county_parent_target_name"], set()).add(
-            record["role"]
-        )
+        by_parent.setdefault(record["cross_grain_parent"], set()).add(record["role"])
     assert all(len(values) == 1 for values in by_parent.values())
 
 

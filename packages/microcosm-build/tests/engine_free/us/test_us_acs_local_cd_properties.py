@@ -196,7 +196,16 @@ def _state_cd_inputs(draw):
             unique=True,
         )
     )
-    positive = st.floats(1.0, 1e10, allow_nan=False, allow_infinity=False)
+    # One concept has one parent source: Historic Table 2 has a measure in
+    # every state or in none.
+    in_table_2 = {
+        measure: measure == "return_count" or draw(st.booleans())
+        for measure in measures
+    }
+    # The operator refuses a block whose total is below 1e-9 of its control
+    # (the refusal has its own test). Eight orders of magnitude keep every
+    # block of this test above that limit, with the bound turned off.
+    positive = st.floats(1.0, 1e8, allow_nan=False, allow_infinity=False)
     specs, crosswalk, layout = [], [], {}
     for state in states:
         n_districts = draw(st.integers(1, 5))
@@ -215,7 +224,7 @@ def _state_cd_inputs(draw):
         # file has no sub-state rows for it, whatever the current plan says.
         layout[state] = (districts, len(source) == 1)
         for measure in measures:
-            if measure == "return_count" or draw(st.booleans()):
+            if in_table_2[measure]:
                 specs.append(
                     _soi_spec(
                         f"ht2.{state}.{measure}",
@@ -293,14 +302,12 @@ def test_district_targets_add_up_to_one_state_vintage(inputs) -> None:
     ]
     by_parent: dict[str, list] = {}
     for spec in districts:
-        by_parent.setdefault(spec.metadata["state_cd_parent_target_name"], []).append(
-            spec
-        )
+        by_parent.setdefault(spec.metadata["cross_grain_parent"], []).append(spec)
         state = spec.metadata["state_fips"]
         measure = spec.metadata["source_measure_id"]
         ht2 = f"ht2.{state}.{measure}"
         expected_parent = ht2 if ht2 in original else f"cdfile.{state}_total.{measure}"
-        assert spec.metadata["state_cd_parent_target_name"] == expected_parent
+        assert spec.metadata["cross_grain_parent"] == expected_parent
         assert expected_parent in kept
         if expected_parent != ht2:
             # A district-file-only state level is lifted onto the Historic
@@ -365,19 +372,39 @@ def test_an_incomplete_or_unabsorbable_district_block_is_refused() -> None:
         )
 
     predicate = _TOOL.soi_surface_predicate("state")
-    with pytest.raises(ValueError, match="expected the current plan"):
+    with pytest.raises(
+        ValueError,
+        match=r"leg 'state:10': missing \['congressional_district:1002'\]",
+    ):
         _CD.state_cd_soi_surface(
             [parent, district(1, 5.0)],
             state_surface_predicate=predicate,
             crosswalk=crosswalk,
         )
-    with pytest.raises(ValueError, match="sum to zero"):
+    with pytest.raises(ValueError, match="vanishing lower-leg total"):
         _CD.state_cd_soi_surface(
             [parent, district(1, 0.0), district(2, 0.0)],
             state_surface_predicate=predicate,
             crosswalk=crosswalk,
         )
-    with pytest.raises(ValueError, match="opposite in sign"):
+    # The limit is relative to the control: a block of positive rows below
+    # 1e-9 of its state parent is refused too, also with the bound turned off.
+    large_parent = _soi_spec(
+        "ht2.10.adjusted_gross_income",
+        "adjusted_gross_income",
+        2000000001.0,
+        level="state",
+        record_set=_HT2,
+        state="10",
+    )
+    with pytest.raises(ValueError, match=r"vanishing lower-leg total 2\.0"):
+        _CD.state_cd_soi_surface(
+            [large_parent, district(1, 1.0), district(2, 1.0)],
+            state_surface_predicate=predicate,
+            crosswalk=crosswalk,
+            factor_band=math.inf,
+        )
+    with pytest.raises(ValueError, match="opposite-signed lower and control"):
         _CD.state_cd_soi_surface(
             [parent, district(1, -5.0), district(2, -1.0)],
             state_surface_predicate=predicate,
@@ -440,7 +467,7 @@ def _records(draw):
                             ]
                         )
                     ),
-                    "state_cd_parent_target_name": "parent",
+                    "cross_grain_parent": "parent",
                 }
             )
         records.append(record)
@@ -572,7 +599,7 @@ def test_a_pro_rata_block_sums_to_its_state_parent(parent_value, populations) ->
             {
                 "name": f"cd_{index}",
                 "value": 0.0,
-                "state_cd_parent_target_name": "parent",
+                "cross_grain_parent": "parent",
                 "cd_population": population,
                 "state_population": state_population,
             }
@@ -663,11 +690,7 @@ def test_blocks_off_their_concepts_median_ratio_are_dropped_and_recorded(
         for spec in surface.specs
         if spec.metadata["ledger_geography_level"] == "congressional_district"
     }
-    recorded = {
-        row["state_fips"]
-        for row in surface.receipt["factor_band"]["out_of_band"]
-        if row["basis"] == "rebase"
-    }
+    recorded = {row["state_fips"] for row in surface.receipt["bridge"]["unbound"]}
     for index, factor in enumerate(factors):
         state = f"{10 + index:02d}"
         relative = factor / typical
@@ -753,6 +776,18 @@ def _bridge_surface(ratios, at_large=None):
     )
 
 
+def _verdicts(surface):
+    """The legs the bridge unbound, and the level bridges it distrusts."""
+
+    return {
+        (row["state_fips"], row["concept"], "rebase_factor")
+        for row in surface.receipt["bridge"]["unbound"]
+    } | {
+        (row["state_fips"], row["measure"], row["verdict"])
+        for row in surface.receipt["level_bridge_out_of_band"]
+    }
+
+
 def _bound(surface, state, measure, level):
     return [
         spec.name
@@ -770,14 +805,11 @@ def test_a_bridge_through_an_out_of_band_sibling_drops_its_state_and_districts()
 
     # 1. State 14's two levels disagree 2x: both verdicts fail there.
     surface = _bridge_surface({"10": 1.0, "11": 1.0, "12": 1.0, "13": 1.0, "14": 2.0})
-    verdicts = {
-        (row["state_fips"], row["measure"], row["verdict"])
-        for row in surface.receipt["factor_band"]["out_of_band"]
-    }
+    verdicts = _verdicts(surface)
     assert verdicts == {
         ("14", "return_count", "rebase_factor"),
         ("14", "charitable_amount", "sibling_vintage_ratio"),
-        ("14", "charitable_amount", "sibling_rebase_factor"),
+        ("14", "charitable_amount", "sibling_factor"),
     }
     assert not _bound(surface, "14", "charitable_amount", "state")
     assert not _bound(surface, "14", "charitable_amount", "congressional_district")
@@ -798,13 +830,10 @@ def test_a_bridge_through_an_out_of_band_sibling_drops_its_state_and_districts()
         {"10": 1.0, "11": 1.0, "12": 1.0, "13": 1.0, "14": 1.3},
         {f"{20 + index}": 1.2 for index in range(8)},
     )
-    verdicts = {
-        (row["state_fips"], row["measure"], row["verdict"])
-        for row in surface.receipt["factor_band"]["out_of_band"]
-    }
+    verdicts = _verdicts(surface)
     assert verdicts == {
         ("14", "return_count", "rebase_factor"),
-        ("14", "charitable_amount", "sibling_rebase_factor"),
+        ("14", "charitable_amount", "sibling_factor"),
     }
     assert not _bound(surface, "14", "charitable_amount", "state")
     assert not _bound(surface, "14", "charitable_amount", "congressional_district")
@@ -812,8 +841,8 @@ def test_a_bridge_through_an_out_of_band_sibling_drops_its_state_and_districts()
     assert _bound(surface, "20", "charitable_amount", "state")
 
 
-def test_a_sign_conflict_or_a_self_contradicting_district_file_is_refused() -> None:
-    """Defects inside the data are refused, not dropped as level gaps."""
+def test_a_sign_conflict_is_refused() -> None:
+    """A defect inside the data is refused, not dropped as a level gap."""
 
     specs, crosswalk = _bridge_world({"10": 1.0, "11": 1.0, "12": -1.0}, {})
     with pytest.raises(ValueError, match="has factor"):
@@ -823,30 +852,70 @@ def test_a_sign_conflict_or_a_self_contradicting_district_file_is_refused() -> N
             crosswalk=crosswalk,
             level_bridges={"charitable_amount": "return_count"},
         )
+
+
+def test_a_concept_with_two_parent_sources_is_refused() -> None:
+    """Historic Table 2 holds a concept in every state or in none."""
+
     specs, crosswalk = _bridge_world({"10": 1.0, "11": 1.0, "12": 1.0}, {})
-    broken = [
-        dataclasses.replace(spec, value=spec.value * (1 + 1e-4))
-        if spec.name == "cdfile.1101.return_count"
-        else spec
-        for spec in specs
+    mixed = [
+        *specs,
+        _soi_spec(
+            "ht2.10.charitable_amount",
+            "charitable_amount",
+            500.0,
+            level="state",
+            record_set=_HT2,
+            state="10",
+        ),
     ]
-    with pytest.raises(ValueError, match="differs from the sum of its district"):
+    with pytest.raises(ValueError, match="one concept has one parent source"):
         _CD.state_cd_soi_surface(
-            broken,
+            mixed,
             state_surface_predicate=_TOOL.soi_surface_predicate("state"),
             crosswalk=crosswalk,
             level_bridges={"charitable_amount": "return_count"},
         )
-    # Inside the tolerance (float noise) it is accepted.
-    nudged = [
-        dataclasses.replace(spec, value=spec.value * (1 + 1e-9))
-        if spec.name == "cdfile.1101.return_count"
-        else spec
-        for spec in specs
-    ]
-    _CD.state_cd_soi_surface(
-        nudged,
-        state_surface_predicate=_TOOL.soi_surface_predicate("state"),
-        crosswalk=crosswalk,
-        level_bridges={"charitable_amount": "return_count"},
+
+
+def test_a_block_that_leaves_the_surface_still_holds_its_members() -> None:
+    """A distrusted level bridge drops its block. An incomplete block is refused."""
+
+    ratios = {"10": 1.0, "11": 1.0, "12": 1.0, "13": 1.0, "14": 2.0}
+    specs, crosswalk = _bridge_world(ratios, {})
+
+    def surface(candidates):
+        return _CD.state_cd_soi_surface(
+            candidates,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges={"charitable_amount": "return_count"},
+        )
+
+    # State 14's bridge is out of band, so its charitable block is dropped.
+    assert (
+        surface(specs).receipt["dropped"]["level_bridge_out_of_band:charitable_amount"]
+        == 3
     )
+    # The same block with one district absent is refused, as a kept block is.
+    incomplete = [
+        spec for spec in specs if spec.name != "cdfile.1402.charitable_amount"
+    ]
+    with pytest.raises(
+        ValueError,
+        match=r"leg 'state:14': missing \['congressional_district:1402'\]",
+    ):
+        surface(incomplete)
+
+
+def test_a_district_row_that_appears_twice_is_refused() -> None:
+    specs, crosswalk = _bridge_world({"10": 1.0, "11": 1.0, "12": 1.0}, {})
+    twin = next(spec for spec in specs if spec.name == "cdfile.1001.return_count")
+    twice = [*specs, dataclasses.replace(twin, name="cdfile.1001.return_count.copy")]
+    with pytest.raises(ValueError, match=r"repeated \['congressional_district:1001'\]"):
+        _CD.state_cd_soi_surface(
+            twice,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges={"charitable_amount": "return_count"},
+        )
