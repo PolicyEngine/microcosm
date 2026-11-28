@@ -1,0 +1,39 @@
+{
+  "kind": "uk_firm_ct_liability_fixture",
+  "schema_version": 1,
+  "period": "financial year 2024-25 (1 April 2024 to 31 March 2025)",
+  "accessed": "2026-11-22",
+  "url": "https://assets.publishing.service.gov.uk/media/6aabc7c52f29b38884818639/corporation_tax_data_tables_2026.ods",
+  "landing_page": "https://www.gov.uk/government/statistics/corporation-tax-statistics-2026",
+  "collection_page": "https://www.gov.uk/government/collections/analyses-of-corporation-tax-receipts-and-liabilities",
+  "edition": "Corporation Tax Statistics 2026, published 24 September 2026 (cover sheet: all tables updated in September 2026; next release autumn 2027)",
+  "publisher": "HM Revenue and Customs",
+  "licence": "Open Government Licence v3.0",
+  "sha256": "d1a1ea0e9ae5c8e3045c99d5b1aad242b659d955d9569df4d202feac9b24aa21",
+  "size_bytes": 71415,
+  "source_file": "corporation_tax_data_tables_2026.ods",
+  "sheet": "Tables_9A,B",
+  "tables": [
+    "Table 9A: Total tax liability per band",
+    "Table 9B: Number of companies per band"
+  ],
+  "column": "2024-25",
+  "method": "Every figure was read from the downloaded workbook on the access date by tools/extract_uk_firm_ct_tables.py; none was filled from memory. Counts are as published (rounded by HMRC to the nearest 5) and amounts are GBP million as published (rounded to the nearest million). Band edges are parsed from the band labels (lower exclusive, upper inclusive, 'm' = million). Table 9A has no row for the 0 band and no liability for all returns, so those cells are blank. Earlier editions numbered this table 10; in the 2026 edition Tables 10A,B are trading turnover by band.",
+  "liability_concept": "The tables' 'tax liability' total equals 'Corporation Tax payable' in Table 5A of the same workbook: after double taxation relief and other charges and reliefs, including ring fence Corporation Tax and the supplementary charge.",
+  "tool": "tools/extract_uk_firm_ct_tables.py",
+  "command": "uv run --no-sync python tools/extract_uk_firm_ct_tables.py --ods <download>/corporation_tax_data_tables_2026.ods",
+  "extraction_date": "2026-11-22",
+  "file": {
+    "name": "ct_liability_bands.csv",
+    "sha256": "c3beb7499d3d2e014c7bd8c3410b9df0ca8f7baaa244abb73e24fd0a23c4b306",
+    "bytes": 573,
+    "rows": 16,
+    "columns": [
+      "band",
+      "lower_gbp",
+      "upper_gbp",
+      "companies",
+      "liability_gbp_million"
+    ]
+  }
+}

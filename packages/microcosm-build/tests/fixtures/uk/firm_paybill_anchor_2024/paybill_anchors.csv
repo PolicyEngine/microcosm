@@ -1,0 +1,4 @@
+anchor,period,value,unit,detail
+ons_d11_wages_and_salaries,2024,1162752000000.00,GBP,"ONS DTWL, UK wages and salaries (D.11), uses, current prices, SA; QNA"
+paye_rti_aggregate_pay,2024-25,1189583389662.00,GBP,"ONS/HMRC PAYE RTI aggregate pay, UK, NSA; sum of April 2024 to March 2025"
+paye_rti_payrolled_employees,2024-25,30430260.17,persons,"ONS/HMRC PAYE RTI payrolled employees, UK, NSA; mean of April 2024 to March 2025"

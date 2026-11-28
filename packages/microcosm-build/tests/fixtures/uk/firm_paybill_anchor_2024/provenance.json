@@ -1,0 +1,46 @@
+{
+  "kind": "uk_firm_paybill_anchor_fixture",
+  "schema_version": 1,
+  "accessed": "2026-11-26",
+  "use": "report only: model paybill and employees are divided by these anchors in the receipt; never a target, never a guard",
+  "concept_notes": [
+    "D.11 is whole-economy wages and salaries (public and private, including wages in kind) on a national accounts basis, calendar 2024.",
+    "PAYE RTI aggregate pay covers payrolled employees' pay (pensions excluded) for tax year 2024-25; the employee count is the mean of monthly payrolled employees.",
+    "The binding paybill guard stays ASHE annual jobs x mean pay (0.85-1.25)."
+  ],
+  "sources": {
+    "dtwl": {
+      "publisher": "Office for National Statistics",
+      "series": "DTWL",
+      "dataset": "Quarterly National Accounts (QNA)",
+      "series_page": "https://www.ons.gov.uk/economy/grossdomesticproductgdp/timeseries/dtwl/qna",
+      "url": "https://www.ons.gov.uk/generator?format=csv&uri=/economy/grossdomesticproductgdp/timeseries/dtwl/qna",
+      "edition": "QNA, released 30 September 2026 (2024 value identical in the 12 November 2026 second estimate, PN2)",
+      "file": "dtwl_qna.csv",
+      "size_bytes": 6619,
+      "sha256": "5948ee2d3da0fe42fab8a27768a18eb6b8ee352e712e02e15c817bf5cb8df1a5"
+    },
+    "rti": {
+      "publisher": "Office for National Statistics with HM Revenue & Customs",
+      "dataset": "Real Time Information statistics reference table, not seasonally adjusted",
+      "landing_page": "https://www.ons.gov.uk/employmentandlabourmarket/peopleinwork/earningsandworkinghours/datasets/realtimeinformationstatisticsreferencetablenonseasonallyadjusted",
+      "url": "https://www.ons.gov.uk/file?uri=/employmentandlabourmarket/peopleinwork/earningsandworkinghours/datasets/realtimeinformationstatisticsreferencetablenonseasonallyadjusted/current/rtinsanov2026.xlsx",
+      "edition": "Earnings and employment from PAYE RTI, UK: November 2026 (17 November 2026)",
+      "file": "rtinsanov2026.xlsx",
+      "size_bytes": 2248167,
+      "sha256": "8aafec63ce93a6a8b299c438faf4ce54a535d9ed331c2e2dc30106b8c163748c",
+      "sheets": [
+        "4. Aggregate pay (UK)",
+        "1. Payrolled employees (UK)"
+      ]
+    }
+  },
+  "tool": "tools/extract_uk_firm_paybill_anchor.py",
+  "files": {
+    "paybill_anchors.csv": {
+      "sha256": "f98bc92ae7babc0ada9473f313debc62b1296a8a1e982c7ff8f5eb5dd96539a7",
+      "bytes": 425,
+      "rows": 3
+    }
+  }
+}

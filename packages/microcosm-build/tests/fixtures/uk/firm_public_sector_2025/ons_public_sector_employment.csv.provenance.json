@@ -1,0 +1,56 @@
+{
+  "kind": "uk_firm_public_sector_employment_fixture",
+  "schema_version": 1,
+  "period": "March 2025 quarter (the last quarter of tax year 2024-25)",
+  "accessed": "2026-11-22",
+  "method": "Figures were read from the downloaded workbook on the access date by tools/extract_uk_firm_public_sector_table.py; none was filled from memory. headcount_thousand is the Table 1 cell as published (thousands of people, seasonally adjusted). ons_legal_status is the firm build's mapping of each sector to an ONS business-count legal status (5 central government, 6 local authority), an assumption beyond the source.",
+  "source": {
+    "publisher": "Office for National Statistics",
+    "dataset_title": "Public sector employment",
+    "landing_page": "https://www.ons.gov.uk/employmentandlabourmarket/peopleinwork/publicsectorpersonnel/datasets/publicsectoremploymentreferencetable",
+    "url": "https://www.ons.gov.uk/file?uri=/employmentandlabourmarket/peopleinwork/publicsectorpersonnel/datasets/publicsectoremploymentreferencetable/march2025/datasets8.xlsx",
+    "edition": "March 2025 edition: Public sector employment, UK: March 2025; Released on 10 June 2025",
+    "file": "datasets8.xlsx",
+    "size_bytes": 218985,
+    "sha256": "00f38ef61bd115ac0acc9a2351530feedd8e68f3982fd86e9a9f823311698cd2",
+    "sheet": "Table 1",
+    "table": "Table 1: Public sector employment by sector classification; Headcount; United Kingdom (thousands), seasonally adjusted; row 'Mar 2025'",
+    "series": {
+      "central_government": "G6NQ",
+      "local_government": "G6NT"
+    },
+    "survey": "Quarterly Public Sector Employment Survey",
+    "licence": "Open Government Licence v3.0"
+  },
+  "edition_note": "The March 2025 edition is not the dataset's latest: the landing page listed a June 2026 edition (release date 15 September 2026) on the access date. The March 2025 edition is used so the headcount is the first published estimate for the quarter that closes the 2024-25 frame; later editions revise it.",
+  "coverage": "Headcount, full-time and part-time. Table 1 does not list the bodies in each sector; the workbook's Table 2 splits the public sector total by industry (HM Forces, police, public administration, education, National Health Service, other), and its Reclassification notes place English further education colleges and Network Rail in central government. Police (England and Wales) are based on projections (footnote 4). Public corporations (series G7AR) are not extracted.",
+  "extraction_date": "2026-11-22",
+  "tool": "tools/extract_uk_firm_public_sector_table.py",
+  "command": "uv run --no-sync python tools/extract_uk_firm_public_sector_table.py --xlsx <download>/datasets8.xlsx --later-xlsx <download>/datasets3.xlsx",
+  "files": {
+    "ons_public_sector_employment.csv": {
+      "sha256": "e8fafbefc8132178731728854db83fab2dc490d389a3504a0c75a490f3868e15",
+      "bytes": 138,
+      "rows": 2,
+      "columns": [
+        "sector",
+        "ons_legal_status",
+        "series_id",
+        "period",
+        "headcount_thousand"
+      ]
+    }
+  },
+  "later_edition": {
+    "note": "The same row and series in a later edition, recorded for comparison only; the CSV does not use it.",
+    "url": "https://www.ons.gov.uk/file?uri=/employmentandlabourmarket/peopleinwork/publicsectorpersonnel/datasets/publicsectoremploymentreferencetable/june2026/datasets3.xlsx",
+    "edition": "Public sector employment, UK: June 2026; Released on 15 September 2026",
+    "file": "datasets3.xlsx",
+    "size_bytes": 228246,
+    "sha256": "99c92dd12ca0dcd6641e5d18a4ce8c97c8135b2f16a9aa7b7f547caf2f827c5e",
+    "headcount_thousand": {
+      "central_government": 4024,
+      "local_government": 1977
+    }
+  }
+}

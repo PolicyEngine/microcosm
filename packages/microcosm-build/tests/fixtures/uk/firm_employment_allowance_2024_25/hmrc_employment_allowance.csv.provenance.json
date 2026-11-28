@@ -1,0 +1,20 @@
+{
+  "kind": "uk_firm_employment_allowance_check",
+  "schema_version": 1,
+  "period": "2024-25",
+  "accessed": "2026-11-22",
+  "use": "Held-out check of policyengine-uk employment_allowance on the generated firms. Never a calibration target.",
+  "method": "Read from the downloaded ODS on the access date. claimants: Table 5 (Claimants estimates), row 'Employment Allowance' (NIC - NS6), column '2024 to 2025' (1,223,000). cost_gbp: Table 2 (Six-year cost estimates, GBP million), same row and column (3,300), multiplied by 1,000,000. Table 2 marks 2025 to 2026 as the first forecasted costing year, so 2024-25 is an outturn estimate. HMRC describes the method as 'Administrative data on the use of the relief, with minimal further assumptions applied'. In 2024-25 the allowance was up to GBP 5,000 and employers with GBP 100,000 or more of prior-year secondary Class 1 liabilities could not claim.",
+  "sources": {
+    "hmrc_tax_relief_statistics": {
+      "url": "https://assets.publishing.service.gov.uk/media/69a0194e3e672177d0bc76e6/tax_relief_statistics_january_2026.ods",
+      "edition": "Tax relief statistics, January 2026",
+      "tables": [
+        "Table 2: Six-year cost estimates",
+        "Table 5: Claimants estimates"
+      ],
+      "sha256": "fa94a61fe6b6a02c19b87a656154f27eaf5f00f35f0cce9339b8101b9ac8ee4a",
+      "landing_page_note": "Not recorded: the release page was not confirmed on the access date; the file URL and its sha256 identify the edition."
+    }
+  }
+}

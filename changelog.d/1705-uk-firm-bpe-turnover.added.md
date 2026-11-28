@@ -1,0 +1,1 @@
+Add an opt-in BPE turnover switch to the UK firm build (microcosm#1705), needing `--bpe-dir`: `--bpe-turnover` draws the open ONS turnover band on a truncated Pareto tail pinned to BPE whole-economy turnover instead of the log-uniform draw capped at £50m, and re-pairs employment with turnover inside each SIC division by a Gaussian copula fitted to BPE turnover by employment band.
